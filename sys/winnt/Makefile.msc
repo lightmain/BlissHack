@@ -560,9 +560,9 @@ guilibs     = $(winlibs)
 #
 
 !IFNDEF ADD_CURSES
-INCLDIR= /I..\include /I..\sys\winnt
+INCLDIR= /I..\include /I..\sys\winnt /I..\external\nlohmann_json\single_include
 !ELSE
-INCLDIR= /I..\include /I..\sys\winnt
+INCLDIR= /I..\include /I..\sys\winnt /I..\external\nlohmann_json\single_include
 !ENDIF
 
 #==========================================
@@ -576,6 +576,7 @@ lflagsBuild = $(lflags) $(conlibs) $(MACHINE)
 # - Game build
 #==========================================
 
+winsocklibs = ws2_32.lib
 LIBS= user32.lib winmm.lib $(ZLIB) $(CURSESLIB)
 
 ! IF ("$(USE_DLB)"=="Y")
@@ -625,6 +626,9 @@ DLB =
 #==========================================
 
 {$(UTIL)}.c{$(OBJ)}.o:
+	@$(cc) $(cflagsBuild) -Fo$@ $<
+
+{$(UTIL)}.cpp{$(OBJ)}.o:
 	@$(cc) $(cflagsBuild) -Fo$@ $<
 
 #==========================================
@@ -697,7 +701,7 @@ default : install
 
 all :	install
 
-install: $(O)envchk.tag $(O)obj.tag $(O)utility.tag $(GAMEDIR)\NetHack.exe $(GAMEDIR)\NetHackW.exe $(O)install.tag
+install: $(O)envchk.tag $(O)obj.tag $(O)utility.tag $(GAMEDIR)\NetHack.exe $(GAMEDIR)\NetHackW.exe $(GAMEDIR)\NetHackServer.exe $(O)install.tag
 	 @echo Done.
 
 $(O)install.tag: 	$(DAT)\data	$(DAT)\rumors	 $(DAT)\dungeon \
@@ -879,6 +883,14 @@ $(O)gamedir.tag:
 $(U)nhsizes.exe: $(O)nhsizes.o
 	@echo Linking $(@:\=/)
 	$(link) $(lflagsBuild) -out:$@ $(O)nhsizes.o $(O)panic.o $(O)alloc.o
+
+# NetHackServer
+SERVEROBJS = $(O)nh_server.o
+
+$(GAMEDIR)\NetHackServer.exe: $(O)gamedir.tag $(SERVEROBJS)
+	@echo   Linking $(@:\=/)
+	$(link) $(lflagsBuild) $(conlflags) /PDB:"$(GAMEDIR)\$(@B).PDB" /MAP:"$(O)$(@B).MAP" \
+		$(SERVEROBJS) $(conlibs) $(WINSOCKLIBS) -out:$@
 
 $(O)nhsizes.o: $(CONFIG_H) nhsizes.c
 	@$(cc) $(cflagsBuild) -Fo$@ nhsizes.c
