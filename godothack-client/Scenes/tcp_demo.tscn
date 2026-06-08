@@ -1,0 +1,15 @@
+[gd_scene format=3 uid="uid://b3x32brs4n6sy"]
+
+[ext_resource type="Script" uid="uid://cxsaal2s2gkmk" path="res://Scripts/game_client.gd" id="1_h5vtc"]
+
+[node name="TCPDemo" type="Control" unique_id=1228145094]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="GameClient" type="Node" parent="." unique_id=1828307454]
+script = ExtResource("1_h5vtc")
+core_exe_path = "..\\GodotHack\\binary\\NetHackServer.exe"
