@@ -98,3 +98,6 @@ util/*.lib
 util/*.exp
 submodules/CHKSUMS.tmp
 sys/amiga/regex/
+
+# GodotHack project-local scratch files
+.ai-scratch/
