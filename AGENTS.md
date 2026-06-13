@@ -20,6 +20,11 @@ session using JSON messages.
 
 ## Development Rules
 
+- Before building or changing the backend, read `godothack-docs/BUILDING.md`
+  for the verified NetHack 5.0.0 Windows baseline build flow.
+- Treat the BUILDING guide as the project-specific build entry point; upstream
+  NetHack build docs are useful references but may not capture GodotHack's
+  verified workflow.
 - Treat `godothack-docs/PROTOCOL.md` as the source of truth for the TCP JSON
   protocol.
 - When changing the JSON protocol, update backend code, Godot client code, and
@@ -27,6 +32,10 @@ session using JSON messages.
 - Keep upstream NetHack changes as small and local as practical.
 - Prefer adding GodotHack integration code in clearly named files or sections
   instead of scattering unrelated edits across the NetHack tree.
+- Add or update focused tests for new behavior when practical.
+- Before committing, run the relevant build and test checks for the changed
+  area. Commit only after they pass, or explicitly record why a check could not
+  be run.
 - Do not commit generated Godot cache data from `godothack-client/.godot/`.
 - Keep AI scratch notes out of the repository unless they have been curated
   into `godothack-docs/`.
@@ -45,4 +54,3 @@ commands, use:
 If the user does not specify an environment, use `utils`. For PyTorch tasks, use
 the `pytorch` environment unless the user specifies otherwise. Prefer
 `conda run` instead of `conda activate`.
-

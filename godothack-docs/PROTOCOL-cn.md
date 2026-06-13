@@ -2,20 +2,16 @@
 
 本文档是 GodotHack 前后端协议的事实来源。
 
-状态：草案
+状态：草案，第一段传输已经在 `NetHackServer.exe` 中实现
 
 ## 传输
 
-- 后端和 Godot 客户端通过 TCP 通信。
+- 后端和前端客户端通过 TCP 通信。
 - 消息编码为 JSON。
-- 消息 framing 格式尚未最终确定。选定之后，应先在这里记录，再继续扩展协议。
-
-待选 framing 方案：
-
-- Newline-delimited JSON，每行一个 JSON 对象。
-- Length-prefixed JSON frame。
-
-一旦消息中可能包含格式化文本，length-prefixed frame 通常更安全；但在早期手动测试时，newline-delimited JSON 更简单。
+- 第一段已实现传输使用 newline-delimited JSON，每行一个 JSON 对象。
+- 每条 JSON 消息必须在一行内，并以 `\n` 结束。
+- 如果后续格式化文本或类二进制 payload 让换行 framing 变脆弱，可以再改为
+  length-prefixed frame。
 
 ## 消息形态
 
@@ -69,21 +65,46 @@
 
 ## 版本
 
-协议最终应该包含版本握手。在此之前，任何破坏性变更都应该更新本文档和 work log。
+初始协议版本是 `1`。
 
-潜在握手格式：
+客户端握手：
 
 ```json
 {
   "type": "session.hello",
+  "seq": 1,
   "payload": {
-    "client": "godothack-client",
+    "client": "godothack-webclient",
     "protocol_version": 1
   }
 }
 ```
 
+服务端 welcome 会在 TCP 连接建立后立即发送一次，也会作为 `session.hello`
+的确定性响应再次发送：
+
+```json
+{
+  "type": "session.welcome",
+  "seq": 1,
+  "payload": {
+    "server": "NetHackServer",
+    "backend": "NetHack 5.0.0",
+    "protocol_version": 1,
+    "transport": "ndjson",
+    "status": "connected"
+  }
+}
+```
+
+响应 `session.hello` 时，`status` 为 `ready`；如果客户端提供了 `seq`，
+服务端会在 `payload.client_seq` 中回显。
+
+## 当前后端切片
+
+当前 `NetHackServer.exe` 目标只验证 TCP/JSON 传输，还不会启动 NetHack 游戏。
+非握手消息会收到 `game.error`，其中 `payload.code` 为 `not_implemented`。
+
 ## 更新规则
 
 当协议字段或消息类型发生变化时，应该在同一次变更中同时更新本文档、后端代码和客户端代码。
-

@@ -1737,6 +1737,23 @@ $(GAMEDIR)NetHackW.exe : gamedir.tag $(OGUI)tile.o \
 		$(OGUI)NetHackW.res
 << keep
 
+#---------------
+# NetHackServer
+#---------------
+#
+godothack-server: $(GAMEDIR)NetHackServer.exe
+
+$(GAMEDIR)NetHackServer.exe : gamedir.tag $(OUTL)godothack_server.o
+	@if not exist $(GAMEDIR)*.* mkdir $(R_GAMEDIR)
+	@echo   Linking $(@:\=/)
+	$(link) $(LFLAGS) $(conlflags) /PDB:$(GAMEDIR)$(@B).PDB \
+		/MAP:$(OUTL)$(@B).MAP ws2_32.lib -out:$@ $(OUTL)godothack_server.o
+
+$(OUTL)godothack_server.o: $(SRC)godothack_server.cpp outldir$(TARGET_CPU).tag
+	$(Q)$(CC) $(CPPFLAGS) $(CROSSCOMPILE) $(CROSSCOMPILE_TARGET) \
+		/EHsc /I..\external\nlohmann_json\single_include \
+		/Fd$(OUTL)godothack_server.pdb -Fo$@ $(SRC)godothack_server.cpp
+
 #--------
 # install
 #--------

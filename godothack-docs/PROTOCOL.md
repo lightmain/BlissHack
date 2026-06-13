@@ -2,22 +2,17 @@
 
 This document is the source of truth for the GodotHack frontend/backend protocol.
 
-Status: draft
+Status: draft, first transport slice implemented in `NetHackServer.exe`
 
 ## Transport
 
 - The backend and Godot client communicate over TCP.
 - Messages are encoded as JSON.
-- The message framing format is not finalized yet. Once chosen, document it here
-  before expanding the protocol.
-
-Open framing options:
-
-- Newline-delimited JSON, one JSON object per line.
-- Length-prefixed JSON frames.
-
-Length-prefixed frames are usually safer once messages may contain formatted
-text, but newline-delimited JSON is simpler for early manual testing.
+- The first implemented transport uses newline-delimited JSON, one JSON object
+  per line.
+- Each JSON message must fit on one line and is terminated by `\n`.
+- Length-prefixed frames may replace this later if formatted text or binary-like
+  payloads make newline framing too fragile.
 
 ## Message Shape
 
@@ -75,23 +70,48 @@ These names are placeholders until the implementation settles.
 
 ## Versioning
 
-The protocol should eventually include a version handshake. Until then, any
-breaking change should update this document and the work log.
+The initial protocol version is `1`.
 
-Potential handshake:
+Client handshake:
 
 ```json
 {
   "type": "session.hello",
+  "seq": 1,
   "payload": {
-    "client": "godothack-client",
+    "client": "godothack-webclient",
     "protocol_version": 1
   }
 }
 ```
 
+Server welcome, sent once immediately after TCP connection and again as the
+deterministic response to `session.hello`:
+
+```json
+{
+  "type": "session.welcome",
+  "seq": 1,
+  "payload": {
+    "server": "NetHackServer",
+    "backend": "NetHack 5.0.0",
+    "protocol_version": 1,
+    "transport": "ndjson",
+    "status": "connected"
+  }
+}
+```
+
+For the `session.hello` response, `status` is `ready`; the server also echoes
+the client `seq` as `payload.client_seq` when present.
+
+## Current Backend Slice
+
+The current `NetHackServer.exe` target only proves the TCP/JSON transport. It
+does not start a NetHack game yet. Non-handshake messages receive `game.error`
+with `payload.code` set to `not_implemented`.
+
 ## Update Rule
 
 When a protocol field or message type changes, update this document in the same
 change as the backend and client code.
-
