@@ -261,4 +261,4 @@ unix hints: the Makefiles distributed by sys/unix/setup.sh will now check
 	make, and use bsd make syntax for bsd make
 share a single copy of nhuuid generation code between Amiga, Atari, and msdos
 	by way of sys/share/pcmain.c (cherry-pick from pr #1541 by ingpaschke)
-
+nhgitset.pl: Set up future deprecation of PRE and POST hooks.
