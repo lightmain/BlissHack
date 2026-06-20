@@ -66,6 +66,7 @@ when hero's behavior makes erinyes stronger, cap level at 49 rather than 50
 with inventory item action for leash, distingluish leash-in-use from empty one
 deafness check was missing from a shopkeeper message in ready_weapon()
 thrown ball travel did not check for regions (pr #1595 by copperwater)
+remove deprecated option --version:paste
 
 
 Platform- and/or Interface-Specific Fixes
