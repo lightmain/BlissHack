@@ -4805,7 +4805,7 @@ act_on_act(
         cmdq_add_key(CQ_CANNED, 'y'); /* "There is foo here; eat it?" */
         break;
     case MCMD_DROP:
-        cmdq_add_ec(CQ_CANNED, dodrop);
+        cmdq_add_ec(CQ_CANNED, doddrop);
         break;
     case MCMD_INVENTORY:
         cmdq_add_ec(CQ_CANNED, ddoinv);
