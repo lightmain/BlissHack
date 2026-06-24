@@ -4407,6 +4407,7 @@ enum menucmd {
     MCMD_REST,
     MCMD_LOOK_HERE,
     MCMD_LOOK_AT,
+    MCMD_PRAY,
     MCMD_ATTACK_NEXT2U,
     MCMD_UNTRAP_HERE,
     MCMD_OFFER,
@@ -4507,6 +4508,7 @@ there_cmd_menu_self(winid win, coordxy x, coordxy y, int *act UNUSED)
     mcmd_addmenu(win, MCMD_REST, "Rest one turn"), ++K;
     mcmd_addmenu(win, MCMD_SEARCH, "Search around you"), ++K;
     mcmd_addmenu(win, MCMD_LOOK_HERE, "Look at what is here"), ++K;
+    mcmd_addmenu(win, MCMD_PRAY, "Pray here"), ++K;
 
     if (num_spells() > 0)
         mcmd_addmenu(win, MCMD_CAST_SPELL, "Cast a spell"), ++K;
@@ -4820,6 +4822,9 @@ act_on_act(
         gc.clicklook_cc.x = u.ux + dx;
         gc.clicklook_cc.y = u.uy + dy;
         cmdq_add_ec(CQ_CANNED, doclicklook);
+        break;
+    case MCMD_PRAY:
+        cmdq_add_ec(CQ_CANNED, dopray);
         break;
     case MCMD_UNTRAP_HERE:
         cmdq_add_ec(CQ_CANNED, dountrap);
