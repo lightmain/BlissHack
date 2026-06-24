@@ -4414,6 +4414,7 @@ enum menucmd {
     MCMD_OFFER,
     MCMD_INVENTORY,
     MCMD_CAST_SPELL,
+    MCMD_JUMP,
 
     MCMD_THROW_OBJ,
     MCMD_TRAVEL,
@@ -4519,6 +4520,9 @@ there_cmd_menu_self(winid win, coordxy x, coordxy y, int *act UNUSED)
         if (ttmp->ttyp != VIBRATING_SQUARE)
             mcmd_addmenu(win, MCMD_UNTRAP_HERE,
                          "Attempt to disarm trap"), ++K;
+    }
+    if (Jumping) {
+        mcmd_addmenu(win, MCMD_JUMP, "Jump"), ++K;
     }
     return K;
 }
@@ -4842,6 +4846,8 @@ act_on_act(
     case MCMD_CAST_SPELL:
         cmdq_add_ec(CQ_CANNED, docast);
         break;
+    case MCMD_JUMP:
+        cmdq_add_ec(CQ_CANNED, dojump);
     default:
         break;
     }
