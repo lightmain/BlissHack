@@ -4410,6 +4410,7 @@ enum menucmd {
     MCMD_PRAY,
     MCMD_ENGRAVE,
     MCMD_ATTRIBUTES,
+    MCMD_PREVIOUS_MESSAGES,
     MCMD_ATTACK_NEXT2U,
     MCMD_UNTRAP_HERE,
     MCMD_OFFER,
@@ -4514,6 +4515,7 @@ there_cmd_menu_self(winid win, coordxy x, coordxy y, int *act UNUSED)
     mcmd_addmenu(win, MCMD_PRAY, "Pray here"), ++K;
     mcmd_addmenu(win, MCMD_ENGRAVE, "Engrave here"), ++K;
     mcmd_addmenu(win, MCMD_ATTRIBUTES, "View attributes"), ++K;
+    mcmd_addmenu(win, MCMD_PREVIOUS_MESSAGES, "Access memories"), ++K;
 
     if (num_spells() > 0)
         mcmd_addmenu(win, MCMD_CAST_SPELL, "Cast a spell"), ++K;
@@ -4839,6 +4841,9 @@ act_on_act(
         break;
     case MCMD_ATTRIBUTES:
         cmdq_add_ec(CQ_CANNED, doattributes);
+        break;
+    case MCMD_PREVIOUS_MESSAGES:
+        cmdq_add_key(CQ_CANNED, C('p'));
         break;
     case MCMD_UNTRAP_HERE:
         cmdq_add_ec(CQ_CANNED, dountrap);
