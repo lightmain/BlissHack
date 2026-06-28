@@ -1517,7 +1517,7 @@ doname_base(
                           ? obj->invlet - 'A'
                       : (obj->invlet >= 'a' && obj->invlet <= 'z')
                           ? obj->invlet - 'a' + 26
-                          : 53;  /* valid index, but always holds zero */
+                          : invlet_basic;  /* valid index, but always holds zero */
 
             if (with_corpse_genders && puzzidx < 53
                 && gp.puzzling_criteria == 411 && gp.puzzling_ilets[puzzidx])
