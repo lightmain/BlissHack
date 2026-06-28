@@ -1519,7 +1519,7 @@ doname_base(
                           ? obj->invlet - 'a' + 26
                           : invlet_basic;  /* valid index, but always holds zero */
 
-            if (with_corpse_genders && puzzidx < 53
+            if (with_corpse_genders && puzzidx < invlet_basic
                 && gp.puzzling_criteria == 411 && gp.puzzling_ilets[puzzidx])
                 cxarg |= CXN_ADDGNDR;
             /* corpse_xname() sets xnamep; callers other than doname_base()
