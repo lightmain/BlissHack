@@ -914,8 +914,8 @@ search_loadsyms(const char *buf, size_t len)
             ++sp;
             ++i;
         }
-        qsort(loadsyms_sorted, SIZE(loadsyms_sorted), sizeof(loadsyms_sorted[0]),
-                symparse_compare);
+        qsort((struct symparse **)loadsyms_sorted, SIZE(loadsyms_sorted),
+              sizeof(loadsyms_sorted[0]), symparse_compare);
         first_time = FALSE;
     }
 
