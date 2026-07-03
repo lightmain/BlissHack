@@ -61,12 +61,14 @@ keep the player better-informed about status of the tether on their weapon
 don't overflow svp.plname on restore (pr #1570 by chasonr)
 monsters (including pets) aren't scared of the Sokoban rolling boulder traps
 fix a bug in which steeds would continuously gain movement points while
-        being ridden
+	being ridden
 when hero's behavior makes erinyes stronger, cap level at 49 rather than 50
 with inventory item action for leash, distingluish leash-in-use from empty one
 deafness check was missing from a shopkeeper message in ready_weapon()
 thrown ball travel did not check for regions (pr #1595 by copperwater)
 remove deprecated option --version:paste
+the timeout for stasis wasn't decrementing while off-level; ensure the elapsed
+	 time is taken into consideration upon return to the level
 
 
 Platform- and/or Interface-Specific Fixes
@@ -156,7 +158,7 @@ libnh: rewrote sys/unix/hints/macOS.500: rewrote the libnh.a rule. The
 	(the tty windowport), which duplicated symbols from libnhmain.o /
 	winshim.o.
 libnh: sys/libnh/libnhmain.c: gate the emscripten-only code in get_nhuuid
-       with `#ifdef __EMSCRIPTEN__` instead of `#ifdef NHUUID`
+	with `#ifdef __EMSCRIPTEN__` instead of `#ifdef NHUUID`
 libnh: sys/unix/hints/macOS.500 in the WANT_LIBNH block, add an explicit
 	`recover: lua_support` dependency (gated by MAKEFILE_TOP).  When 
 	$(GAME) is overridden to empty, the regular `recover: $(GAME)` chain
