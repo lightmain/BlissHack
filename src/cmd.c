@@ -4859,6 +4859,7 @@ act_on_act(
         break;
     case MCMD_JUMP:
         cmdq_add_ec(CQ_CANNED, dojump);
+        break;
     default:
         break;
     }
