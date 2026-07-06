@@ -31,7 +31,7 @@ read_tiles(const char *filename, boolean true_color)
     boolean ok;
 
     if (tiles != NULL)
-        return;
+        return TRUE;
 
     /* Fill the image structure with known values */
     image.width = 0;
