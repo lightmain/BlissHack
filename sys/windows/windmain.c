@@ -192,8 +192,8 @@ _CrtSetReportFile(_CRT_ASSERT, _CRTDBG_FILE_STDERR);*/
 #endif
 #endif
 
-    set_emergency_io();
 #ifndef MSWIN_GRAPHICS
+    set_emergency_io();
     early_init(argc, argv); /* already in WinMain for MSWIN_GRAPHICS */
 #endif
 
@@ -243,6 +243,15 @@ _CrtSetReportFile(_CRT_ASSERT, _CRTDBG_FILE_STDERR);*/
         windowtype = "tty";
 #endif
     }
+#ifdef MSWIN_GRAPHICS
+    if (!strcmp(windowtype, "tty"))
+        windowtype = "mswin";
+#endif
+#ifdef TTY_GRAPHICS
+    if (!strcmp(windowtype, "mswin"))
+        windowtype = "tty";
+#endif
+
     choose_windows(
         windowtype); /* sets all the window port function pointers */
 
@@ -279,6 +288,9 @@ _CrtSetReportFile(_CRT_ASSERT, _CRTDBG_FILE_STDERR);*/
         raw_printf("Exiting.");
         nethack_exit(EXIT_FAILURE);
     }
+
+    genl_prag(argc, argv); /* command line options for profession, race,
+                            * alignment, gender */
 
     /* Finished processing options, lock all directory paths */
     for (int i = 0; i < PREFIX_COUNT; i++)

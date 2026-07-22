@@ -3033,8 +3033,8 @@ optfn_paranoid_confirmation(
                          " %s", paranoia[i].argname);
         }
         /* note: always leaves enough room for caller to tack on '\n' */
-        opts[0] = '\0';
-        (void) strncat(opts, tmpbuf[0] ? &tmpbuf[1] : "none", BUFSZ - 1);
+        Snprintf(opts, BUFSZ - 1, "%s",
+                 tmpbuf[0] ? &tmpbuf[1] : "none");
         return optn_ok;
     }
     if (req == do_handler) {
@@ -5314,7 +5314,7 @@ optfn_boolean(
 #ifndef IDLECHECKPOINT
         case opt_idlecheckpoint:
             pline("There is no underlying support for 'idlecheckpoint'"
-                  " compiled in."); 
+                  " compiled in.");
             iflags.idlecheckpoint = FALSE;
             give_opt_msg = FALSE;
             break;
@@ -7430,7 +7430,7 @@ allopt_array_init(void)
                 if (allopt[i].opttyp == BoolOpt && i != opt_ascii_map)
                     allopt[i].initval = allopt[i].opt_in_out;
 #endif
-		*(allopt[i].addr) = allopt[i].initval;
+                *(allopt[i].addr) = allopt[i].initval;
             }
         }
         heed_all_options();
@@ -8965,9 +8965,10 @@ doset(void) /* changing options via menu by Per Liboriussen */
                     getlin(buf, abuf);
                     if (abuf[0] == '\033')
                         continue;
-                    Sprintf(buf, "%s:", allopt[opt_indx].name);
-                    (void) strncat(eos(buf), abuf,
-                                   (sizeof buf - 1 - strlen(buf)));
+                    Snprintf(buf, sizeof buf,
+                             "%s:%s",
+                             allopt[opt_indx].name,
+                             abuf);
                     /* pass the buck */
                     (void) parseoptions(buf, FALSE, FALSE);
                 }

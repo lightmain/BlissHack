@@ -1,4 +1,4 @@
-/* NetHack 5.0	zap.c	$NHDT-Date: 1770949988 2026/02/12 18:33:08 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.584 $ */
+/* NetHack 5.0	zap.c	$NHDT-Date: 1781973075 2026/06/20 16:31:15 $  $NHDT-Branch: NetHack-5.0 $:$NHDT-Revision: 1.596 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /*-Copyright (c) Robert Patrick Rankin, 2013. */
 /* NetHack may be freely redistributed.  See license for details. */
@@ -892,6 +892,10 @@ revive(struct obj *corpse, boolean by_hero)
     mmflags_nht mmflags = NO_MINVENT | MM_NOWAIT | MM_NOMSG;
     int montype, cgend, container_nesting = 0;
     boolean is_zomb;
+    /* normally use the name on the corpse object, but don't if drawing a
+     * player's ghost back into its body, in which case use the ghost's
+     * (player's) name */
+    boolean use_corpse_name = TRUE;
 
     if (corpse->otyp != CORPSE) {
         impossible("Attempting to revive %s?", xname(corpse));
@@ -1085,6 +1089,16 @@ revive(struct obj *corpse, boolean by_hero)
                     mtmp->mtame = ghost->mtame;
                 }
             }
+            /* copy over ghost's name and struct ebones to newly revived "hero";
+             * has_mgivenname should always be true because there are guards
+             * against renaming a ghost, but check it just to be sure */
+            if (has_mgivenname(ghost)) {
+                mtmp = christen_monst(mtmp, MGIVENNAME(ghost));
+                /* don't let player-provided name of corpse override actual
+                 * name of ex-hero */
+                use_corpse_name = FALSE;
+            }
+            copy_mextra(mtmp, ghost); /* pass on struct ebones */
             /* was ghost, now alive, it's all very confusing */
             mtmp->mconf = 1;
             /* separate ghost monster no longer exists */
@@ -1094,7 +1108,7 @@ revive(struct obj *corpse, boolean by_hero)
     }
 
     /* monster retains its name */
-    if (has_oname(corpse) && !unique_corpstat(mtmp->data))
+    if (use_corpse_name && has_oname(corpse) && !unique_corpstat(mtmp->data))
         mtmp = christen_monst(mtmp, ONAME(corpse));
     /* partially eaten corpse yields wounded monster */
     if (corpse->oeaten)
@@ -2357,7 +2371,7 @@ bhito(struct obj *obj, struct obj *otmp)
                     if (cansee(ox, oy)) {
                         if (canspotmon(mtmp)) {
                             pline("%s is resurrected!",
-                                  upstart(noname_monnam(mtmp, ARTICLE_THE)));
+                                  mtmp->mtame ? YMonnam(mtmp) : Monnam(mtmp));
                             learn_it = by_u ? TRUE : gz.zap_oseen;
                         } else {
                             /* saw corpse but don't see monster: maybe
