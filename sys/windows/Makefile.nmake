@@ -1741,18 +1741,61 @@ $(GAMEDIR)NetHackW.exe : gamedir.tag $(OGUI)tile.o \
 # NetHackServer
 #---------------
 #
-godothack-server: $(GAMEDIR)NetHackServer.exe
+GODOTHACK_SHIMDEF = -DSHIM_GRAPHICS -DDEFAULT_WINDOW_SYS=\"shim\"
+GODOTHACK_SOBJTTY = $(OUTL)godothack_windmain.o $(OTTY)windsys.o $(OTTY)win10.o
+GODOTHACK_COREOBJTTY = $(COREOBJTTY:windows.o=godothack_windows.o)
+GODOTHACK_OBJSTTY = $(MDLIBTTY) $(GODOTHACK_COREOBJTTY) $(REGEXTTY) $(RANDOMTTY)
+GODOTHACK_ALLOBJTTY = $(GODOTHACK_SOBJTTY) $(DLBOBJTTY) $(GODOTHACK_OBJSTTY) $(VVOBJTTY) $(LUAOBJTTY)
 
-$(GAMEDIR)NetHackServer.exe : gamedir.tag $(OUTL)godothack_server.o
+godothack-server: $(GAMEDIR)NetHackServer.exe
+	@if not exist $(GAMEDIR)sysconf copy $(MSWSYS)godothack.sysconf $(GAMEDIR)sysconf
+
+$(GAMEDIR)NetHackServer.exe : gamedir.tag $(OUTL)godothack_server.o \
+			$(OUTL)godothack_core_bridge.o \
+			$(OTTY)godothack_windows.o $(OUTL)godothack_winshim.o \
+			$(GODOTHACK_ALLOBJTTY) $(CURSESWINCONOBJS) \
+			$(TTYSOUNDOBJS) $(OTTY)consoletty.o $(OTTY)date.o \
+			$(LUALIB) $(TTYOBJTTY) $(PDCTXTLIB) $(PDCTXTOBJS) $(OTTYHACKLIB)
 	@if not exist $(GAMEDIR)*.* mkdir $(R_GAMEDIR)
 	@echo   Linking $(@:\=/)
 	$(link) $(LFLAGS) $(conlflags) /PDB:$(GAMEDIR)$(@B).PDB \
-		/MAP:$(OUTL)$(@B).MAP ws2_32.lib -out:$@ $(OUTL)godothack_server.o
+		/MAP:$(OUTL)$(@B).MAP \
+		$(LIBS) $(PDCTXTLIB) $(LUALIB) $(TTYSOUNDLIBS) $(OTTYHACKLIB) \
+		$(conlibs) $(BCRYPT) ws2_32.lib -out:$@ @<<$(@B).lnk
+		$(OUTL)godothack_server.o
+		$(OUTL)godothack_core_bridge.o
+		$(OUTL)godothack_winshim.o
+		$(GODOTHACK_ALLOBJTTY)
+		$(TTYOBJTTY)
+		$(TTYSOUNDOBJS) $(CURSESWINCONOBJS) $(PDCTXTOBJS)
+		$(OTTY)consoletty.o
+		$(OTTY)date.o
+<< keep
 
 $(OUTL)godothack_server.o: $(SRC)godothack_server.cpp outldir$(TARGET_CPU).tag
 	$(Q)$(CC) $(CPPFLAGS) $(CROSSCOMPILE) $(CROSSCOMPILE_TARGET) \
 		/EHsc /I..\external\nlohmann_json\single_include \
 		/Fd$(OUTL)godothack_server.pdb -Fo$@ $(SRC)godothack_server.cpp
+
+$(OUTL)godothack_core_bridge.o: $(SRC)godothack_core_bridge.c outldir$(TARGET_CPU).tag
+	$(Q)$(CC) $(CFLAGS) $(TTYDEF) $(CROSSCOMPILE) $(CROSSCOMPILE_TARGET) \
+		$(GODOTHACK_SHIMDEF) /Fd$(OUTL)godothack_core_bridge.pdb \
+		-Fo$@ $(SRC)godothack_core_bridge.c
+
+$(OTTY)godothack_windows.o: $(SRC)windows.c ottydir$(TARGET_CPU).tag
+	$(Q)$(CC) $(CFLAGS) $(TTYDEF) $(CROSSCOMPILE) $(CROSSCOMPILE_TARGET) \
+		$(GODOTHACK_SHIMDEF) /Fd$(OTTY)godothack_windows.pdb \
+		-Fo$@ $(SRC)windows.c
+
+$(OUTL)godothack_winshim.o: ..\win\shim\winshim.c outldir$(TARGET_CPU).tag
+	$(Q)$(CC) $(CFLAGS) $(TTYDEF) $(CROSSCOMPILE) $(CROSSCOMPILE_TARGET) \
+		$(GODOTHACK_SHIMDEF) /Fd$(OUTL)godothack_winshim.pdb \
+		-Fo$@ ..\win\shim\winshim.c
+
+$(OUTL)godothack_windmain.o: $(MSWSYS)windmain.c outldir$(TARGET_CPU).tag
+	$(Q)$(CC) $(CFLAGS) $(TTYDEF) $(CROSSCOMPILE) $(CROSSCOMPILE_TARGET) \
+		-Dmain=godothack_windmain_unused \
+		/Fd$(OUTL)godothack_windmain.pdb -Fo$@ $(MSWSYS)windmain.c
 
 #--------
 # install

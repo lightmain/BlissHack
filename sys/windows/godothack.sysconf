@@ -1,0 +1,5 @@
+# GodotHack development server configuration.
+
+WIZARDS=*
+HIDEUSAGE=1
+PORTABLE_DEVICE_PATHS=1

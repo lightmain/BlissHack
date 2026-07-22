@@ -2,13 +2,17 @@
 
 #include <winsock2.h>
 #include <ws2tcpip.h>
+#include <windows.h>
 
 #include <nlohmann/json.hpp>
 
 #include <cstdlib>
+#include <cstdarg>
 #include <iostream>
+#include <map>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 using json = nlohmann::json;
 
@@ -18,12 +22,50 @@ constexpr const char *kDefaultHost = "127.0.0.1";
 constexpr unsigned short kDefaultPort = 7777;
 constexpr int kProtocolVersion = 1;
 constexpr size_t kMaxBufferedLineBytes = 1024 * 1024;
+constexpr int kMapWidth = 80;
+constexpr int kMapHeight = 21;
+
+constexpr int kNhWindowMessage = 1;
+constexpr int kNhWindowStatus = 2;
+constexpr int kNhWindowMap = 3;
+constexpr int kNhWindowMenu = 4;
+constexpr int kNhWindowText = 5;
 
 struct Options {
     std::string host = kDefaultHost;
     unsigned short port = kDefaultPort;
     bool help = false;
 };
+
+struct GlyphInfoPrefix {
+    int glyph = 0;
+    int ttychar = 0;
+};
+
+struct MapCell {
+    int x = 0;
+    int y = 0;
+    int glyph = 0;
+    int ttychar = 0;
+};
+
+extern "C" {
+typedef void (*GodotHackShimCallback)(const char *, void *, const char *, ...);
+
+void godothack_core_run(GodotHackShimCallback, int, char **);
+void godothack_core_mark_window_inited(void);
+void godothack_core_player_setup(void);
+const char *godothack_core_status_field_name(int);
+const char *godothack_core_status_value_to_string(int, void *, char *, int);
+}
+
+SOCKET g_game_socket = INVALID_SOCKET;
+int g_next_window_id = 1;
+int g_server_seq = 1;
+bool g_game_started_sent = false;
+std::string g_program_path;
+std::map<int, int> g_window_types;
+std::map<int, MapCell> g_map_cells;
 
 struct MaybeInt {
     MaybeInt() = default;
@@ -160,6 +202,28 @@ std::string last_winsock_error()
     return std::to_string(WSAGetLastError());
 }
 
+std::string configure_runtime_directory()
+{
+    std::vector<char> path_buffer(32768, '\0');
+    const DWORD length = GetModuleFileNameA(nullptr, path_buffer.data(),
+                                            static_cast<DWORD>(path_buffer.size()));
+    if (length == 0 || length >= path_buffer.size()) {
+        throw std::runtime_error("failed to resolve NetHackServer executable path");
+    }
+
+    const std::string executable(path_buffer.data(), length);
+    const size_t separator = executable.find_last_of("\\/");
+    if (separator == std::string::npos) {
+        throw std::runtime_error("failed to resolve NetHackServer runtime directory");
+    }
+
+    const std::string directory = executable.substr(0, separator);
+    if (!SetCurrentDirectoryA(directory.c_str())) {
+        throw std::runtime_error("failed to enter NetHackServer runtime directory");
+    }
+    return executable;
+}
+
 SocketHandle create_listener(const Options &options)
 {
     addrinfo hints {};
@@ -230,6 +294,23 @@ bool send_json_line(SOCKET socket, const json &message)
     return send_all(socket, encoded);
 }
 
+bool send_game_json(const json &message)
+{
+    if (g_game_socket == INVALID_SOCKET) {
+        return false;
+    }
+    return send_json_line(g_game_socket, message);
+}
+
+json protocol_message(const std::string &type, json payload)
+{
+    return {
+        { "type", type },
+        { "seq", g_server_seq++ },
+        { "payload", std::move(payload) }
+    };
+}
+
 MaybeInt client_seq(const json &message)
 {
     if (message.contains("seq") && message["seq"].is_number_integer()) {
@@ -292,6 +373,380 @@ json error_message(int seq, const std::string &code, const std::string &text,
     };
 }
 
+std::string read_socket_line(SOCKET socket)
+{
+    std::string line;
+    char ch = '\0';
+    for (;;) {
+        const int received = recv(socket, &ch, 1, 0);
+        if (received == 0) {
+            throw std::runtime_error("client disconnected");
+        }
+        if (received == SOCKET_ERROR) {
+            throw std::runtime_error("recv failed, WSA error " + last_winsock_error());
+        }
+        if (ch == '\n') {
+            if (!line.empty() && line.back() == '\r') {
+                line.pop_back();
+            }
+            return line;
+        }
+        line.push_back(ch);
+        if (line.size() > kMaxBufferedLineBytes) {
+            throw std::runtime_error("incoming JSON line is too large");
+        }
+    }
+}
+
+int key_for_direction(const std::string &direction)
+{
+    if (direction == "west") return 'h';
+    if (direction == "south") return 'j';
+    if (direction == "north") return 'k';
+    if (direction == "east") return 'l';
+    if (direction == "southwest") return 'b';
+    if (direction == "southeast") return 'n';
+    if (direction == "northwest") return 'y';
+    if (direction == "northeast") return 'u';
+    return 0;
+}
+
+int read_command_key()
+{
+    for (;;) {
+        const std::string line = read_socket_line(g_game_socket);
+        if (line.empty()) {
+            continue;
+        }
+
+        json message;
+        try {
+            message = json::parse(line);
+        } catch (const json::parse_error &error) {
+            send_game_json(protocol_message("game.error", {
+                { "code", "invalid_json" },
+                { "message", error.what() },
+                { "recoverable", true }
+            }));
+            continue;
+        }
+
+        if (!message.is_object() || !message.contains("type")
+            || !message["type"].is_string()) {
+            send_game_json(protocol_message("game.error", {
+                { "code", "invalid_message" },
+                { "message", "message.type must be a string" },
+                { "recoverable", true }
+            }));
+            continue;
+        }
+
+        const std::string type = message["type"].get<std::string>();
+        const json payload = message.contains("payload") && message["payload"].is_object()
+                                 ? message["payload"]
+                                 : json::object();
+
+        if (type == "command.move" && payload.contains("direction")
+            && payload["direction"].is_string()) {
+            const std::string direction = payload["direction"].get<std::string>();
+            const int key = key_for_direction(direction);
+            if (key) {
+                send_game_json(protocol_message("command.accepted", {
+                    { "command", type },
+                    { "direction", direction }
+                }));
+                return key;
+            }
+        } else if (type == "command.key" && payload.contains("key")
+                   && payload["key"].is_string()) {
+            const std::string key = payload["key"].get<std::string>();
+            if (!key.empty()) {
+                send_game_json(protocol_message("command.accepted", {
+                    { "command", type },
+                    { "key", key.substr(0, 1) }
+                }));
+                return static_cast<unsigned char>(key[0]);
+            }
+        }
+
+        send_game_json(protocol_message("game.error", {
+            { "code", "unsupported_command" },
+            { "message", "expected command.move or command.key while game is waiting for input" },
+            { "recoverable", true }
+        }));
+    }
+}
+
+void maybe_send_game_started()
+{
+    if (g_game_started_sent) {
+        return;
+    }
+    g_game_started_sent = true;
+    send_game_json(protocol_message("game.started", {
+        { "backend", "NetHack 5.0.0" }
+    }));
+}
+
+void send_map_snapshot()
+{
+    maybe_send_game_started();
+
+    json cells = json::array();
+    for (const auto &entry : g_map_cells) {
+        const MapCell &cell = entry.second;
+        json encoded = {
+            { "x", cell.x },
+            { "y", cell.y },
+            { "glyph", cell.glyph },
+            { "ttychar", cell.ttychar }
+        };
+        if (cell.ttychar >= 32 && cell.ttychar <= 126) {
+            encoded["char"] = std::string(1, static_cast<char>(cell.ttychar));
+        }
+        cells.push_back(std::move(encoded));
+    }
+
+    send_game_json(protocol_message("view.map", {
+        { "width", kMapWidth },
+        { "height", kMapHeight },
+        { "cells", std::move(cells) }
+    }));
+}
+
+void set_int_return(void *ret_ptr, int value)
+{
+    if (ret_ptr) {
+        *static_cast<int *>(ret_ptr) = value;
+    }
+}
+
+void set_char_return(void *ret_ptr, int value)
+{
+    if (ret_ptr) {
+        *static_cast<char *>(ret_ptr) = static_cast<char>(value);
+    }
+}
+
+void set_boolean_return(void *ret_ptr, bool value)
+{
+    if (ret_ptr) {
+        *static_cast<unsigned char *>(ret_ptr) = value ? 1 : 0;
+    }
+}
+
+void set_pointer_return(void *ret_ptr, void *value)
+{
+    if (ret_ptr) {
+        *static_cast<void **>(ret_ptr) = value;
+    }
+}
+
+void godothack_window_callback(const char *name, void *ret_ptr, const char *fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+
+    const std::string callback = name ? name : "";
+
+    if (callback == "shim_init_nhwindows") {
+        (void) va_arg(args, void *);
+        (void) va_arg(args, void *);
+        godothack_core_mark_window_inited();
+    } else if (callback == "shim_player_selection") {
+        godothack_core_player_setup();
+    } else if (callback == "shim_create_nhwindow") {
+        const int window_type = va_arg(args, int);
+        const int window_id = g_next_window_id++;
+        g_window_types[window_id] = window_type;
+        set_int_return(ret_ptr, window_id);
+    } else if (callback == "shim_destroy_nhwindow") {
+        const int window_id = va_arg(args, int);
+        g_window_types.erase(window_id);
+    } else if (callback == "shim_putstr") {
+        const int window_id = va_arg(args, int);
+        const int attr = va_arg(args, int);
+        const char *text = va_arg(args, const char *);
+        const int window_type = g_window_types.count(window_id) ? g_window_types[window_id] : 0;
+        if (text && (window_type == kNhWindowMessage || window_id == kNhWindowMessage)) {
+            maybe_send_game_started();
+            send_game_json(protocol_message("view.messages", {
+                { "messages", json::array({ text }) },
+                { "attr", attr }
+            }));
+        } else if (text && window_type == kNhWindowText) {
+            send_game_json(protocol_message("view.text", {
+                { "text", text },
+                { "attr", attr }
+            }));
+        }
+    } else if (callback == "shim_raw_print" || callback == "shim_raw_print_bold") {
+        const char *text = va_arg(args, const char *);
+        if (text) {
+            send_game_json(protocol_message("view.messages", {
+                { "messages", json::array({ text }) },
+                { "raw", true }
+            }));
+        }
+    } else if (callback == "shim_print_glyph") {
+        const int window_id = va_arg(args, int);
+        const int x = va_arg(args, int);
+        const int y = va_arg(args, int);
+        const auto *glyph = va_arg(args, const GlyphInfoPrefix *);
+        (void) va_arg(args, const void *);
+        const int window_type = g_window_types.count(window_id) ? g_window_types[window_id] : 0;
+        if (glyph && (window_type == kNhWindowMap || window_id == kNhWindowMap)) {
+            MapCell cell;
+            cell.x = x;
+            cell.y = y;
+            cell.glyph = glyph->glyph;
+            cell.ttychar = glyph->ttychar;
+            g_map_cells[y * kMapWidth + x] = cell;
+        }
+    } else if (callback == "shim_display_nhwindow") {
+        const int window_id = va_arg(args, int);
+        (void) va_arg(args, int);
+        const int window_type = g_window_types.count(window_id) ? g_window_types[window_id] : 0;
+        if (window_type == kNhWindowMap || window_id == kNhWindowMap) {
+            send_map_snapshot();
+        }
+    } else if (callback == "shim_mark_synch" || callback == "shim_wait_synch") {
+        if (!g_map_cells.empty()) {
+            send_map_snapshot();
+        }
+    } else if (callback == "shim_status_enablefield") {
+        const int field = va_arg(args, int);
+        const char *name_arg = va_arg(args, const char *);
+        const char *format = va_arg(args, const char *);
+        const int enabled = va_arg(args, int);
+        send_game_json(protocol_message("view.status_field", {
+            { "field", field },
+            { "name", name_arg ? name_arg : "" },
+            { "format", format ? format : "" },
+            { "enabled", enabled != 0 }
+        }));
+    } else if (callback == "shim_status_update") {
+        const int field = va_arg(args, int);
+        void *value = va_arg(args, void *);
+        const int changed = va_arg(args, int);
+        const int percent = va_arg(args, int);
+        const int color = va_arg(args, int);
+        (void) va_arg(args, void *);
+        char value_buffer[256];
+        const char *field_name = godothack_core_status_field_name(field);
+        const char *field_value =
+            godothack_core_status_value_to_string(field, value, value_buffer,
+                                                  sizeof value_buffer);
+        send_game_json(protocol_message("view.player", {
+            { "field", field },
+            { "name", field_name ? field_name : "" },
+            { "value", field_value ? field_value : "" },
+            { "changed", changed },
+            { "percent", percent },
+            { "color", color }
+        }));
+    } else if (callback == "shim_nhgetch") {
+        send_game_json(protocol_message("prompt.command", {
+            { "input", "key" }
+        }));
+        try {
+            set_int_return(ret_ptr, read_command_key());
+        } catch (const std::exception &) {
+            set_int_return(ret_ptr, 27);
+        }
+    } else if (callback == "shim_nh_poskey") {
+        (void) va_arg(args, void *);
+        (void) va_arg(args, void *);
+        (void) va_arg(args, void *);
+        send_game_json(protocol_message("prompt.command", {
+            { "input", "position-or-key" }
+        }));
+        try {
+            set_int_return(ret_ptr, read_command_key());
+        } catch (const std::exception &) {
+            set_int_return(ret_ptr, 27);
+        }
+    } else if (callback == "shim_yn_function") {
+        const char *query = va_arg(args, const char *);
+        const char *choices = va_arg(args, const char *);
+        const int default_choice = va_arg(args, int);
+        send_game_json(protocol_message("prompt.yn", {
+            { "question", query ? query : "" },
+            { "choices", choices ? choices : "" },
+            { "default", default_choice ? std::string(1, static_cast<char>(default_choice)) : "" }
+        }));
+        set_char_return(ret_ptr, default_choice ? default_choice
+                                                : (choices && choices[0] ? choices[0] : 'n'));
+    } else if (callback == "shim_getlin") {
+        const char *query = va_arg(args, const char *);
+        char *buffer = va_arg(args, char *);
+        send_game_json(protocol_message("prompt.text", {
+            { "question", query ? query : "" }
+        }));
+        if (buffer) {
+            std::strcpy(buffer, "GodotHack");
+        }
+    } else if (callback == "shim_select_menu") {
+        (void) va_arg(args, int);
+        (void) va_arg(args, int);
+        (void) va_arg(args, void *);
+        set_int_return(ret_ptr, 0);
+    } else if (callback == "shim_message_menu") {
+        (void) va_arg(args, int);
+        (void) va_arg(args, int);
+        const char *message = va_arg(args, const char *);
+        if (message) {
+            send_game_json(protocol_message("view.messages", {
+                { "messages", json::array({ message }) }
+            }));
+        }
+        set_char_return(ret_ptr, 0);
+    } else if (callback == "shim_doprev_message"
+               || callback == "shim_get_ext_cmd") {
+        set_int_return(ret_ptr, 0);
+    } else if (callback == "shim_player_selection_or_tty") {
+        set_boolean_return(ret_ptr, true);
+    } else if (callback == "shim_getmsghistory"
+               || callback == "shim_ctrl_nhwindow") {
+        set_pointer_return(ret_ptr, nullptr);
+    }
+
+    va_end(args);
+}
+
+void reset_game_state(SOCKET socket)
+{
+    g_game_socket = socket;
+    g_next_window_id = 1;
+    g_game_started_sent = false;
+    g_window_types.clear();
+    g_map_cells.clear();
+}
+
+void run_nethack_game(SOCKET socket)
+{
+    reset_game_state(socket);
+
+    const std::string player_name =
+        "-uGodotHack" + std::to_string(GetCurrentProcessId()) + "-"
+        + std::to_string(GetTickCount64());
+
+    std::vector<std::string> args = {
+        g_program_path.empty() ? std::string("NetHackServer.exe") : g_program_path,
+        "-wshim",
+        "-@",
+        player_name
+    };
+    std::vector<char *> argv;
+    argv.reserve(args.size());
+    for (std::string &arg : args) {
+        argv.push_back(&arg[0]);
+    }
+
+    godothack_core_run(godothack_window_callback, static_cast<int>(argv.size()),
+                       argv.data());
+}
+
 bool handle_message(SOCKET client, const std::string &line, int &server_seq)
 {
     json parsed;
@@ -319,6 +774,15 @@ bool handle_message(SOCKET client, const std::string &line, int &server_seq)
                 : json::object();
         return send_json_line(client, welcome_message(server_seq++, "ready",
                                                       client_seq(parsed), payload));
+    }
+
+    if (type == "game.start") {
+        g_server_seq = server_seq;
+        send_json_line(client, protocol_message("game.starting", {
+            { "backend", "NetHack 5.0.0" }
+        }));
+        run_nethack_game(client);
+        return false;
     }
 
     return send_json_line(client, error_message(server_seq++, "not_implemented",
@@ -382,6 +846,7 @@ int main(int argc, char **argv)
             print_usage();
             return 0;
         }
+        g_program_path = configure_runtime_directory();
 
         WinsockSession winsock;
         SocketHandle listener = create_listener(options);
