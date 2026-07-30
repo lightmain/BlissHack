@@ -541,3 +541,215 @@ Lua 关卡脚本的 C 语言支持代码在 `src/nhlua.c`、`src/sp_lev.c`、
 
 实验时要记录修改了哪个文件、重新编译了什么、运行时看到了什么。NetHack 的
 全局状态和条件编译很多，短记录能帮助你避免把偶然现象误认为规则。
+
+## 窗口接口 `struct window_procs` 的完整调用链
+
+本节里的调用链指“从一个入口函数开始，经过哪些函数和数据结构，最后执行到
+目标函数实现”的路径。窗口接口调用链解决的问题是：核心游戏逻辑只调用
+`print_glyph()`、`putstr()`、`nh_poskey()` 这样的统一名字，为什么最后会进入
+TTY、curses、Windows 图形界面、X11 或 Qt 的具体实现。
+
+`struct window_procs` 定义在 `include/winprocs.h`。这个结构体的字段大多是
+函数指针。函数指针是保存函数地址的变量。NetHack 把“初始化窗口、创建窗口、
+显示字符串、显示地图格子、读取按键、弹出菜单、刷新状态栏”等操作都放进
+这个结构体。
+
+一个窗口接口实现会创建一个 `struct window_procs` 变量，并把字段填成自己的
+函数。例如：
+
+- `win/tty/wintty.c` 定义 `tty_procs`。
+- `win/curses/cursmain.c` 定义 `curses_procs`。
+- `win/win32/mswproc.c` 定义 `mswin_procs`。
+- `win/X11/winX.c` 定义 `X11_procs`。
+
+调用链的第一段发生在构建阶段。构建配置会决定哪些窗口接口参与编译。例如
+启用 TTY 窗口接口时会定义 `TTY_GRAPHICS`，启用 Windows 图形窗口接口时会
+定义 `MSWIN_GRAPHICS`。这些条件编译开关会影响 `src/windows.c` 中哪些
+`extern struct window_procs ...` 声明生效，也会影响 `winchoices` 数组中出现
+哪些窗口接口。
+
+调用链的第二段发生在程序启动阶段。Linux 和 macOS 的启动入口通常在
+`sys/unix/unixmain.c`，Windows 的启动入口在 `sys/windows/windmain.c`。启动
+代码会调用 `choose_windows()`。`choose_windows()` 定义在 `src/windows.c`。
+它会在 `winchoices` 数组中查找名字匹配的窗口接口，然后把对应的
+`struct window_procs` 复制到全局变量 `windowprocs`。
+
+全局变量 `windowprocs` 是当前正在使用的窗口接口。复制完成后，核心逻辑通过
+`windowprocs` 调用函数，不需要知道当前界面来自 `win/tty` 还是 `win/win32`。
+
+调用链的第三段由 `include/winprocs.h` 中的宏完成。宏是 C 预处理器在编译前
+展开的文本规则。`include/winprocs.h` 把很多统一名字定义成 `windowprocs` 的
+字段调用。例如：
+
+```c
+#define create_nhwindow (*windowprocs.win_create_nhwindow)
+#define print_glyph (*windowprocs.win_print_glyph)
+#define nh_poskey (*windowprocs.win_nh_poskey)
+```
+
+这表示核心逻辑写 `print_glyph(...)` 时，C 预处理器会把它展开成对
+`windowprocs.win_print_glyph` 的函数指针调用。当前 `windowprocs` 来自哪个
+窗口接口，最终就进入哪个窗口接口的具体函数。
+
+一个地图显示路径可以这样追踪：
+
+1. 核心逻辑判断某个地图格子需要显示。
+2. 核心逻辑调用 `print_glyph()`。
+3. `include/winprocs.h` 把 `print_glyph()` 展开成
+   `(*windowprocs.win_print_glyph)(...)`。
+4. 如果当前窗口接口是 TTY，调用会进入 `win/tty/wintty.c` 中对应的显示函数。
+5. 如果当前窗口接口是 Windows 图形界面，调用会进入 `win/win32` 中对应的
+   显示函数。
+
+这个路径说明：地图格子的游戏含义由核心逻辑决定，地图格子的显示方式由窗口
+接口决定。
+
+一个玩家输入路径可以这样追踪：
+
+1. 主循环在 `src/allmain.c` 中执行。
+2. 命令解析代码在 `src/cmd.c` 中需要读取玩家输入。
+3. 输入读取会经过 `readchar()`、`readchar_core()`。
+4. `readchar_core()` 调用 `nh_poskey()`。
+5. `include/winprocs.h` 把 `nh_poskey()` 展开成
+   `(*windowprocs.win_nh_poskey)(...)`。
+6. 当前窗口接口返回按键、鼠标位置或修饰键状态。
+7. `src/cmd.c` 根据返回值查找命令表，并执行对应命令函数。
+
+这个路径说明：窗口接口负责把操作系统输入转换成 NetHack 能理解的输入值；
+命令是否消耗游戏时间、命令会改变哪些游戏状态，仍由核心游戏逻辑决定。
+
+`src/windows.c` 还包含几层公共包装逻辑。公共包装逻辑指“所有窗口接口共用的
+前后处理”。例如 `add_menu()`、`select_menu()`、`getlin()`、`yn_function()`
+在 NetHack 5.0 中有核心层实现，然后核心层再调用 `windowprocs` 中的具体
+函数。这样做可以把菜单颜色、输入长度检查、选择结果整理等共同行为放在一处。
+
+调试窗口接口调用链时，可以按下面顺序打断点：
+
+1. `src/windows.c` 的 `choose_windows()`：确认启动时选择了哪个窗口接口。
+2. `src/allmain.c` 的 `init_sound_disp_gamewindows()`：观察消息窗口、地图窗口、
+   状态窗口和物品栏窗口的创建。
+3. `src/cmd.c` 的 `readchar_core()`：观察输入如何进入命令解析。
+4. 当前窗口接口的 `win_nh_poskey` 对应函数：观察具体平台如何返回按键。
+5. 当前窗口接口的 `win_print_glyph` 对应函数：观察地图格子如何显示。
+
+如果你只是静态阅读代码，推荐阅读顺序是：
+
+1. `include/winprocs.h`：先看 `struct window_procs` 有哪些字段。
+2. `src/windows.c`：再看 `winchoices` 和 `choose_windows()`。
+3. `win/tty/wintty.c`：用 TTY 窗口接口作为第一个具体实现。
+4. `src/cmd.c`：看输入值如何变成命令函数。
+5. `src/display.c` 和 `src/allmain.c`：看显示刷新从哪里发起。
+
+## NetHack 原项目测试与调试入口
+
+本节把测试入口和调试入口分开说明。测试入口指“运行一组预先写好的检查，让
+程序自己报告是否失败”。调试入口指“让开发者观察或控制一次运行过程，定位
+具体问题”。
+
+### Lua 测试入口
+
+NetHack 原项目的 `test` 目录里有一组 Lua 测试文件，例如 `test_sel.lua`、
+`test_obj.lua`、`test_des.lua`、`test_shk.lua`、`test_src.lua`。这些文件主要
+检查 Lua 关卡脚本相关功能、选择区域相关功能、物品描述相关功能和商店区域
+相关功能。
+
+官方 `test/README.md` 给出的流程是：
+
+1. 编译一个不使用 DLB 的 NetHack。
+2. 安装这个 NetHack。
+3. 把 `test` 目录里的 Lua 测试文件复制到 NetHack 的 playground 目录。
+4. 用调试模式启动 NetHack。
+5. 使用 `#wizloadlua` 扩展命令加载并运行某个测试文件。
+
+这里的 DLB 指 data librarian。DLB 会把多个运行时数据文件打包到一个数据包
+文件中。测试流程要求“不使用 DLB”，原因是测试文件需要作为独立 Lua 文件被
+调试模式加载。
+
+playground 目录是 NetHack 运行时读写数据文件、存档文件和辅助文件的目录。
+具体位置由构建配置和安装配置决定。Linux 和 macOS 上常由 hints 文件决定；
+Windows 上常由 Windows 构建脚本和程序启动逻辑决定。
+
+调试模式是 NetHack 给开发者使用的特殊运行模式。原项目注释里经常把它叫
+wizard mode。本文统一称为调试模式。调试模式会开放创建物品、传送、加载 Lua
+脚本、运行模糊测试等开发命令。
+
+### 调试模式入口
+
+调试模式的权限由配置控制。`include/config.h` 中有两个相关概念：
+
+- `WIZARD_NAME`：编译期默认允许进入调试模式的用户名。
+- `WIZARDS`：系统配置文件中的用户名列表。如果启用了系统配置文件，
+  `WIZARDS` 会覆盖 `WIZARD_NAME`。
+
+调试模式可以通过选项请求。`src/options.c` 中的注释明确提到
+`OPTIONS=playmode:debug`。旧式启动方式也可能使用 `-D`。不同平台启动代码
+对命令行参数的处理位置不同，因此阅读时应从对应平台入口开始：
+
+- Linux 和 macOS：`sys/unix/unixmain.c`
+- Windows：`sys/windows/windmain.c`
+- 选项解析：`src/options.c`
+
+调试模式进入后，`src/cmd.c` 的扩展命令表会开放带有 `WIZMODECMD` 标志的
+命令。`WIZMODECMD` 定义在 `include/func_tab.h`，含义是“这个命令只允许在
+调试模式中执行”。
+
+常见调试模式命令包括：
+
+- `#wizloadlua`：加载 Lua 文件，适合运行 `test` 目录中的 Lua 测试。
+- `#debugfuzzer`：启动模糊测试。模糊测试指自动生成大量输入，观察程序是否
+  出现崩溃、断言失败或内部错误。
+- `#wizwish` 或相关许愿命令：创建指定物品，用于验证物品逻辑。
+- `#levelchange`、`#levelport`、`#wizwhere`：改变或查看位置，用于验证关卡
+  和地牢结构。
+- `#stats`、`#timeout`、`#vision`：查看内部状态，用于验证计时效果、视野和
+  状态变化。
+
+命令名字以源码中的扩展命令表为准。扩展命令表位于 `src/cmd.c` 的
+`extcmdlist`。
+
+### 断点调试入口
+
+断点调试指用调试工具暂停程序，逐行执行代码，并查看变量值。Windows 上常用
+Visual Studio。Linux 上常用 gdb。macOS 上常用 lldb。gdb 是 GNU Debugger 的
+缩写。lldb 是 LLVM 项目的调试工具。
+
+Windows 上最方便的断点调试入口是 `sys/windows/vs/NetHack.sln`。打开解决方案
+后，可以选择 Debug 配置，给下面函数打断点：
+
+- `sys/windows/windmain.c` 的入口函数：观察 Windows 启动流程。
+- `src/windows.c` 的 `choose_windows()`：观察窗口接口选择。
+- `src/allmain.c` 的 `newgame()`：观察新游戏初始化。
+- `src/allmain.c` 的 `moveloop_core()`：观察每一轮主循环。
+- `src/cmd.c` 的 `readchar_core()`：观察输入读取。
+- `src/cmd.c` 的具体命令函数，例如 `do_move_east()`。
+- `src/hack.c` 的移动处理函数：观察移动规则。
+
+Linux 和 macOS 上，可以用带调试信息的构建产物配合 gdb 或 lldb。调试信息是
+编译器写入可执行文件的源码位置、变量名和类型信息。没有调试信息时，调试工具
+仍可运行程序，但源码级单步和变量查看会困难很多。
+
+建议的断点策略是先少后多。先在入口函数、`choose_windows()`、`moveloop_core()`
+和一个具体命令函数打断点。确认主路径后，再给更深的规则函数打断点。这样能
+避免程序频繁停在与当前问题无关的公共函数里。
+
+### 内部一致性检查和崩溃回溯
+
+NetHack 还有一些内部一致性检查入口。内部一致性检查指程序主动检查自己的
+关键数据结构是否满足约束。例如物品链表、怪物链表、计时队列、光源、陷阱等
+结构是否仍然一致。相关状态在 `include/flag.h` 中可以看到，例如
+`sanity_check`。
+
+崩溃回溯入口主要在 `src/report.c`。崩溃回溯指程序崩溃或触发严重错误时，
+记录当前函数调用栈，帮助开发者定位错误来源。`include/config.h` 中的
+`GDBPATH` 指定 gdb 路径，`src/report.c` 中的 `NH_panictrace_gdb()` 会尝试
+调用 gdb 获取回溯信息。
+
+如果你在研究一个具体 bug，推荐按这个顺序使用入口：
+
+1. 先写出最小复现步骤。最小复现步骤指能稳定触发问题的最短操作序列。
+2. 如果问题涉及 Lua 关卡脚本，优先尝试写成 `test/*.lua` 风格的 Lua 测试。
+3. 如果问题涉及玩家命令或怪物行动，用断点调试观察 `moveloop_core()` 和
+   具体命令函数。
+4. 如果问题表现为崩溃，查看崩溃回溯，再回到回溯中最靠近游戏规则的函数。
+5. 如果问题表现为数据结构逐渐损坏，开启或调用内部一致性检查，尽量找到第一
+   次损坏发生的位置。
