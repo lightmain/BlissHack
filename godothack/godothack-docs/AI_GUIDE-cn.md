@@ -8,15 +8,15 @@ GodotHack 计划大量借助 AI 辅助开发。这个文件为 agent 提供跨 s
 
 ## 高价值上下文
 
-- `godothack-client/` 是 Godot 项目。
-- `godothack-docs/PROTOCOL.md` 是前后端协议的事实来源。
+- `godothack/godothack-client/` 是 Godot 项目。
+- `godothack/godothack-docs/PROTOCOL.md` 是前后端协议的事实来源。
 - `doc/` 属于上游 NetHack。
 - 根目录的 NetHack 源码布局应该保持可识别。
 - 仓库可能包含上游 NetHack remote 和分支；避免做出让未来合并上游变得不必要困难的修改。
 
 ## 推荐工作流
 
-1. 阅读 `AGENTS.md`。
+1. 阅读根目录下的 `AGENTS.md`。
 2. 阅读 `godothack-docs/` 中相关文件。
 3. 检查最小相关范围内的后端和客户端代码。
 4. 做范围明确的修改。

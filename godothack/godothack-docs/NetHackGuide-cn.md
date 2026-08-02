@@ -98,8 +98,18 @@ MSVC 是微软的 C/C++ 编译器。
 
 当前可验证流程：
 
-1. 在 PowerShell 中执行 `vs64`。
+1. 在 PowerShell 中执行 `vs64`。这个`vs64`是我在`$PROFILE`中自定义的函数，用于启动Visual Studio x64命令行环境：
+
+   ```powershell
+   function vs64 {
+       Push-Location
+       & "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\Launch-VsDevShell.ps1" -Arch amd64
+       Pop-Location
+   }
+   ```
+
 2. 进入源码树的 `src` 目录。
+
 3. 执行
    `nmake /f ..\sys\windows\Makefile.nmake GIT_AVAILABLE=N TARGET_CPU=x64 CURSES_CONSOLE=N CURSES_GRAPHICAL=N package`。
 

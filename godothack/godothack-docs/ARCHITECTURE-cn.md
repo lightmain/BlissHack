@@ -10,7 +10,7 @@ GodotHack 是一个现代化 NetHack 项目，由两个协作的应用组成：
 ## 目标
 
 - 保留 NetHack 的游戏逻辑和行为，让它作为权威后端。
-- 在 Godot 中构建更丰富的现代 UI，而不是用 GDScript 重写 NetHack 规则。
+- 在 Godot 中构建更丰富的现代 UI，而不是用 GDScript 从头重新实现 NetHack 规则。
 - 让前后端协议足够明确，使 AI agent 能安全地同时修改两端。
 - 保持上游 NetHack 源码树易于识别，让后续合并上游更新仍然可行。
 
@@ -19,11 +19,12 @@ GodotHack 是一个现代化 NetHack 项目，由两个协作的应用组成：
 仓库在根目录保留原始 NetHack 源码树。GodotHack 在它周围新增项目专属内容：
 
 ```text
-godothack-client/   Godot 客户端项目
-godothack-docs/     GodotHack 专属文档、协议说明和 AI 指南
-external/           后端使用的 vendored 第三方依赖
+godothack/godothack-client/   Godot 客户端项目
+godothack/godothack-docs/     GodotHack 专属文档、协议说明和 AI 指南
+godothack/godothack-webclient 早期尝试的网页前端（而非Godot前端）暂时不使用
+external/           后端使用的第三方依赖
 doc/                上游 NetHack 文档
-src/, include/, ... 上游风格的 NetHack 后端源码树
+src/, include/, ... 上游 NetHack 后端源码树
 ```
 
 ## 后端
@@ -50,7 +51,7 @@ Godot 客户端应该继续负责：
 
 ## 协议边界
 
-TCP JSON 协议是两端之间的契约。当前的事实来源是 `PROTOCOL.md`。
+TCP JSON 协议是两端之间的契约。参考 `PROTOCOL.md`。
 
 协议变更应该谨慎进行。一次完整的协议变更通常需要更新：
 
