@@ -88,21 +88,20 @@ MSVC 是微软的 C/C++ 编译器。
 
 ### Windows：nmake 命令行
 
-`nmake` 是 Visual Studio 附带的 Makefile 构建工具。使用 `nmake` 前，通常
-需要先打开 Visual Studio Developer Command Prompt，或者运行
-`VsDevCmd.bat`。Visual Studio Developer Command Prompt 是 Visual Studio
-提供的开发者命令提示符，它会设置环境变量，让命令行能够找到 MSVC、`nmake`
-和 Windows SDK。
+`nmake` 是 Visual Studio 附带的 Makefile 构建工具。当前机器的 PowerShell
+配置里有 `vs64` 函数。`vs64` 会加载 Visual Studio 2022 x64 开发环境，让
+命令行能够找到 MSVC、`nmake` 和 Windows SDK。MSVC 是微软的 C/C++ 编译器。
 
-官方流程的核心步骤：
+当前仓库建议直接使用 `sys/windows/Makefile.nmake`，避免运行 `nhsetup.bat`
+覆盖 `src/Makefile`。`src/Makefile` 可能来自旧版本，不应作为 NetHack 5.0
+的 nmake 构建入口。
 
-1. 进入 `sys\windows`。
-2. 执行 `.\nhsetup.bat`。这个脚本会把 Windows 构建用的 Makefile 放到
-   `src` 目录，让后续命令能在 `src` 下工作。
-3. 执行 `.\fetch.cmd lua`。
-4. 如需 curses 窗口接口，执行 `.\fetch.cmd pdcursesmod`。
-5. 进入 `src`。
-6. 执行 `nmake package`。
+当前可验证流程：
+
+1. 在 PowerShell 中执行 `vs64`。
+2. 进入源码树的 `src` 目录。
+3. 执行
+   `nmake /f ..\sys\windows\Makefile.nmake GIT_AVAILABLE=N TARGET_CPU=x64 CURSES_CONSOLE=N CURSES_GRAPHICAL=N package`。
 
 这个流程会在 `binary` 目录放置中间产物，并在 `package` 目录生成 Windows
 发布包。中间产物是构建过程中生成、供后续步骤使用的文件，例如目标文件和

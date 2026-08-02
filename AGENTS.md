@@ -31,6 +31,12 @@ session using JSON messages.
 - Keep AI scratch notes out of the repository unless they have been curated
   into `godothack-docs/`.
 
+## Windows VS Build Environment
+
+In PowerShell, run `vs64` to load the Visual Studio 2022 x64 developer
+environment for `nmake`. Then build from `src` with
+`nmake /f ..\sys\windows\Makefile.nmake ...`; do not rely on `src\Makefile`.
+
 ## Windows Conda Environment
 
 This machine uses Anaconda installed at:
