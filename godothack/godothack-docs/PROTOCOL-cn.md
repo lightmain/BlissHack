@@ -37,7 +37,9 @@
 
 ## 方向
 
-客户端发给后端的消息表达玩家意图，而不是直接修改状态。例如，客户端可以发送“向北移动”，但不应该发送“把玩家位置设置为 x,y”。
+客户端发给后端的消息表达玩家输入事件，而不直接修改状态。例如，客户端可以发送按键 `l`，但不应该发送“把玩家位置设置为 x,y”。
+
+后端通过 NetHack 现有命令处理流程解释输入事件。这样可以继续由后端负责按键绑定、规则、回合消耗和最终状态变化。
 
 后端发给客户端的消息表达已接受的状态变化、视图更新、提示、错误和生命周期事件。
 
@@ -48,10 +50,9 @@
 - `session.hello`
 - `game.start`
 - `game.resume`
-- `command.move`
-- `command.action`
-- `command.menu_choice`
-- `command.text_input`
+- `input.key`
+- `input.menu_choice`
+- `input.text`
 
 后端到客户端：
 

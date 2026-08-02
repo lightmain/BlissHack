@@ -40,9 +40,13 @@ Recommended common fields:
 
 ## Direction
 
-Client-to-backend messages represent player intent, not direct state mutation.
-For example, the client may send "move north", but it should not send "set
-player position to x,y".
+Client-to-backend messages represent player input events, not direct state
+mutation. For example, the client may send the key `l`, but it should not send
+"set player position to x,y".
+
+The backend maps input events through NetHack's existing command handling. This
+keeps the backend responsible for command bindings, rules, turn cost, and final
+state changes.
 
 Backend-to-client messages represent accepted state changes, view updates,
 prompts, errors, and lifecycle events.
@@ -54,10 +58,9 @@ Client to backend:
 - `session.hello`
 - `game.start`
 - `game.resume`
-- `command.move`
-- `command.action`
-- `command.menu_choice`
-- `command.text_input`
+- `input.key`
+- `input.menu_choice`
+- `input.text`
 
 Backend to client:
 
