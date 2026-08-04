@@ -101,3 +101,5 @@ sys/amiga/regex/
 
 # GodotHack project-local scratch files
 .ai-scratch/
+
+.vscode/settings.json
