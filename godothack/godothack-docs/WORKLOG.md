@@ -13,3 +13,9 @@ future development. Raw AI chat transcripts should stay out of the repository.
 - Established `godothack-docs/PROTOCOL.md` as the source of truth for the TCP
   JSON session protocol.
 
+
+## 2026-08-04
+
+- Adopted the backend input bridge and enhanced option 2.
+- Defined protocol version 1 and the 0.1 vertical-slice scope.
+- Added ADR 0002 for the durable input architecture decision.

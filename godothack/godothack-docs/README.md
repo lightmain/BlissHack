@@ -12,3 +12,5 @@ Start here:
 - `WORKLOG.md` records curated development history and decisions.
 - `adr/` stores architecture decision records.
 
+
+For the first implementation, read MVP-0.1.md before PROTOCOL.md. ADR 0002 records the input architecture decision.

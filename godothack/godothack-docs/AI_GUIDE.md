@@ -42,3 +42,7 @@ ADR under `godothack-docs/adr/`.
 - Do not make broad formatting or cleanup changes in upstream NetHack files
   while working on integration code.
 
+
+## Version 0.1 guardrails
+
+Read MVP-0.1.md before protocol work. The client must not use a temporary menu letter as stable identity, predict game state, or add a game-affecting input type outside the documented 0.1 scope.

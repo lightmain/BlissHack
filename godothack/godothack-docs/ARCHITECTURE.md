@@ -66,3 +66,11 @@ updates:
 - `PROTOCOL.md`.
 - Tests or manual verification notes.
 
+
+## Input bridge and 0.1 boundary
+
+GodotHack uses enhanced option 2. The client sends protocol input. The backend owns active prompt state, validates each response, and translates validated input to either the NetHack core or the test core.
+
+The NetHack bridge belongs in clearly named integration code next to NetHack input and window-port callbacks. The test core uses the same dispatcher and message contract. This prevents a second command interpreter in Godot.
+
+The backend generates opaque prompt ids and menu item ids. An accelerator is only a display hint. MVP-0.1.md defines the 0.1 inputs, outputs, ordering, acceptance scenario, and exclusions.

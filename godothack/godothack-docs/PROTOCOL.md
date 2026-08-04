@@ -98,3 +98,11 @@ Potential handshake:
 When a protocol field or message type changes, update this document in the same
 change as the backend and client code.
 
+
+## Version 1 implementation baseline
+
+Version 1 is the protocol for the 0.1 vertical slice. It uses UTF-8 newline-delimited JSON. Sequence numbers are required and strictly increasing per sender and connection.
+
+The backend owns one active prompt. The client answers using the backend prompt id. A menu selection always uses an opaque backend menu item id; a terminal letter or display position is never a stable identity.
+
+MVP-0.1.md defines the mandatory input and output scope. Its 0.1 requirements override the draft placeholders above. A protocol change updates this document, MVP-0.1.md, the backend, the Godot client, and tests together.
