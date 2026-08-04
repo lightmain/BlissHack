@@ -199,6 +199,7 @@ R_QT        = ..\win\Qt      # QT support files
 R_X11       = ..\win\X11     # X11 support files
 R_LIBDIR    = ..\lib         # libraries and external bits
 R_SUBM      = ..\submodules  # NetHack git submodules
+R_GODOTHACK_SERVER = ..\godothack\godothack-server
 R_SndWavDir = ..\sound\wav # sound files that get integrated
 R_BinDir    = ..\binary
 R_PkgDir    = ..\package
@@ -225,6 +226,7 @@ QT        = $(R_QT)$(BACKSLASH)
 X11       = $(R_X11)$(BACKSLASH)
 LIBDIR    = $(R_LIBDIR)$(BACKSLASH)
 SUBM      = $(R_SUBM)$(BACKSLASH)
+GODOTHACK_SERVER = $(R_GODOTHACK_SERVER)$(BACKSLASH)
 DOC       = $(R_DOC)$(BACKSLASH)
 SndWavDir = $(R_SndWavDir)$(BACKSLASH)
 BinDir    = $(R_BinDir)$(BACKSLASH)
@@ -1710,6 +1712,43 @@ $(GAMEDIR)NetHack.exe : gamedir.tag $(OTTY)consoletty.o \
 		$(OTTY)console.res
 << keep
 	@if exist binary.tag del binary.tag
+
+#--------------------
+# GodotHack bootstrap
+#--------------------
+#
+# Stage 0 fixes the build target names, executable names, and command-line
+# configuration.  The TCP runtime is added in stage 2 and the NetHack window
+# port is added in stage 7.
+
+GODOTHACK_TEST_SERVER_OBJ = $(OBJUTIL)godothack_test_server_main.o
+GODOTHACK_SERVER_OBJ = $(OBJUTIL)godothack_server_main.o
+
+godothack-test-server: $(GAMEDIR)GodotHackTestServer.exe
+
+godothack-server: $(GAMEDIR)GodotHackServer.exe
+
+$(GODOTHACK_TEST_SERVER_OBJ): outldir$(TARGET_CPU).tag \
+			$(GODOTHACK_SERVER)bootstrap_main.cpp
+	$(Q)$(CC) $(CPPFLAGS) $(CROSSCOMPILE) $(CROSSCOMPILE_TARGET) /EHsc \
+		/DGODOTHACK_TEST_CORE -Fo$@ $(GODOTHACK_SERVER)bootstrap_main.cpp
+
+$(GODOTHACK_SERVER_OBJ): outldir$(TARGET_CPU).tag \
+			$(GODOTHACK_SERVER)bootstrap_main.cpp
+	$(Q)$(CC) $(CPPFLAGS) $(CROSSCOMPILE) $(CROSSCOMPILE_TARGET) /EHsc \
+		-Fo$@ $(GODOTHACK_SERVER)bootstrap_main.cpp
+
+$(GAMEDIR)GodotHackTestServer.exe: gamedir.tag $(GODOTHACK_TEST_SERVER_OBJ)
+	@echo Linking $(@:\=/)
+	$(link) $(LFLAGS) $(conlflags) /PDB:$(GAMEDIR)$(@B).PDB \
+		/MAP:$(OBJUTIL)$(@B).MAP $(GODOTHACK_TEST_SERVER_OBJ) \
+		$(conlibs) -out:$@
+
+$(GAMEDIR)GodotHackServer.exe: gamedir.tag $(GODOTHACK_SERVER_OBJ)
+	@echo Linking $(@:\=/)
+	$(link) $(LFLAGS) $(conlflags) /PDB:$(GAMEDIR)$(@B).PDB \
+		/MAP:$(OBJUTIL)$(@B).MAP $(GODOTHACK_SERVER_OBJ) \
+		$(conlibs) -out:$@
 
 #---------
 # NetHackW

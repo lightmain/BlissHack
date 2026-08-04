@@ -2,7 +2,8 @@ extends Node
 class_name GameClient
 
 # --- Core process settings ---
-@export var core_exe_path := ""
+@export var core_exe_path := "../../binary/GodotHackTestServer.exe"
+@export var core_host := "127.0.0.1"
 @export var core_port := 7777
 @export var auto_start_core := true
 
@@ -54,7 +55,11 @@ func _start_core() -> void:
 	if core_exe_path.is_empty():
 		push_warning("core_exe_path is empty; core process not started.")
 		return
-	_core_pid = OS.create_process(core_exe_path, [], true)
+	var executable_path := core_exe_path
+	if not executable_path.is_absolute_path():
+		executable_path = ProjectSettings.globalize_path("res://").path_join(executable_path).simplify_path()
+	var arguments := PackedStringArray(["--host", core_host, "--port", str(core_port)])
+	_core_pid = OS.create_process(executable_path, arguments, true)
 	if _core_pid < 0:
 		push_error("Failed to start core process.")
 		return
@@ -62,8 +67,8 @@ func _start_core() -> void:
 
 # --- TCP connection ---
 func _connect_to_core() -> void:
-	print("[TCPDemo] connecting to 127.0.0.1:%s" % str(core_port))
-	var err := _tcp.connect_to_host("127.0.0.1", core_port)
+	print("[TCPDemo] connecting to %s:%s" % [core_host, str(core_port)])
+	var err := _tcp.connect_to_host(core_host, core_port)
 	if err != OK:
 		print("[TCPDemo] connect error=%s" % str(err))
 		return

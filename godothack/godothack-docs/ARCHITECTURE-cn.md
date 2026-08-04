@@ -20,6 +20,7 @@ GodotHack 是一个现代化 NetHack 项目，由两个协作的应用组成：
 
 ```text
 godothack/godothack-client/   Godot 客户端项目
+godothack/godothack-server/   GodotHack 后端传输、会话和测试核心代码
 godothack/godothack-docs/     GodotHack 专属文档、协议说明和 AI 指南
 godothack/godothack-webclient 早期尝试的网页前端（而非Godot前端）暂时不使用
 external/           后端使用的第三方依赖

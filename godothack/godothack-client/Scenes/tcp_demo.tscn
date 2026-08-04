@@ -12,4 +12,3 @@ grow_vertical = 2
 
 [node name="GameClient" type="Node" parent="." unique_id=1828307454]
 script = ExtResource("1_h5vtc")
-core_exe_path = "..\\GodotHack\\binary\\NetHackServer.exe"

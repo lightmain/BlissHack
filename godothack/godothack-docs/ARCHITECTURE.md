@@ -24,6 +24,7 @@ adds project-specific material around it:
 
 ```text
 godothack-client/   Godot client project
+godothack-server/   GodotHack backend transport, session, and test-core code
 godothack-docs/     GodotHack-specific docs, protocol notes, and AI guidance
 external/           Vendored third-party backend dependencies
 doc/                Upstream NetHack documentation
