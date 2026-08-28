@@ -308,6 +308,10 @@ WINSHIMSRC ?= ../win/shim/winshim.c
 WINSHIMOBJ ?= winshim.o
 
 #
+WINHTTPSRC ?= ../win/http/winhttp.c
+WINHTTPOBJ ?= winhttp.o
+
+#
 # Files for a BeOS InterfaceKit port -- not ready for prime time
 WINBESRC ?=
 WINBEOBJ ?=
@@ -542,7 +546,7 @@ SYSCSRC ?= ../sys/share/pcmain.c ../sys/share/pcsys.c \
 SYSCXXSRC ?= ../sys/share/cppregex.cpp
 
 # all windowing-system-dependent .c (for dependencies and such)
-WINCSRC ?= $(WINTTYSRC) $(WINCURSESSRC) $(WINX11SRC) $(WINSHIMSRC)
+WINCSRC ?= $(WINTTYSRC) $(WINCURSESSRC) $(WINX11SRC) $(WINSHIMSRC) $(WINHTTPSRC)
 # all windowing-system-dependent .cpp (for dependencies and such)
 WINCXXSRC ?= $(WINQTSRC) $(WINQT3SRC) $(WINBESRC)
 
@@ -1135,6 +1139,8 @@ $(TARGETPFX)curswins.o: ../win/curses/curswins.c $(HACK_H) \
 	$(TARGET_CC) $(TARGET_CFLAGS) -c -o $@ ../win/curses/curswins.c
 $(TARGETPFX)winshim.o: ../win/shim/winshim.c $(HACK_H)
 	$(TARGET_CC) $(TARGET_CFLAGS) -c -o $@ ../win/shim/winshim.c
+$(TARGETPFX)winhttp.o: ../win/http/winhttp.c $(HACK_H)
+	$(TARGET_CC) $(TARGET_CFLAGS) -c -o $@ ../win/http/winhttp.c
 $(TARGETPFX)getline.o: ../win/tty/getline.c $(HACK_H) ../include/func_tab.h \
 		../include/wintty.h
 	$(TARGET_CC) $(TARGET_CFLAGS) -c -o $@ ../win/tty/getline.c

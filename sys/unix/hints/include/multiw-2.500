@@ -40,7 +40,9 @@ ifndef WANT_WIN_TTY
 ifndef  WANT_WIN_CURSES
 ifndef   WANT_WIN_X11
 ifndef    WANT_WIN_QT
+ifndef     WANT_WIN_HTTP
 WANT_WIN_TTY=1
+endif
 endif
 endif
 endif
@@ -55,7 +57,7 @@ endif
 # sanity for something like 'make WANT_WIN_CURSES=1 WANT_DEFAULT=X11' but
 # 'makedefs -v' would notice, complain, and quit causing 'make' to quit.
 ifndef WANT_DEFAULT
-# pick the first one enabled among { tty, curses, X11, Qt }
+# pick the first one enabled among { tty, curses, X11, Qt, http }
 ifdef WANT_WIN_TTY
 WANT_DEFAULT=tty
 else
@@ -68,7 +70,11 @@ else
 ifdef    WANT_WIN_QT
 WANT_DEFAULT=Qt
 else
+ifdef     WANT_WIN_HTTP
+WANT_DEFAULT=http
+else
 # ? shouldn't be able to get here...
+endif
 endif
 endif
 endif
@@ -103,6 +109,12 @@ WINCFLAGS += -DX11_GRAPHICS
 WINSRC += $(WIINX11SRC)
 WINOBJ0 += $(WINX11OBJ)
 GENTILECFILE = $(SRCDIR)/tile.c
+endif
+
+ifdef WANT_WIN_HTTP
+WINCFLAGS += -DHTTP_GRAPHICS
+WINSRC += $(WINHTTPSRC)
+WINOBJ0 += $(WINHTTPOBJ)
 endif
 
 ifndef WANT_WIN_QT

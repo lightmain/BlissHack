@@ -142,6 +142,9 @@ static struct win_information window_opts[] = {
 #ifdef SHIM_GRAPHICS
     { "shim", "NetHack Library Windowing Shim", TRUE },
 #endif
+#ifdef HTTP_GRAPHICS
+    { "http", "RemoteHack HTTP+JSON interface", TRUE },
+#endif
 #ifdef AMIGA_INTUITION
     { "amii", "Amiga Intuition (text)", TRUE },
     { "amiv", "Amiga Intuition (tiles)", TRUE },
