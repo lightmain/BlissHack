@@ -2,20 +2,83 @@
 /* Copyright (c) RemoteHack contributors, 2024 */
 /* NetHack may be freely redistributed.  See license for details. */
 
-/*
- * Minimal stub implementation of the HTTP window interface for RemoteHack.
- * This file implements all required window_procs functions as no-op stubs,
- * allowing the build system to compile and link with HTTP_GRAPHICS defined.
- *
- * The actual HTTP server (civetweb) and JSON serialization will be added
- * in subsequent development phases.
- */
-
 #include "hack.h"
 
 #ifdef HTTP_GRAPHICS
 
-/* Forward declarations for all window_procs functions */
+#include "civetweb.h"
+
+#include <stdio.h>
+#include <string.h>
+#include <signal.h>
+#include <unistd.h>
+
+#define REMOTEHACK_VERSION "0.1.0"
+#define REMOTEHACK_DEFAULT_PORT "8080"
+
+static struct mg_context *http_ctx = NULL;
+static volatile int http_server_running = 0;
+
+/* --- HTTP handlers --- */
+
+static int
+ping_handler(struct mg_connection *conn, void *cbdata UNUSED)
+{
+    const char *json =
+        "{\"status\":\"ok\","
+        "\"server\":\"RemoteHack\","
+        "\"version\":\"" REMOTEHACK_VERSION "\"}";
+    size_t json_len = strlen(json);
+
+    mg_send_http_ok(conn, "application/json", (long long)json_len);
+    mg_write(conn, json, json_len);
+    return 200;
+}
+
+/* --- HTTP server lifecycle --- */
+
+static void
+http_start_server(void)
+{
+    const char *options[] = {
+        "listening_ports", REMOTEHACK_DEFAULT_PORT,
+        "request_timeout_ms", "60000",
+        "num_threads", "2",
+        NULL
+    };
+    struct mg_callbacks callbacks;
+
+    if (http_ctx)
+        return;
+
+    memset(&callbacks, 0, sizeof(callbacks));
+
+    http_ctx = mg_start(&callbacks, NULL, options);
+    if (!http_ctx) {
+        raw_printf("RemoteHack: failed to start HTTP server on port %s",
+                   REMOTEHACK_DEFAULT_PORT);
+        return;
+    }
+
+    mg_set_request_handler(http_ctx, "/api/ping", ping_handler, NULL);
+
+    http_server_running = 1;
+    raw_printf("RemoteHack: HTTP server listening on port %s",
+               REMOTEHACK_DEFAULT_PORT);
+}
+
+static void
+http_stop_server(void)
+{
+    if (http_ctx) {
+        mg_stop(http_ctx);
+        http_ctx = NULL;
+        http_server_running = 0;
+    }
+}
+
+/* --- Forward declarations for all window_procs functions --- */
+
 static void http_init_nhwindows(int *, char **);
 static void http_player_selection(void);
 static void http_askname(void);
@@ -92,7 +155,7 @@ struct window_procs http_procs = {
      | WC2_RESET_STATUS
 #endif
      | WC2_DARKGRAY | WC2_SUPPRESS_HIST | WC2_STATUSLINES),
-    {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},   /* color availability */
+    {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
     http_init_nhwindows, http_player_selection, http_askname, http_get_nh_event,
     http_exit_nhwindows, http_suspend_nhwindows, http_resume_nhwindows,
     http_create_nhwindow, http_clear_nhwindow, http_display_nhwindow,
@@ -131,26 +194,26 @@ struct window_procs http_procs = {
     http_ctrl_nhwindow,
 };
 
-/*
- * Stub implementations.
- * Each function is a no-op placeholder that will be replaced with
- * actual HTTP/JSON logic in subsequent development phases.
- */
+/* --- window_procs implementations --- */
 
 static void
 http_init_nhwindows(int *argcp UNUSED, char **argv UNUSED)
 {
+    http_start_server();
     iflags.window_inited = TRUE;
+    fprintf(stderr, "RemoteHack: init_nhwindows done\n");
 }
 
 static void
 http_player_selection(void)
 {
+    fprintf(stderr, "RemoteHack: player_selection called\n");
 }
 
 static void
 http_askname(void)
 {
+    fprintf(stderr, "RemoteHack: askname called\n");
     Strcpy(svp.plname, "HttpPlayer");
 }
 
@@ -162,6 +225,8 @@ http_get_nh_event(void)
 static void
 http_exit_nhwindows(const char *str UNUSED)
 {
+    fprintf(stderr, "RemoteHack: exit_nhwindows called\n");
+    http_stop_server();
     iflags.window_inited = FALSE;
 }
 
@@ -175,10 +240,17 @@ http_resume_nhwindows(void)
 {
 }
 
+#define HTTP_MAX_WINDOWS 16
+static int http_window_count = 0;
+
 static winid
-http_create_nhwindow(int type UNUSED)
+http_create_nhwindow(int type)
 {
-    return WIN_ERR;
+    if (http_window_count >= HTTP_MAX_WINDOWS)
+        return WIN_ERR;
+    fprintf(stderr, "RemoteHack: create_nhwindow type=%d -> id=%d\n",
+            type, http_window_count);
+    return http_window_count++;
 }
 
 static void
@@ -202,8 +274,9 @@ http_curs(winid window UNUSED, int x UNUSED, int y UNUSED)
 }
 
 static void
-http_putstr(winid window UNUSED, int attr UNUSED, const char *str UNUSED)
+http_putstr(winid window, int attr UNUSED, const char *str)
 {
+    fprintf(stderr, "RemoteHack: putstr win=%d str='%s'\n", window, str ? str : "(null)");
 }
 
 static void
@@ -274,24 +347,33 @@ http_print_glyph(winid window UNUSED, coordxy x UNUSED, coordxy y UNUSED,
 }
 
 static void
-http_raw_print(const char *str UNUSED)
+http_raw_print(const char *str)
 {
+    fprintf(stderr, "RemoteHack: raw_print '%s'\n", str ? str : "(null)");
 }
 
 static void
-http_raw_print_bold(const char *str UNUSED)
+http_raw_print_bold(const char *str)
 {
+    fprintf(stderr, "RemoteHack: raw_print_bold '%s'\n", str ? str : "(null)");
 }
 
 static int
 http_nhgetch(void)
 {
+    fprintf(stderr, "RemoteHack: nhgetch called, blocking...\n");
+    while (http_server_running) {
+        sleep(1);
+    }
     return '\033';
 }
 
 static int
 http_nh_poskey(coordxy *x UNUSED, coordxy *y UNUSED, int *mod UNUSED)
 {
+    while (http_server_running) {
+        sleep(1);
+    }
     return '\033';
 }
 
@@ -310,6 +392,8 @@ static char
 http_yn_function(const char *query UNUSED, const char *resp UNUSED,
                   char def)
 {
+    fprintf(stderr, "RemoteHack: yn_function query='%s' resp='%s' def='%c'\n",
+            query ? query : "(null)", resp ? resp : "(null)", def);
     return def;
 }
 

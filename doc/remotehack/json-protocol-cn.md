@@ -41,8 +41,26 @@ RemoteHack 将此模型直接映射为 HTTP 请求-响应：
 
 | 端点 | 方法 | 用途 |
 |------|------|------|
+| `/api/ping` | GET | 连接测试，验证服务器在线 |
 | `/api/start` | GET | 启动游戏，获取初始状态和首个提示 |
 | `/api/input` | POST | 发送玩家输入，获取游戏响应 |
+
+#### /api/ping
+
+最简单的端点，用于验证 HTTP 服务器是否在线并正常工作。
+
+**请求**：`GET /api/ping`（无参数）
+
+**响应**：
+```json
+{
+  "status": "ok",
+  "server": "RemoteHack",
+  "version": "0.1.0"
+}
+```
+
+Content-Type: `application/json`，HTTP 状态码 200。
 
 ---
 

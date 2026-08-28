@@ -308,8 +308,8 @@ WINSHIMSRC ?= ../win/shim/winshim.c
 WINSHIMOBJ ?= winshim.o
 
 #
-WINHTTPSRC ?= ../win/http/winhttp.c
-WINHTTPOBJ ?= winhttp.o
+WINHTTPSRC ?= ../win/http/winhttp.c ../win/http/civetweb.c
+WINHTTPOBJ ?= winhttp.o civetweb.o
 
 #
 # Files for a BeOS InterfaceKit port -- not ready for prime time
@@ -1139,8 +1139,10 @@ $(TARGETPFX)curswins.o: ../win/curses/curswins.c $(HACK_H) \
 	$(TARGET_CC) $(TARGET_CFLAGS) -c -o $@ ../win/curses/curswins.c
 $(TARGETPFX)winshim.o: ../win/shim/winshim.c $(HACK_H)
 	$(TARGET_CC) $(TARGET_CFLAGS) -c -o $@ ../win/shim/winshim.c
-$(TARGETPFX)winhttp.o: ../win/http/winhttp.c $(HACK_H)
-	$(TARGET_CC) $(TARGET_CFLAGS) -c -o $@ ../win/http/winhttp.c
+$(TARGETPFX)winhttp.o: ../win/http/winhttp.c $(HACK_H) ../win/http/civetweb.h
+	$(TARGET_CC) $(TARGET_CFLAGS) -I../win/http -c -o $@ ../win/http/winhttp.c
+$(TARGETPFX)civetweb.o: ../win/http/civetweb.c ../win/http/civetweb.h
+	$(TARGET_CC) $(TARGET_CFLAGS) -DNO_SSL -DNO_CGI -DUSE_IPV6 -c -o $@ ../win/http/civetweb.c
 $(TARGETPFX)getline.o: ../win/tty/getline.c $(HACK_H) ../include/func_tab.h \
 		../include/wintty.h
 	$(TARGET_CC) $(TARGET_CFLAGS) -c -o $@ ../win/tty/getline.c

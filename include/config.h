@@ -440,7 +440,7 @@
  */
 #define INSURANCE /* allow crashed game recovery */
 
-#if !defined(MAC68K) && !defined(SHIM_GRAPHICS) && !defined(HTTP_GRAPHICS)
+#if !defined(MAC68K) && !defined(SHIM_GRAPHICS)
 #define CHDIR /* delete if no chdir() available */
 #endif
 
