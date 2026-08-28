@@ -29,7 +29,51 @@
 
 ## 项目目录结构
 
-待补充。（需要补充NetHack原有的目录的说明，以及RemoteHack特有的目录的说明，包括skills文件夹、前端部分等）
+### NetHack 原有目录
+
+```
+src/            游戏核心源代码（C），包含游戏逻辑、战斗、地图生成等
+include/        头文件，包含数据结构定义、函数声明（winprocs.h 尤为重要）
+dat/            游戏数据文件（Lua 关卡定义、文本数据、帮助文件等）
+doc/            文档（guidebook.txt 游戏说明、各版本修复日志等）
+win/            窗口界面实现目录，每个子目录是一种图形前端：
+  win/tty/        终端文本界面
+  win/curses/     curses 库界面
+  win/Qt/         Qt 图形界面
+  win/X11/        X11 图形界面
+  win/win32/      Windows 图形界面
+  win/share/      各界面共享的 tile 处理代码
+  win/chain/      窗口调用链机制（用于调试追踪）
+  win/shim/       最小化存根界面（用于自动化测试等）
+  win/macosx/     macOS 特定代码
+sys/            系统平台相关代码：
+  sys/unix/       Unix/macOS 构建系统（Makefile、setup 脚本、XCode 工程）
+  sys/windows/    Windows 构建系统
+  sys/share/      跨平台共享代码
+  sys/libnh/      NetHack 库接口
+  sys/msdos/      MS-DOS 支持
+  sys/amiga/      Amiga 支持
+  sys/vms/        VMS 支持
+util/           构建工具（makedefs、dlb 打包、存档恢复等）
+test/           测试用 Lua 脚本
+sound/          音效相关代码和资源
+submodules/     Git 子模块（Lua 解释器、PDCurses）
+DEVEL/          开发者文档（代码风格、git 工作流等）
+outdated/       已过时的文件
+```
+
+### RemoteHack 新增目录
+
+```
+win/http/           HTTP 窗口界面适配层（C 代码）
+                    实现 window_procs 接口，将游戏输出序列化为 JSON，
+                    通过嵌入式 HTTP 服务器与前端通信
+frontend/           React 前端应用（TypeScript）
+                    负责游戏画面渲染、用户交互
+doc/remotehack/     RemoteHack 项目文档
+                    包含技术选型讨论、架构设计等
+.agents/skills/     AI Agent 技能文件
+```
 
 ## 参考文档
 
@@ -38,12 +82,27 @@
 1. NetHack官方wiki：https://nethackwiki.com/wiki/Main_Page
 2. 项目内的游戏玩法说明，你可能会需要开发一些脚本或每章节行数说明来避免这个过长的文档耗尽模型上下文：doc/guidebook.txt
 3. Qt等前人开发等图形化界面的具体实现。
-4.  Agent自行撰写的文档。
+4. Agent自行撰写的文档，包括 `doc/remotehack/tech-selection.md`（技术选型讨论）。
 5. 其他网络搜索信息。
 
 ## SKILLS说明
 
-待补充。
+Skills 是 AI Agent 的可复用技能脚本，存放在 `.agents/skills/` 目录下。
+当前项目可能用到的 skill 类型包括：
+
+1. **NetHack 代码导航**：帮助 Agent 理解 NetHack 的 C 代码结构，快速定位
+   `window_procs` 接口函数、游戏循环逻辑、glyph 系统等关键代码。
+
+2. **guidebook 阅读辅助**：`doc/guidebook.txt` 超过 5000 行，需要分段摘要
+   脚本来避免耗尽上下文窗口。可开发按章节索引的 skill。
+
+3. **构建与测试**：封装 NetHack 在 macOS/Unix 下的编译流程（setup.sh、
+   make），以及前端的 npm/vite 命令。
+
+4. **JSON API 测试**：封装 curl 命令或脚本，用于快速测试 HTTP 接口的
+   输入输出。
+
+具体 skill 文件将在开发过程中按需创建。
 
 ## AI约束
 
@@ -55,6 +114,6 @@
 
 ### 其他约束
 
-用户使用中文，和用户说话时保持使用中文。代码注释使用英文。
+用户使用中文，和用户说话时保持使用中文，文档也使用中文。代码注释使用英文。
 
 每次对话开始进行修改之前都要进行git commit。是之前而不是之后是因为我需要进行审核。使用标准的commit message格式，commit message使用英文。
