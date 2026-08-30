@@ -260,6 +260,12 @@ VDECLCB(shim_askname, (void), "v")
 | **调用时机** | 需要玩家输入角色名称时 |
 | **JS 侧处理** | 显示名称输入界面。通过 `nethackGlobal.globals.svp.plname` 全局变量设置玩家名称 |
 
+`sys/libnh/libnhmain.c` 的实际启动顺序是：`whoami()` 尝试读取
+`USER`/`LOGNAME`，初始化窗口，然后由 `plnamesuffix()` 在名称为空时调用
+`askname()`；完成名称后才检查对应存档并调用 `player_selection()`。浏览器构建
+必须在 `main()` 之前清空 Emscripten 合成的 `USER=web_user` 和 `LOGNAME`，
+否则核心会把它当作玩家名并跳过此回调。
+
 ---
 
 ### 2.5 窗口管理
@@ -765,6 +771,10 @@ VDECLCB(shim_status_update,
 - `BL_FLUSH` 合并并发布本周期改变的字段
 - `BL_RESET` 是要求窗口端口重新显示已有字段的 advisory；它不是清空指令，
   也不能用来推断哪些字段已经动态关闭
+- 启用 `iflags.wc2_hitpointbar` 后，核心保证 `BL_HP.percent` 按当前生命值比例
+  更新。tty/curses 端口使用该百分比把 30 字符宽的 `BL_TITLE` 分为高亮和
+  未高亮两段，因此前端血条应读取 `BL_HP.percent`，而不是从格式化文本解析
+  HP/HPMAX
 
 状态字段索引常量 (`fldidx`)：
 

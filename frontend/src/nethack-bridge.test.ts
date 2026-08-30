@@ -22,6 +22,7 @@ import {
   flushPersistentStorage,
   initializePersistentStorage,
   isWaitingForInput,
+  preparePlayerNamePrompt,
   resetBridgeState,
   sendKey,
   sendPosition,
@@ -106,6 +107,10 @@ function createMockModule(): MockModuleHarness {
       return ptr;
     }),
     _free: vi.fn(),
+    ENV: {
+      LOGNAME: "web_user",
+      USER: "web_user",
+    },
     IDBFS: {},
     FS: {
       analyzePath: vi.fn((path: string) => ({ exists: files.has(path) })),
@@ -200,7 +205,7 @@ beforeEach(() => {
   (globalThis as Record<string, unknown>).nethackGlobal = {
     globals: {
       flags: {},
-      iflags: { window_inited: false },
+      iflags: { wc2_hitpointbar: false, window_inited: false },
       svp: { plname: "" },
     },
     pointers: {},
@@ -222,6 +227,7 @@ describe("window lifecycle and text", () => {
     expect(getWindow(message as number)?.type).toBe(NHW_MESSAGE);
     expect(getWindow(map as number)?.type).toBe(NHW_MAP);
     expect(globalThis.nethackGlobal?.globals?.iflags?.window_inited).toBe(true);
+    expect(globalThis.nethackGlobal?.globals?.iflags?.wc2_hitpointbar).toBe(true);
   });
 
   it("routes putstr by window type and honors ATR_NOHISTORY", async () => {
@@ -300,6 +306,15 @@ describe("window lifecycle and text", () => {
 });
 
 describe("player setup and line input", () => {
+  it("clears automatic login names before main so askname runs first", () => {
+    preparePlayerNamePrompt(harness.module);
+
+    expect(harness.module.ENV).toEqual({
+      LOGNAME: "",
+      USER: "",
+    });
+  });
+
   it("delegates role selection to genl_player_setup", async () => {
     await expect(shimCallback("shim_player_selection_or_tty")).resolves.toBe(true);
   });
@@ -310,7 +325,7 @@ describe("player setup and line input", () => {
     expect(getSnapshot().inputRequest).toEqual({
       kind: "line",
       purpose: "name",
-      query: "What is your name?",
+      query: "Who are you?",
     });
 
     submitLine("é".repeat(40));

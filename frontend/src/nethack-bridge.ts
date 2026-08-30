@@ -81,13 +81,17 @@ export interface EmscriptenModule {
   stringToUTF8(value: string, ptr: number, maxBytes: number): void;
   _malloc(size: number): number;
   _free(ptr: number): void;
+  ENV?: Record<string, string>;
   FS: EmscriptenFileSystem;
   IDBFS?: unknown;
 }
 
 interface NethackGlobals {
   svp?: { plname?: string };
-  iflags?: { window_inited?: boolean };
+  iflags?: {
+    wc2_hitpointbar?: boolean;
+    window_inited?: boolean;
+  };
   flags?: {
     initrole?: number;
     initrace?: number;
@@ -213,6 +217,17 @@ export async function flushPersistentStorage(
 ): Promise<void> {
   if (!persistentModules.has(module)) return;
   await syncFilesystem(module, false);
+}
+
+/**
+ * Remove Emscripten's synthetic login name before NetHack calls whoami().
+ * This makes plnamesuffix() invoke askname before save lookup and role selection.
+ * @param module - initialized Emscripten module.
+ */
+export function preparePlayerNamePrompt(module: EmscriptenModule): void {
+  module.ENV ??= {};
+  module.ENV.USER = "";
+  module.ENV.LOGNAME = "";
 }
 
 /**
@@ -461,14 +476,17 @@ async function dispatchShimCallback(
   switch (name) {
     case "shim_init_nhwindows": {
       const iflags = globalThis.nethackGlobal?.globals?.iflags;
-      if (iflags) iflags.window_inited = true;
+      if (iflags) {
+        iflags.window_inited = true;
+        iflags.wc2_hitpointbar = true;
+      }
       setRuntimePhase("running");
       return undefined;
     }
     case "shim_player_selection_or_tty":
       return true;
     case "shim_askname":
-      return waitForLine("name", "What is your name?", 0);
+      return waitForLine("name", "Who are you?", 0);
     case "shim_get_nh_event":
     case "shim_suspend_nhwindows":
     case "shim_resume_nhwindows":
@@ -619,6 +637,7 @@ async function initializeGame(wasmUrl: string): Promise<EmscriptenModule> {
   const loadedModule = await imported.default({
     noInitialRun: true,
     locateFile: (path: string) => new URL(path, loaderUrl).href,
+    preRun: (module: EmscriptenModule) => preparePlayerNamePrompt(module),
     print: (text: string) => appendWindowText(-1, 0, text),
     printErr: (text: string) => appendWindowText(-1, ATR_BOLD, text),
   });
