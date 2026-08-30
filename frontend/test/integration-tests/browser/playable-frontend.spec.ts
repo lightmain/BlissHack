@@ -25,7 +25,7 @@ function captureErrors(page: Page): CapturedErrors {
  * @param name - unique player name.
  */
 async function startNewGame(page: Page, name: string): Promise<void> {
-  await page.goto(`/?integration=${encodeURIComponent(name)}`);
+  await page.goto(`?integration=${encodeURIComponent(name)}`);
 
   const nameInput = page.getByRole("textbox", { name: "Who are you?" });
   await expect(nameInput).toBeVisible();

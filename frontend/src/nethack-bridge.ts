@@ -235,7 +235,9 @@ export function preparePlayerNamePrompt(module: EmscriptenModule): void {
  * @param wasmUrl - URL of the Emscripten ES module loader.
  * @returns the initialized Emscripten module.
  */
-export function startGame(wasmUrl = "/nethack.js"): Promise<EmscriptenModule> {
+export function startGame(
+  wasmUrl = `${import.meta.env.BASE_URL}nethack.js`,
+): Promise<EmscriptenModule> {
   if (startupPromise) return startupPromise;
   setRuntimePhase("loading");
   startupPromise = initializeGame(wasmUrl).catch((error: unknown) => {
