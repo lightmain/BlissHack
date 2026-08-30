@@ -1,0 +1,125 @@
+# BlissHack
+
+[English](README.md) | [简体中文](README-cn.md)
+
+> **Upstream and license notice**
+>
+> BlissHack is an unofficial modified distribution of NetHack 5.0.0. The
+> original NetHack README is preserved unchanged as
+> [README-NetHack](README-NetHack). NetHack's license is preserved in
+> [dat/license](dat/license). BlissHack is not produced or supported by the
+> NetHack DevTeam; issues specific to this browser frontend should be reported
+> to this project rather than upstream.
+
+BlissHack runs a more modern NetHack experience in a web
+browser. The NetHack C core is compiled to WebAssembly and connected to a
+React/TypeScript terminal through the upstream shim window interface.
+
+## Project Status
+
+**prealpha-1 is complete.**
+
+The current milestone provides:
+
+- A playable 80x21 character map with NetHack colors, cursor, pets, and
+  background glyphs.
+- Message history, text windows, menus, prompts, extended commands, and
+  position input.
+- Character naming followed by the original role, race, gender, and alignment
+  selection flow.
+- A multi-line status display with a color-coded HP bar behind the character
+  name and title.
+- Accurate ASCII, Control, Alt/Meta, direction, and numeric keypad input.
+- Browser-local save and restore through Emscripten IDBFS.
+- Unit, WASM integration, and Chromium browser integration tests.
+- Automated deployment to GitHub Pages.
+
+This is still a pre-alpha release. Save compatibility, UI details, and
+window-port coverage may change before a stable release.
+
+## Play Online
+
+<https://lightmain.github.io/BlissHack/>
+
+Saved games are stored in the current browser profile. They are not uploaded
+to a server and do not automatically move between browsers or devices.
+
+## Controls
+
+BlissHack uses NetHack's standard keyboard commands:
+
+- Arrow keys or `h`, `j`, `k`, `l` move the character.
+- `Ctrl` combinations are encoded as ASCII control characters.
+- `Alt` combinations produce NetHack Meta commands.
+- The operating-system `Command`/`Meta` key is left to the browser.
+- Numeric keypad input follows NetHack's active number-pad mode.
+
+See [the key input reference](doc/BlissHack/key-input-reference.md) for the
+complete encoding table and source references.
+
+## Local Development
+
+The checked-in `frontend/public/nethack.js` and `nethack.wasm` files are the
+paired Emscripten runtime artifacts used by the frontend.
+
+```sh
+cd frontend
+npm ci
+npm run dev
+```
+
+Production build:
+
+```sh
+cd frontend
+npm run build
+npm run preview
+```
+
+Rebuilding the WebAssembly core requires Emscripten. Follow
+[the WASM build process](doc/BlissHack/build-process.md) and commit both
+runtime artifacts together.
+
+## Tests
+
+```sh
+cd frontend
+npm test
+npm run lint
+npm run test:integration
+```
+
+The integration command exercises the real WASM callback chain and a production
+browser build, including startup, keyboard input, status rendering, save, and
+restore.
+
+## Repository Guide
+
+- [prealpha-1 plan](doc/BlissHack/plans/prealpha-1.md)
+- [WASM build process](doc/BlissHack/build-process.md)
+- [Shim interface reference](doc/BlissHack/shim-interface-reference.md)
+- [Key input reference](doc/BlissHack/key-input-reference.md)
+- [Chinese Guidebook index](doc/BlissHack/guidebook-index-cn.md)
+- [Frontend source](frontend/src)
+
+## Known Interface Limits
+
+The current upstream shim ABI cannot safely return non-empty message history
+strings and does not expose `yn_number`. BlissHack preserves safe behavior
+instead of guessing unexposed memory or callback semantics. Details are
+recorded in the [shim interface reference](doc/BlissHack/shim-interface-reference.md).
+
+## License
+
+BlissHack contains and is derived from NetHack. It is distributed at no charge
+under the terms of the
+[NetHack General Public License](dat/license), without warranty as described
+there. The complete corresponding source used to build the browser executable
+is available in this repository.
+
+The original NetHack copyright and license notices are retained. Third-party
+frontend dependencies remain subject to their respective licenses.
+
+BlissHack modifications documented in this repository were added in 2026.
+During prealpha-1, the browser frontend, tests, documentation, and deployment
+configuration were added without modifying the NetHack C core.
