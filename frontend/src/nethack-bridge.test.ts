@@ -467,6 +467,32 @@ describe("key, position, and prompt input", () => {
     expect(harness.readI32(0x304)).toBe(-1);
   });
 
+  it("buffers a short burst typed before the core requests its next keys", async () => {
+    const first = shimCallback("shim_nhgetch");
+    sendKey("l".charCodeAt(0));
+    await expect(first).resolves.toBe("l".charCodeAt(0));
+
+    sendKey("h".charCodeAt(0));
+    sendKey("j".charCodeAt(0));
+
+    await expect(shimCallback("shim_nhgetch")).resolves.toBe(
+      "h".charCodeAt(0),
+    );
+    await expect(shimCallback("shim_nhgetch")).resolves.toBe(
+      "j".charCodeAt(0),
+    );
+  });
+
+  it("does not queue keys before the core has accepted its first game input", async () => {
+    sendKey("x".charCodeAt(0));
+    const requested = shimCallback("shim_nhgetch");
+    await expectPending(requested);
+
+    sendKey("y".charCodeAt(0));
+
+    await expect(requested).resolves.toBe("y".charCodeAt(0));
+  });
+
   it.each([
     [1, 0, 0],
     [79, 20, 2],
