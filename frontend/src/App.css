@@ -86,25 +86,26 @@
 .nh-map {
   width: 80ch;
   height: calc(21 * 1.15em);
-  display: grid;
-  grid-template-columns: repeat(80, 1ch);
-  grid-template-rows: repeat(21, 1.15em);
+  overflow: hidden;
   user-select: none;
 }
 
-.nh-cell {
-  width: 1ch;
+.nh-map-row {
+  width: 80ch;
   height: 1.15em;
   overflow: hidden;
-  text-align: center;
   white-space: pre;
 }
 
-.nh-cell.nh-pet {
+.nh-map-run {
+  white-space: pre;
+}
+
+.nh-map-run.nh-pet {
   background: #18322b;
 }
 
-.nh-cell.nh-cursor {
+.nh-map-run.nh-cursor {
   color: #080a0b;
   background: #d8d8d2;
   outline: 1px solid #fff;

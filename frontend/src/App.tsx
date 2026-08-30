@@ -1,4 +1,5 @@
 import {
+  memo,
   useEffect,
   useMemo,
   useState,
@@ -30,6 +31,7 @@ import {
   type WindowState,
 } from "./game-state";
 import { keyboardEventToNetHackKey } from "./keyboard";
+import { buildMapRuns, mapPositionFromPoint } from "./map-rendering";
 import {
   dismissDisplay,
   sendKey,
@@ -151,10 +153,10 @@ function App() {
         </section>
       ) : (
         <section className="nh-terminal" aria-label="NetHack terminal">
-          <MessageArea snapshot={snapshot} />
-          <MapGrid snapshot={snapshot} />
-          <StatusArea snapshot={snapshot} />
-          <InputArea snapshot={snapshot} />
+          <MessageArea messages={snapshot.messages} />
+          <MapGrid cursor={snapshot.cursor} map={snapshot.map} />
+          <StatusArea status={snapshot.status} />
+          <InputArea request={snapshot.inputRequest} />
         </section>
       )}
 
@@ -181,8 +183,12 @@ function runtimeLabel(snapshot: GameSnapshot): string {
  * @param props - current game snapshot.
  * @returns message region.
  */
-function MessageArea({ snapshot }: { snapshot: GameSnapshot }) {
-  const messages = snapshot.messages.slice(-3);
+const MessageArea = memo(function MessageArea({
+  messages: allMessages,
+}: {
+  messages: TextLine[];
+}) {
+  const messages = allMessages.slice(-3);
   return (
     <section className="nh-messages" aria-live="polite" aria-label="Messages">
       {messages.length === 0
@@ -190,33 +196,41 @@ function MessageArea({ snapshot }: { snapshot: GameSnapshot }) {
         : messages.map((line, index) => (
           <div
             className={textAttributeClass(line.attribute)}
-            key={`${snapshot.revision}-${index}-${line.text}`}
+            key={`${index}:${line.text}`}
           >
             {line.text || "\u00a0"}
           </div>
         ))}
     </section>
   );
-}
+});
 
 /**
  * Render the fixed NetHack character map and route mouse clicks to nh_poskey.
  * @param props - current game snapshot.
  * @returns the 80 by 21 map grid.
  */
-function MapGrid({ snapshot }: { snapshot: GameSnapshot }) {
+const MapGrid = memo(function MapGrid({
+  cursor,
+  map,
+}: {
+  cursor: GameSnapshot["cursor"];
+  map: MapCell[][];
+}) {
   /**
    * Submit a primary or secondary map click while nh_poskey is pending.
    * @param event - delegated mouse event from a map cell.
    */
   function handleMouseDown(event: ReactMouseEvent<HTMLDivElement>): void {
-    if (snapshot.inputRequest?.kind !== "position") return;
-    const element = (event.target as HTMLElement).closest<HTMLElement>("[data-x]");
-    if (!element) return;
-    const x = Number(element.dataset.x);
-    const y = Number(element.dataset.y);
+    if (getSnapshot().inputRequest?.kind !== "position") return;
+    const position = mapPositionFromPoint(
+      event.clientX,
+      event.clientY,
+      event.currentTarget.getBoundingClientRect(),
+    );
+    if (!position) return;
     event.preventDefault();
-    sendPosition(x, y, event.button === 2 ? 2 : 1);
+    sendPosition(position.x, position.y, event.button === 2 ? 2 : 1);
   }
 
   /**
@@ -224,7 +238,7 @@ function MapGrid({ snapshot }: { snapshot: GameSnapshot }) {
    * @param event - browser context-menu event.
    */
   function handleContextMenu(event: ReactMouseEvent<HTMLDivElement>): void {
-    if (snapshot.inputRequest?.kind === "position") event.preventDefault();
+    if (getSnapshot().inputRequest?.kind === "position") event.preventDefault();
   }
 
   return (
@@ -235,81 +249,82 @@ function MapGrid({ snapshot }: { snapshot: GameSnapshot }) {
         onMouseDown={handleMouseDown}
         onContextMenu={handleContextMenu}
       >
-        {snapshot.map.flatMap((row, y) =>
-          row.map((cell, x) => (
-            <MapGlyph
-              cell={cell}
-              cursor={
-                snapshot.cursor.visible
-                && snapshot.cursor.x === x
-                && snapshot.cursor.y === y
-              }
-              key={`${x}:${y}`}
-              x={x}
-              y={y}
-            />
-          )),
-        )}
+        {map.map((row, y) => (
+          <MapRow
+            cursorX={cursor.visible && cursor.y === y ? cursor.x : -1}
+            key={y}
+            row={row}
+            y={y}
+          />
+        ))}
       </div>
     </div>
   );
-}
+});
 
 /**
- * Render one stable map cell.
- * @param props - glyph data, cursor state, and coordinates.
- * @returns one character cell.
+ * Render one memoized map row as adjacent equal-style text runs.
+ * @param props - row cells, cursor column, and row coordinate.
+ * @returns one fixed-width character row.
  */
-function MapGlyph({
-  cell,
-  cursor,
-  x,
+const MapRow = memo(function MapRow({
+  row,
+  cursorX,
   y,
 }: {
-  cell: MapCell;
-  cursor: boolean;
-  x: number;
+  row: MapCell[];
+  cursorX: number;
   y: number;
 }) {
-  const glyph = cell.foreground;
-  const className = [
-    "nh-cell",
-    colorClass(glyph?.color ?? 7),
-    cursor ? "nh-cursor" : "",
-    glyph && (glyph.glyphFlags & 0x10) !== 0 ? "nh-pet" : "",
-  ].filter(Boolean).join(" ");
   return (
-    <span className={className} data-x={x} data-y={y}>
-      {glyphCharacter(glyph?.ttyChar ?? 32)}
-    </span>
+    <div className="nh-map-row" data-y={y}>
+      {buildMapRuns(row, cursorX).map((run) => (
+        <span
+          className={[
+            "nh-map-run",
+            colorClass(run.color),
+            run.cursor ? "nh-cursor" : "",
+            run.pet ? "nh-pet" : "",
+          ].filter(Boolean).join(" ")}
+          data-start={run.start}
+          key={run.start}
+        >
+          {run.text}
+        </span>
+      ))}
+    </div>
   );
-}
+});
 
 /**
  * Render status fields in compact terminal rows.
  * @param props - current game snapshot.
  * @returns formatted status area.
  */
-function StatusArea({ snapshot }: { snapshot: GameSnapshot }) {
-  const conditions = statusConditions(snapshot.status[BL_CONDITION]);
+const StatusArea = memo(function StatusArea({
+  status,
+}: {
+  status: GameSnapshot["status"];
+}) {
+  const conditions = statusConditions(status[BL_CONDITION]);
 
   return (
     <section className="nh-status" aria-label="Character status">
       <div>
-        {statusEntries(snapshot, STATUS_LINE_ONE).map(renderStatusField)}
+        {statusEntries(status, STATUS_LINE_ONE).map(renderStatusField)}
       </div>
       <div>
-        {statusEntries(snapshot, STATUS_LINE_TWO).map(renderStatusField)}
+        {statusEntries(status, STATUS_LINE_TWO).map(renderStatusField)}
         {conditions.map((condition) => (
           <span className="nh-condition" key={condition}>{condition}</span>
         ))}
       </div>
       <div>
-        {statusEntries(snapshot, STATUS_LINE_THREE).map(renderStatusField)}
+        {statusEntries(status, STATUS_LINE_THREE).map(renderStatusField)}
       </div>
     </section>
   );
-}
+});
 
 /**
  * Select populated status fields in the terminal window port's display order.
@@ -318,11 +333,11 @@ function StatusArea({ snapshot }: { snapshot: GameSnapshot }) {
  * @returns populated status entries.
  */
 function statusEntries(
-  snapshot: GameSnapshot,
+  status: GameSnapshot["status"],
   fields: readonly number[],
 ): Array<{ field: number; value: StatusValue }> {
   return fields.flatMap((field) => {
-    const value = snapshot.status[field];
+    const value = status[field];
     return value?.text ? [{ field, value }] : [];
   });
 }
@@ -358,8 +373,11 @@ function statusConditions(status: StatusValue | undefined): string[] {
  * @param props - current game snapshot.
  * @returns bottom input region.
  */
-function InputArea({ snapshot }: { snapshot: GameSnapshot }) {
-  const request = snapshot.inputRequest;
+const InputArea = memo(function InputArea({
+  request,
+}: {
+  request: GameSnapshot["inputRequest"];
+}) {
   if (request?.kind === "line") {
     return <LineInput purpose={request.purpose} query={request.query} />;
   }
@@ -380,7 +398,7 @@ function InputArea({ snapshot }: { snapshot: GameSnapshot }) {
     return <div className="nh-prompt">{request.message}</div>;
   }
   return <div className="nh-prompt">&nbsp;</div>;
-}
+});
 
 /**
  * Render and submit askname/getlin text input.
@@ -438,7 +456,7 @@ function LineInput({
  * @param props - active modal state.
  * @returns the corresponding overlay.
  */
-function ModalRenderer({ modal }: { modal: GameModal }) {
+const ModalRenderer = memo(function ModalRenderer({ modal }: { modal: GameModal }) {
   if (modal.kind === "menu") {
     const window = getWindow(modal.windowId);
     return window ? <MenuOverlay how={modal.how} window={window} /> : null;
@@ -452,7 +470,7 @@ function ModalRenderer({ modal }: { modal: GameModal }) {
       title={modal.kind === "text" ? modal.title : "Message history"}
     />
   );
-}
+});
 
 /**
  * Render a blocking text or history window.
@@ -817,16 +835,6 @@ function parsedCount(value: string): number {
   if (value === "") return -1;
   const count = Number.parseInt(value, 10);
   return Number.isFinite(count) && count > 0 ? count : -1;
-}
-
-/**
- * Convert a tty character code into one visible map character.
- * @param value - glyph_info.ttychar.
- * @returns one display character.
- */
-function glyphCharacter(value: number): string {
-  if (value < 0x20 || value > 0x10ffff) return " ";
-  return String.fromCodePoint(value);
 }
 
 /**

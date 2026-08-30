@@ -77,6 +77,20 @@ describe("game state windows", () => {
     destroyWindow(text);
     expect(getWindow(text)).toBeUndefined();
   });
+
+  it("does not publish while an undisplayed text window is being assembled", () => {
+    const text = createWindow(NHW_TEXT);
+    const listener = vi.fn();
+    const unsubscribe = subscribe(listener);
+
+    appendWindowText(text, 1, "heading");
+    appendWindowText(text, 0, "body");
+    clearWindow(text);
+    destroyWindow(text);
+
+    expect(listener).not.toHaveBeenCalled();
+    unsubscribe();
+  });
 });
 
 describe("game state map and cursor", () => {
@@ -109,6 +123,43 @@ describe("game state map and cursor", () => {
     unsubscribe();
   });
 
+  it("replaces only dirty map rows when buffered glyphs are flushed", () => {
+    const before = getSnapshot().map;
+    const changedRow = before[4];
+    const untouchedRow = before[5];
+
+    setMapCell(10, 4, {
+      glyph: 12,
+      ttyChar: 64,
+      frameColor: 0,
+      glyphFlags: 1,
+      color: 15,
+      symbolIndex: 0,
+      customColor: 0,
+      color256: 0,
+      tileIndex: 0,
+    }, null);
+
+    expect(before[4][10].foreground).toBeNull();
+    flushDisplay();
+
+    const after = getSnapshot().map;
+    expect(after).not.toBe(before);
+    expect(after[4]).not.toBe(changedRow);
+    expect(after[5]).toBe(untouchedRow);
+    expect(after[4][10].foreground?.ttyChar).toBe(64);
+  });
+
+  it("does not notify subscribers for an empty display flush", () => {
+    const listener = vi.fn();
+    const unsubscribe = subscribe(listener);
+
+    flushDisplay();
+
+    expect(listener).not.toHaveBeenCalled();
+    unsubscribe();
+  });
+
   it("ignores column zero and out-of-bounds glyph coordinates", () => {
     const glyph = {
       glyph: 1,
@@ -134,6 +185,18 @@ describe("game state map and cursor", () => {
     const map = createWindow(NHW_MAP);
     setCursor(map, 20, 8);
     expect(getSnapshot().cursor).toEqual({ x: 20, y: 8, visible: true });
+  });
+
+  it("does not publish an unchanged cursor position", () => {
+    const map = createWindow(NHW_MAP);
+    const listener = vi.fn();
+    setCursor(map, 20, 8);
+    const unsubscribe = subscribe(listener);
+
+    setCursor(map, 20, 8);
+
+    expect(listener).not.toHaveBeenCalled();
+    unsubscribe();
   });
 });
 

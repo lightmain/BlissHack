@@ -138,6 +138,7 @@ const windows = new Map<number, WindowState>();
 const listeners = new Set<Listener>();
 let nextWindowId = 1;
 let pendingStatus: Record<number, StatusValue> = {};
+let pendingMapRows = new Map<number, MapCell[]>();
 let restoredMessageHistory: TextLine[] | null = null;
 let currentMessageHistory: TextLine[] | null = null;
 let snapshot = createInitialSnapshot();
@@ -218,6 +219,7 @@ export function resetGameState(): void {
   windows.clear();
   nextWindowId = 1;
   pendingStatus = {};
+  pendingMapRows = new Map();
   restoredMessageHistory = null;
   currentMessageHistory = null;
   snapshot = createInitialSnapshot();
@@ -286,9 +288,12 @@ export function clearWindow(winid: number): void {
   window.lines = [];
   window.menuItems = [];
   window.menuPrompt = "";
-  if (window.type === NHW_MAP) snapshot.map = createBlankMap();
-  if (window.type === NHW_MESSAGE) snapshot.messages = [];
-  publish();
+  if (window.type === NHW_MAP) {
+    pendingMapRows.clear();
+    publish({ map: createBlankMap() });
+  } else if (window.type === NHW_MESSAGE) {
+    publish({ messages: [] });
+  }
 }
 
 /**
@@ -301,12 +306,15 @@ export function destroyWindow(winid: number): void {
     && snapshot.modal.windowId === winid
     ? null
     : snapshot.modal;
-  publish({
-    modal,
-    inventoryWindowId: snapshot.inventoryWindowId === winid
-      ? null
-      : snapshot.inventoryWindowId,
-  });
+  const inventoryWindowId = snapshot.inventoryWindowId === winid
+    ? null
+    : snapshot.inventoryWindowId;
+  if (
+    modal !== snapshot.modal
+    || inventoryWindowId !== snapshot.inventoryWindowId
+  ) {
+    publish({ modal, inventoryWindowId });
+  }
 }
 
 /**
@@ -332,7 +340,6 @@ export function appendWindowText(
   }
   if (window) {
     window.lines.push(line);
-    publish();
     return;
   }
   publish({
@@ -394,14 +401,28 @@ export function setMapCell(
   background: GlyphInfo | null,
 ): void {
   if (x < 1 || x >= COLNO || y < 0 || y >= ROWNO) return;
-  snapshot.map[y][x] = { foreground, background };
+  const currentRow = pendingMapRows.get(y) ?? snapshot.map[y];
+  const current = currentRow[x];
+  if (
+    glyphsEqual(current.foreground, foreground)
+    && glyphsEqual(current.background, background)
+  ) {
+    return;
+  }
+  const row = pendingMapRows.get(y) ?? snapshot.map[y].slice();
+  row[x] = { foreground, background };
+  pendingMapRows.set(y, row);
 }
 
 /**
  * Publish buffered map mutations.
  */
 export function flushDisplay(): void {
-  publish({ map: snapshot.map.slice() });
+  if (pendingMapRows.size === 0) return;
+  const map = snapshot.map.slice();
+  for (const [y, row] of pendingMapRows) map[y] = row;
+  pendingMapRows.clear();
+  publish({ map });
 }
 
 /**
@@ -411,7 +432,37 @@ export function flushDisplay(): void {
  * @param y - map row.
  */
 export function setCursor(_winid: number, x: number, y: number): void {
+  if (
+    snapshot.cursor.visible
+    && snapshot.cursor.x === x
+    && snapshot.cursor.y === y
+  ) {
+    return;
+  }
   publish({ cursor: { x, y, visible: true } });
+}
+
+/**
+ * Compare nullable glyphs by every field exposed to the frontend.
+ * @param left - current glyph.
+ * @param right - incoming glyph.
+ * @returns whether both glyph values are equivalent.
+ */
+function glyphsEqual(
+  left: GlyphInfo | null,
+  right: GlyphInfo | null,
+): boolean {
+  if (left === right) return true;
+  if (left === null || right === null) return false;
+  return left.glyph === right.glyph
+    && left.ttyChar === right.ttyChar
+    && left.frameColor === right.frameColor
+    && left.glyphFlags === right.glyphFlags
+    && left.color === right.color
+    && left.symbolIndex === right.symbolIndex
+    && left.customColor === right.customColor
+    && left.color256 === right.color256
+    && left.tileIndex === right.tileIndex;
 }
 
 /**

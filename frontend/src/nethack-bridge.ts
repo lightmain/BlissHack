@@ -156,6 +156,7 @@ const MENU_ITEM_COUNT_OFFSET = 8;
 const MENU_ITEM_FLAGS_OFFSET = 12;
 const GETLIN_BUFFER_SIZE = 256;
 const PLAYER_NAME_BUFFER_SIZE = 32;
+const KEY_QUEUE_LIMIT = 2;
 const BL_ATTCLR_MAX = 24;
 const EXTCMD_ENTRY_SIZE = 24;
 const EXTCMD_TEXT_OFFSET = 4;
@@ -168,6 +169,8 @@ const INTERNALCMD = 0x0040;
 let wasmModule: EmscriptenModule | null = null;
 let pendingAction: PendingAction | null = null;
 let startupPromise: Promise<EmscriptenModule> | null = null;
+const queuedKeys: number[] = [];
+let typeaheadEnabled = false;
 const persistentModules = new WeakSet<EmscriptenModule>();
 
 /**
@@ -236,10 +239,16 @@ export function startGame(wasmUrl = "/nethack.js"): Promise<EmscriptenModule> {
 export function sendKey(value: number): void {
   if (!Number.isInteger(value) || value <= 0 || value > 0xff) return;
   const pending = pendingAction;
-  if (!pending) return;
+  if (!pending) {
+    if (typeaheadEnabled && queuedKeys.length < KEY_QUEUE_LIMIT) {
+      queuedKeys.push(value);
+    }
+    return;
+  }
 
   if (pending.kind === "key") {
     pendingAction = null;
+    typeaheadEnabled = true;
     setInputRequest(null);
     pending.resolve(value);
     return;
@@ -289,6 +298,7 @@ export function sendPosition(x: number, y: number, modifier: 1 | 2): void {
   module.setValue(pending.positionPointers.y, y, "i16");
   module.setValue(pending.positionPointers.modifier, modifier, "i32");
   pendingAction = null;
+  typeaheadEnabled = true;
   setInputRequest(null);
   pending.resolve(0);
 }
@@ -414,6 +424,8 @@ export function resetBridgeState(): void {
   wasmModule = null;
   pendingAction = null;
   startupPromise = null;
+  queuedKeys.length = 0;
+  typeaheadEnabled = false;
   resetGameState();
 }
 
@@ -859,6 +871,8 @@ function messageMenu(
 function waitForKey(
   positionPointers: { x: number; y: number; modifier: number } | null,
 ): Promise<number> {
+  const queued = queuedKeys.shift();
+  if (queued !== undefined) return Promise.resolve(queued);
   setInputRequest({ kind: positionPointers ? "position" : "key" });
   return new Promise<number>((resolve) => {
     setPending({ kind: "key", resolve, positionPointers });
@@ -1111,6 +1125,10 @@ function setPending(action: PendingAction): void {
     throw new Error(
       `Cannot start ${action.kind}; ${pendingAction.kind} is still pending`,
     );
+  }
+  if (action.kind !== "key") {
+    queuedKeys.length = 0;
+    typeaheadEnabled = false;
   }
   pendingAction = action;
 }
