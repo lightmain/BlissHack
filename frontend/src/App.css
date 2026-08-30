@@ -62,7 +62,7 @@
 }
 
 .nh-messages {
-  min-height: 3.45em;
+  height: calc(3.45em + 8px);
   padding: 4px 0;
   overflow: hidden;
   color: #f1f1eb;
