@@ -22,6 +22,19 @@ Run the WASM and browser integration suites:
 npm run test:integration
 ```
 
+## GitHub Pages
+
+The deployment workflow builds this directory and publishes `dist`. It derives
+the Vite base path from the GitHub repository name, so a repository named
+`BlissHack` is served from `/BlissHack/`.
+
+To reproduce that build locally:
+
+```sh
+VITE_BASE_PATH=/BlissHack/ npm run build
+VITE_BASE_PATH=/BlissHack/ npm run preview
+```
+
 Currently, two official plugins are available:
 
 - [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
