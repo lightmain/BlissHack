@@ -136,6 +136,9 @@ frontend/dist/
 **关键点：**
 - `nethack.js` 和 `nethack.wasm` 放在 `public/` 目录中，Vite 会原样复制到 `dist/`，
   不对其进行打包、压缩或 tree-shaking
+- `frontend/public/nethack.js` 和 `frontend/public/nethack.wasm` 必须提交到仓库。
+  GitHub Pages 工作流不安装 Emscripten，而是发布这两个经过验证的运行时产物。
+  重新编译 WASM 后，需要同时更新并提交这两个文件。
 - React 代码在运行时通过 `import()` 动态加载 `nethack.js`，后者自动加载同目录下的 `nethack.wasm`
 - 最终部署只需要把 `dist/` 目录整个放到任意静态文件服务器上
 

@@ -26,6 +26,4 @@ test-results
 *.sw?
 
 # WASM build artifacts (copied from targets/wasm/)
-public/nethack.js
-public/nethack.wasm
 public/nethack.data

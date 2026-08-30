@@ -5,13 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "prebuild": "node scripts/verify-runtime-assets.mjs",
     "build": "tsc -b && vite build",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:integration": "npm run test:integration:wasm && npm run test:integration:browser",
     "test:integration:wasm": "node test/integration-tests/wasm-test.mjs",
     "test:integration:browser": "playwright test",
-    "lint": "oxlint",
+    "lint": "oxlint --ignore-pattern public/nethack.js",
     "preview": "vite preview"
   },
   "dependencies": {
