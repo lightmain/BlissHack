@@ -6,16 +6,16 @@
 
 ### 技术架构
 
-利用 NetHack 5.0 官方提供的 shim_graphics 窗口接口和 Emscripten WASM 交叉编译支持，将整个 NetHack 游戏核心编译为 WebAssembly，在浏览器中直接运行。shim 回调通过 Emscripten 的 EM_JS + Asyncify 机制直接桥接到 JavaScript，前端 React 应用在同一个浏览器标签页中接收所有游戏事件并渲染 UI。
+利用 NetHack 5.0 官方提供的 shim_graphics 窗口接口和 Emscripten WASM 交叉编译支持，将整个 NetHack 游戏核心编译为 WebAssembly，在浏览器中直接运行。shim 回调通过 Emscripten 的 EM_JS + Asyncify 机制桥接到 TypeScript 回调函数，前端 React 应用（TSX）在同一个浏览器标签页中接收所有游戏事件并渲染 UI。
 
 ```
 NetHack C 核心 (编译为 WASM)
     ↓ window_procs
 win/shim/winshim.c (shim 窗口接口)
     ↓ EM_JS + Asyncify
-JavaScript 回调函数
+TypeScript 回调函数 (nethack-bridge.ts)
     ↓
-React 前端 (TypeScript)
+React 前端 (TSX + Vite)
 ```
 
 这个架构的优势：
@@ -136,7 +136,7 @@ Skills 是 AI Agent 的可复用技能脚本，存放在 `.agents/skills/` 目�
 
 ### 开发约束
 
-不修改任何 NetHack 原版代码。所有功能通过 shim 回调在 JavaScript/TypeScript 侧实现。
+不修改任何 NetHack 原版代码。所有功能通过 shim 回调在 TypeScript 侧实现。
 
 对于新开发的代码，要对于每一个函数的功能、参数、返回值等信息进行注释。
 
