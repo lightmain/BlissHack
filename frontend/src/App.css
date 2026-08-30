@@ -121,10 +121,27 @@
 .nh-status > div {
   min-height: 1.15em;
   display: flex;
-  gap: 0;
+  gap: 1ch;
   white-space: nowrap;
   overflow: hidden;
 }
+
+.nh-hp-bar {
+  display: inline-flex;
+  gap: 0;
+  white-space: pre;
+}
+
+.nh-hp-fill {
+  color: #080a0b;
+}
+
+.nh-hp-full { background: #7d858a; }
+.nh-hp-healthy { background: #58b66b; }
+.nh-hp-warning { background: #ffcf5c; }
+.nh-hp-low { background: #ae7946; }
+.nh-hp-danger { background: #d34b4b; }
+.nh-hp-critical { background: #ff6b6b; }
 
 .nh-condition {
   color: #ffcf5c;
