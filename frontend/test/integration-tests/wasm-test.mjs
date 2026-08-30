@@ -43,6 +43,7 @@ function assert(condition, message) {
 let nextWindowId = 0;
 let pendingInput = null;
 const receivedEventNames = new Set();
+const receivedEvents = [];
 let eventCount = 0;
 let ynCount = 0;
 
@@ -50,6 +51,7 @@ globalThis.nethackGlobal = globalThis.nethackGlobal || {};
 
 async function blissCallback(name, ...args) {
   receivedEventNames.add(name);
+  receivedEvents.push(name);
   eventCount++;
 
   if (eventCount > 10000 && !pendingInput) {
@@ -141,6 +143,10 @@ async function run() {
 
   const module = await factory({
     noInitialRun: true,
+    preRun: (runtimeModule) => {
+      runtimeModule.ENV.USER = "";
+      runtimeModule.ENV.LOGNAME = "";
+    },
     print: () => {},
     printErr: () => {},
   });
@@ -155,6 +161,7 @@ async function run() {
   // --- Game startup ---
   console.log("\n--- Game startup ---");
   receivedEventNames.clear();
+  receivedEvents.length = 0;
   eventCount = 0;
 
   const gamePromise = module.ccall("main", "number", [], [], { async: true });
@@ -172,6 +179,7 @@ async function run() {
     `\n--- Startup events (${eventCount} total, ${receivedEventNames.size} unique) ---`
   );
   assert(receivedEventNames.has("shim_init_nhwindows"), "received shim_init_nhwindows");
+  assert(receivedEventNames.has("shim_askname"), "received shim_askname");
   assert(receivedEventNames.has("shim_create_nhwindow"), "received shim_create_nhwindow");
   assert(
     receivedEventNames.has("shim_player_selection_or_tty"),
@@ -179,6 +187,11 @@ async function run() {
   );
   assert(receivedEventNames.has("shim_print_glyph"), "received shim_print_glyph (map render)");
   assert(receivedEventNames.has("shim_status_update"), "received shim_status_update");
+  assert(
+    receivedEvents.indexOf("shim_askname")
+      < receivedEvents.indexOf("shim_player_selection_or_tty"),
+    "asked for the player name before role selection"
+  );
 
   // --- Input handling ---
   console.log("\n--- Input handling ---");
