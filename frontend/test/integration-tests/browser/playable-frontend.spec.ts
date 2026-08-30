@@ -84,6 +84,19 @@ test("plays through startup and routes terminal UI input", async ({ page }) => {
   const errors = captureErrors(page);
   await startNewGame(page, "E2E_Ada");
 
+  const messageMetrics = await page.locator(".nh-messages").evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      height: element.getBoundingClientRect().height,
+      requiredHeight: Number.parseFloat(style.lineHeight) * 3
+        + Number.parseFloat(style.paddingTop)
+        + Number.parseFloat(style.paddingBottom),
+    };
+  });
+  expect(messageMetrics.height).toBeGreaterThanOrEqual(
+    messageMetrics.requiredHeight - 0.5,
+  );
+
   await expect(page.getByLabel(/E2E_Ada the .+, 100% HP/)).toBeVisible();
   await expect(page.locator(".nh-map-row")).toHaveCount(21);
   expect(
