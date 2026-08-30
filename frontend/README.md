@@ -2,6 +2,26 @@
 
 This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
 
+## Tests
+
+Install the Playwright browser once:
+
+```sh
+npx playwright install chromium
+```
+
+Run unit tests:
+
+```sh
+npm test
+```
+
+Run the WASM and browser integration suites:
+
+```sh
+npm run test:integration
+```
+
 Currently, two official plugins are available:
 
 - [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
