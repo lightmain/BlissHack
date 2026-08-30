@@ -949,6 +949,7 @@ function normalizeYnResponse(
   choices: string | null,
   defaultCode: number,
 ): number | null {
+  if (!Number.isInteger(value) || value < 0 || value > 0x7f) return null;
   if (choices === null) return value;
   if (value === 32 || value === 10 || value === 13) {
     return defaultCode > 0 ? defaultCode : null;

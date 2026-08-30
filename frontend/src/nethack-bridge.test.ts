@@ -550,6 +550,16 @@ describe("key, position, and prompt input", () => {
     await expect(counted).resolves.toBe("n".charCodeAt(0));
   });
 
+  it("keeps an unrestricted yn prompt pending for non-ASCII Meta bytes", async () => {
+    const direction = shimCallback("shim_yn_function", "In what direction?", "", 0);
+
+    sendKey(0xe8);
+    await expectPending(direction);
+    sendKey("h".charCodeAt(0));
+
+    await expect(direction).resolves.toBe("h".charCodeAt(0));
+  });
+
   it("stores number-pad mode from shim_number_pad", async () => {
     await shimCallback("shim_number_pad", 1);
     expect(getSnapshot().numberPad).toBe(true);
