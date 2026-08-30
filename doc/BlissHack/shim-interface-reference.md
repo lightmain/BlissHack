@@ -3,6 +3,25 @@
 > 本文档是 BlissHack 项目的核心技术参考，面向从未接触过 WASM 开发的前端工程师。
 > 源码版本：NetHack 5.0 (`win/shim/winshim.c`, `sys/libnh/libnhmain.c`)
 
+> **当前 WASM 构建勘误：**
+> 1. `shim_add_menu` 的 identifier 在 C 中是指针，但格式串第三位实际为 `i`，
+>    所以 TypeScript 收到的是已解引用的 32 位值，不是指针。
+> 2. `shim_message_menu` 的 `char let` 被格式串错误标成 `i`；TypeScript 必须只取
+>    收到数值的低 8 位。
+> 3. `shim_getmsghistory` 的 `"s"` 返回写回实现不能安全返回非空 `char *`；
+>    在不修改原版 C 代码的前提下只能返回空字符串，使返回指针保持 `NULL`。
+> 4. `BL_CONDITION` 的 value 参数是指向 `unsigned long` 的指针，必须解引用。
+> 5. 当前构建启用 `ENHANCED_SYMBOLS`，`glyph_info` 大小为 36 字节；
+>    字段 `ttychar`、颜色等既有偏移不变。
+> 6. `shim_procs` 实际注册的是 `genl_status_enablefield`，不是已声明的
+>    `shim_status_enablefield`；TypeScript 收不到字段名、格式和启用状态。
+> 7. 数量型 `yn_function` 要求窗口端口写全局 `yn_number` 后返回 `'#'`，
+>    但当前 `js_globals_init()` 没有向 JavaScript 暴露该变量。因此当前
+>    TypeScript 接口不能可靠实现数量回答，不能用猜测地址绕过。
+>
+> 以上结论由当前源码和 Emscripten WASM32 record layout 验证；实现应优先遵循
+> `winshim.c` 的实际格式串，而不是仅依据 C 函数原型。
+
 ---
 
 ## 目录
@@ -155,7 +174,12 @@ VDECLCB(shim_exit_nhwindows, (const char *str), "vs", P2V str)
 | **参数** | `str` (string): 退出原因描述，可能为 NULL |
 | **返回值** | 无 |
 | **调用时机** | 游戏结束，准备关闭窗口系统 |
-| **JS 侧处理** | 显示退出原因，清理前端状态 |
+| **JS 侧处理** | 显示退出原因；保存文件已经关闭，此时可将 `/save` 同步到持久存储 |
+
+当前浏览器实现会在启动 `main()` 前把 `/save` 挂载为 IDBFS 并执行
+`syncfs(true)`，在 `shim_exit_nhwindows` 中执行 `syncfs(false)`。Unix 构建的
+`set_savefile_name()` 明确使用 `save/%d%s`，所以只挂载 `/save`，不会覆盖根
+目录中的只读 `nhdat`、`sysconf` 等嵌入文件。
 
 #### shim_suspend_nhwindows
 
@@ -282,7 +306,7 @@ VDECLCB(shim_display_nhwindow, (winid window, boolean blocking), "vib", A2P wind
 | **fmt** | `"vib"` — 返回 void，一个 int + 一个 boolean |
 | **参数** | `window` (int): 窗口 ID；`blocking` (boolean): 是否阻塞等待用户交互 |
 | **调用时机** | 游戏核心要求显示窗口内容。如果 `blocking` 为 true，应等待用户按键后再返回 |
-| **JS 侧处理** | 渲染窗口内容。对于菜单/文本窗口的 blocking 显示，需要等待用户关闭后 resolve |
+| **JS 侧处理** | 渲染窗口内容。`blocking=true` 必须等待用户确认。文档同时明确 tty 端所有调用都阻塞；浏览器端也让临时 `NHW_TEXT`/`NHW_MENU` 等待确认，即使参数为 false，以免核心紧接着销毁窗口而使内容不可见。地图和消息窗口的非阻塞刷新立即返回 |
 
 #### shim_destroy_nhwindow
 
@@ -364,6 +388,11 @@ VDECLCB(shim_display_file, (const char *name, boolean complain), "vsb", P2V name
 | **fmt** | `"vsb"` — 返回 void，一个 string + 一个 boolean |
 | **参数** | `name` (string): 文件名；`complain` (boolean): 如果文件不存在是否报错 |
 | **调用时机** | 显示帮助文件、新闻等文本文件内容 |
+
+这里的 `name` 是 DLB 中的逻辑文件名（例如 `help`、`history`），通常不是
+Emscripten FS 中的独立路径。当前 WASM 把 revision-1 DLB 归档嵌入为
+`/nhdat`；TypeScript 必须按 `src/dlb.c` 记载的 header、directory 和 offset
+格式读取对应条目，不能直接调用 `FS.readFile(name)`。
 
 #### shim_raw_print
 
@@ -493,6 +522,11 @@ DECLCB(char, shim_yn_function,
 | **调用时机** | 需要用户回答 yes/no 或从有限选项中选择时 |
 | **JS 侧处理** | 显示问题和选项，等待用户选择，返回所选字符的 ASCII 码 |
 
+当 `resp` 包含 `#` 时，窗口端口还必须累计十进制数量、写入全局
+`yn_number`，然后返回 `'#'`。当前 WASM 的 `js_globals_init()` 没有暴露
+`yn_number`，所以纯 TypeScript 实现不能正确支持该分支；仅返回 `'#'` 会让
+核心看到错误的数量 0。
+
 #### shim_getlin
 
 ```c
@@ -555,6 +589,10 @@ VDECLCB(shim_number_pad, (int state), "vi", A2P state)
 | **参数** | `state` (int): 1 = 启用数字小键盘模式，0 = 禁用 |
 | **调用时机** | 数字小键盘模式改变时 |
 
+`src/options.c` 中的 `number_pad:-1/2/3/4` 还包含交换 Y/Z、MSDOS 兼容和
+电话键盘布局，但窗口回调只接收 `iflags.num_pad ? 1 : 0`。前端只能依据这个
+布尔状态切换方向键映射，不能推断 `num_pad_mode`。
+
 ---
 
 ### 2.9 菜单系统
@@ -593,7 +631,7 @@ VDECLCB(shim_add_menu,
 | **参数** | |
 | | `window` (int): 菜单窗口 ID |
 | | `glyphinfo` (pointer): 物品的 `glyph_info` 指针（用于显示图标），可为 0 |
-| | `identifier` (pointer): `ANY_P` 联合体指针，包含菜单项标识符。如果 `identifier->a_void == 0`，则此项为不可选的标题/分隔行 |
+| | `identifier` (number): C 原型为 `ANY_P *`，但当前格式串将它标为 `i`，桥接已将联合体低 32 位解引用。如果值为 0，则此项为不可选的标题/分隔行 |
 | | `ch` (int8/byte): 快捷键字符（如 'a', 'b'），0 表示由系统分配 |
 | | `gch` (int8/byte): 分组快捷键字符，0 表示不分组 |
 | | `attr` (int): 文本样式（ATR_NONE 等） |
@@ -644,6 +682,11 @@ DECLCB(int, shim_select_menu,
 
 **重要提示**：`menu_list` 是一个输出参数（指向指针的指针）。JS 侧需要分配 WASM 内存来存放选中项的 `menu_item` 数组，并将数组地址写回 `*menu_list`。这是 shim 接口中最复杂的部分之一。
 
+当前 Emscripten WASM32 ABI 下 `anything` 大小为 8 字节且按 8 字节对齐，
+`menu_item` 大小为 16 字节：identifier 位于 `+0`，count 位于 `+8`，
+itemflags 位于 `+12`。由于当前回调只提供 identifier 的低 32 位，写回时
+identifier 的高 32 位必须清零。
+
 #### shim_message_menu
 
 ```c
@@ -689,6 +732,11 @@ VDECLCB(shim_status_enablefield,
 
 **注意**：虽然 `nm` 和 `fmt` 实际上是字符串，但 fmt 标记中用的是 `p`（pointer），所以 JS 侧收到的是 WASM 内存地址，需要用 `Module.UTF8ToString(ptr)` 手动转换。
 
+**当前 WASM 限制**：`shim_procs` 的对应槽位是
+`genl_status_enablefield`，所以此回调不会到达 TypeScript。前端目前只能使用
+`src/botl.c:initblstats` 中的固定格式；动态启用状态只能通过实际收到的
+`status_update` 和 `BL_RESET` 周期判断。
+
 #### shim_status_update
 
 ```c
@@ -711,9 +759,12 @@ VDECLCB(shim_status_update,
 | **调用时机** | 状态字段值发生变化时 |
 
 **关于 `ptr` 参数的双重含义**（源码注释也提到这个问题）：
-- 当 `fldidx == BL_CONDITION` 时，`ptr` 实际上是一个整数（条件位掩码），不是指针
+- 当 `fldidx == BL_CONDITION` 时，`ptr` 指向一个 `unsigned long` 条件位掩码，
+  TypeScript 需要通过 `getValue(ptr, "i32")` 解引用
 - 其他情况下，`ptr` 通常是一个指向格式化字符串的指针（用 `UTF8ToString` 读取）
-- 特殊索引 `BL_FLUSH` 和 `BL_RESET` 用于控制状态刷新
+- `BL_FLUSH` 合并并发布本周期改变的字段
+- `BL_RESET` 是要求窗口端口重新显示已有字段的 advisory；它不是清空指令，
+  也不能用来推断哪些字段已经动态关闭
 
 状态字段索引常量 (`fldidx`)：
 
@@ -742,6 +793,10 @@ VDECLCB(shim_status_update,
 | `BL_LEVELDESC` | 当前层描述 |
 | `BL_EXP` | 经验值 |
 | `BL_CONDITION` | 状态条件（位掩码） |
+| `BL_WEAPON` | 当前武器 |
+| `BL_ARMOR` | 当前护甲 |
+| `BL_TERRAIN` | 当前地形 |
+| `BL_VERS` | 版本 |
 | `BL_CHARACTERISTICS` | 所有属性 |
 | `BL_RESET` | 重置信号 |
 | `BL_FLUSH` | 刷新信号 |
@@ -761,8 +816,8 @@ DECLCB(char *, shim_getmsghistory, (boolean init), "sb", A2P init)
 |------|------|
 | **fmt** | `"sb"` — 返回 string，一个 boolean 参数 |
 | **参数** | `init` (boolean): `true` = 开始新的遍历；`false` = 获取下一条 |
-| **返回值** | 消息字符串，NULL 表示遍历结束 |
-| **调用时机** | 保存游戏时，核心遍历消息历史以保存 |
+| **返回值** | C 契约为消息字符串，NULL 表示遍历结束；但当前 WASM `"s"` 返回写回实现无法安全设置非空 `char *` |
+| **调用时机** | 保存游戏时，核心遍历消息历史以保存。当前不修改原版 C 的实现应返回空字符串，使零初始化返回指针保持 NULL，即不持久化前端消息历史 |
 
 #### shim_putmsghistory
 
@@ -775,6 +830,12 @@ VDECLCB(shim_putmsghistory, (const char *msg, boolean restoring_msghist), "vsb",
 | **fmt** | `"vsb"` — 返回 void，一个 string + 一个 boolean |
 | **参数** | `msg` (string): 消息文本；`restoring_msghist` (boolean): 是否正在恢复存档中的消息历史 |
 | **调用时机** | 恢复游戏存档时，核心将保存的消息历史送回给窗口端口 |
+
+恢复时核心按从旧到新的顺序调用，并最终用 `msg == NULL` 结束。当前
+`local_callback` 会把 NULL 字符串解码成空字符串；保存逻辑不会保存空消息，
+因此前端可将恢复期间的空字符串作为结束标记。旧历史应放在本次启动阶段已经
+产生的消息之前。`restoring_msghist=false` 的文本只加入回看历史，不显示为
+当前消息。
 
 ---
 
@@ -1497,7 +1558,9 @@ globalThis.nethackGlobal = {
 | `gm.color256idx` | +28 | 2 | `"i16"` |
 | `gm.tileidx` | +30 | 2 | `"i16"` |
 
-> **注意**：以上偏移量基于无 `ENHANCED_SYMBOLS` 的 32 位 WASM 构建。如果启用了 `ENHANCED_SYMBOLS`，`glyph_map` 末尾会多一个 `unicode_representation *u` 指针（4 字节），总结构体大小会增加。建议在实际项目中通过编译时 `offsetof` 或运行时检测来确认。
+> **注意**：当前构建启用了 `ENHANCED_SYMBOLS`。`glyph_map` 末尾有一个
+> `unicode_representation *u` 指针，位于 `glyph_info +32`，所以
+> `sizeof(glyph_info) == 36`。上表中既有字段的偏移不受影响。
 
 ### 关键源文件索引
 

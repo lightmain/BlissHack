@@ -1,122 +1,866 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import {
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
+  type SyntheticEvent,
+} from "react";
+import "./App.css";
+import {
+  ATR_BOLD,
+  ATR_DIM,
+  ATR_INVERSE,
+  ATR_ITALIC,
+  ATR_ULINE,
+  BL_CONDITION,
+  PICK_ANY,
+  PICK_NONE,
+  PICK_ONE,
+  getSnapshot,
+  getWindow,
+  subscribe,
+  type GameModal,
+  type GameSnapshot,
+  type MapCell,
+  type MenuItem,
+  type StatusValue,
+  type TextLine,
+  type WindowState,
+} from "./game-state";
+import { keyboardEventToNetHackKey } from "./keyboard";
+import {
+  dismissDisplay,
+  sendKey,
+  sendPosition,
+  startGame,
+  submitExtendedCommand,
+  submitLine,
+  submitMenuSelection,
+} from "./nethack-bridge";
 
+const COLOR_NAMES = [
+  "black",
+  "red",
+  "green",
+  "brown",
+  "blue",
+  "magenta",
+  "cyan",
+  "gray",
+  "dark-gray",
+  "bright-red",
+  "bright-green",
+  "yellow",
+  "bright-blue",
+  "bright-magenta",
+  "bright-cyan",
+  "white",
+] as const;
+
+const CONDITION_NAMES = [
+  "Bare",
+  "Blind",
+  "Busy",
+  "Conf",
+  "Deaf",
+  "Iron",
+  "Fly",
+  "FoodPois",
+  "Glow",
+  "Grab",
+  "Hallu",
+  "Held",
+  "Icy",
+  "Lava",
+  "Lev",
+  "Parlyz",
+  "Ride",
+  "Sleep",
+  "Slime",
+  "Slippery",
+  "Stone",
+  "Strngl",
+  "Stun",
+  "Submerged",
+  "TermIll",
+  "Tethered",
+  "Trapped",
+  "Unconsc",
+  "Wounded",
+  "Holding",
+] as const;
+
+const STATUS_LINE_ONE = [0, 1, 2, 3, 4, 5, 6, 7, 8] as const;
+const STATUS_LINE_TWO = [20, 10, 18, 19, 11, 12, 14, 13, 21, 15, 16, 17, 9] as const;
+const STATUS_LINE_THREE = [23, 24, 25, 26] as const;
+
+const AUTO_ACCELERATORS =
+  "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+/**
+ * Render and operate the playable character-mode NetHack frontend.
+ * @returns the complete game terminal.
+ */
 function App() {
-  const [count, setCount] = useState(0)
+  const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+
+  useEffect(() => {
+    void startGame();
+  }, []);
+
+  useEffect(() => {
+    /**
+     * Route a browser key to the active NetHack callback.
+     * @param event - browser keyboard event.
+     */
+    function handleKeyDown(event: KeyboardEvent): void {
+      if (snapshot.inputRequest?.kind === "line") return;
+      if (snapshot.modal?.kind === "menu" || snapshot.modal?.kind === "extcmd") {
+        return;
+      }
+      const value = keyboardEventToNetHackKey(event, {
+        numberPad: snapshot.numberPad,
+      });
+      if (value === null) return;
+      event.preventDefault();
+      if (snapshot.modal?.kind === "text" || snapshot.modal?.kind === "history") {
+        dismissDisplay();
+        return;
+      }
+      sendKey(value);
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [snapshot.inputRequest, snapshot.modal, snapshot.numberPad]);
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+    <main className="nh-shell" aria-label="BlissHack">
+      <header className="nh-header">
+        <strong>BlissHack</strong>
+        <span className={`nh-runtime nh-runtime-${snapshot.phase}`}>
+          {runtimeLabel(snapshot)}
+        </span>
+      </header>
 
-      <div className="ticks"></div>
+      {snapshot.phase === "error" ? (
+        <section className="nh-fatal" role="alert">
+          {snapshot.error}
+        </section>
+      ) : (
+        <section className="nh-terminal" aria-label="NetHack terminal">
+          <MessageArea snapshot={snapshot} />
+          <MapGrid snapshot={snapshot} />
+          <StatusArea snapshot={snapshot} />
+          <InputArea snapshot={snapshot} />
+        </section>
+      )}
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+      {snapshot.modal && <ModalRenderer modal={snapshot.modal} />}
+    </main>
+  );
 }
 
-export default App
+/**
+ * Convert a runtime phase into a compact status label.
+ * @param snapshot - current game snapshot.
+ * @returns user-facing runtime state.
+ */
+function runtimeLabel(snapshot: GameSnapshot): string {
+  if (snapshot.phase === "loading") return "Loading";
+  if (snapshot.phase === "running") return "Running";
+  if (snapshot.phase === "exited") return snapshot.exitReason || "Exited";
+  if (snapshot.phase === "error") return "Error";
+  return "Idle";
+}
+
+/**
+ * Render the recent NetHack message stream.
+ * @param props - current game snapshot.
+ * @returns message region.
+ */
+function MessageArea({ snapshot }: { snapshot: GameSnapshot }) {
+  const messages = snapshot.messages.slice(-3);
+  return (
+    <section className="nh-messages" aria-live="polite" aria-label="Messages">
+      {messages.length === 0
+        ? <div className="nh-message">&nbsp;</div>
+        : messages.map((line, index) => (
+          <div
+            className={textAttributeClass(line.attribute)}
+            key={`${snapshot.revision}-${index}-${line.text}`}
+          >
+            {line.text || "\u00a0"}
+          </div>
+        ))}
+    </section>
+  );
+}
+
+/**
+ * Render the fixed NetHack character map and route mouse clicks to nh_poskey.
+ * @param props - current game snapshot.
+ * @returns the 80 by 21 map grid.
+ */
+function MapGrid({ snapshot }: { snapshot: GameSnapshot }) {
+  /**
+   * Submit a primary or secondary map click while nh_poskey is pending.
+   * @param event - delegated mouse event from a map cell.
+   */
+  function handleMouseDown(event: ReactMouseEvent<HTMLDivElement>): void {
+    if (snapshot.inputRequest?.kind !== "position") return;
+    const element = (event.target as HTMLElement).closest<HTMLElement>("[data-x]");
+    if (!element) return;
+    const x = Number(element.dataset.x);
+    const y = Number(element.dataset.y);
+    event.preventDefault();
+    sendPosition(x, y, event.button === 2 ? 2 : 1);
+  }
+
+  /**
+   * Suppress the browser context menu while NetHack is accepting map clicks.
+   * @param event - browser context-menu event.
+   */
+  function handleContextMenu(event: ReactMouseEvent<HTMLDivElement>): void {
+    if (snapshot.inputRequest?.kind === "position") event.preventDefault();
+  }
+
+  return (
+    <div className="nh-map-scroll">
+      <div
+        className="nh-map"
+        aria-label="Dungeon map"
+        onMouseDown={handleMouseDown}
+        onContextMenu={handleContextMenu}
+      >
+        {snapshot.map.flatMap((row, y) =>
+          row.map((cell, x) => (
+            <MapGlyph
+              cell={cell}
+              cursor={
+                snapshot.cursor.visible
+                && snapshot.cursor.x === x
+                && snapshot.cursor.y === y
+              }
+              key={`${x}:${y}`}
+              x={x}
+              y={y}
+            />
+          )),
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Render one stable map cell.
+ * @param props - glyph data, cursor state, and coordinates.
+ * @returns one character cell.
+ */
+function MapGlyph({
+  cell,
+  cursor,
+  x,
+  y,
+}: {
+  cell: MapCell;
+  cursor: boolean;
+  x: number;
+  y: number;
+}) {
+  const glyph = cell.foreground;
+  const className = [
+    "nh-cell",
+    colorClass(glyph?.color ?? 7),
+    cursor ? "nh-cursor" : "",
+    glyph && (glyph.glyphFlags & 0x10) !== 0 ? "nh-pet" : "",
+  ].filter(Boolean).join(" ");
+  return (
+    <span className={className} data-x={x} data-y={y}>
+      {glyphCharacter(glyph?.ttyChar ?? 32)}
+    </span>
+  );
+}
+
+/**
+ * Render status fields in compact terminal rows.
+ * @param props - current game snapshot.
+ * @returns formatted status area.
+ */
+function StatusArea({ snapshot }: { snapshot: GameSnapshot }) {
+  const conditions = statusConditions(snapshot.status[BL_CONDITION]);
+
+  return (
+    <section className="nh-status" aria-label="Character status">
+      <div>
+        {statusEntries(snapshot, STATUS_LINE_ONE).map(renderStatusField)}
+      </div>
+      <div>
+        {statusEntries(snapshot, STATUS_LINE_TWO).map(renderStatusField)}
+        {conditions.map((condition) => (
+          <span className="nh-condition" key={condition}>{condition}</span>
+        ))}
+      </div>
+      <div>
+        {statusEntries(snapshot, STATUS_LINE_THREE).map(renderStatusField)}
+      </div>
+    </section>
+  );
+}
+
+/**
+ * Select populated status fields in the terminal window port's display order.
+ * @param snapshot - current game state.
+ * @param fields - ordered BL_* field indexes.
+ * @returns populated status entries.
+ */
+function statusEntries(
+  snapshot: GameSnapshot,
+  fields: readonly number[],
+): Array<{ field: number; value: StatusValue }> {
+  return fields.flatMap((field) => {
+    const value = snapshot.status[field];
+    return value?.text ? [{ field, value }] : [];
+  });
+}
+
+/**
+ * Render one status field span.
+ * @param entry - numeric field and decoded status value.
+ * @returns a styled status fragment.
+ */
+function renderStatusField(entry: { field: number; value: StatusValue }) {
+  return (
+    <span
+      className={`${colorClass(entry.value.color)} ${textAttributeClass(entry.value.attributes)}`}
+      key={entry.field}
+    >
+      {entry.value.text}
+    </span>
+  );
+}
+
+/**
+ * Decode active condition bits into compact labels.
+ * @param status - BL_CONDITION status value.
+ * @returns active condition names.
+ */
+function statusConditions(status: StatusValue | undefined): string[] {
+  const mask = status?.conditionMask ?? 0;
+  return CONDITION_NAMES.filter((_, index) => (mask & (1 << index)) !== 0);
+}
+
+/**
+ * Render the active prompt or line editor.
+ * @param props - current game snapshot.
+ * @returns bottom input region.
+ */
+function InputArea({ snapshot }: { snapshot: GameSnapshot }) {
+  const request = snapshot.inputRequest;
+  if (request?.kind === "line") {
+    return <LineInput purpose={request.purpose} query={request.query} />;
+  }
+  if (request?.kind === "yn") {
+    const choices = request.choices?.split("\u001b")[0] ?? "";
+    const defaultCharacter = request.defaultCode > 0
+      ? String.fromCharCode(request.defaultCode)
+      : "";
+    return (
+      <div className="nh-prompt">
+        <span>{request.query}</span>
+        {choices && <span>[{choices}]</span>}
+        {defaultCharacter && <span className="nh-default">{defaultCharacter}</span>}
+      </div>
+    );
+  }
+  if (request?.kind === "message") {
+    return <div className="nh-prompt">{request.message}</div>;
+  }
+  return <div className="nh-prompt">&nbsp;</div>;
+}
+
+/**
+ * Render and submit askname/getlin text input.
+ * @param props - prompt purpose and query.
+ * @returns a focused terminal input form.
+ */
+function LineInput({
+  purpose,
+  query,
+}: {
+  purpose: "name" | "getlin";
+  query: string;
+}) {
+  const [value, setValue] = useState("");
+
+  /**
+   * Submit the current text value.
+   * @param event - form submission event.
+   */
+  function handleSubmit(event: SyntheticEvent<HTMLFormElement, SubmitEvent>): void {
+    event.preventDefault();
+    submitLine(value);
+  }
+
+  /**
+   * Cancel a getlin prompt with Escape.
+   * @param event - input key event.
+   */
+  function handleKeyDown(event: ReactKeyboardEvent<HTMLInputElement>): void {
+    event.stopPropagation();
+    if (event.key === "Escape" && purpose === "getlin") {
+      event.preventDefault();
+      submitLine(null);
+    }
+  }
+
+  return (
+    <form className="nh-line-input" onSubmit={handleSubmit}>
+      <label htmlFor="nh-command-input">{query}</label>
+      <input
+        autoComplete="off"
+        autoFocus
+        id="nh-command-input"
+        onChange={(event) => setValue(event.target.value)}
+        onKeyDown={handleKeyDown}
+        spellCheck={false}
+        value={value}
+      />
+    </form>
+  );
+}
+
+/**
+ * Select the renderer for the active modal type.
+ * @param props - active modal state.
+ * @returns the corresponding overlay.
+ */
+function ModalRenderer({ modal }: { modal: GameModal }) {
+  if (modal.kind === "menu") {
+    const window = getWindow(modal.windowId);
+    return window ? <MenuOverlay how={modal.how} window={window} /> : null;
+  }
+  if (modal.kind === "extcmd") {
+    return <ExtendedCommandOverlay commands={modal.commands} />;
+  }
+  return (
+    <TextOverlay
+      lines={modal.lines}
+      title={modal.kind === "text" ? modal.title : "Message history"}
+    />
+  );
+}
+
+/**
+ * Render a blocking text or history window.
+ * @param props - title and styled lines.
+ * @returns text overlay.
+ */
+function TextOverlay({ title, lines }: { title: string; lines: TextLine[] }) {
+  return (
+    <div className="nh-overlay" role="presentation" onMouseDown={dismissDisplay}>
+      <section
+        aria-label={title || "Text"}
+        className="nh-dialog nh-text-dialog"
+        onMouseDown={(event) => event.stopPropagation()}
+        role="dialog"
+      >
+        <header>
+          <strong>{title}</strong>
+          <button aria-label="Close" onClick={dismissDisplay} type="button">×</button>
+        </header>
+        <pre>
+          {lines.map((line, index) => (
+            <span className={textAttributeClass(line.attribute)} key={`${index}:${line.text}`}>
+              {line.text}
+              {"\n"}
+            </span>
+          ))}
+        </pre>
+      </section>
+    </div>
+  );
+}
+
+/**
+ * Render and operate a NetHack PICK_NONE/PICK_ONE/PICK_ANY menu.
+ * @param props - menu window and selection mode.
+ * @returns menu overlay.
+ */
+function MenuOverlay({ window, how }: { window: WindowState; how: number }) {
+  const rows = useMemo(() => assignAccelerators(window.menuItems), [window.menuItems]);
+  const selectableIndexes = useMemo(
+    () => rows.filter((row) => row.item.identifier !== null).map((row) => row.index),
+    [rows],
+  );
+  const preselectedIndex = rows.find(
+    ({ item }) =>
+      item.identifier !== null && (item.itemFlags & 1) !== 0,
+  )?.index;
+  const [focusIndex, setFocusIndex] = useState(
+    preselectedIndex ?? selectableIndexes[0] ?? -1,
+  );
+  const [selected, setSelected] = useState<Map<number, number>>(() => {
+    const initial = new Map<number, number>();
+    rows.forEach(({ item, index }) => {
+      if (item.identifier !== null && (item.itemFlags & 1) !== 0) {
+        initial.set(index, -1);
+      }
+    });
+    return initial;
+  });
+  const [count, setCount] = useState("");
+
+  useEffect(() => {
+    /**
+     * Apply NetHack menu commands and accelerators.
+     * @param event - browser keyboard event.
+     */
+    function handleMenuKey(event: KeyboardEvent): void {
+      const encoded = keyboardEventToNetHackKey(event, { numberPad: false });
+      if (event.key === "Escape") {
+        event.preventDefault();
+        submitMenuSelection(null);
+        return;
+      }
+      if (how === PICK_NONE) {
+        if (encoded !== null) {
+          event.preventDefault();
+          dismissDisplay();
+        }
+        return;
+      }
+      if (/^[0-9]$/.test(event.key)) {
+        event.preventDefault();
+        setCount((current) => `${current}${event.key}`.slice(0, 9));
+        return;
+      }
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        setFocusIndex((current) =>
+          moveMenuFocus(selectableIndexes, current, event.key === "ArrowDown" ? 1 : -1),
+        );
+        return;
+      }
+      if (event.key === "Enter") {
+        event.preventDefault();
+        if (how === PICK_ONE && focusIndex >= 0) {
+          submitMenuSelection([{ itemIndex: focusIndex, count: parsedCount(count) }]);
+        } else {
+          submitMenuSelection(
+            Array.from(selected, ([itemIndex, itemCount]) => ({
+              itemIndex,
+              count: itemCount,
+            })),
+          );
+        }
+        return;
+      }
+      if (event.key === " " && focusIndex >= 0) {
+        event.preventDefault();
+        chooseMenuItem(focusIndex);
+        return;
+      }
+      if (how === PICK_ANY && encoded !== null && [46, 45, 64].includes(encoded)) {
+        event.preventDefault();
+        applyBulkMenuCommand(encoded);
+        return;
+      }
+      if (encoded === null) return;
+      const accelerated = rows.find(
+        (row) =>
+          row.item.identifier !== null
+          && (row.accelerator === encoded || row.item.groupAccelerator === encoded),
+      );
+      if (!accelerated) return;
+      event.preventDefault();
+      if (accelerated.item.groupAccelerator === encoded && how === PICK_ANY) {
+        toggleMenuGroup(encoded);
+      } else {
+        chooseMenuItem(accelerated.index);
+      }
+    }
+
+    windowThis().addEventListener("keydown", handleMenuKey);
+    return () => windowThis().removeEventListener("keydown", handleMenuKey);
+  });
+
+  /**
+   * Select, toggle, or immediately submit one menu row.
+   * @param itemIndex - source row index.
+   */
+  function chooseMenuItem(itemIndex: number): void {
+    if (how === PICK_NONE) {
+      dismissDisplay();
+      return;
+    }
+    if (how === PICK_ONE) {
+      submitMenuSelection([{ itemIndex, count: parsedCount(count) }]);
+      return;
+    }
+    setSelected((current) => {
+      const next = new Map(current);
+      if (next.has(itemIndex)) next.delete(itemIndex);
+      else next.set(itemIndex, parsedCount(count));
+      return next;
+    });
+    setCount("");
+    setFocusIndex(itemIndex);
+  }
+
+  /**
+   * Apply select-all, unselect-all, or invert-all.
+   * @param command - NetHack menu command byte.
+   */
+  function applyBulkMenuCommand(command: number): void {
+    setSelected((current) => {
+      if (command === 45) return new Map();
+      const next = command === 64 ? new Map(current) : new Map<number, number>();
+      for (const row of rows) {
+        if (row.item.identifier === null || (row.item.itemFlags & 2) !== 0) continue;
+        if (command === 64 && next.has(row.index)) next.delete(row.index);
+        else next.set(row.index, -1);
+      }
+      return next;
+    });
+  }
+
+  /**
+   * Toggle all selectable rows sharing one group accelerator.
+   * @param groupCode - group accelerator byte.
+   */
+  function toggleMenuGroup(groupCode: number): void {
+    const indexes = rows
+      .filter(
+        (row) =>
+          row.item.identifier !== null
+          && row.item.groupAccelerator === groupCode,
+      )
+      .map((row) => row.index);
+    setSelected((current) => {
+      const next = new Map(current);
+      const allSelected = indexes.every((index) => next.has(index));
+      indexes.forEach((index) => {
+        if (allSelected) next.delete(index);
+        else next.set(index, -1);
+      });
+      return next;
+    });
+  }
+
+  return (
+    <div className="nh-overlay">
+      <section className="nh-dialog nh-menu" role="dialog" aria-label={window.menuPrompt || "Menu"}>
+        {window.menuPrompt && <header>{window.menuPrompt}</header>}
+        <div className="nh-menu-items">
+          {rows.map(({ item, index, accelerator }) =>
+            item.identifier === null ? (
+              <div
+                className={`nh-menu-heading ${textAttributeClass(item.attribute)}`}
+                key={`${index}:${item.text}`}
+              >
+                {item.text || "\u00a0"}
+              </div>
+            ) : (
+              <button
+                className={[
+                  "nh-menu-item",
+                  focusIndex === index ? "focused" : "",
+                  selected.has(index) ? "selected" : "",
+                  colorClass(item.color),
+                  textAttributeClass(item.attribute),
+                ].filter(Boolean).join(" ")}
+                key={`${index}:${item.text}`}
+                onClick={() => chooseMenuItem(index)}
+                onMouseEnter={() => setFocusIndex(index)}
+                type="button"
+              >
+                <span className="nh-menu-mark">
+                  {how === PICK_ANY ? (selected.has(index) ? "+" : "-") : " "}
+                </span>
+                <span className="nh-menu-accelerator">
+                  {accelerator ? String.fromCharCode(accelerator) : " "}
+                </span>
+                <span className="nh-menu-text">{item.text}</span>
+              </button>
+            ),
+          )}
+        </div>
+        {count && <output className="nh-count">{count}</output>}
+      </section>
+    </div>
+  );
+}
+
+/**
+ * Render a searchable extended-command chooser.
+ * @param props - parsed extcmdlist entries.
+ * @returns extended-command overlay.
+ */
+function ExtendedCommandOverlay({
+  commands,
+}: {
+  commands: Array<{ sourceIndex: number; name: string; description: string }>;
+}) {
+  const [query, setQuery] = useState("");
+  const [focus, setFocus] = useState(0);
+  const filtered = useMemo(() => {
+    const normalized = query.trim().toLowerCase();
+    return normalized
+      ? commands.filter((command) => command.name.startsWith(normalized))
+      : commands;
+  }, [commands, query]);
+
+  /**
+   * Submit or cancel the extended-command picker.
+   * @param event - input key event.
+   */
+  function handleKeyDown(event: ReactKeyboardEvent<HTMLInputElement>): void {
+    event.stopPropagation();
+    if (event.key === "Escape") {
+      event.preventDefault();
+      submitExtendedCommand(null);
+    } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      const delta = event.key === "ArrowDown" ? 1 : -1;
+      setFocus((current) => wrapIndex(current + delta, filtered.length));
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      const exact = filtered.find((command) => command.name === query.trim().toLowerCase());
+      const command = exact ?? filtered[focus];
+      if (command) submitExtendedCommand(command.sourceIndex);
+    }
+  }
+
+  return (
+    <div className="nh-overlay">
+      <section className="nh-dialog nh-extcmd" role="dialog" aria-label="Extended command">
+        <input
+          autoComplete="off"
+          autoFocus
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setFocus(0);
+          }}
+          onKeyDown={handleKeyDown}
+          spellCheck={false}
+          value={query}
+        />
+        <div className="nh-extcmd-list">
+          {filtered.slice(0, 100).map((command, index) => (
+            <button
+              className={index === focus ? "focused" : ""}
+              key={command.sourceIndex}
+              onClick={() => submitExtendedCommand(command.sourceIndex)}
+              onMouseEnter={() => setFocus(index)}
+              type="button"
+            >
+              <strong>{command.name}</strong>
+              <span>{command.description}</span>
+            </button>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+/**
+ * Assign fallback accelerators when a menu leaves them unspecified.
+ * @param items - menu rows in source order.
+ * @returns rows paired with stable source indexes and accelerators.
+ */
+function assignAccelerators(items: MenuItem[]) {
+  let automaticIndex = 0;
+  return items.map((item, index) => {
+    let accelerator = item.accelerator;
+    if (item.identifier !== null && accelerator === 0) {
+      accelerator = AUTO_ACCELERATORS.charCodeAt(automaticIndex);
+      automaticIndex += 1;
+    }
+    return { item, index, accelerator };
+  });
+}
+
+/**
+ * Move menu focus with wraparound.
+ * @param indexes - selectable source indexes.
+ * @param current - current source index.
+ * @param delta - movement direction.
+ * @returns the next source index.
+ */
+function moveMenuFocus(indexes: number[], current: number, delta: number): number {
+  if (indexes.length === 0) return -1;
+  const position = indexes.indexOf(current);
+  return indexes[wrapIndex(position + delta, indexes.length)];
+}
+
+/**
+ * Wrap an index into an array length.
+ * @param value - unbounded index.
+ * @param length - array length.
+ * @returns a valid index, or zero for an empty array.
+ */
+function wrapIndex(value: number, length: number): number {
+  return length === 0 ? 0 : (value % length + length) % length;
+}
+
+/**
+ * Convert a menu count buffer to NetHack's count convention.
+ * @param value - decimal count text.
+ * @returns a positive count or -1 for all.
+ */
+function parsedCount(value: string): number {
+  if (value === "") return -1;
+  const count = Number.parseInt(value, 10);
+  return Number.isFinite(count) && count > 0 ? count : -1;
+}
+
+/**
+ * Convert a tty character code into one visible map character.
+ * @param value - glyph_info.ttychar.
+ * @returns one display character.
+ */
+function glyphCharacter(value: number): string {
+  if (value < 0x20 || value > 0x10ffff) return " ";
+  return String.fromCodePoint(value);
+}
+
+/**
+ * Convert a NetHack color index into a CSS class.
+ * @param value - CLR_* index.
+ * @returns a stable class name.
+ */
+function colorClass(value: number): string {
+  const name = COLOR_NAMES[value] ?? "gray";
+  return `nh-color-${name}`;
+}
+
+/**
+ * Convert ATR_* flags into CSS classes.
+ * @param attribute - NetHack text attributes.
+ * @returns space-separated CSS classes.
+ */
+function textAttributeClass(attribute: number): string {
+  const classes: string[] = [];
+  const base = attribute & 0x0f;
+  if (base === ATR_BOLD) classes.push("nh-bold");
+  if (base === ATR_DIM) classes.push("nh-dim");
+  if (base === ATR_ITALIC) classes.push("nh-italic");
+  if (base === ATR_ULINE) classes.push("nh-underline");
+  if (base === ATR_INVERSE) classes.push("nh-inverse");
+  return classes.join(" ");
+}
+
+/**
+ * Return the browser window through a named helper for effect cleanup.
+ * @returns the active Window object.
+ */
+function windowThis(): Window {
+  return window;
+}
+
+export default App;
