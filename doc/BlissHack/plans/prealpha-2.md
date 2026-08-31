@@ -9,16 +9,15 @@ prealpha-2 的目标是为现有可游玩的字符版前端增加可靠的浏览
 
 本版本按照以下优先级实施：
 
-1. WASM 生命周期管理和 session ID。
-2. 主界面及应用状态机。
-3. IDBFS 存档读取、保存和继续游戏。
-4. 存档导入、导出及保存并返回主菜单。
-5. 长流程测试和存档导入事务保护。
-6. 致命错误页和 500 条本地诊断日志。
-7. 新游戏、保存、继续和退出的浏览器测试。
+1. 应用状态机、主界面和 WASM session 生命周期。
+2. IDBFS 存档读取、保存和继续游戏。
+3. 存档导入、导出及保存并返回主菜单。
+4. 长流程测试和存档导入事务保护。
+5. 致命错误页和 500 条本地诊断日志。
+6. 新游戏、保存、继续和退出的浏览器测试。
 
-编号表示产品重要性和主要开发顺序。为便于诊断测试失败，第 6 项中的
-最小日志基础设施可以在第 5 项测试开始前落地，但不得借此扩大功能
+编号表示产品重要性和主要开发顺序。为便于诊断测试失败，第 5 项中的
+最小日志基础设施可以在第 4 项测试开始前落地，但不得借此扩大功能
 范围。
 
 ## 2. 范围边界
@@ -55,102 +54,23 @@ prealpha-2 的目标是为现有可游玩的字符版前端增加可靠的浏览
   NetHack 保存、退出或恢复函数。
 - 保存和退出必须通过 NetHack 正常输入及 shim 回调完成。
 - `FS.syncfs()` 只负责同步已经存在的文件，不得称为游戏存档。
-- 所有异步操作必须关联 session ID，过期会话不得更新当前 UI。
+- 所有与游戏会话相关的异步操作必须关联 session ID，过期 session
+  不得更新当前 UI。主界面的存储操作改用 operation 或 transaction ID。
 - 存档写入和同步操作必须串行化，不允许并发执行。
 - 新增函数必须按项目约定说明用途、参数和返回值。
 - 不得记录完整按键、游戏消息、玩家姓名或存档内容到诊断日志。
 
-## 3. 阶段一：WASM 生命周期管理和 session ID
+## 3. 阶段一：应用状态机、主界面和 WASM session 生命周期
 
 ### 3.1 目的
 
-替换当前由模块级 `wasmModule` 和 `startupPromise` 隐式管理一局游戏的
-方式，为主界面、多次开始游戏、继续游戏和错误恢复建立可靠基础。
+建立统一的应用生命周期：页面打开时显示主界面，点击新游戏后创建
+唯一 WASM session，游戏结束并完成清理后返回主界面。替换当前由模块
+级 `wasmModule` 和 `startupPromise` 隐式管理一局游戏的方式。
 
-### 3.2 功能需求
+本阶段只保留一个对外权威状态机。
 
-1. 新增会话管理模块，负责创建、启动、退出和释放 WASM 会话。
-2. 每次创建会话都生成唯一 session ID。ID 在当前标签页生命周期内
-   不得重复，也不得从角色名等用户信息推导。
-3. 会话至少包含以下状态：
-
-   ```text
-   creating
-   loading
-   ready
-   running
-   exiting
-   exited
-   failed
-   ```
-
-4. 同一时间只能有一个活动会话。重复点击开始按钮必须复用当前启动
-   Promise 或被状态机拒绝，不能第二次调用 `main()`。
-5. 每个会话使用唯一的全局 shim callback 名称，不能让新旧实例共享
-   固定的 `blissCallback`。
-6. shim callback 必须闭包绑定所属 module 和 session ID，不能通过
-   可被新会话覆盖的全局 `wasmModule` 解析指针。
-7. 所有 callback 在更新状态前检查 session 是否仍然有效。过期
-   callback 不得修改新会话的地图、输入请求、错误或存档状态。
-8. NetHack 正常调用 `shim_exit_nhwindows` 后，会话进入 `exiting`，
-   完成必要的 IDBFS 同步后进入 `exited`。
-9. 已退出或失败的 WASM 实例不得再次调用 `main()`，不得用于继续
-   游戏；下一局必须由 Emscripten factory 创建新实例。
-10. 会话清理至少包括：
-    - 清除 pending input 和按键队列。
-    - 移除该会话注册的全局 callback。
-    - 解除当前活动会话引用。
-    - 重置只属于该局的窗口、地图和状态数据。
-11. 开发环境 HMR 或 React 重复挂载不得启动第二个活动会话。
-12. 本阶段不要求把 WASM 移入 Web Worker，也不提供强制杀死正常运行
-    中核心的能力。
-
-### 3.3 预期代码范围
-
-- 新增 `frontend/src/session-manager.ts`。
-- 新增 `frontend/src/session-manager.test.ts`。
-- 重构 `frontend/src/nethack-bridge.ts`，使 bridge 依赖显式 session。
-- 调整 `frontend/src/game-state.ts`，将单局状态和应用状态分离。
-- 保留当前 shim ABI 和 Emscripten loader，不修改 C 源码。
-
-### 3.4 单元测试要求
-
-- 连续调用两次 `startSession()` 只创建一个 module、只调用一次
-  `main()`。
-- 第一局退出后开始第二局，会创建不同 module 和不同 session ID。
-- 旧 session callback 到达时不会更新第二局状态。
-- 旧 session 指针只能由旧 module 解码。
-- 正常退出会按顺序经过 `running -> exiting -> exited`。
-- 初始化失败会进入 `failed`，并清除活动会话引用。
-- pending menu、`yn`、line input 和按键队列在会话结束后全部清空。
-- callback 全局名称不会碰撞，并在会话结束后删除。
-- 对已经退出的 session 再次发送输入不会调用任何 resolver。
-- 重复清理同一 session 是幂等操作。
-
-### 3.5 自动验收标准
-
-- `npm test` 全部通过。
-- WASM 集成测试确认一次会话只收到一次初始化序列。
-- 测试中主动触发过期 callback，不产生跨会话状态污染。
-- TypeScript、Oxlint 和生产构建通过。
-- 原有名字输入、角色选择、地图、菜单和键盘测试无回归。
-
-### 3.6 手动观察标准
-
-- 快速连续点击“新游戏”不会出现两个名字输入框或两个游戏实例。
-- 一局正常退出后可以开始第二局，地图和消息不残留。
-- 开发服务器热更新后不会在终端出现 Asyncify 重入警告。
-- 浏览器控制台没有重复初始化、未处理 Promise 或 stale callback
-  错误。
-
-## 4. 阶段二：主界面和应用状态机
-
-### 4.1 目的
-
-应用打开时先显示主界面，而不是立即执行 NetHack `main()`；游戏结束
-并完成同步后返回主界面。
-
-### 4.2 状态机
+### 3.2 单一应用状态机
 
 使用 TypeScript 判别联合类型和 reducer，不引入 React Router 或
 XState。应用状态至少包括：
@@ -159,29 +79,85 @@ XState。应用状态至少包括：
 type AppState =
   | { phase: "booting" }
   | { phase: "home"; storageAvailable: boolean }
-  | { phase: "starting"; sessionId: string }
-  | { phase: "playing"; sessionId: string }
-  | { phase: "saving"; sessionId: string }
-  | { phase: "returning-home"; sessionId: string }
+  | {
+      phase: "session";
+      sessionId: string;
+      status:
+        | "creating"
+        | "loading"
+        | "ready"
+        | "running"
+        | "saving"
+        | "exiting";
+    }
   | { phase: "fatal"; sessionId: string | null; errorId: string };
 ```
 
-后续阶段可以增加 `save-picker` 和 `importing` 等状态，但所有状态转换
-必须继续由 reducer 处理。
+`phase` 决定当前顶层界面，`status` 描述当前 session 的资源生命周期。
+`home` 状态不存在活动 session。`exited` 不作为长期 UI 状态：资源清理
+完成后 reducer 直接回到 `home`。`failed` 对应顶层 `fatal`。
 
-### 4.3 状态转换要求
+后续阶段可以增加 `save-picker` 和 `importing` 等顶层状态，但所有状态
+转换必须继续由同一个 reducer 处理。
 
-- 页面加载完成：`booting -> home`。
-- 点击新游戏：`home -> starting`。
-- `shim_init_nhwindows` 完成：`starting -> playing`。
-- 正常游戏退出：`playing -> returning-home -> home`。
-- 保存并退出：`playing -> saving -> returning-home -> home`。
-- 当前 session 的致命错误：任意会话状态进入 `fatal`。
-- stale session 事件不能触发状态转换。
-- `playing` 状态不能直接切回 `home`；必须先让 NetHack 正常退出或
-  将该会话判定为致命失败。
+### 3.3 Session manager 职责
 
-### 4.4 主界面需求
+1. 新增 session manager，负责创建、启动、退出和释放 WASM 实例。
+2. 每次创建 session 都生成唯一 session ID。ID 在当前标签页生命周期
+   内不得重复，也不得从角色名等用户信息推导。
+3. session manager 通过事件向 reducer 报告：
+
+   ```text
+   SESSION_CREATED
+   MODULE_LOADING
+   MODULE_READY
+   SESSION_RUNNING
+   SESSION_SAVING
+   SESSION_EXITING
+   SESSION_EXITED
+   SESSION_FAILED
+   ```
+
+4. reducer 是应用状态的唯一事实来源。session manager 不得自行切换
+   React screen，也不得暴露另一份可独立修改的 public lifecycle state。
+5. 同一时间只能有一个活动 session。重复点击开始按钮必须复用当前
+   启动 Promise 或被 reducer 拒绝，不能第二次调用 `main()`。
+6. 每个 session 使用唯一的全局 shim callback 名称，不能让新旧实例
+   共享固定的 `blissCallback`。
+7. shim callback 必须闭包绑定所属 module 和 session ID，不能通过
+   可被新 session 覆盖的全局 `wasmModule` 解析指针。
+8. 所有 callback 在 dispatch 前检查 session 是否仍然有效。过期
+   callback 不得修改新 session 的地图、输入请求、错误或存档状态。
+9. 已退出或失败的 WASM 实例不得再次调用 `main()`，不得用于继续
+   游戏；下一局必须由 Emscripten factory 创建新实例。
+10. session 清理至少包括：
+    - 清除 pending input 和按键队列。
+    - 移除该 session 注册的全局 callback。
+    - 解除当前活动 session 引用。
+    - 重置只属于该局的窗口、地图和状态数据。
+11. 开发环境 HMR 或 React 重复挂载不得启动第二个活动 session。
+12. 本阶段不要求把 WASM 移入 Web Worker，也不提供强制杀死正常运行
+    中核心的能力。
+
+### 3.4 状态转换要求
+
+- 页面初始化完成：`booting -> home`。
+- 点击新游戏：
+  `home -> session/creating -> session/loading -> session/ready`。
+- 调用 `main()` 并收到 `shim_init_nhwindows`：
+  `session/ready -> session/running`。
+- 后续保存流程：
+  `session/running -> session/saving -> session/exiting`。
+- 普通游戏结束：
+  `session/running -> session/exiting`。
+- 核心退出、同步和清理全部完成：`session/exiting -> home`。
+- 当前 session 的致命错误：任意 session status 进入 `fatal`。
+- stale session 事件不能触发 reducer 状态转换。
+- `session/running` 不能通过普通 `RETURN_HOME` 事件绕过核心退出。
+- 不允许出现 UI 显示游戏中、session manager 却认为 session 已失败
+  等两套状态不一致的组合。
+
+### 3.5 主界面需求
 
 1. 第一视口明确显示产品名 `BlissHack`。
 2. 显示当前基于 NetHack 5.0，以及 BlissHack 为非官方修改版本。
@@ -201,52 +177,75 @@ type AppState =
 9. 主界面不创建 WASM 游戏实例；允许预取静态 loader，但不得调用
    `main()`。
 
-### 4.5 游戏结束要求
+### 3.6 游戏结束要求
 
 - 死亡、逃离地牢、飞升、主动退出等流程仍由 NetHack 原有界面展示。
 - 用户完成原版结束信息后，以 `shim_exit_nhwindows` 作为核心退出信号。
-- 退出时先清理会话并同步存档，再回主界面。
+- 收到退出信号后 reducer 进入 `session/exiting`。
+- 退出时先完成必要同步，再清理 session，最后回主界面。
+- 一局结束后可以创建全新的 session，旧地图和消息不得残留。
 - 本版本不增加结算 Scene，不解析六类 disclosure 数据。
 
-### 4.6 预期代码范围
+### 3.7 预期代码范围
 
 - 新增 `frontend/src/app-state.ts`。
 - 新增 `frontend/src/app-state.test.ts`。
+- 新增 `frontend/src/session-manager.ts`。
+- 新增 `frontend/src/session-manager.test.ts`。
+- 重构 `frontend/src/nethack-bridge.ts`，使 bridge 依赖显式 session。
+- 调整 `frontend/src/game-state.ts`，使其只负责单局游戏数据。
 - 重构 `frontend/src/App.tsx` 为顶层 screen dispatcher。
 - 将当前终端 UI 提取为独立游戏 screen。
 - 更新 `frontend/src/App.css`。
+- 保留当前 shim ABI 和 Emscripten loader，不修改 C 源码。
 
-### 4.7 单元测试要求
+### 3.8 单元测试要求
 
-- reducer 覆盖每个合法状态转换。
-- reducer 拒绝 stale session 的 `STARTED`、`EXITED` 和 `FAILED`。
-- `playing` 不能通过普通 `RETURN_HOME` 事件绕过核心退出。
-- reducer 对未知 action 维持当前状态或触发穷尽检查。
+- reducer 覆盖每个合法顶层状态和 session status 转换。
+- reducer 拒绝 stale session 的 `RUNNING`、`EXITED` 和 `FAILED`。
+- `session/running` 不能通过普通 `RETURN_HOME` 绕过核心退出。
+- reducer 对未知 action 触发 TypeScript 穷尽检查。
 - 主界面渲染时不会调用 session factory。
-- 连续派发 `NEW_GAME` 只产生一个 starting session。
+- 连续派发 `NEW_GAME` 只创建一个 module、只调用一次 `main()`。
+- 第一局退出后开始第二局，会创建不同 module 和不同 session ID。
+- 旧 session callback 到达时不会更新第二局状态。
+- 旧 session 指针只能由旧 module 解码。
+- pending menu、`yn`、line input 和按键队列在 session 结束后全部清空。
+- callback 全局名称不会碰撞，并在 session 结束后删除。
+- 对已经退出的 session 再次发送输入不会调用任何 resolver。
+- 重复清理同一 session 是幂等操作。
 - `Continue` 和 `Settings` 具有 disabled 属性。
 - 正常退出和保存退出最终都回到 `home`。
 
-### 4.8 自动验收标准
+### 3.9 自动验收标准
 
-- React 单元测试覆盖状态机全部分支。
+- `npm test` 全部通过。
+- React 单元测试覆盖 reducer 全部分支。
+- WASM 集成测试确认一次 session 只收到一次初始化序列。
+- 测试中主动触发过期 callback，不产生跨 session 状态污染。
 - Playwright 首屏断言主界面可见，NetHack 名字输入不可见。
 - 点击 `New Game` 后才加载并启动游戏。
+- TypeScript、Oxlint 和生产构建通过。
+- 原有名字输入、角色选择、地图、菜单和键盘测试无回归。
 - 页面在桌面和移动 viewport 下无横向溢出。
-- axe 等自动可访问性检查不是本阶段强制依赖，但按钮、标题和状态区域
-  必须能通过语义查询定位。
+- 按钮、标题和状态区域必须能通过语义查询定位。
 
-### 4.9 手动观察标准
+### 3.10 手动观察标准
 
 - 首次打开页面只看到主界面，不会闪现终端或名字输入。
 - `Continue` 和 `Settings` 清楚地呈 disabled 状态且无法点击。
-- 点击 `New Game` 后有明确加载状态，不会重复跳转。
-- 一局结束后回到干净主界面，再次新游戏正常。
+- 点击 `New Game` 后有明确加载状态。
+- 快速连续点击“新游戏”不会出现两个名字输入框或两个游戏实例。
+- 一局正常退出后回到干净主界面，再次新游戏正常。
+- 第二局不残留第一局地图、消息、modal 或按键队列。
+- 开发服务器热更新后不会在终端出现 Asyncify 重入警告。
+- 浏览器控制台没有重复初始化、未处理 Promise 或 stale callback
+  错误。
 - 手机宽度和桌面宽度下排版稳定，无文字遮挡。
 
-## 5. 阶段三：IDBFS 存档读取、保存和继续游戏
+## 4. 阶段二：IDBFS 存档读取、保存和继续游戏
 
-### 5.1 强制设计评审门禁
+### 4.1 强制设计评审门禁
 
 进入本阶段时，先停止功能开发，与用户详细讨论并确认存档文件形式。
 在讨论完成、文档获得用户确认前，不实现导入、导出、存档列表元数据
@@ -266,7 +265,7 @@ type AppState =
 9. 是否需要 sidecar index，以及 index 与真实文件不一致时谁是事实来源。
 10. 单个文件和整个导入包的合理大小上限。
 
-### 5.2 存储服务需求
+### 4.2 存储服务需求
 
 1. 将 IDBFS 操作从 bridge 中提取为独立 storage service。
 2. storage service 至少提供：
@@ -298,17 +297,17 @@ type AppState =
 10. 核心退出后必须等待 `flush()` 完成，再把 UI 标记为已经安全返回
     主界面。
 
-### 5.3 Continue UI
+### 4.3 Continue UI
 
 - 没有存档时，`Continue` 保持 disabled。
 - 有至少一个可继续存档时，`Continue` 启用。
 - 点击后进入简单存档列表，支持选择和返回主界面。
 - 本版本只显示格式评审确认能够可靠读取的字段。
 - 无法读取元数据的文件显示为不可继续，并提供错误状态；不得猜测。
-- 删除按钮可以在本阶段或阶段四加入，但必须二次确认。
+- 删除按钮可以在本阶段或阶段三加入，但必须二次确认。
 - `Settings` 始终 disabled。
 
-### 5.4 单元测试要求
+### 4.4 单元测试要求
 
 - 首次 initialize 挂载 `/save` 并调用 `syncfs(true)`。
 - 重复 initialize 不重复挂载。
@@ -320,7 +319,7 @@ type AppState =
 - 恢复失败时原文件仍然存在，不创建同名新游戏。
 - session 退出前不会提前报告保存成功。
 
-### 5.5 自动验收标准
+### 4.5 自动验收标准
 
 - storage service 单元测试使用内存 FS fake，不依赖真实浏览器。
 - 真实浏览器测试验证保存后刷新页面仍能枚举存档。
@@ -328,7 +327,7 @@ type AppState =
 - 模拟 `syncfs` 失败时不会显示“保存成功”。
 - 原有 IDBFS 集成测试迁移后继续通过。
 
-### 5.6 手动观察标准
+### 4.6 手动观察标准
 
 - 无存档首次启动时 Continue 不可用。
 - 保存一局并刷新页面后 Continue 可用。
@@ -336,9 +335,9 @@ type AppState =
 - 选择存档后恢复原角色、地图和消息历史。
 - 禁用浏览器 IndexedDB 后仍可临时新游戏，并看到明确警告。
 
-## 6. 阶段四：导入、导出及保存并返回主菜单
+## 5. 阶段三：导入、导出及保存并返回主菜单
 
-### 6.1 保存并返回主菜单
+### 5.1 保存并返回主菜单
 
 1. 游戏 screen 提供 `Save and Return` 命令。
 2. 该命令只在核心处于可接收顶层游戏命令的状态时启用；菜单、`yn`、
@@ -352,17 +351,17 @@ type AppState =
    成功，也不得立即开始新 session。
 8. `pagehide` 可以尽力 flush 已有文件，但不能作为该功能的成功路径。
 
-### 6.2 导出需求
+### 5.2 导出需求
 
 - 只能从主界面或存档列表导出，不在活动游戏中读取可能变化的文件。
 - 导出前等待所有 storage operations 完成。
-- 导出格式、扩展名和 MIME type 由阶段三的格式评审确定。
+- 导出格式、扩展名和 MIME type 由阶段二的格式评审确定。
 - 导出文件名必须可读、可跨平台保存，不包含路径分隔符。
 - 导出内容包含格式评审确定的版本和完整性信息。
 - 导出不修改、删除或锁定原存档。
 - 下载失败时原存档保持不变，并显示可理解的错误。
 
-### 6.3 导入需求
+### 5.3 导入需求
 
 - 只能在没有活动 session 时导入。
 - 使用浏览器文件选择器读取，不接受远程 URL。
@@ -374,7 +373,7 @@ type AppState =
 - 导入完成后重新从 IDBFS 枚举列表，不能只修改 React 内存。
 - 临时文件和备份文件在成功后清理；失败恢复所需备份不得提前删除。
 
-### 6.4 删除需求
+### 5.4 删除需求
 
 - 删除存档必须显示角色或文件标识并二次确认。
 - 删除完成并成功 flush 后才从列表移除。
@@ -382,7 +381,7 @@ type AppState =
 - 删除功能不提供撤销时，应先建议导出；是否保留短期备份由格式评审
   决定。
 
-### 6.5 单元测试要求
+### 5.5 单元测试要求
 
 - `Save and Return` 在错误输入阶段保持 disabled。
 - 连续点击保存只发送一次保存命令。
@@ -396,7 +395,7 @@ type AppState =
 - 导入成功后不存在遗留临时文件。
 - 删除失败后 UI 与重新扫描结果一致。
 
-### 6.6 自动验收标准
+### 5.6 自动验收标准
 
 - 所有存档操作单元测试通过。
 - Playwright 能捕获导出下载并验证导出包。
@@ -404,7 +403,7 @@ type AppState =
 - 测试覆盖导入冲突的取消和替换路径。
 - 测试覆盖同步失败，不产生虚假的成功状态。
 
-### 6.7 手动观察标准
+### 5.7 手动观察标准
 
 - 保存并返回过程具有明确的 saving 状态，按钮不能重复点击。
 - 保存完成后主界面 Continue 立即可用。
@@ -412,14 +411,14 @@ type AppState =
 - 删除本地存档后导入导出文件，可以恢复同一角色。
 - 导入错误文件不会让已有存档消失或变得不可继续。
 
-## 7. 阶段五：长流程测试和事务保护
+## 6. 阶段四：长流程测试和事务保护
 
-### 7.1 目的
+### 6.1 目的
 
 验证多次创建 WASM、IDBFS 同步、导入替换和页面刷新组合后仍然可靠。
 长期测试不通过增加自动恢复逻辑掩盖错误，而是提供可复现证据。
 
-### 7.2 测试分层
+### 6.2 测试分层
 
 1. 普通 CI 测试：
    - 每次提交运行。
@@ -433,7 +432,7 @@ type AppState =
    - 主要在 Vitest 中使用可控 FS 和 syncfs fake。
    - 不依赖浏览器随机制造磁盘故障。
 
-### 7.3 必测长流程
+### 6.3 必测长流程
 
 - 连续执行至少 10 次“创建 session -> 开始游戏 -> 正常退出”，活动
   session 数量始终不超过一个。
@@ -444,7 +443,7 @@ type AppState =
 - 存档列表反复打开和重新扫描，不出现重复项目。
 - 操作结束后不存在 `.tmp` 等事务临时文件。
 
-### 7.4 事务故障注入点
+### 6.4 事务故障注入点
 
 以下每一步都必须能独立模拟失败：
 
@@ -468,7 +467,7 @@ syncfs(false)
 - 错误包含 operation 和 transaction ID，但不包含存档内容。
 - 下一次启动能够检测并处理上次遗留的临时或备份文件。
 
-### 7.5 单元测试要求
+### 6.5 单元测试要求
 
 - 事务协调器的每个状态转换都有独立测试。
 - 每个故障注入点都验证正式文件、临时文件和备份文件的最终状态。
@@ -477,7 +476,7 @@ syncfs(false)
 - 测试辅助代码能够验证没有未结束 storage operation。
 - 测试辅助代码本身不依赖 wall-clock sleep 或随机地图。
 
-### 7.6 自动验收标准
+### 6.6 自动验收标准
 
 - 长流程测试按规定循环次数通过。
 - 每个事务故障注入点都有独立单元测试。
@@ -487,7 +486,7 @@ syncfs(false)
 - 测试失败能够输出当前 app phase、session ID、storage operation 和
   最近诊断事件。
 
-### 7.7 手动观察标准
+### 6.7 手动观察标准
 
 - 实际游玩至少 30 分钟后保存并恢复，操作和消息历史正常。
 - 手动完成至少 10 次新游戏或继续游戏切换，无明显性能下降。
@@ -495,9 +494,9 @@ syncfs(false)
 - 导入期间刷新页面后重新打开应用，不丢失原存档。
 - DevTools 中没有持续增长的全局 callback 或多个活动 session。
 
-## 8. 阶段六：致命错误页和本地诊断日志
+## 7. 阶段五：致命错误页和本地诊断日志
 
-### 8.1 日志模型
+### 7.1 日志模型
 
 新增容量固定为 500 条的环形缓冲区。第 501 条写入时覆盖最旧一条。
 日志默认存储在浏览器本地，并跨页面刷新保留，以便分析刷新前错误。
@@ -516,7 +515,7 @@ interface DiagnosticEvent {
 }
 ```
 
-### 8.2 记录范围
+### 7.2 记录范围
 
 必须记录：
 
@@ -538,7 +537,7 @@ interface DiagnosticEvent {
 
 高频事件应记录计数或摘要，例如一次 flush 更新了多少地图格。
 
-### 8.3 本地持久化和导出
+### 7.3 本地持久化和导出
 
 - 日志写入失败不能导致游戏失败。
 - localStorage 不可用或 quota 超限时退化为内存环形缓冲区。
@@ -547,7 +546,7 @@ interface DiagnosticEvent {
 - 导出前执行字段 allowlist 和长度限制，避免意外写入大型对象。
 - 日志只保存在本地，不增加网络上传接口。
 
-### 8.4 致命错误分类
+### 7.4 致命错误分类
 
 以下情况进入 fatal page：
 
@@ -564,7 +563,7 @@ interface DiagnosticEvent {
 - 单次导出下载被浏览器取消。
 - 主界面重新扫描存档失败，但没有写操作正在进行。
 
-### 8.5 致命错误页需求
+### 7.5 致命错误页需求
 
 - 显示简短、人类可读的错误摘要和 error ID。
 - 提供 `Export Diagnostic Log`。
@@ -574,7 +573,7 @@ interface DiagnosticEvent {
 - 不直接向普通玩家展示完整 JS stack；stack 只进入导出日志。
 - fatal page 本身发生异常时仍应能显示最低限度纯文本错误。
 
-### 8.6 单元测试要求
+### 7.6 单元测试要求
 
 - 写入 501 条后仅保留 500 条，最旧事件被覆盖。
 - sequence 在覆盖和页面恢复后仍保持稳定顺序。
@@ -586,7 +585,7 @@ interface DiagnosticEvent {
 - warning 不会错误地进入 fatal page。
 - fatal page 的返回、重载和日志导出按钮按状态启用。
 
-### 8.7 自动验收标准
+### 7.7 自动验收标准
 
 - diagnostics 单元测试全部通过。
 - 浏览器测试注入 unhandled rejection 后能看到 fatal page。
@@ -594,7 +593,7 @@ interface DiagnosticEvent {
 - 发生 fatal 后不能向旧 WASM 发送新输入。
 - 控制台错误与诊断 error ID 能在 Playwright artifact 中关联。
 
-### 8.8 手动观察标准
+### 7.8 手动观察标准
 
 - 断开或重命名 WASM 资源后显示致命错误页，而不是空白终端。
 - 可以下载并阅读格式化诊断 JSON。
@@ -602,9 +601,9 @@ interface DiagnosticEvent {
 - 正常游戏不会因为日志写入产生可感知卡顿。
 - 日志中不出现玩家名称、游戏对话和完整键盘输入。
 
-## 9. 阶段七：浏览器端到端测试
+## 8. 阶段六：浏览器端到端测试
 
-### 9.1 测试环境
+### 8.1 测试环境
 
 - 继续使用生产构建和 Vite preview，而不是依赖开发 HMR。
 - 使用 Chromium 作为强制目标；其他浏览器可后续增加。
@@ -612,7 +611,7 @@ interface DiagnosticEvent {
 - 捕获 console error、pageerror、下载、trace 和必要截图。
 - 不依赖网络服务、外部 API 或远端存档。
 
-### 9.2 新游戏测试
+### 8.2 新游戏测试
 
 步骤：
 
@@ -629,7 +628,7 @@ interface DiagnosticEvent {
 - 只创建一个 session。
 - 没有 console error 或 pageerror。
 
-### 9.3 保存测试
+### 8.3 保存测试
 
 步骤：
 
@@ -646,7 +645,7 @@ interface DiagnosticEvent {
 - flush 完成前不显示成功。
 - 保存文件在新页面 context 中可被 populate。
 
-### 9.4 继续游戏测试
+### 8.4 继续游戏测试
 
 步骤：
 
@@ -662,7 +661,7 @@ interface DiagnosticEvent {
 - 使用新的 session ID 和新的 WASM module。
 - 恢复成功后存档遵循 NetHack 正常消费和后续保存语义。
 
-### 9.5 正常退出测试
+### 8.5 正常退出测试
 
 步骤：
 
@@ -679,7 +678,7 @@ interface DiagnosticEvent {
 - 第二局使用不同 session ID。
 - 第一局的 callback 不能影响第二局。
 
-### 9.6 导出和导入测试
+### 8.6 导出和导入测试
 
 步骤：
 
@@ -696,7 +695,7 @@ interface DiagnosticEvent {
 - 导入后必须经过 IDBFS 重新扫描。
 - 事务过程中没有临时文件遗留。
 
-### 9.7 失败路径测试
+### 8.7 失败路径测试
 
 - WASM loader 404 时显示 fatal page。
 - IDBFS populate 失败时主界面显示存储不可用状态。
@@ -705,7 +704,7 @@ interface DiagnosticEvent {
 - stale callback 被忽略并写入诊断事件。
 - unhandled rejection 能导出诊断日志。
 
-### 9.8 相关单元测试要求
+### 8.8 相关单元测试要求
 
 - app reducer 的新游戏、保存、继续、退出和 fatal 转换已由单元测试
   覆盖，浏览器测试不重复模拟 reducer 内部实现。
@@ -715,7 +714,7 @@ interface DiagnosticEvent {
 - session 测试夹具能够读取 session ID，但不能绕过真实 UI 启动流程。
 - 测试数据生成器产生合法导入包、截断包和 checksum 错误包。
 
-### 9.9 自动验收标准
+### 8.9 自动验收标准
 
 以下命令全部通过：
 
@@ -736,7 +735,7 @@ npm run test:long
 - 不得依赖测试执行顺序。
 - 单个失败必须生成足以定位 session 和 storage 状态的 artifact。
 
-### 9.10 手动最终验收
+### 8.10 手动最终验收
 
 1. 在全新浏览器配置中打开线上构建，确认主界面初始状态。
 2. 新建一局，保存并返回，刷新后继续。
@@ -746,7 +745,7 @@ npm run test:long
 6. 在桌面和移动 viewport 检查主界面、游戏和错误页。
 7. 确认日志没有玩家输入或游戏内容。
 
-## 10. 阶段交付和评审点
+## 9. 阶段交付和评审点
 
 每一阶段按以下顺序交付：
 
@@ -759,16 +758,16 @@ npm run test:long
 
 强制暂停点：
 
-- 阶段二完成后，审核主界面和状态机行为。
-- 阶段三开始前，详细讨论并确认存档文件及导出容器形式。
-- 阶段四完成后，人工执行一次导出、删除、导入和继续。
-- 阶段七完成后，执行全部自动命令和手动最终验收。
+- 阶段一完成后，审核主界面、状态机和 session 生命周期行为。
+- 阶段二开始时，详细讨论并确认存档文件及导出容器形式。
+- 阶段三完成后，人工执行一次导出、删除、导入和继续。
+- 阶段六完成后，执行全部自动命令和手动最终验收。
 
-## 11. prealpha-2 完成定义
+## 10. prealpha-2 完成定义
 
 只有同时满足以下条件，prealpha-2 才算完成：
 
-- 所有七个阶段的功能需求和自动验收标准通过。
+- 所有六个阶段的功能需求和自动验收标准通过。
 - 主界面、新游戏、继续、保存、退出、导入和导出形成闭环。
 - 任意时刻至多一个活动 WASM session。
 - 正常退出后能够创建全新 WASM session。
