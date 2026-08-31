@@ -60,6 +60,44 @@ prealpha-2 的目标是为现有可游玩的字符版前端增加可靠的浏览
 - 新增函数必须按项目约定说明用途、参数和返回值。
 - 不得记录完整按键、游戏消息、玩家姓名或存档内容到诊断日志。
 
+### 2.4 前端目录组织
+
+新增代码不全部放在 `frontend/src` 根目录。根目录只保留应用入口、
+全局样式和目前已有的稳定模块；prealpha-2 新增代码按职责分目录：
+
+```text
+frontend/src/
+├── app/
+│   ├── app-state.ts
+│   └── app-state.test.ts
+├── session/
+│   ├── session-manager.ts
+│   └── session-manager.test.ts
+├── storage/
+│   ├── storage-service.ts
+│   ├── storage-service.test.ts
+│   ├── storage-transaction.ts
+│   └── storage-transaction.test.ts
+├── diagnostics/
+│   ├── diagnostic-log.ts
+│   └── diagnostic-log.test.ts
+├── screens/
+│   ├── HomeScreen.tsx
+│   ├── GameScreen.tsx
+│   ├── SavePickerScreen.tsx
+│   └── FatalScreen.tsx
+├── App.tsx
+├── main.tsx
+├── nethack-bridge.ts
+└── game-state.ts
+```
+
+测试与对应实现放在同一目录。`App.tsx` 只负责组合顶层 screen 和连接
+应用 reducer，不承载 WASM、存储或诊断实现。现有
+`nethack-bridge.ts`、`game-state.ts`、`keyboard.ts` 和渲染辅助模块
+暂不因目录整理而移动；只有出现清晰的模块边界收益时再单独重构，避免
+本版本产生大量无行为变化的路径修改。
+
 ## 3. 阶段一：应用状态机、主界面和 WASM session 生命周期
 
 ### 3.1 目的
@@ -94,8 +132,8 @@ type AppState =
 ```
 
 `phase` 决定当前顶层界面，`status` 描述当前 session 的资源生命周期。
-`home` 状态不存在活动 session。`exited` 不作为长期 UI 状态：资源清理
-完成后 reducer 直接回到 `home`。`failed` 对应顶层 `fatal`。
+`home` 状态不存在活动 session。资源清理完成事件使 reducer 直接回到
+`home`；不可恢复的 session 错误事件使 reducer 进入顶层 `fatal`。
 
 后续阶段可以增加 `save-picker` 和 `importing` 等顶层状态，但所有状态
 转换必须继续由同一个 reducer 处理。
@@ -114,8 +152,8 @@ type AppState =
    SESSION_RUNNING
    SESSION_SAVING
    SESSION_EXITING
-   SESSION_EXITED
-   SESSION_FAILED
+   SESSION_CLEANUP_COMPLETED
+   SESSION_FATAL_ERROR
    ```
 
 4. reducer 是应用状态的唯一事实来源。session manager 不得自行切换
@@ -128,8 +166,8 @@ type AppState =
    可被新 session 覆盖的全局 `wasmModule` 解析指针。
 8. 所有 callback 在 dispatch 前检查 session 是否仍然有效。过期
    callback 不得修改新 session 的地图、输入请求、错误或存档状态。
-9. 已退出或失败的 WASM 实例不得再次调用 `main()`，不得用于继续
-   游戏；下一局必须由 Emscripten factory 创建新实例。
+9. 已完成清理或发生致命错误的 WASM 实例不得再次调用 `main()`，
+   不得用于继续游戏；下一局必须由 Emscripten factory 创建新实例。
 10. session 清理至少包括：
     - 清除 pending input 和按键队列。
     - 移除该 session 注册的全局 callback。
@@ -188,21 +226,23 @@ type AppState =
 
 ### 3.7 预期代码范围
 
-- 新增 `frontend/src/app-state.ts`。
-- 新增 `frontend/src/app-state.test.ts`。
-- 新增 `frontend/src/session-manager.ts`。
-- 新增 `frontend/src/session-manager.test.ts`。
+- 新增 `frontend/src/app/app-state.ts`。
+- 新增 `frontend/src/app/app-state.test.ts`。
+- 新增 `frontend/src/session/session-manager.ts`。
+- 新增 `frontend/src/session/session-manager.test.ts`。
+- 新增 `frontend/src/screens/HomeScreen.tsx`。
+- 新增 `frontend/src/screens/GameScreen.tsx`。
 - 重构 `frontend/src/nethack-bridge.ts`，使 bridge 依赖显式 session。
 - 调整 `frontend/src/game-state.ts`，使其只负责单局游戏数据。
 - 重构 `frontend/src/App.tsx` 为顶层 screen dispatcher。
-- 将当前终端 UI 提取为独立游戏 screen。
 - 更新 `frontend/src/App.css`。
 - 保留当前 shim ABI 和 Emscripten loader，不修改 C 源码。
 
 ### 3.8 单元测试要求
 
 - reducer 覆盖每个合法顶层状态和 session status 转换。
-- reducer 拒绝 stale session 的 `RUNNING`、`EXITED` 和 `FAILED`。
+- reducer 拒绝 stale session 的 `SESSION_RUNNING`、
+  `SESSION_CLEANUP_COMPLETED` 和 `SESSION_FATAL_ERROR`。
 - `session/running` 不能通过普通 `RETURN_HOME` 绕过核心退出。
 - reducer 对未知 action 触发 TypeScript 穷尽检查。
 - 主界面渲染时不会调用 session factory。
@@ -268,7 +308,9 @@ type AppState =
 ### 4.2 存储服务需求
 
 1. 将 IDBFS 操作从 bridge 中提取为独立 storage service。
-2. storage service 至少提供：
+2. 存储实现放在 `frontend/src/storage/`，存档列表界面放在
+   `frontend/src/screens/SavePickerScreen.tsx`。
+3. storage service 至少提供：
 
    ```text
    initialize()
@@ -281,20 +323,20 @@ type AppState =
 
    最终签名由存档格式评审决定。
 
-3. `/save` 只挂载一次，并在读取列表前执行 `syncfs(true)`。
-4. 所有 `syncfs`、write、rename 和 delete 操作通过同一异步队列串行化。
-5. IndexedDB 不可用时：
+4. `/save` 只挂载一次，并在读取列表前执行 `syncfs(true)`。
+5. 所有 `syncfs`、write、rename 和 delete 操作通过同一异步队列串行化。
+6. IndexedDB 不可用时：
    - 新游戏仍可运行。
    - 主界面明确显示存档不可持久化。
    - `Continue`、导入和导出按实际能力禁用。
-6. 列表只展示被确认是存档的文件，不展示临时文件、备份文件或其他
+7. 列表只展示被确认是存档的文件，不展示临时文件、备份文件或其他
    IDBFS 内容。
-7. 恢复必须使用 NetHack 原有的角色名查找机制，不能从 JS 直接恢复
+8. 恢复必须使用 NetHack 原有的角色名查找机制，不能从 JS 直接恢复
    C 内部结构。
-8. 选择存档后创建新 session，设置对应启动身份，再调用 NetHack
+9. 选择存档后创建新 session，设置对应启动身份，再调用 NetHack
    `main()`，由核心自行执行 `restore_saved_game()`。
-9. 恢复失败不能静默开始一个同名新游戏并覆盖原存档。
-10. 核心退出后必须等待 `flush()` 完成，再把 UI 标记为已经安全返回
+10. 恢复失败不能静默开始一个同名新游戏并覆盖原存档。
+11. 核心退出后必须等待 `flush()` 完成，再把 UI 标记为已经安全返回
     主界面。
 
 ### 4.3 Continue UI
@@ -364,6 +406,8 @@ type AppState =
 ### 5.3 导入需求
 
 - 只能在没有活动 session 时导入。
+- 导入事务实现放在 `frontend/src/storage/storage-transaction.ts`，
+  不写入 React screen 或 bridge。
 - 使用浏览器文件选择器读取，不接受远程 URL。
 - 在写入正式存档前完成格式、版本、大小、文件名和 checksum 校验。
 - 不兼容文件不得写入正式路径。
@@ -500,6 +544,8 @@ syncfs(false)
 
 新增容量固定为 500 条的环形缓冲区。第 501 条写入时覆盖最旧一条。
 日志默认存储在浏览器本地，并跨页面刷新保留，以便分析刷新前错误。
+实现放在 `frontend/src/diagnostics/diagnostic-log.ts`，致命错误界面放在
+`frontend/src/screens/FatalScreen.tsx`。
 
 每条记录至少包括：
 
