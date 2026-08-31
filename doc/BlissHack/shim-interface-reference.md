@@ -8,8 +8,10 @@
 >    所以 TypeScript 收到的是已解引用的 32 位值，不是指针。
 > 2. `shim_message_menu` 的 `char let` 被格式串错误标成 `i`；TypeScript 必须只取
 >    收到数值的低 8 位。
-> 3. `shim_getmsghistory` 的 `"s"` 返回写回实现不能安全返回非空 `char *`；
->    在不修改原版 C 代码的前提下只能返回空字符串，使返回指针保持 `NULL`。
+> 3. `"s"` 返回写回实现不能安全返回非空 `char *`，会影响
+>    `shim_getmsghistory` 以及启用 `CHANGE_COLOR` 时的
+>    `shim_get_color_string`。在不修改原版 C 代码的前提下只能返回空字符串，
+>    使返回指针保持 `NULL`。
 > 4. `BL_CONDITION` 的 value 参数是指向 `unsigned long` 的指针，必须解引用。
 > 5. 当前构建启用 `ENHANCED_SYMBOLS`，`glyph_info` 大小为 36 字节；
 >    字段 `ttychar`、颜色等既有偏移不变。
@@ -18,6 +20,16 @@
 > 7. 数量型 `yn_function` 要求窗口端口写全局 `yn_number` 后返回 `'#'`，
 >    但当前 `js_globals_init()` 没有向 JavaScript 暴露该变量。因此当前
 >    TypeScript 接口不能可靠实现数量回答，不能用猜测地址绕过。
+> 8. `shim_player_selection_or_tty()` 返回 `true` 会进入交互式
+>    `genl_player_setup(80)`，不是让 C 自动随机分配角色；返回 `false`
+>    才表示外部界面已经完成全部选择。当前 shim 还忽略了
+>    `genl_player_setup()` 的取消返回值，导致其中按 `q` 后不会终止游戏。
+> 9. 当前 `shim_procs.wincap` 没有声明 `WC_PERM_INVENT`，且 Emscripten
+>    版本的 `shim_ctrl_nhwindow()` 恒返回 `NULL`。因此虽然菜单协议能表达
+>    `MENU_BEHAVE_PERMINV`，当前 WASM 窗口端口并未完整支持永久背包。
+> 10. `shim_doprev_message`、`shim_get_ext_cmd`、`shim_get_color_string`
+>     分别使用 `"iv"`、`"iv"`、`"sv"`。尾部 `v` 会被桥接层解析成一个
+>     `undefined` 占位参数；消费者应忽略它。
 >
 > 以上结论由当前源码和 Emscripten WASM32 record layout 验证；实现应优先遵循
 > `winshim.c` 的实际格式串，而不是仅依据 C 函数原型。
@@ -49,11 +61,13 @@ NetHack 的架构是：游戏核心（C 代码）通过 `window_procs` 结构体
 
 但如果你想在**浏览器**中运行 NetHack，就不能使用这些传统界面——浏览器没有 ncurses，没有 X11。`shim_graphics` 的做法是：
 
-- 它实现了 `window_procs` 的所有函数指针
-- 每个函数被调用时，不做任何渲染，而是把**函数名、参数、返回值指针**统一转发给一个外部回调
+- 它填充了 `window_procs` 所需的函数指针
+- 大部分 `shim_*` 函数不直接渲染，而是把**函数名、参数、返回值指针**
+  转发给外部回调；少数槽位使用 `genl_*` 通用实现或 WASM 专用实现
 - 在 WASM 构建中，这个外部回调就是 TypeScript 函数（编译为 JavaScript 后由 Emscripten 调用）
 
-这样，C 代码完全不需要修改，所有渲染逻辑都由 TypeScript 侧接管。
+这样，NetHack 游戏核心的窗口调用方不需要修改，shim 消费者可以在
+TypeScript 侧实现渲染和输入逻辑。
 
 ### 1.3 与 tty/curses/X11 的区别
 
@@ -84,8 +98,13 @@ NetHack 的架构是：游戏核心（C 代码）通过 `window_procs` 结构体
 - `WC2_FLUSH_STATUS` — 支持状态刷新调用
 - `WC2_RESET_STATUS` — 支持状态重置调用
 - `WC2_DARKGRAY` — 支持深灰色（加粗黑色）
-- `WC2_SUPPRESS_HIST` — 支持抑制消息历史（前端完全控制消息显示，核心不强制 `--More--`）
+- `WC2_SUPPRESS_HIST` — 支持通过 `ATR_NOHISTORY` 让特定消息不进入回看
+  历史；它不控制 `--More--`
 - `WC2_STATUSLINES` — 支持切换 2/3 行状态显示
+
+当前 `wincap` **没有** `WC_PERM_INVENT`。核心的
+`can_set_perm_invent()` 因此会拒绝启用永久背包；仅仅能接收
+`MENU_BEHAVE_PERMINV` 并不等于窗口端口已经支持该能力。
 
 ### 1.5 架构总览
 
@@ -122,7 +141,7 @@ TypeScript 回调函数 (nethack-bridge.ts)
 | `s` | string | const char * | string | C 字符串，桥接层自动调用 UTF8ToString |
 | `p` | pointer | void * / struct * | number (地址) | WASM 线性内存中的地址 |
 | `b` | boolean | boolean (实际 i8) | boolean | 0=false, 1=true |
-| `c` | char | char | number (ASCII) | 返回时是 ASCII 码数字 |
+| `c` | char | char | 参数为单字符 string；返回值为 number | 读参数时使用 `String.fromCharCode()`；写返回值时要求数字 |
 | `0` | byte | int8 | number | 2^0 = 1 字节 |
 | `1` | short | int16 | number | 2^1 = 2 字节 |
 | `2` | int32 | int32 | number | 2^2 = 4 字节（等同 `i`）|
@@ -233,7 +252,11 @@ void shim_player_selection() {
 }
 ```
 
-WASM 版本的角色选择分两步：先调用 `shim_player_selection_or_tty()`，如果它返回 `true`，则由 C 侧的 `genl_player_setup(80)` 自动完成角色分配（如随机选择未确定的角色/种族/性别/阵营）。
+WASM 版本的角色选择分两步：先调用
+`shim_player_selection_or_tty()`；如果它返回 `true`，C 侧继续执行
+`genl_player_setup(80)` 的交互式角色、种族、性别和阵营选择流程。如果
+返回 `false`，表示外部界面已经设置好所有 `flags.init*` 字段，C 侧不再
+显示通用选择菜单。
 
 #### shim_player_selection_or_tty
 
@@ -244,9 +267,15 @@ DECLCB(boolean, shim_player_selection_or_tty, (void), "b")
 | 项目 | 说明 |
 |------|------|
 | **fmt** | `"b"` — 返回 boolean，无参数 |
-| **返回值** | `true`: 让 C 侧用 `genl_player_setup()` 自动完成角色选择；`false`: JS 侧已完全处理角色选择 |
+| **返回值** | `true`: 让 C 侧继续执行交互式 `genl_player_setup()`；`false`: JS 侧已完全处理角色选择 |
 | **调用时机** | 新游戏开始时。JS 侧应在此让玩家选择角色、种族、性别、阵营 |
-| **JS 侧处理** | 显示角色选择界面。通过 `nethackGlobal.globals.flags.initrole` 等全局变量设置选择结果，然后返回 `true` |
+| **JS 侧处理** | 若沿用核心菜单，直接返回 `true`；若自行显示完整选择界面，则设置 `nethackGlobal.globals.flags.initrole` 等字段并返回 `false` |
+
+`genl_player_setup()` 以 `0` 表示玩家在选择流程中选择退出。标准
+`genl_player_selection()` 会据此调用 `nh_terminate()`，但当前 WASM
+`shim_player_selection()` 忽略了这个返回值。因此在核心角色选择菜单中
+按 `q` 后会继续启动游戏；这是当前 shim 的已知缺陷，不应由 React 猜测
+角色状态来绕过。
 
 #### shim_askname
 
@@ -285,6 +314,7 @@ DECLCB(winid, shim_create_nhwindow, (int type), "ii", A2P type)
 | | `NHW_MAP = 3` — 地图窗口（显示地牢地图）|
 | | `NHW_MENU = 4` — 菜单窗口（显示物品列表等）|
 | | `NHW_TEXT = 5` — 文本窗口（显示帮助文档等）|
+| | `NHW_PERMINVENT = 6` — 永久背包窗口类型 |
 | **返回值** | `winid` (int): 分配的窗口标识符，后续操作通过此 ID 引用窗口 |
 | **调用时机** | 游戏核心需要新窗口时调用 |
 | **JS 侧处理** | 创建对应的前端窗口实例，返回一个唯一的整数 ID |
@@ -352,6 +382,11 @@ shim_ctrl_nhwindow(winid window UNUSED, int request UNUSED, win_request_info *wr
 |------|------|
 | **说明** | WASM 版本中此函数直接返回 NULL，不通过回调转发 |
 | **调用时机** | 游戏核心对窗口发出控制请求时 |
+
+这会使 `set_mode`、`request_settings` 和 `set_menu_promptstyle` 请求均得不到
+窗口端响应。对永久背包而言，核心无法取得 `maxslot`、可用行列数和
+`prohibited` 等设置，所以不能只添加 `WC_PERM_INVENT` 能力位就认为功能
+完整。
 
 ---
 
@@ -442,7 +477,7 @@ VDECLCB(shim_print_glyph,
 | **fmt** | `"vi11pp"` — 返回 void；`i`=窗口ID(int)，`1`=x(int16)，`1`=y(int16)，`p`=前景glyph指针，`p`=背景glyph指针 |
 | **参数** | |
 | | `w` (int): 地图窗口 ID |
-| | `x` (int16/number): 地图列坐标（0-79） |
+| | `x` (int16/number): 地图列坐标（正常可绘制范围 1-79） |
 | | `y` (int16/number): 地图行坐标（0-20） |
 | | `glyphinfo` (pointer): 前景 `glyph_info` 结构体指针——通常是怪物、物品等 |
 | | `bkglyphinfo` (pointer): 背景 `glyph_info` 结构体指针——通常是地板、墙壁等 |
@@ -451,6 +486,10 @@ VDECLCB(shim_print_glyph,
 | **JS 侧处理** | 从两个指针中读取 glyph_info 结构体字段（见第 3 章），确定在该坐标显示什么 |
 
 **这是 BlissHack 最核心的回调之一。** 前景/背景双 glyph 设计天然支持双层渲染：怪物脚下的地面可以同时显示。
+
+地图列 0 由核心保留用于内部记账，不是正常可绘制列。若前端保留
+80 列缓冲区，应忽略列 0 或始终将它显示为空白。背景结构的
+`glyph == NO_GLYPH` 时应忽略背景内容，而不是假定它总是地形。
 
 #### shim_cliparound
 
@@ -473,8 +512,13 @@ VDECLCB(shim_update_positionbar, (char *posbar), "vs", P2V posbar)
 | 项目 | 说明 |
 |------|------|
 | **fmt** | `"vs"` — 返回 void，一个 string |
-| **参数** | `posbar` (string): 位置条数据 |
+| **参数** | `posbar` (string): NUL 结尾的原始位置条字节序列 |
 | **调用时机** | 更新位置条显示。仅在 `POSITIONBAR` 编译选项启用时有效 |
+
+`posbar` 不是普通可显示文本，而是重复的二字节记录：第一字节为
+`'<'`、`'>'` 或 `'@'` 等符号，第二字节是原始地图列号，最终以 NUL
+结束。当前 WASM 构建没有启用 `POSITIONBAR`，所以正常流程不会收到
+该回调。
 
 ---
 
@@ -489,9 +533,9 @@ DECLCB(int, shim_nhgetch, (void), "i")
 | 项目 | 说明 |
 |------|------|
 | **fmt** | `"i"` — 返回 int，无参数 |
-| **返回值** | 用户按下的按键的 ASCII 码 |
+| **返回值** | 非零 NetHack 输入字节或命令字符值 |
 | **调用时机** | 游戏等待用户输入单个按键时（如 `--More--` 提示、方向键） |
-| **JS 侧处理** | 必须等待用户按键，返回按键的 ASCII 码。**这是一个异步回调——C 侧会阻塞等待返回** |
+| **JS 侧处理** | 必须等待用户按键，返回 1..255。Ctrl 组合通常落在控制字符范围，Meta 字符使用 `0x80` 高位，因此不能把输入限制为可打印 ASCII。**这是一个异步回调——C 侧会阻塞等待返回** |
 
 #### shim_nh_poskey
 
@@ -503,9 +547,9 @@ DECLCB(int, shim_nh_poskey, (coordxy *x, coordxy *y, int *mod), "ippp", P2V x, P
 |------|------|
 | **fmt** | `"ippp"` — 返回 int，三个 pointer 参数 |
 | **参数** | `x` (pointer→int16): 鼠标点击的 x 坐标（输出参数）；`y` (pointer→int16): 鼠标点击的 y 坐标（输出参数）；`mod` (pointer→int32): 鼠标按钮修饰符（输出参数）|
-| **返回值** | 如果是键盘输入，返回按键 ASCII 码；如果是鼠标点击，返回 0，同时通过指针参数填写坐标和修饰符 |
+| **返回值** | 如果是键盘输入，返回非零 NetHack 输入字节；如果是鼠标点击，返回 0，同时通过指针参数填写坐标和修饰符 |
 | **调用时机** | 主输入循环中等待用户输入（键盘或鼠标） |
-| **JS 侧处理** | 等待用户输入。如果是键盘按键，返回 ASCII 码。如果是鼠标点击，需要通过 `Module.setValue()` 把坐标写回 x/y/mod 指针，返回 0 |
+| **JS 侧处理** | 等待用户输入。如果是键盘按键，返回 1..255。如果是鼠标点击，需要通过 `Module.setValue()` 把坐标写回 x/y/mod 指针，返回 0 |
 
 鼠标修饰符常量：
 - `CLICK_1 = 1` — 左键点击
@@ -533,6 +577,10 @@ DECLCB(char, shim_yn_function,
 `yn_number`，所以纯 TypeScript 实现不能正确支持该分支；仅返回 `'#'` 会让
 核心看到错误的数量 0。
 
+此外，当前 `setPointerValue()` 对 `c` 返回类型只接受 `0..128`，不能
+写回完整的 `0x80..0xff` Meta 字节。`yn_function` 应只解析该问题允许的
+ASCII 回答；不能把任意 `nhgetch` 输入直接转交给这个返回槽。
+
 #### shim_getlin
 
 ```c
@@ -545,7 +593,7 @@ VDECLCB(shim_getlin, (const char *query, char *bufp), "vsp", P2V query, P2V bufp
 | **参数** | `query` (string): 提示文本（如 "What do you want to call it?"）；`bufp` (pointer): 输出缓冲区指针 |
 | **返回值** | 无（通过 `bufp` 指针写回用户输入的字符串） |
 | **调用时机** | 需要用户输入一行文本时（如命名物品、搜索命令） |
-| **JS 侧处理** | 显示输入框，等待用户输入。使用 `Module.stringToUTF8(userInput, bufp, maxLen)` 将结果写回 `bufp` 指针 |
+| **JS 侧处理** | 显示输入框，等待用户输入。使用 `Module.stringToUTF8(userInput, bufp, BUFSZ)` 将结果写回 `bufp` 指针；当前 `BUFSZ` 为 256，且长度包含结尾 NUL |
 
 #### shim_get_ext_cmd
 
@@ -560,6 +608,9 @@ DECLCB(int, shim_get_ext_cmd, (void), "iv")
 | **调用时机** | 用户按 `#` 键进入扩展命令模式时 |
 | **JS 侧处理** | 显示可用的扩展命令列表（通过 `nethackGlobal.pointers.extcmdlist` 获取），让用户选择，返回对应索引 |
 
+源码格式串是 `"iv"`，而不是规范的 `"i"`。桥接层会额外传入一个
+`undefined` 占位参数；回调实现应忽略它。
+
 #### shim_doprev_message
 
 ```c
@@ -571,6 +622,9 @@ DECLCB(int, shim_doprev_message, (void), "iv")
 | **fmt** | `"iv"` — 返回 int，无参数 |
 | **返回值** | 0 = 成功 |
 | **调用时机** | 用户按 Ctrl+P 查看上一条消息时 |
+
+源码格式串是 `"iv"`，所以 JS 回调同样会收到一个无意义的
+`undefined` 占位参数。
 
 #### shim_nhbell
 
@@ -702,8 +756,8 @@ DECLCB(char, shim_message_menu, (char let, int how, const char *mesg), "ciis", A
 | 项目 | 说明 |
 |------|------|
 | **fmt** | `"ciis"` — 返回 char，两个 int + 一个 string |
-| **参数** | `let` (int): 默认选择字符；`how` (int): 选择模式（PICK_NONE/PICK_ONE）；`mesg` (string): 消息文本 |
-| **返回值** | 用户选择的字符的 ASCII 码 |
+| **参数** | `let` (int): 原提示允许在消息帮助中继续使用的快捷字符；`how` (int): 选择模式（PICK_NONE/PICK_ONE）；`mesg` (string): 消息文本 |
+| **返回值** | `let`、0（未选择）或 ESC（明确取消） |
 | **调用时机** | 在消息窗口中显示带选项的消息 |
 
 ---
@@ -759,15 +813,21 @@ VDECLCB(shim_status_update,
 | | `fldidx` (int): 状态字段索引 |
 | | `ptr` (pointer): 字段值（**类型取决于 fldidx**——见下方说明） |
 | | `chg` (int): 变化方向（正数=增加，负数=减少，0=不变） |
-| | `percent` (int): HP 百分比（仅 `BL_HP` 时有效） |
-| | `color` (int): 颜色索引 |
-| | `colormasks` (pointer): 颜色掩码数组指针 |
+| | `percent` (int): 字段百分比；可用于 `BL_HP`、`BL_ENE`、`BL_XP` 和 `BL_EXP` |
+| | `color` (int): packed color；低 8 位是 `CLR_*`，高位是显示属性 |
+| | `colormasks` (pointer): `BL_CONDITION` 专用的 `cond_hilites[]` 掩码数组；其他字段应忽略 |
 | **调用时机** | 状态字段值发生变化时 |
 
 **关于 `ptr` 参数的双重含义**（源码注释也提到这个问题）：
 - 当 `fldidx == BL_CONDITION` 时，`ptr` 指向一个 `unsigned long` 条件位掩码，
   TypeScript 需要通过 `getValue(ptr, "i32")` 解引用
 - 其他情况下，`ptr` 通常是一个指向格式化字符串的指针（用 `UTF8ToString` 读取）
+- 非条件字段使用 `color & 0xff` 取得颜色，使用无符号
+  `color >>> 8` 取得可组合属性
+- `BL_CONDITION` 应忽略 `color`，读取 `colormasks` 中
+  `0..BL_ATTCLR_MAX-1` 的 WASM32 `unsigned long`；每项占 4 字节
+- `BL_ENE`、`BL_XP`、`BL_HP` 和 `BL_EXP` 在需要百分比高亮时会收到有效
+  `percent`；`BL_HP` 在启用 `wc2_hitpointbar` 时即使没有百分比规则也会计算
 - `BL_FLUSH` 合并并发布本周期改变的字段
 - `BL_RESET` 是要求窗口端口重新显示已有字段的 advisory；它不是清空指令，
   也不能用来推断哪些字段已经动态关闭
@@ -953,6 +1013,10 @@ DECLCB(char *, shim_get_color_string, (void), "sv")
 | **fmt** | `"sv"` — 返回 string，无参数 |
 | **返回值** | 颜色配置字符串 |
 
+源码格式串是 `"sv"`，所以 JS 回调会收到一个无意义的 `undefined`
+占位参数。它还受与 `shim_getmsghistory` 相同的 `"s"` 返回写回缺陷影响；
+当前构建没有启用 `CHANGE_COLOR`，正常流程不会注册或调用它。
+
 ---
 
 ### 2.15 背包更新 (WASM 版本，非回调)
@@ -974,9 +1038,17 @@ void shim_update_inventory(int a1 UNUSED) {
 | **调用时机** | 背包内容变化时 |
 | **效果** | 如果 `perm_invent` 标志启用，核心会重新通过菜单系统（`start_menu` → `add_menu` → `end_menu` → `select_menu`）发送完整背包 |
 
+这个实现只覆盖 `update_inventory(0)` 的重填意图，并完全忽略参数。
+`doc/window.txt` 还规定非零参数用于提示并执行永久背包滚动操作，当前
+WASM shim 没有实现该分支。
+
+更关键的是，当前 `shim_procs` 没有声明 `WC_PERM_INVENT`，并且
+`shim_ctrl_nhwindow()` 无法返回窗口设置，因此正常选项流程会拒绝开启
+永久背包。现有代码只能视为不完整的预留实现。
+
 ---
 
-### 2.16 所有回调一览表
+### 2.16 Shim 声明与特殊实现一览表
 
 | 回调名 | 格式字符串 | 类型 | 分组 |
 |--------|-----------|------|------|
@@ -1029,11 +1101,24 @@ void shim_update_inventory(int a1 UNUSED) {
 | `shim_player_selection` | *(特殊)* | 直接实现 | 角色选择 |
 | `shim_ctrl_nhwindow` | *(特殊)* | 直接实现 | 窗口管理 |
 
+上表列的是 `winshim.c` 中的声明和特殊实现，不等于当前 WASM 构建中
+全部都能由核心调用：
+
+- `shim_status_enablefield` 已声明，但 `shim_procs` 注册的是
+  `genl_status_enablefield`。
+- `shim_update_positionbar` 仅在定义 `POSITIONBAR` 时注册；当前构建
+  未启用。
+- `shim_change_color` 和 `shim_get_color_string` 仅在定义
+  `CHANGE_COLOR` 时注册；当前构建未启用。
+- `shim_change_background` 和 `set_shim_font_name` 还要求 Mac 条件；
+  当前 WASM 构建不可达。
+
 此外，`shim_procs` 中还使用了以下**通用实现**（不经过 shim 回调，直接用 NetHack 内置函数）：
 - `genl_putmixed` — 混合文本输出（ASCII + 特殊符号编码）
 - `genl_outrip` — 死亡墓碑
 - `genl_status_finish` — 状态系统清理
-- `genl_status_enablefield` — 状态字段启用（注意：`shim_procs` 实际注册的是 `genl_status_enablefield`，而不是 `shim_status_enablefield`。但 `shim_status_enablefield` 也声明了并可能在其他路径被调用）
+- `genl_status_enablefield` — 状态字段启用；`shim_status_enablefield`
+  虽然有定义，但未注册到当前窗口表，正常核心调用路径不会到达
 - `genl_status_update` — 在 `STATUS_HILITES` 未启用时使用的通用状态更新
 - `genl_can_suspend_yes` — 返回是否可暂停
 
@@ -1059,11 +1144,15 @@ void shim_update_inventory(int a1 UNUSED) {
 | `Module.setValue(ptr, value, type)` | 向 WASM 内存地址写入值 |
 | `Module.UTF8ToString(ptr)` | 将 C 字符串（WASM 内存中的 char*）转为 JS 字符串 |
 | `Module.stringToUTF8(str, ptr, maxLen)` | 将 JS 字符串写入 WASM 内存 |
-| `Module.HEAP8 / HEAP16 / HEAP32 / HEAPU8` | TypedArray 视图，直接访问 WASM 内存 |
 | `Module._malloc(size)` | 在 WASM 堆上分配内存 |
-| `Module._free(ptr)` | 释放 WASM 堆内存 |
 
 **注意**：在 `EM_JS` 宏（即 `local_callback` 函数体）内，这些 API 可以**直接使用**，不需要 `Module.` 前缀。这是因为 Emscripten 编译时会把它们注入到作用域中。所以你会看到源码中直接写 `getValue(ptr, "*")`、`UTF8ToString(ptr)` 等。
+
+当前构建的 `EXPORTED_FUNCTIONS` 只显式导出 `_malloc`，没有把 `_free`
+挂到 `Module`；`HEAP8`、`HEAP16`、`HEAP32`、`HEAPU8` 等视图也没有列入
+`EXPORTED_RUNTIME_METHODS`。它们存在于生成胶水的内部作用域，但外部
+TypeScript 不应依赖 `Module._free` 或 `Module.HEAP*`。需要释放由
+`select_menu` 返回的数组时，所有权按核心契约交给 C 调用方。
 
 ### 3.2 WASM 线性内存（Linear Memory）
 
@@ -1072,7 +1161,7 @@ WASM 的内存模型非常简单：
 ```
 ┌─────────────────────────────────────────┐
 │            WASM 线性内存                  │
-│  （一个巨大的 ArrayBuffer，默认 256MB）    │
+│  （一个由当前构建参数决定大小的 ArrayBuffer）│
 │                                          │
 │  地址 0x00000000 ┌──────────────┐        │
 │                  │ 静态数据区    │        │
@@ -1094,9 +1183,8 @@ WASM 的内存模型非常简单：
 在 JavaScript 中，可以通过以下方式访问这块内存：
 
 ```javascript
-// Module.HEAPU8 是一个 Uint8Array 视图，覆盖整个 WASM 内存
-// Module.HEAP32 是一个 Int32Array 视图
-// getValue / setValue 是封装好的便捷函数
+// 当前构建从 Module 导出 getValue / setValue，
+// 没有导出 Module.HEAPU8 或 Module.HEAP32。
 
 // 读取地址 ptr 处的 32 位整数
 let value = Module.getValue(ptr, 'i32');
@@ -1204,8 +1292,9 @@ async function nethackCallback(name, ...args) {
 ```
 
 **重要注意事项：**
-- 偏移量取决于编译器的对齐规则。WASM (Emscripten) 的默认对齐方式与 x86 一致
-- 以上偏移量基于 32 位 WASM 构建（Emscripten 默认是 32 位）
+- 偏移量取决于具体编译目标、类型宽度、对齐规则和编译选项，不能从
+  x86/x86-64 的布局类推
+- 以上偏移量基于当前 Emscripten wasm32 构建
 - 如果不确定偏移量，可以在 C 代码中用 `offsetof()` 宏确认，或在运行时打印结构体大小和偏移
 - `glyph_map` 中的 `color256idx` 和 `tileidx` 各占 2 字节（int16），注意对齐
 
@@ -1230,7 +1319,7 @@ if (name === "shim_getlin") {
     // bufp 是 WASM 内存地址（fmt 标记为 'p'）
 
     let userInput = await showInputDialog(query);
-    Module.stringToUTF8(userInput, bufp, 1024);  // 写回 C 缓冲区
+    Module.stringToUTF8(userInput, bufp, 256);  // BUFSZ，包含结尾 NUL
 }
 ```
 
@@ -1271,7 +1360,7 @@ Asyncify 有一个关键限制：在一个 `handleSleep` 尚未完成（`wakeUp`
 
 这也解释了为什么 WASM 版本的 `shim_update_inventory` 不使用回调：如果通过 shim 回调调用 JS，JS 在处理过程中可能再次触发 C 函数（如 `repopulate_perminvent()`），导致嵌套的 Asyncify 调用。
 
-#### JS 回调必须返回 Promise
+#### JS 回调必须返回一个会成功兑现的 Promise
 
 `local_callback` 的设计要求 JS 回调函数必须返回一个 Promise：
 
@@ -1284,7 +1373,12 @@ userCallback.call(this, name, ...jsArgs).then((retVal) => {
 });
 ```
 
-所以你的回调函数应该是 `async function` 或返回 Promise。
+所以回调函数必须是 `async function` 或返回 Promise，而且 Promise 必须
+最终 fulfilled。当前 `local_callback` 没有 rejection handler 或
+`finally`：如果 Promise reject，或者 `setPointerValue()` 因返回类型错误
+而抛出异常，`reentryMutexUnlock()` 和 `wakeUp()` 都不会执行，WASM 会
+永久停在这次 Asyncify sleep。消费者应在自己的回调边界捕获异常，并返回
+符合该 C 回调类型的安全值。
 
 ---
 
@@ -1309,10 +1403,14 @@ Module.ccall(
     "shim_graphics_set_callback",  // C 函数名
     null,                           // 返回类型
     ["string"],                     // 参数类型
-    ["nethackCallback"],            // 参数值——回调函数在 globalThis 上的名称
-    { async: true }                 // 必须指定 async
+    ["nethackCallback"]             // 参数值——回调函数在 globalThis 上的名称
 );
 ```
+
+`shim_graphics_set_callback()` 只是同步复制回调名称，不会进入
+`local_callback`，所以这里不需要 `{ async: true }`。应当对可能触发
+Asyncify 展开、例如当前项目中的 `main()` 调用使用 async ccall 选项。
+传入空字符串或 `NULL` 会注销回调并释放此前复制的名称。
 
 **原理**：
 1. `shim_graphics_set_callback(char *cbName)` 将字符串 `"nethackCallback"` 保存到 `shim_callback_name` 静态变量
@@ -1407,17 +1505,26 @@ Module.ccall(
 | `getPointerValue(name, ptr, type)` | 根据类型从 WASM 内存读取值（见第 4.3 节） |
 | `setPointerValue(name, ptr, type, value)` | 根据类型向 WASM 内存写入值（见第 4.3 节） |
 
+`displayInventory()` 会同步进入 `_repopulate_perminvent()`，继而再次触发
+菜单 shim 回调。它不能在另一个 `local_callback` 尚未 wake up 时调用，
+否则会造成 Asyncify 重入。当前永久背包能力也不完整，普通前端代码不应
+主动调用这个 helper。
+
 ### 5.3 js_constants_init — 常量暴露
 
 将 C 头文件中定义的常量暴露到 `globalThis.nethackGlobal.constants` 对象中。
 
-每个常量组是一个**双向映射**：既可以用名称查值，也可以用值查名称。
+数字常量组同时写入名称到值和值到名称两个方向：
 
 ```javascript
 // 例如：
 nethackGlobal.constants.WIN_TYPE.NHW_MAP     // => 3
 nethackGlobal.constants.WIN_TYPE[3]           // => "NHW_MAP"
 ```
+
+这种数字反查不是无损枚举。如果多个名称具有相同数值，后写入的名称会
+覆盖此前的数字键，例如 `MG_BW_ICE`、`MG_BW_SINK` 和 `MG_BW_ENGR`
+共享数值。`COPYRIGHT` 等字符串常量只提供名称到字符串，不提供反向映射。
 
 暴露的常量分组：
 
@@ -1439,6 +1546,13 @@ nethackGlobal.constants.WIN_TYPE[3]           // => "NHW_MAP"
 | `blconditions` | 状态条件枚举 | `bl_blind`, `bl_conf`, `bl_stun` 等，加上 `CONDITION_COUNT` |
 | `HL` | 高亮类型 | `HL_NONE`, `HL_BOLD`, `HL_INVERSE` 等 |
 | `MG` | glyph 标志 | `MG_HERO`, `MG_PET`, `MG_CORPSE`, `MG_INVIS` 等 |
+
+当前导出表并不覆盖头文件中的每个常量：
+
+- C 定义了 `NHW_PERMINVENT=6`，但 `WIN_TYPE` 没有导出它。
+- C 定义了 `BL_WEAPON`、`BL_ARMOR`、`BL_TERRAIN`、`BL_VERS`，但
+  `STATUS_FIELD` 没有导出它们。
+- C 定义了 `ATR_ITALIC`，但当前 `ATTR` 没有导出它。
 
 此外还暴露了指针：
 
@@ -1467,6 +1581,11 @@ let name = nethackGlobal.globals.svp.plname;
 // 设置初始角色（实际上是向 WASM 内存中的 flags.initrole 地址写入）
 nethackGlobal.globals.flags.initrole = 3;
 ```
+
+字符串 setter 内部统一调用 `stringToUTF8(value, ptr, 1024)`，不知道目标
+C 数组的真实容量。`svp.plname` 实际只有 `PL_NSIZ=32` 字节，因此直接
+赋值前必须按 UTF-8 字节截断到最多 31 字节并保留 NUL；不能依赖通用
+setter 自动保护边界。
 
 暴露的全局变量：
 
@@ -1532,6 +1651,12 @@ globalThis.nethackGlobal = {
 };
 ```
 
+这个对象是 `globalThis` 上的单例，不属于某个 Emscripten Module。
+后创建的 WASM 实例会覆盖 helpers、pointers 和 globals 属性绑定，
+`shimFunctionRunning` 也由所有实例共享。因此同一页面不能并行运行多个
+NetHack WASM 实例；每个 session 必须使用独立 callback 名称，并在实例
+退出后清理全局回调引用。
+
 ---
 
 ## 6. 附录：类型速查表
@@ -1571,6 +1696,26 @@ globalThis.nethackGlobal = {
 > **注意**：当前构建启用了 `ENHANCED_SYMBOLS`。`glyph_map` 末尾有一个
 > `unicode_representation *u` 指针，位于 `glyph_info +32`，所以
 > `sizeof(glyph_info) == 36`。上表中既有字段的偏移不受影响。
+
+### ext_func_tab 字段偏移量速查
+
+`nethackGlobal.pointers.extcmdlist` 指向连续的 `ext_func_tab` 数组。当前
+Emscripten WASM32 ABI 下每项为 24 字节：
+
+| 字段 | 相对于条目基址的偏移 | 大小 | 读取方式 |
+|------|---------------------|------|----------|
+| `key` | +0 | 1 | `"i8"` |
+| `ef_txt` | +4 | 4 | `"*"` 后 `UTF8ToString` |
+| `ef_desc` | +8 | 4 | `"*"` 后 `UTF8ToString` |
+| `ef_funct` | +12 | 4 | 函数表指针；前端不应调用 |
+| `flags` | +16 | 4 | `"i32"` |
+| `f_text` | +20 | 4 | `"*"` 后 `UTF8ToString` |
+
+遍历应在 `ef_txt == NULL` 的哨兵项停止。过滤 wizard、internal 或
+unavailable 命令后，仍必须保留原数组索引，因为
+`shim_get_ext_cmd()` 要求返回 `extcmdlist` 的源索引，而不是过滤后列表的
+显示索引。该布局与 `glyph_info` 一样只适用于当前构建；升级工具链或
+结构定义后应重新用 record layout 验证。
 
 ### 关键源文件索引
 
