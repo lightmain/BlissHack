@@ -85,6 +85,23 @@ async function moveToAdjacentFloor(page: Page): Promise<void> {
   }).not.toBe(`${startX}:${startY}`);
 }
 
+test("q quits character selection and returns home", async ({ page }) => {
+  const errors = captureErrors(page);
+  await page.goto("?integration=quit-role-selection");
+  await page.getByRole("button", { name: "New Game" }).click();
+
+  const nameInput = page.getByRole("textbox", { name: "Who are you?" });
+  await nameInput.fill("E2E_Quit");
+  await nameInput.press("Enter");
+  await expect(page.getByText(/Shall I pick character's/)).toBeVisible();
+
+  await page.keyboard.press("q");
+
+  await expect(page.getByRole("button", { name: "New Game" })).toBeVisible();
+  await expect(page.locator(".nh-shell")).toHaveCount(0);
+  expect(errors).toEqual({ console: [], page: [] });
+});
+
 test("plays through startup and routes terminal UI input", async ({ page }) => {
   const errors = captureErrors(page);
   await startNewGame(page, "E2E_Ada");

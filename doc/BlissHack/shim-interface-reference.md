@@ -22,19 +22,15 @@
 > 7. 数量型 `yn_function` 要求窗口端口写全局 `yn_number` 后返回 `'#'`，
 >    但当前 `js_globals_init()` 没有向 JavaScript 暴露该变量。因此当前
 >    TypeScript 接口不能可靠实现数量回答，不能用猜测地址绕过。
-> 8. `shim_player_selection_or_tty()` 返回 `true` 会进入交互式
->    `genl_player_setup(80)`，不是让 C 自动随机分配角色；返回 `false`
->    才表示外部界面已经完成全部选择。当前 shim 还忽略了
->    `genl_player_setup()` 的取消返回值，导致其中按 `q` 后不会终止游戏。
-> 9. 当前 `shim_procs.wincap` 没有声明 `WC_PERM_INVENT`，且 Emscripten
+> 8. 当前 `shim_procs.wincap` 没有声明 `WC_PERM_INVENT`，且 Emscripten
 >    版本的 `shim_ctrl_nhwindow()` 恒返回 `NULL`。因此虽然菜单协议能表达
 >    `MENU_BEHAVE_PERMINV`，当前 WASM 窗口端口并未完整支持永久背包。
-> 10. `shim_doprev_message`、`shim_get_ext_cmd`、`shim_get_color_string`
+> 9. `shim_doprev_message`、`shim_get_ext_cmd`、`shim_get_color_string`
 >     分别使用 `"iv"`、`"iv"`、`"sv"`。尾部 `v` 会被桥接层解析成一个
 >     `undefined` 占位参数；消费者应忽略它。
-> 11. 键盘回调必须返回非零、非 meta-zero 的输入值。也就是说，`0` 和
+> 10. 键盘回调必须返回非零、非 meta-zero 的输入值。也就是说，`0` 和
 >     `0x80` 都不能作为键盘输入；`0` 只用于 `nh_poskey` 的定位事件。
-> 12. `shim_nhbell` 总会转发回调，但 `flags.silent` 没有暴露给
+> 11. `shim_nhbell` 总会转发回调，但 `flags.silent` 没有暴露给
 >     JavaScript。官方契约要求窗口端口在静音时不响铃，当前纯 TypeScript
 >     消费者无法可靠判断这一状态。
 >
@@ -50,7 +46,8 @@
 3. [WASM 与 Module 内存机制](#3-wasm-与-module-内存机制)
 4. [回调注册机制](#4-回调注册机制)
 5. [全局变量暴露](#5-全局变量暴露)
-6. [附录：类型速查表](#6-附录类型速查表)
+6. [当前项目对 shim 接口的修改](#6-当前项目对-shim-接口的修改)
+7. [附录：类型速查表](#7-附录类型速查表)
 
 ---
 
@@ -286,9 +283,8 @@ VDECLCB(shim_get_nh_event, (void), "v")
 // 注意：WASM 版本是特殊实现，不使用 VDECLCB 宏
 void shim_player_selection() {
     boolean do_genl_player_setup = shim_player_selection_or_tty();
-    if (do_genl_player_setup) {
-        genl_player_setup(80);
-    }
+    if (do_genl_player_setup && !genl_player_setup(80))
+        nh_terminate(EXIT_SUCCESS);
 }
 ```
 
@@ -311,11 +307,10 @@ DECLCB(boolean, shim_player_selection_or_tty, (void), "b")
 | **调用时机** | 新游戏开始时。JS 侧应在此让玩家选择角色、种族、性别、阵营 |
 | **JS 侧处理** | 若沿用核心菜单，直接返回 `true`；若自行显示完整选择界面，则设置 `nethackGlobal.globals.flags.initrole` 等字段并返回 `false` |
 
-`genl_player_setup()` 以 `0` 表示玩家在选择流程中选择退出。标准
-`genl_player_selection()` 会据此调用 `nh_terminate()`，但当前 WASM
-`shim_player_selection()` 忽略了这个返回值。因此在核心角色选择菜单中
-按 `q` 后会继续启动游戏；这是当前 shim 的已知缺陷，不应由 React 猜测
-角色状态来绕过。
+`genl_player_setup()` 以 `0` 表示玩家在选择流程中选择退出。
+`genl_player_selection()` 会据此调用 `nh_terminate(EXIT_SUCCESS)`。因此
+`[ynaq]` 中的 `q` 表示 **quit**，而 `a` 表示自动随机选择并跳过最终确认；
+React 不需要猜测角色选择状态。
 
 #### shim_askname
 
@@ -1796,7 +1791,55 @@ NetHack WASM 实例；每个 session 必须使用独立 callback 名称，并在
 
 ---
 
-## 6. 附录：类型速查表
+## 6. 当前项目对 shim 接口的修改
+
+本节只记录 BlissHack 相对于所基于的 NetHack shim 源码所做的行为修改。
+通用接口契约和原始 ABI 仍以前文章节为准。
+
+### 6.1 保留角色选择的退出语义
+
+角色选择提示：
+
+```text
+Shall I pick character's race, role, gender and alignment for you? [ynaq]
+```
+
+各选项由 `src/role.c:genl_player_setup()` 明确定义：
+
+- `y`：随机选择角色属性，然后要求最终确认。
+- `n`：通过菜单手动选择。
+- `a`：随机选择并跳过最终确认，直接开始游戏。
+- `q`：退出角色选择；ESC 也按退出处理。
+
+修改前，Emscripten 专用 `shim_player_selection()` 调用了
+`genl_player_setup(80)`，却丢弃其返回值。该函数以 `0` 表示玩家退出，
+因此按 `q` 后 `shim_player_selection()` 仍正常返回，
+`sys/libnh/libnhmain.c` 随后继续调用 `newgame()`。
+
+BlissHack 修改为：
+
+```c
+void shim_player_selection() {
+    boolean do_genl_player_setup = shim_player_selection_or_tty();
+    if (do_genl_player_setup && !genl_player_setup(80))
+        nh_terminate(EXIT_SUCCESS);
+}
+```
+
+这与 `genl_player_selection()`、tty 和 curses 窗口端口的语义一致。由于
+该早期退出路径不会调用 `shim_exit_nhwindows()`，前端 session manager
+还会把 WASM `main()` 的正常返回或状态为 0 的 Emscripten `ExitStatus`
+作为正常 session 结束，完成清理后回到主界面。
+
+对应回归测试覆盖：
+
+- `shim_yn_function` 在无限制输入模式下原样返回 `q`。
+- WASM `main()` 在游戏开始前正常结束时清理 session。
+- 浏览器中在上述 `[ynaq]` 提示按 `q` 后显示主界面，且不创建地图。
+
+---
+
+## 7. 附录：类型速查表
 
 ### C 类型与 JS 类型的映射
 

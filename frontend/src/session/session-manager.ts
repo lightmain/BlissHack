@@ -51,6 +51,7 @@ interface SessionRecord {
   sessionId: string;
   callbackName: string;
   module: EmscriptenModule | null;
+  mainPromise: Promise<unknown> | null;
   cleanupPromise: Promise<void> | null;
   closed: boolean;
 }
@@ -87,6 +88,7 @@ export function createSessionManager(
       sessionId,
       callbackName,
       module: null,
+      mainPromise: null,
       cleanupPromise: null,
       closed: false,
     };
@@ -172,10 +174,14 @@ export function createSessionManager(
       [],
       { async: true },
     );
-    void Promise.resolve(mainResult).catch((error: unknown) => {
-      if (activeRecord !== record || record.closed) return;
-      failSession(record, error);
-    });
+    record.mainPromise = Promise.resolve(mainResult);
+    void record.mainPromise.then(
+      () => finishSession(record),
+      (error: unknown) => {
+        if (isSuccessfulExit(error)) finishSession(record);
+        else failSession(record, error);
+      },
+    );
     return handle;
   }
 
@@ -213,6 +219,19 @@ export function createSessionManager(
     return activeRecord
       ? cleanupSession(activeRecord.sessionId)
       : Promise.resolve();
+  }
+
+  /**
+   * Finish a session whose main function returned without an exit callback.
+   * @param record - session whose WASM main call has completed.
+   */
+  function finishSession(record: SessionRecord): void {
+    if (activeRecord !== record || record.closed) return;
+    options.dispatch({
+      type: "SESSION_EXITING",
+      sessionId: record.sessionId,
+    });
+    void cleanupSession(record.sessionId);
   }
 
   /**
@@ -292,4 +311,18 @@ function errorIdentifier(sessionId: string, error: unknown): string {
     ? error.name
     : "SessionError";
   return `${sessionId}:${category}`;
+}
+
+/**
+ * Detect Emscripten's successful ExitStatus rejection.
+ * @param error - rejected main result.
+ * @returns whether the program terminated with exit status zero.
+ */
+function isSuccessfulExit(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) return false;
+  const candidate = error as { message?: unknown; name?: unknown; status?: unknown };
+  if (candidate.status === 0) return true;
+  return candidate.name === "ExitStatus"
+    && typeof candidate.message === "string"
+    && /\bexit(?:ed)?\(0\)|status 0\b/i.test(candidate.message);
 }
