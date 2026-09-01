@@ -115,11 +115,11 @@ interface MenuSelection {
 }
 
 type PendingAction =
-  | { kind: "key"; resolve: (value: number) => void; positionPointers: null }
   | {
     kind: "key";
     resolve: (value: number) => void;
-    positionPointers: { x: number; y: number; modifier: number };
+    positionPointers: { x: number; y: number; modifier: number } | null;
+    module: EmscriptenModule;
   }
   | {
     kind: "yn";
@@ -137,6 +137,7 @@ type PendingAction =
     resolve: () => void;
     purpose: "name" | "getlin";
     bufferPtr: number;
+    module: EmscriptenModule;
   }
   | {
     kind: "menu";
@@ -144,6 +145,7 @@ type PendingAction =
     windowId: number;
     how: number;
     menuListPtr: number;
+    module: EmscriptenModule;
   }
   | {
     kind: "display";
@@ -151,9 +153,14 @@ type PendingAction =
   }
   | { kind: "extcmd"; resolve: (value: number) => void };
 
-type EmscriptenFactory = (
+export type EmscriptenFactory = (
   options: Record<string, unknown>,
 ) => Promise<EmscriptenModule>;
+
+/** Session guard used while a module factory is still loading asynchronously. */
+export interface GameModuleOptions {
+  isCurrent?: () => boolean;
+}
 
 const MENU_ITEM_SIZE = 16;
 const MENU_ITEM_COUNT_OFFSET = 8;
@@ -170,20 +177,10 @@ const WIZMODECMD = 0x0004;
 const CMD_NOT_AVAILABLE = 0x0010;
 const INTERNALCMD = 0x0040;
 
-let wasmModule: EmscriptenModule | null = null;
 let pendingAction: PendingAction | null = null;
-let startupPromise: Promise<EmscriptenModule> | null = null;
 const queuedKeys: number[] = [];
 let typeaheadEnabled = false;
 const persistentModules = new WeakSet<EmscriptenModule>();
-
-/**
- * Attach an initialized Emscripten module to the bridge.
- * @param value - module whose memory and runtime APIs back shim callbacks.
- */
-export function attachModule(value: EmscriptenModule): void {
-  wasmModule = value;
-}
 
 /**
  * Mount the Unix save directory on IDBFS and restore browser-persisted files.
@@ -231,22 +228,41 @@ export function preparePlayerNamePrompt(module: EmscriptenModule): void {
 }
 
 /**
- * Load NetHack without auto-running main, register the callback, then start it.
+ * Load one fresh NetHack module without registering callbacks or running main.
  * @param wasmUrl - URL of the Emscripten ES module loader.
+ * @param options - session guard for asynchronous loader output.
  * @returns the initialized Emscripten module.
  */
-export function startGame(
+export async function createGameModule(
   wasmUrl = `${import.meta.env.BASE_URL}nethack.js`,
+  options: GameModuleOptions = {},
 ): Promise<EmscriptenModule> {
-  if (startupPromise) return startupPromise;
-  setRuntimePhase("loading");
-  startupPromise = initializeGame(wasmUrl).catch((error: unknown) => {
-    startupPromise = null;
-    const message = error instanceof Error ? error.message : String(error);
-    setRuntimeError(message);
-    throw error;
+  const isCurrent = options.isCurrent ?? (() => true);
+  const loaderUrl = new URL(wasmUrl, globalThis.location.href).href;
+  const imported = await import(/* @vite-ignore */ loaderUrl) as {
+    default: EmscriptenFactory;
+  };
+  const module = await imported.default({
+    noInitialRun: true,
+    locateFile: (path: string) => new URL(path, loaderUrl).href,
+    preRun: (runtimeModule: EmscriptenModule) =>
+      preparePlayerNamePrompt(runtimeModule),
+    print: (text: string) => {
+      if (isCurrent()) appendWindowText(-1, 0, text);
+    },
+    printErr: (text: string) => {
+      if (isCurrent()) appendWindowText(-1, ATR_BOLD, text);
+    },
   });
-  return startupPromise;
+  try {
+    await initializePersistentStorage(module);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (isCurrent()) {
+      appendWindowText(-1, ATR_BOLD, `Persistent storage unavailable: ${message}`);
+    }
+  }
+  return module;
 }
 
 /**
@@ -310,10 +326,9 @@ export function sendKey(value: number): void {
 export function sendPosition(x: number, y: number, modifier: 1 | 2): void {
   const pending = pendingAction;
   if (pending?.kind !== "key" || !pending.positionPointers) return;
-  const module = requireModule();
-  module.setValue(pending.positionPointers.x, x, "i16");
-  module.setValue(pending.positionPointers.y, y, "i16");
-  module.setValue(pending.positionPointers.modifier, modifier, "i32");
+  pending.module.setValue(pending.positionPointers.x, x, "i16");
+  pending.module.setValue(pending.positionPointers.y, y, "i16");
+  pending.module.setValue(pending.positionPointers.modifier, modifier, "i32");
   pendingAction = null;
   typeaheadEnabled = true;
   setInputRequest(null);
@@ -334,12 +349,11 @@ export function submitLine(value: string | null): void {
     const globals = globalThis.nethackGlobal?.globals;
     if (globals?.svp) globals.svp.plname = name;
   } else {
-    const module = requireModule();
     if (value === null) {
-      module.setValue(pending.bufferPtr, 27, "i8");
-      module.setValue(pending.bufferPtr + 1, 0, "i8");
+      pending.module.setValue(pending.bufferPtr, 27, "i8");
+      pending.module.setValue(pending.bufferPtr + 1, 0, "i8");
     } else {
-      module.stringToUTF8(value, pending.bufferPtr, GETLIN_BUFFER_SIZE);
+      pending.module.stringToUTF8(value, pending.bufferPtr, GETLIN_BUFFER_SIZE);
     }
   }
 
@@ -358,7 +372,7 @@ export function submitMenuSelection(
   const pending = pendingAction;
   if (pending?.kind !== "menu") return;
   const window = getWindow(pending.windowId);
-  const module = requireModule();
+  const module = pending.module;
   pendingAction = null;
   clearModal();
 
@@ -438,26 +452,26 @@ export function isWaitingForInput(): boolean {
  * Reset bridge and frontend state for tests or a future fresh game.
  */
 export function resetBridgeState(): void {
-  wasmModule = null;
   pendingAction = null;
-  startupPromise = null;
   queuedKeys.length = 0;
   typeaheadEnabled = false;
   resetGameState();
 }
 
 /**
- * Dispatch one decoded shim_graphics callback.
+ * Dispatch a callback using the module captured by its owning session.
+ * @param module - module whose memory contains all callback pointers.
  * @param name - exact function name from winshim.c.
  * @param args - values decoded by local_callback.
  * @returns the value required by the callback's C return type.
  */
-export async function shimCallback(
+export async function shimCallbackForModule(
+  module: EmscriptenModule,
   name: string,
   ...args: unknown[]
 ): Promise<unknown> {
   try {
-    return await dispatchShimCallback(name, args);
+    return await dispatchShimCallback(module, name, args);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     setRuntimeError(`${name}: ${message}`);
@@ -472,6 +486,7 @@ export async function shimCallback(
  * @returns the value required by the callback's C return type.
  */
 async function dispatchShimCallback(
+  module: EmscriptenModule,
   name: string,
   args: unknown[],
 ): Promise<unknown> {
@@ -488,7 +503,7 @@ async function dispatchShimCallback(
     case "shim_player_selection_or_tty":
       return true;
     case "shim_askname":
-      return waitForLine("name", "Who are you?", 0);
+      return waitForLine(module, "name", "Who are you?", 0);
     case "shim_get_nh_event":
     case "shim_suspend_nhwindows":
     case "shim_resume_nhwindows":
@@ -496,7 +511,7 @@ async function dispatchShimCallback(
     case "shim_exit_nhwindows":
       setExitReason(asString(args[0]));
       try {
-        await flushPersistentStorage(requireModule());
+        await flushPersistentStorage(module);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         appendWindowText(-1, ATR_BOLD, `Could not persist save data: ${message}`);
@@ -523,18 +538,19 @@ async function dispatchShimCallback(
       );
       return undefined;
     case "shim_display_file":
-      return displayFile(asString(args[0]), Boolean(args[1]));
+      return displayFile(module, asString(args[0]), Boolean(args[1]));
     case "shim_start_menu":
       beginMenu(asNumber(args[0]), asNumber(args[1]));
       return undefined;
     case "shim_add_menu":
-      addDecodedMenuItem(args);
+      addDecodedMenuItem(module, args);
       return undefined;
     case "shim_end_menu":
       endMenu(asNumber(args[0]), asString(args[1]));
       return undefined;
     case "shim_select_menu":
       return selectMenu(
+        module,
         asNumber(args[0]),
         asNumber(args[1]),
         asNumber(args[2]),
@@ -555,7 +571,7 @@ async function dispatchShimCallback(
     case "shim_update_positionbar":
       return undefined;
     case "shim_print_glyph":
-      printGlyph(args);
+      printGlyph(module, args);
       return undefined;
     case "shim_raw_print":
       appendWindowText(-1, 0, asString(args[0]));
@@ -564,9 +580,9 @@ async function dispatchShimCallback(
       appendWindowText(-1, ATR_BOLD, asString(args[0]));
       return undefined;
     case "shim_nhgetch":
-      return waitForKey(null);
+      return waitForKey(module, null);
     case "shim_nh_poskey":
-      return waitForKey({
+      return waitForKey(module, {
         x: asNumber(args[0]),
         y: asNumber(args[1]),
         modifier: asNumber(args[2]),
@@ -583,9 +599,14 @@ async function dispatchShimCallback(
         asNumber(args[2]),
       );
     case "shim_getlin":
-      return waitForLine("getlin", asString(args[0]), asNumber(args[1]));
+      return waitForLine(
+        module,
+        "getlin",
+        asString(args[0]),
+        asNumber(args[1]),
+      );
     case "shim_get_ext_cmd":
-      return waitForExtendedCommand();
+      return waitForExtendedCommand(module);
     case "shim_number_pad":
       setNumberPad(asNumber(args[0]) !== 0);
       return undefined;
@@ -593,7 +614,7 @@ async function dispatchShimCallback(
       await delay(50);
       return undefined;
     case "shim_preference_update":
-      setLastPreference(readStringPointer(asNumber(args[0])));
+      setLastPreference(readStringPointer(module, asNumber(args[0])));
       return undefined;
     case "shim_getmsghistory":
       // Upstream's "s" return setter writes into the char* stack slot rather
@@ -611,7 +632,7 @@ async function dispatchShimCallback(
     case "shim_status_enablefield":
       return undefined;
     case "shim_status_update":
-      updateDecodedStatus(args);
+      updateDecodedStatus(module, args);
       return undefined;
     case "shim_change_color":
     case "shim_change_background":
@@ -624,60 +645,6 @@ async function dispatchShimCallback(
       setRuntimeError(`Unsupported shim callback: ${name}`);
       return undefined;
   }
-}
-
-/**
- * Initialize the Emscripten module and launch main after callback registration.
- * @param wasmUrl - URL of the Emscripten ES module loader.
- * @returns the initialized module.
- */
-async function initializeGame(wasmUrl: string): Promise<EmscriptenModule> {
-  const loaderUrl = new URL(wasmUrl, globalThis.location.href).href;
-  const imported = await import(/* @vite-ignore */ loaderUrl) as {
-    default: EmscriptenFactory;
-  };
-  const loadedModule = await imported.default({
-    noInitialRun: true,
-    locateFile: (path: string) => new URL(path, loaderUrl).href,
-    preRun: (module: EmscriptenModule) => preparePlayerNamePrompt(module),
-    print: (text: string) => appendWindowText(-1, 0, text),
-    printErr: (text: string) => appendWindowText(-1, ATR_BOLD, text),
-  });
-  attachModule(loadedModule);
-  try {
-    await initializePersistentStorage(loadedModule);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    appendWindowText(-1, ATR_BOLD, `Persistent storage unavailable: ${message}`);
-  }
-  (globalThis as Record<string, unknown>).blissCallback = shimCallback;
-  loadedModule.ccall(
-    "shim_graphics_set_callback",
-    null,
-    ["string"],
-    ["blissCallback"],
-  );
-  const gameResult = loadedModule.ccall(
-    "main",
-    "number",
-    [],
-    [],
-    { async: true },
-  );
-  void Promise.resolve(gameResult).catch((error: unknown) => {
-    const message = error instanceof Error ? error.message : String(error);
-    setRuntimeError(message);
-  });
-  return loadedModule;
-}
-
-/**
- * Require a module for an operation which reads or writes WASM memory.
- * @returns the attached Emscripten module.
- */
-function requireModule(): EmscriptenModule {
-  if (!wasmModule) throw new Error("NetHack WASM module is not initialized");
-  return wasmModule;
 }
 
 /**
@@ -724,8 +691,8 @@ function safeCallbackResult(name: string): unknown {
  * @param ptr - WASM string address.
  * @returns decoded UTF-8 text or an empty string for NULL.
  */
-function readStringPointer(ptr: number): string {
-  return ptr === 0 ? "" : requireModule().UTF8ToString(ptr);
+function readStringPointer(module: EmscriptenModule, ptr: number): string {
+  return ptr === 0 ? "" : module.UTF8ToString(ptr);
 }
 
 /**
@@ -733,9 +700,11 @@ function readStringPointer(ptr: number): string {
  * @param ptr - glyph_info memory address.
  * @returns decoded glyph metadata, or null for NULL.
  */
-function readGlyph(ptr: number): GlyphInfo | null {
+function readGlyph(
+  module: EmscriptenModule,
+  ptr: number,
+): GlyphInfo | null {
   if (ptr === 0) return null;
-  const module = requireModule();
   return {
     glyph: Number(module.getValue(ptr, "i32")),
     ttyChar: Number(module.getValue(ptr + 4, "i32")),
@@ -753,22 +722,25 @@ function readGlyph(ptr: number): GlyphInfo | null {
  * Decode and buffer one print_glyph callback.
  * @param args - callback arguments in winshim.c order.
  */
-function printGlyph(args: unknown[]): void {
+function printGlyph(module: EmscriptenModule, args: unknown[]): void {
   const x = asNumber(args[1]);
   const y = asNumber(args[2]);
-  const foreground = readGlyph(asNumber(args[3]));
+  const foreground = readGlyph(module, asNumber(args[3]));
   if (!foreground) return;
-  setMapCell(x, y, foreground, readGlyph(asNumber(args[4])));
+  setMapCell(x, y, foreground, readGlyph(module, asNumber(args[4])));
 }
 
 /**
  * Copy and append one add_menu callback while its pointers are valid.
  * @param args - callback arguments in winshim.c order.
  */
-function addDecodedMenuItem(args: unknown[]): void {
+function addDecodedMenuItem(
+  module: EmscriptenModule,
+  args: unknown[],
+): void {
   const identifierValue = asNumber(args[2]);
   addMenuItem(asNumber(args[0]), {
-    glyph: readGlyph(asNumber(args[1])),
+    glyph: readGlyph(module, asNumber(args[1])),
     identifier: identifierValue === 0 ? null : identifierValue,
     accelerator: asNumber(args[3]) & 0xff,
     groupAccelerator: asNumber(args[4]) & 0xff,
@@ -814,10 +786,14 @@ function displayWindow(
  * @param name - path passed by the core.
  * @param complain - whether a missing file should produce a message.
  */
-async function displayFile(name: string, complain: boolean): Promise<void> {
+async function displayFile(
+  module: EmscriptenModule,
+  name: string,
+  complain: boolean,
+): Promise<void> {
   let content: string;
   try {
-    const result = requireModule().FS.readFile("/nhdat");
+    const result = module.FS.readFile("/nhdat");
     const archive = typeof result === "string"
       ? new TextEncoder().encode(result)
       : result;
@@ -846,11 +822,11 @@ async function displayFile(name: string, complain: boolean): Promise<void> {
  * @returns selected count, zero, or minus one.
  */
 function selectMenu(
+  module: EmscriptenModule,
   winid: number,
   how: number,
   menuListPtr: number,
 ): Promise<number> | number {
-  const module = requireModule();
   if (menuListPtr !== 0) module.setValue(menuListPtr, 0, "*");
   const window = getWindow(winid);
   if (window && (window.menuBehavior & MENU_BEHAVE_PERMINV) !== 0) {
@@ -860,7 +836,14 @@ function selectMenu(
 
   showMenu(winid, how);
   return new Promise<number>((resolve) => {
-    setPending({ kind: "menu", resolve, windowId: winid, how, menuListPtr });
+    setPending({
+      kind: "menu",
+      resolve,
+      windowId: winid,
+      how,
+      menuListPtr,
+      module,
+    });
   });
 }
 
@@ -890,13 +873,14 @@ function messageMenu(
  * @returns the input code after user interaction.
  */
 function waitForKey(
+  module: EmscriptenModule,
   positionPointers: { x: number; y: number; modifier: number } | null,
 ): Promise<number> {
   const queued = queuedKeys.shift();
   if (queued !== undefined) return Promise.resolve(queued);
   setInputRequest({ kind: positionPointers ? "position" : "key" });
   return new Promise<number>((resolve) => {
-    setPending({ kind: "key", resolve, positionPointers });
+    setPending({ kind: "key", resolve, positionPointers, module });
   });
 }
 
@@ -929,13 +913,14 @@ function waitForYn(
  * @param bufferPtr - getlin output buffer, or zero for player name.
  */
 function waitForLine(
+  module: EmscriptenModule,
   purpose: "name" | "getlin",
   query: string,
   bufferPtr: number,
 ): Promise<void> {
   setInputRequest({ kind: "line", purpose, query });
   return new Promise<void>((resolve) => {
-    setPending({ kind: "line", resolve, purpose, bufferPtr });
+    setPending({ kind: "line", resolve, purpose, bufferPtr, module });
   });
 }
 
@@ -989,8 +974,10 @@ function displayHistory(): Promise<number> {
  * Parse extcmdlist and wait for a command selection.
  * @returns the source array index or minus one on cancellation.
  */
-function waitForExtendedCommand(): Promise<number> | number {
-  const commands = readExtendedCommands();
+function waitForExtendedCommand(
+  module: EmscriptenModule,
+): Promise<number> | number {
+  const commands = readExtendedCommands(module);
   if (commands.length === 0) return -1;
   showExtendedCommands(commands);
   return new Promise<number>((resolve) => {
@@ -1002,10 +989,9 @@ function waitForExtendedCommand(): Promise<number> | number {
  * Parse user-visible entries from the exposed extcmdlist pointer.
  * @returns commands with their original array indexes.
  */
-function readExtendedCommands(): ExtendedCommand[] {
+function readExtendedCommands(module: EmscriptenModule): ExtendedCommand[] {
   const listPtr = globalThis.nethackGlobal?.pointers?.extcmdlist ?? 0;
   if (listPtr === 0) return [];
-  const module = requireModule();
   const commands: ExtendedCommand[] = [];
 
   for (let index = 0; index < 1024; index += 1) {
@@ -1034,7 +1020,10 @@ function readExtendedCommands(): ExtendedCommand[] {
  * Decode and buffer one status_update callback.
  * @param args - callback arguments in winshim.c order.
  */
-function updateDecodedStatus(args: unknown[]): void {
+function updateDecodedStatus(
+  module: EmscriptenModule,
+  args: unknown[],
+): void {
   const field = asNumber(args[0]);
   if (field === BL_FLUSH) {
     flushStatus();
@@ -1054,17 +1043,17 @@ function updateDecodedStatus(args: unknown[]): void {
   if (field === BL_CONDITION) {
     conditionMask = valuePtr === 0
       ? 0
-      : Number(requireModule().getValue(valuePtr, "i32")) >>> 0;
+      : Number(module.getValue(valuePtr, "i32")) >>> 0;
     const masksPtr = asNumber(args[5]);
     if (masksPtr !== 0) {
       for (let index = 0; index < BL_ATTCLR_MAX; index += 1) {
         conditionColors.push(
-          Number(requireModule().getValue(masksPtr + index * 4, "i32")) >>> 0,
+          Number(module.getValue(masksPtr + index * 4, "i32")) >>> 0,
         );
       }
     }
   } else {
-    text = decodeStatusText(field, readStringPointer(valuePtr));
+    text = decodeStatusText(field, readStringPointer(module, valuePtr));
   }
 
   setStatusValue(field, {
