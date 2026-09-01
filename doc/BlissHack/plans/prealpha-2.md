@@ -32,13 +32,13 @@ prealpha-2 的目标是为现有可游玩的字符版前端增加可靠的浏览
 - 存档导入、导出、冲突处理和失败回滚。
 - 有界、本地、可导出的诊断日志。
 - 致命错误后的会话隔离和重新开始能力。
+- 角色选择阶段按 `q` 正常结束当前 session 并返回主界面。
 - 单元测试、WASM 集成测试、浏览器端到端测试和长流程测试。
 
 ### 2.2 本版本不包含
 
 - 设置界面和 `.nethackrc` 图形化编辑。
 - 四列角色、种族、性别和阵营选择界面。
-- 角色选择阶段按 `q` 退出的 upstream shim 修复。
 - 现代化结算信息重排；沿用 NetHack 当前结束流程。
 - 多语言和核心文本替换。
 - 永久背包界面。
@@ -188,6 +188,8 @@ type AppState =
   `session/running -> session/saving -> session/exiting`。
 - 普通游戏结束：
   `session/running -> session/exiting`。
+- 角色选择阶段按 `q`：
+  `session/running -> session/exiting -> home`。
 - 核心退出、同步和清理全部完成：`session/exiting -> home`。
 - 当前 session 的致命错误：任意 session status 进入 `fatal`。
 - stale session 事件不能触发 reducer 状态转换。
@@ -256,6 +258,7 @@ type AppState =
 - 重复清理同一 session 是幂等操作。
 - `Continue` 和 `Settings` 具有 disabled 属性。
 - 正常退出和保存退出最终都回到 `home`。
+- 在初始 `[ynaq]` 角色选择提示按 `q` 会结束 session 并回到 `home`。
 
 ### 3.9 自动验收标准
 
@@ -265,6 +268,7 @@ type AppState =
 - 测试中主动触发过期 callback，不产生跨 session 状态污染。
 - Playwright 首屏断言主界面可见，NetHack 名字输入不可见。
 - 点击 `New Game` 后才加载并启动游戏。
+- 角色选择阶段按 `q` 后回到主界面，不创建游戏地图。
 - TypeScript、Oxlint 和生产构建通过。
 - 原有名字输入、角色选择、地图、菜单和键盘测试无回归。
 - 页面在桌面和移动 viewport 下无横向溢出。

@@ -182,9 +182,8 @@ void shim_update_inventory(int a1 UNUSED) {
 
 void shim_player_selection() {
     boolean do_genl_player_setup = shim_player_selection_or_tty();
-    if (do_genl_player_setup) {
-        genl_player_setup(80);
-    }
+    if (do_genl_player_setup && !genl_player_setup(80))
+        nh_terminate(EXIT_SUCCESS);
 }
 
 win_request_info *

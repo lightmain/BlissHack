@@ -549,6 +549,19 @@ describe("key, position, and prompt input", () => {
     await expect(invalid).resolves.toBe(113);
   });
 
+  it("returns q unchanged for the unrestricted role-selection prompt", async () => {
+    const requested = shimCallback(
+      "shim_yn_function",
+      "Shall I pick character's race, role, gender and alignment for you? [ynaq]",
+      "",
+      0,
+    );
+
+    sendKey("q".charCodeAt(0));
+
+    await expect(requested).resolves.toBe("q".charCodeAt(0));
+  });
+
   it("does not return a count marker when yn_number is unavailable", async () => {
     const counted = shimCallback("shim_yn_function", "How many?", "yn#", 110);
 

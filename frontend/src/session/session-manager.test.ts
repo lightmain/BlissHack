@@ -19,6 +19,8 @@ import {
 interface ModuleHarness {
   module: EmscriptenModule;
   memory: Uint8Array;
+  resolveMain: (value?: unknown) => void;
+  rejectMain: (error: unknown) => void;
   writeString: (pointer: number, value: string) => void;
 }
 
@@ -32,6 +34,12 @@ type ShimCallback = (name: string, ...args: unknown[]) => Promise<unknown>;
 function createModuleHarness(label: string): ModuleHarness {
   const memory = new Uint8Array(4096);
   const view = new DataView(memory.buffer);
+  let resolveMain!: (value?: unknown) => void;
+  let rejectMain!: (error: unknown) => void;
+  const mainResult = new Promise<unknown>((resolve, reject) => {
+    resolveMain = resolve;
+    rejectMain = reject;
+  });
 
   /**
    * Write a NUL-terminated string into this module's private memory.
@@ -46,7 +54,7 @@ function createModuleHarness(label: string): ModuleHarness {
 
   writeString(256, label);
   const module: EmscriptenModule = {
-    ccall: vi.fn((name: string) => name === "main" ? Promise.resolve(0) : undefined),
+    ccall: vi.fn((name: string) => name === "main" ? mainResult : undefined),
     getValue: vi.fn((pointer: number, type: string) => {
       if (type === "i8") return view.getInt8(pointer);
       if (type === "i16") return view.getInt16(pointer, true);
@@ -74,7 +82,13 @@ function createModuleHarness(label: string): ModuleHarness {
       syncfs: vi.fn((_populate, callback) => callback(null)),
     },
   };
-  return { module, memory, writeString };
+  return {
+    module,
+    memory,
+    resolveMain,
+    rejectMain,
+    writeString,
+  };
 }
 
 /**
@@ -273,6 +287,50 @@ describe("session callback isolation", () => {
 });
 
 describe("session cleanup", () => {
+  it("returns home when main exits successfully before gameplay", async () => {
+    const module = createModuleHarness("module");
+    let state: AppState = { phase: "home", storageAvailable: true };
+    const callbackHost: Record<string, unknown> = {};
+    const manager = createSessionManager({
+      callbackHost,
+      createSessionId: () => "session-1",
+      dispatch: (action: AppAction) => {
+        state = appReducer(state, action);
+      },
+      moduleFactory: async () => module.module,
+    });
+    const session = await manager.startSession();
+    await callbackFor(callbackHost, session)("shim_init_nhwindows", 0, 0);
+
+    module.resolveMain(0);
+
+    await vi.waitFor(() => {
+      expect(state).toEqual({ phase: "home", storageAvailable: true });
+    });
+    expect(callbackHost[session.callbackName]).toBeUndefined();
+  });
+
+  it("treats Emscripten exit status zero as successful termination", async () => {
+    const module = createModuleHarness("module");
+    const { manager, callbackHost, dispatch } = createHarness([module.module]);
+    const session = await manager.startSession();
+    dispatch.mockClear();
+
+    module.rejectMain({ name: "ExitStatus", status: 0 });
+
+    await vi.waitFor(() => {
+      expect(dispatch).toHaveBeenCalledWith({
+        type: "SESSION_CLEANUP_COMPLETED",
+        sessionId: session.sessionId,
+        storageAvailable: true,
+      });
+    });
+    expect(callbackHost[session.callbackName]).toBeUndefined();
+    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({
+      type: "SESSION_FATAL_ERROR",
+    }));
+  });
+
   it.each([
     {
       name: "menu",
