@@ -1,6 +1,8 @@
 /* NetHack 5.0 winshim.c    $NHDT-Date: 1781973099 2026/06/20 16:31:39 $  $NHDT-Branch: NetHack-5.0 $:$NHDT-Revision: 1.34 $ */
 /* Copyright (c) Adam Powers, 2020                                */
 /* NetHack may be freely redistributed.  See license for details. */
+/* Modified for BlissHack by lightmain, 2026-09-01: preserve quit
+ * semantics during character selection. */
 
 /* not an actual windowing port, but a fake win port for libnethack */
 
