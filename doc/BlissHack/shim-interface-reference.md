@@ -32,6 +32,11 @@
 > 10. `shim_doprev_message`、`shim_get_ext_cmd`、`shim_get_color_string`
 >     分别使用 `"iv"`、`"iv"`、`"sv"`。尾部 `v` 会被桥接层解析成一个
 >     `undefined` 占位参数；消费者应忽略它。
+> 11. 键盘回调必须返回非零、非 meta-zero 的输入值。也就是说，`0` 和
+>     `0x80` 都不能作为键盘输入；`0` 只用于 `nh_poskey` 的定位事件。
+> 12. `shim_nhbell` 总会转发回调，但 `flags.silent` 没有暴露给
+>     JavaScript。官方契约要求窗口端口在静音时不响铃，当前纯 TypeScript
+>     消费者无法可靠判断这一状态。
 >
 > 以上结论由当前源码和 Emscripten WASM32 record layout 验证；实现应优先遵循
 > `winshim.c` 的实际格式串，而不是仅依据 C 函数原型。
@@ -53,7 +58,7 @@
 
 ### 1.1 什么是 shim_graphics
 
-`shim_graphics` 是 NetHack 5.0 官方提供的一种**伪窗口端口**（fake window port）。它不是一个真正的图形界面实现（如 tty、curses、X11、Qt），而是一个**中间层 / 适配器**：把 NetHack 游戏核心对窗口系统的所有调用，统一转化为**回调事件**，转发给外部消费者。
+`shim_graphics` 是 NetHack 5.0 官方提供的一种**伪窗口端口**（fake window port）。它不是一个真正的图形界面实现（如 tty、curses、X11、Qt），而是一个**中间层 / 适配器**：把 NetHack 游戏核心的大部分窗口调用转化为**回调事件**，并为其余调用提供通用实现或 WASM 专用实现。
 
 它存在于 `win/shim/winshim.c`，只有 325 行代码，是所有窗口端口中最简单的一个。
 
@@ -108,7 +113,23 @@ TypeScript 侧实现渲染和输入逻辑。
 `can_set_perm_invent()` 因此会拒绝启用永久背包；仅仅能接收
 `MENU_BEHAVE_PERMINV` 并不等于窗口端口已经支持该能力。
 
-### 1.5 架构总览
+### 1.5 libnethack.a 与 nethack.js 的公开 API
+
+`sys/libnh/README.md` 定义了两套入口：
+
+- 原生静态库使用 `nhmain(argc, argv)` 启动，并将 C 函数指针传给
+  `shim_graphics_set_callback()`。回调签名是
+  `void callback(const char *name, void *ret_ptr, const char *fmt, ...)`；
+  有返回值时由回调写入 `ret_ptr`。
+- WASM 使用导出的 `main(argc, argv)` 启动，并把全局 JavaScript 回调的名称
+  字符串传给 `shim_graphics_set_callback(cbName)`。该函数必须注册为
+  `globalThis[cbName]`，并直接返回各窗口函数要求的值。
+
+两者收到相同的窗口函数名称和格式串，但参数的实际承载方式不同，不能把下文的
+WASM 指针解码过程原样套到原生 variadic C 回调上。官方将 shim graphics API
+视为大体稳定，但明确保留未来调整 `nhmain()`/`main()` 启动参数的可能。
+
+### 1.6 架构总览
 
 ```
 NetHack C 游戏核心
@@ -139,7 +160,7 @@ TypeScript 回调函数 (nethack-bridge.ts)
 | 字符 | 含义 | C 类型 | JS 类型 | 说明 |
 |------|------|--------|---------|------|
 | `v` | void | void | undefined | 无返回值 / 无参数 |
-| `i` | integer | int / winid / coordxy | number (整数) | 32 位整数 |
+| `i` | integer | int / winid | number (整数) | 32 位整数 |
 | `s` | string | const char * | string | C 字符串，桥接层自动调用 UTF8ToString |
 | `p` | pointer | void * / struct * | number (地址) | WASM 线性内存中的地址 |
 | `b` | boolean | boolean (实际 i8) | boolean | 0=false, 1=true |
@@ -152,8 +173,11 @@ TypeScript 回调函数 (nethack-bridge.ts)
 | `n` | number | int | number | 等同 `i` |
 
 **DECLCB 和 VDECLCB 的区别：**
-- `VDECLCB` — 声明返回 `void` 的回调，`ret_ptr` 传 `NULL` 给 `local_callback`，JS 侧无需返回有意义的值
-- `DECLCB` — 声明有返回值的回调，`ret_ptr` 指向返回值存储位置，JS 侧的 Promise resolve 值会通过 `setPointerValue` 写回
+- `VDECLCB` — 声明返回 `void` 的回调，`ret_ptr` 为 `NULL`
+- `DECLCB` — 声明有返回值的回调，`ret_ptr` 指向返回值存储位置
+
+在原生库中，消费者直接按 `fmt` 从 variadic 参数取值并写 `ret_ptr`；在 WASM
+中，JavaScript Promise 的兑现值由 `setPointerValue` 写回 `ret_ptr`。
 
 ### 2.2 参数传递宏
 
@@ -162,8 +186,13 @@ TypeScript 回调函数 (nethack-bridge.ts)
 #define P2V (void *)  /* Pointer to Void — 强制转换，用于本身就是指针的参数 */
 ```
 
+这两个定义只适用于 `__EMSCRIPTEN__` 分支：
+
 - 值类型参数（int, char, boolean）使用 `A2P`（取地址），因为 `void *args[]` 数组需要指针
 - 指针类型参数（const char *, struct *）使用 `P2V`（直接转换），因为它们本身就是地址
+
+原生 `libnethack.a` 分支把 `A2P` 和 `P2V` 定义为空，参数以正常 C variadic
+实参传给回调，不存在 `void *args[]` 的二次解引用过程。
 
 ---
 
@@ -181,7 +210,13 @@ VDECLCB(shim_init_nhwindows, (int *argcp, char **argv), "vpp", P2V argcp, P2V ar
 | **参数** | `argcp` (pointer): 指向命令行参数个数的指针；`argv` (pointer): 命令行参数数组指针 |
 | **返回值** | 无 |
 | **调用时机** | 游戏启动时，初始化窗口系统。在 `main()` 中由 `init_nhwindows(&argc, argv)` 调用 |
-| **JS 侧处理** | 通常用于初始化前端状态，可以忽略参数 |
+| **JS 侧处理** | 初始化窗口端状态；如需支持窗口端专用命令行参数，应解析并从 `*argcp`/`argv` 中移除它们 |
+
+接口允许 `init_nhwindows()` 创建标准窗口，但当前核心随后会通过正常的
+`create_nhwindow()` 调用创建 `WIN_MESSAGE`、`WIN_MAP` 等窗口。消息窗口可用后，
+窗口端必须把 `iflags.window_inited` 置为 `true`，否则核心的 `pline()` 会继续
+退化为 `raw_print()`。当前 BlissHack 在 `shim_init_nhwindows` 中提前设置该
+字段；严格按接口契约应推迟到 `NHW_MESSAGE` 创建成功之后。
 
 #### shim_exit_nhwindows
 
@@ -196,6 +231,9 @@ VDECLCB(shim_exit_nhwindows, (const char *str), "vs", P2V str)
 | **返回值** | 无 |
 | **调用时机** | 游戏结束，准备关闭窗口系统 |
 | **JS 侧处理** | 显示退出原因；保存文件已经关闭，此时可将 `/save` 同步到持久存储 |
+
+接口契约要求关闭并移除除 `raw_print` 输出通道之外的所有窗口，并在可能时显示
+非 NULL 的 `str`。
 
 当前浏览器实现会在启动 `main()` 前把 `/save` 挂载为 IDBFS 并执行
 `syncfs(true)`，在 `shim_exit_nhwindows` 中执行 `syncfs(false)`。Unix 构建的
@@ -321,6 +359,11 @@ DECLCB(winid, shim_create_nhwindow, (int type), "ii", A2P type)
 | **调用时机** | 游戏核心需要新窗口时调用 |
 | **JS 侧处理** | 创建对应的前端窗口实例，返回一个唯一的整数 ID |
 
+`window.txt` 所称的四种基础窗口是 `NHW_MESSAGE`、`NHW_MAP`、`NHW_MENU` 和
+`NHW_TEXT`。`NHW_STATUS` 仅用于旧式 `genl_status_*` 兼容路径，新窗口端不应
+依赖它；`NHW_PERMINVENT` 是当前源码后来增加的永久背包类型。类型常量不是
+窗口 ID，不能把 `NHW_MAP == 3` 当成 `WIN_MAP` 必然等于 3。
+
 #### shim_clear_nhwindow
 
 ```c
@@ -333,6 +376,8 @@ VDECLCB(shim_clear_nhwindow, (winid window), "vi", A2P window)
 | **参数** | `window` (int): 要清空的窗口 ID |
 | **调用时机** | 需要清空窗口内容时，尤其是地图窗口在切换关卡时 |
 
+是否需要清空取决于窗口类型；接口没有要求所有窗口都采用相同的清空策略。
+
 #### shim_display_nhwindow
 
 ```c
@@ -344,7 +389,11 @@ VDECLCB(shim_display_nhwindow, (winid window, boolean blocking), "vib", A2P wind
 | **fmt** | `"vib"` — 返回 void，一个 int + 一个 boolean |
 | **参数** | `window` (int): 窗口 ID；`blocking` (boolean): 是否阻塞等待用户交互 |
 | **调用时机** | 游戏核心要求显示窗口内容。如果 `blocking` 为 true，应等待用户按键后再返回 |
-| **JS 侧处理** | 渲染窗口内容。`blocking=true` 必须等待用户确认。文档同时明确 tty 端所有调用都阻塞；浏览器端也让临时 `NHW_TEXT`/`NHW_MENU` 等待确认，即使参数为 false，以免核心紧接着销毁窗口而使内容不可见。地图和消息窗口的非阻塞刷新立即返回 |
+| **JS 侧处理** | 将待处理内容送到屏幕；`blocking=true` 必须等到内容已显示并在适用时得到用户确认后再返回 |
+
+`blocking=false` 的接口契约不要求等待确认。tty 端选择让所有调用都阻塞；当前
+BlissHack 也让临时 `NHW_TEXT` 和 putstr-only `NHW_MENU` 等待确认，以免核心
+紧接着销毁窗口而使内容不可见。这是前端实现策略，不是 shim ABI 的要求。
 
 #### shim_destroy_nhwindow
 
@@ -358,6 +407,8 @@ VDECLCB(shim_destroy_nhwindow, (winid window), "vi", A2P window)
 | **参数** | `window` (int): 要销毁的窗口 ID |
 | **调用时机** | 窗口不再需要时 |
 
+若窗口尚未被移除，销毁操作也必须使其从显示中消失。
+
 #### shim_curs
 
 ```c
@@ -368,7 +419,10 @@ VDECLCB(shim_curs, (winid a, int x, int y), "viii", A2P a, A2P x, A2P y)
 |------|------|
 | **fmt** | `"viii"` — 返回 void，三个 int 参数 |
 | **参数** | `a` (int): 窗口 ID；`x` (int): 列坐标；`y` (int): 行坐标 |
-| **调用时机** | 移动指定窗口内的光标到 (x, y) 位置 |
+| **调用时机** | 把可见光标以及该窗口下一次输出的位置移动到 `(x, y)` |
+
+兼容坐标范围为 `1 <= x < cols`、`0 <= y < rows`。当前核心仍会将它用于
+`curs_on_u()`、定位/传送选点以及兼容状态输出；不能把它仅理解为地图光标事件。
 
 #### shim_ctrl_nhwindow (WASM 版本，非回调)
 
@@ -406,6 +460,10 @@ VDECLCB(shim_putstr, (winid w, int attr, const char *str), "viis", A2P w, A2P at
 | **参数** | `w` (int): 目标窗口 ID；`attr` (int): 文本样式（见下方常量）；`str` (string): 要显示的文本 |
 | **调用时机** | 在窗口中输出一行文本。最常见的调用场景：消息窗口 (`NHW_MESSAGE`)、菜单标题、文本窗口内容 |
 
+连续的 `putstr()` 调用各产生一行，并且前一行必须在后一行到来前对用户可见。
+窗口端至少需要支持可打印 ASCII；显示空间不足时可以压缩空格、折行或截断，
+但折行处需要清除到行尾。不支持的基础属性可以映射到其他可见属性。
+
 文本样式常量 (`attr`)：
 
 | 常量 | 值 | 含义 |
@@ -419,6 +477,10 @@ VDECLCB(shim_putstr, (winid w, int attr, const char *str), "viis", A2P w, A2P at
 | `ATR_INVERSE` | 7 | 反色 |
 | `ATR_URGENT` | 16 | 紧急（可与其他样式组合） |
 | `ATR_NOHISTORY` | 32 | 不记入消息历史（可与其他样式组合） |
+
+`ATR_URGENT` 和 `ATR_NOHISTORY` 不是基础显示属性，分别只在窗口端声明
+`WC2_URGENT_MESG` 和 `WC2_SUPPRESS_HIST` 时构成能力契约。当前 shim 只声明了
+后者。
 
 #### shim_display_file
 
@@ -449,6 +511,9 @@ VDECLCB(shim_raw_print, (const char *str), "vs", P2V str)
 | **参数** | `str` (string): 要输出的文本 |
 | **调用时机** | 在窗口系统初始化之前或关闭之后输出消息（如错误信息、版本信息） |
 
+`raw_print` 必须保证用户能看到文本，并在 `str` 后追加换行；它不需要解释
+ASCII 控制字符。
+
 #### shim_raw_print_bold
 
 ```c
@@ -460,6 +525,9 @@ VDECLCB(shim_raw_print_bold, (const char *str), "vs", P2V str)
 | **fmt** | `"vs"` — 返回 void，一个 string |
 | **参数** | `str` (string): 要加粗输出的文本 |
 | **调用时机** | 同 `shim_raw_print`，但文本应加粗显示 |
+
+与 `raw_print` 一样，它也要追加换行；如果窗口端无法加粗，可以退化为普通
+`raw_print`。
 
 ---
 
@@ -537,7 +605,11 @@ DECLCB(int, shim_nhgetch, (void), "i")
 | **fmt** | `"i"` — 返回 int，无参数 |
 | **返回值** | 非零 NetHack 输入字节或命令字符值 |
 | **调用时机** | 游戏等待用户输入单个按键时（如 `--More--` 提示、方向键） |
-| **JS 侧处理** | 必须等待用户按键，返回 1..255。Ctrl 组合通常落在控制字符范围，Meta 字符使用 `0x80` 高位，因此不能把输入限制为可打印 ASCII。**这是一个异步回调——C 侧会阻塞等待返回** |
+| **JS 侧处理** | 必须等待用户按键，返回 `1..255`，但排除 `0x80`。Ctrl 组合通常落在控制字符范围，Meta 字符使用 `0x80` 高位，因此不能把输入限制为可打印 ASCII。**这是一个异步回调——C 侧会阻塞等待返回** |
+
+接口明确禁止返回 `0` 以及 meta-zero（只设置 Meta 位的 `0x80`）。若平台支持
+`SAFERHANGUP`，挂断或 EOF 应映射为 ESC (`0x1b`)；当前 WASM 构建定义了
+`NO_SIGNAL`，没有该异步挂断路径。
 
 #### shim_nh_poskey
 
@@ -551,7 +623,7 @@ DECLCB(int, shim_nh_poskey, (coordxy *x, coordxy *y, int *mod), "ippp", P2V x, P
 | **参数** | `x` (pointer→int16): 鼠标点击的 x 坐标（输出参数）；`y` (pointer→int16): 鼠标点击的 y 坐标（输出参数）；`mod` (pointer→int32): 鼠标按钮修饰符（输出参数）|
 | **返回值** | 如果是键盘输入，返回非零 NetHack 输入字节；如果是鼠标点击，返回 0，同时通过指针参数填写坐标和修饰符 |
 | **调用时机** | 主输入循环中等待用户输入（键盘或鼠标） |
-| **JS 侧处理** | 等待用户输入。如果是键盘按键，返回 1..255。如果是鼠标点击，需要通过 `Module.setValue()` 把坐标写回 x/y/mod 指针，返回 0 |
+| **JS 侧处理** | 等待用户输入。如果是键盘按键，返回 `1..255` 但排除 `0x80`。如果是鼠标点击，需要通过 `Module.setValue()` 把坐标写回 x/y/mod 指针，返回 0 |
 
 鼠标修饰符常量：
 - `CLICK_1 = 1` — 左键点击
@@ -573,6 +645,14 @@ DECLCB(char, shim_yn_function,
 | **返回值** | 用户选择的字符的 ASCII 码 |
 | **调用时机** | 需要用户回答 yes/no 或从有限选项中选择时 |
 | **JS 侧处理** | 显示问题和选项，等待用户选择，返回所选字符的 ASCII 码 |
+
+窗口端需要实现以下规范化规则：
+
+- `resp == NULL` 时接受任意单字节输入并保留大小写，此规则覆盖其余限制。
+- `resp` 非 NULL 时，普通选项预期为小写；ESC 依次映射到 `q`、`n`、`def`。
+- Space、Return 和 Newline 等其他 quit 字符映射到 `def`。
+- `resp` 中 ESC 之后的字符仍可接受，但不应出现在提示文本中。
+- `query` 最长为 `QBUFSZ - 1`；当前核心包装函数会在进入窗口端前截断过长问题。
 
 当 `resp` 包含 `#` 时，窗口端口还必须累计十进制数量、写入全局
 `yn_number`，然后返回 `'#'`。当前 WASM 的 `js_globals_init()` 没有暴露
@@ -596,6 +676,11 @@ VDECLCB(shim_getlin, (const char *query, char *bufp), "vsp", P2V query, P2V bufp
 | **返回值** | 无（通过 `bufp` 指针写回用户输入的字符串） |
 | **调用时机** | 需要用户输入一行文本时（如命名物品、搜索命令） |
 | **JS 侧处理** | 显示输入框，等待用户输入。使用 `Module.stringToUTF8(userInput, bufp, BUFSZ)` 将结果写回 `bufp` 指针；当前 `BUFSZ` 为 256，且长度包含结尾 NUL |
+
+确认输入时不写入结尾换行；取消时必须写入 `"\033\0"`。输出必须截断到
+`BUFSZ` 内。`window.txt` 还要求窗口端在提示前执行 `flush_screen(1)`；当前
+核心 `getlin()` 包装函数没有替 shim 执行这一步，所以前端至少应先提交已有
+地图和状态渲染，再显示输入框。
 
 #### shim_get_ext_cmd
 
@@ -622,7 +707,7 @@ DECLCB(int, shim_doprev_message, (void), "iv")
 | 项目 | 说明 |
 |------|------|
 | **fmt** | `"iv"` — 返回 int，无参数 |
-| **返回值** | 0 = 成功 |
+| **返回值** | 当前核心忽略该返回值；现有窗口端通常返回 0 |
 | **调用时机** | 用户按 Ctrl+P 查看上一条消息时 |
 
 源码格式串是 `"iv"`，所以 JS 回调同样会收到一个无意义的
@@ -638,6 +723,10 @@ VDECLCB(shim_nhbell, (void), "v")
 |------|------|
 | **fmt** | `"v"` — 返回 void，无参数 |
 | **调用时机** | 需要发出警告铃声时（如非法操作） |
+
+官方契约要求尊重 `flags.silent`。shim 本身没有做这项检查，且
+`js_globals_init()` 没有导出 `flags.silent`，所以当前 TypeScript 回调无法
+完整遵守该要求；这属于现有 WASM 边界的限制。
 
 #### shim_number_pad
 
@@ -673,6 +762,9 @@ VDECLCB(shim_start_menu, (winid window, unsigned long mbehavior), "vii", A2P win
 | **参数** | `window` (int): 菜单窗口 ID；`mbehavior` (int): 菜单行为标志 |
 | **调用时机** | 开始构建一个新菜单 |
 
+只能对 `NHW_MENU` 窗口调用；一旦对该窗口调用过 `start_menu()`，在它被销毁
+之前就不能再把它当成文本窗口调用 `putstr()`。
+
 菜单行为常量：
 - `MENU_BEHAVE_STANDARD = 0` — 标准菜单
 - `MENU_BEHAVE_PERMINV = 1` — 持久背包窗口
@@ -692,7 +784,7 @@ VDECLCB(shim_add_menu,
 | **fmt** | `"vipi00iisi"` — 返回 void，9 个参数 |
 | **参数** | |
 | | `window` (int): 菜单窗口 ID |
-| | `glyphinfo` (pointer): 物品的 `glyph_info` 指针（用于显示图标），可为 0 |
+| | `glyphinfo` (pointer): 物品的 `glyph_info` 指针（用于显示图标）；没有图标时其 `glyph` 字段为 `NO_GLYPH` |
 | | `identifier` (number): C 原型为 `ANY_P *`，但当前格式串将它标为 `i`，桥接已将联合体低 32 位解引用。如果值为 0，则此项为不可选的标题/分隔行 |
 | | `ch` (int8/byte): 快捷键字符（如 'a', 'b'），0 表示由系统分配 |
 | | `gch` (int8/byte): 分组快捷键字符，0 表示不分组 |
@@ -708,6 +800,11 @@ VDECLCB(shim_add_menu,
 - `MENU_ITEMFLAGS_SKIPMENUCOLORS = 0x4` — 不应用菜单颜色规则
 
 **注意**：`ch` 和 `gch` 在 fmt 中标记为 `0`（即 int8/1字节），不是 `i`（int32）。读取时按 `getValue(ptr, "i8")` 处理。
+
+`glyphinfo->glyph == NO_GLYPH` 表示没有图标。可选项的 accelerator 通常应在
+`A-Z`/`a-z` 范围内；同一菜单应统一由调用方提供 accelerator，或统一交给
+窗口端分配。`gch` 为 0 时没有分组快捷键；若它与菜单命令或用户别名冲突，
+菜单命令优先。
 
 #### shim_end_menu
 
@@ -749,6 +846,12 @@ DECLCB(int, shim_select_menu,
 itemflags 位于 `+12`。由于当前回调只提供 identifier 的低 32 位，写回时
 identifier 的高 32 位必须清零。
 
+返回数组由 C 调用方释放。没有选择或取消时必须把 `*menu_list` 置为 NULL；
+未指定数量时 `count` 应为 `-1`（表示全部），数量 0 等同未选择且不得出现在
+返回数组中。`PICK_NONE` 只能返回 0 或 -1。同一菜单在下一次 `start_menu()`
+或 `destroy_nhwindow()` 前可以被多次 `select_menu()`，也可能从不调用
+`select_menu()`，所以不能在第一次选择后丢弃菜单内容。
+
 #### shim_message_menu
 
 ```c
@@ -761,6 +864,10 @@ DECLCB(char, shim_message_menu, (char let, int how, const char *mesg), "ciis", A
 | **参数** | `let` (int): 原提示允许在消息帮助中继续使用的快捷字符；`how` (int): 选择模式（PICK_NONE/PICK_ONE）；`mesg` (string): 消息文本 |
 | **返回值** | `let`、0（未选择）或 ESC（明确取消） |
 | **调用时机** | 在消息窗口中显示带选项的消息 |
+
+这是为 tty 的单行上下文帮助设计的兼容接口，只应在另一个提示已经活动时
+调用。将提示和普通消息分开显示的图形端通常可以采用 `genl_message_menu`
+语义，即显示 `mesg` 并返回 0。
 
 ---
 
@@ -796,8 +903,8 @@ VDECLCB(shim_status_enablefield,
 
 **当前 WASM 限制**：`shim_procs` 的对应槽位是
 `genl_status_enablefield`，所以此回调不会到达 TypeScript。前端目前只能使用
-`src/botl.c:initblstats` 中的固定格式；动态启用状态只能通过实际收到的
-`status_update` 和 `BL_RESET` 周期判断。
+`src/botl.c:initblstats` 中的固定格式，并按实际收到的 `status_update` 维护
+已出现字段；它无法可靠获知一个字段何时被动态禁用。
 
 #### shim_status_update
 
@@ -814,7 +921,7 @@ VDECLCB(shim_status_update,
 | **参数** | |
 | | `fldidx` (int): 状态字段索引 |
 | | `ptr` (pointer): 字段值（**类型取决于 fldidx**——见下方说明） |
-| | `chg` (int): 变化方向（正数=增加，负数=减少，0=不变） |
+| | `chg` (int): 数值字段使用 `+1`=增加、`-1`=减少、`0`=未变；位掩码变化使用 `+1`，字符串则使用 `strcmp` 结果的符号 |
 | | `percent` (int): 字段百分比；可用于 `BL_HP`、`BL_ENE`、`BL_XP` 和 `BL_EXP` |
 | | `color` (int): packed color；低 8 位是 `CLR_*`，高位是显示属性 |
 | | `colormasks` (pointer): `BL_CONDITION` 专用的 `cond_hilites[]` 掩码数组；其他字段应忽略 |
@@ -874,6 +981,10 @@ VDECLCB(shim_status_update,
 | `BL_FLUSH` | 刷新信号 |
 | `MAXBLSTATS` | 字段总数 |
 
+`shim_status_finish` 没有对应的 TypeScript 回调：`shim_procs` 注册的是
+`genl_status_finish`，它只释放通用状态实现的内部缓存。前端若需要销毁自己的
+状态数据，不能等待一个不存在的 `shim_status_finish` 事件。
+
 ---
 
 ### 2.11 消息历史
@@ -903,11 +1014,12 @@ VDECLCB(shim_putmsghistory, (const char *msg, boolean restoring_msghist), "vsb",
 | **参数** | `msg` (string): 消息文本；`restoring_msghist` (boolean): 是否正在恢复存档中的消息历史 |
 | **调用时机** | 恢复游戏存档时，核心将保存的消息历史送回给窗口端口 |
 
-恢复时核心按从旧到新的顺序调用，并最终用 `msg == NULL` 结束。当前
+恢复时核心按从旧到新的顺序调用；只要实际恢复了至少一条消息，最后会再用
+`msg == NULL` 调用一次。没有历史消息时当前源码不会发送结束调用。当前
 `local_callback` 会把 NULL 字符串解码成空字符串；保存逻辑不会保存空消息，
-因此前端可将恢复期间的空字符串作为结束标记。旧历史应放在本次启动阶段已经
-产生的消息之前。`restoring_msghist=false` 的文本只加入回看历史，不显示为
-当前消息。
+因此前端可将恢复期间的空字符串作为结束标记，但不能依赖它在空历史时出现。
+旧历史应放在本次启动阶段已经产生的消息之前。`restoring_msghist=false` 的
+文本只加入回看历史，不显示为当前消息。
 
 ---
 
@@ -922,7 +1034,7 @@ VDECLCB(shim_mark_synch, (void), "v")
 | 项目 | 说明 |
 |------|------|
 | **fmt** | `"v"` |
-| **调用时机** | 标记需要同步输出。窗口端口可在此刷新缓冲区 |
+| **调用时机** | 建立 I/O 同步点；在所有输出通道追上该位置之前，不应继续越过它。单通道或立即渲染的窗口端可以为空实现 |
 
 #### shim_wait_synch
 
@@ -933,7 +1045,7 @@ VDECLCB(shim_wait_synch, (void), "v")
 | 项目 | 说明 |
 |------|------|
 | **fmt** | `"v"` |
-| **调用时机** | 等待所有输出完成。在重要输出（如 `raw_print`）后调用 |
+| **调用时机** | 等待所有待处理输出完成，并在需要时处理曝光/重绘事件，保证返回时显示正确 |
 
 #### shim_delay_output
 
@@ -962,6 +1074,10 @@ VDECLCB(shim_preference_update, (const char *pref), "vp", P2V pref)
 | **参数** | `pref` (pointer→string): 变更的偏好名称。注意 fmt 标记为 `p` 不是 `s`，需要手动 `UTF8ToString` |
 | **调用时机** | 游戏选项改变时（如颜色设置、高亮设置） |
 
+核心只会为 `shim_procs.wincap`/`wincap2` 已声明支持的偏好调用此函数。偏好的
+解析和值维护由核心完成；窗口端应读取对应的 `iflags.wc_*`/`wc2_*` 值并调整
+显示，而不应自行解析配置文本。
+
 ---
 
 ### 2.14 颜色系统
@@ -989,7 +1105,7 @@ VDECLCB(shim_change_background, (int white_or_black), "vi", A2P white_or_black)
 |------|------|
 | **fmt** | `"vi"` — 返回 void，一个 int 参数 |
 | **参数** | `white_or_black` (int): 背景色（0=黑色，1=白色） |
-| **说明** | 仅在 MAC 平台构建时存在 |
+| **说明** | 函数声明始终存在，但只在 `CHANGE_COLOR` 与 Mac 条件同时满足时注册到窗口表 |
 
 #### set_shim_font_name
 
@@ -999,10 +1115,14 @@ DECLCB(short, set_shim_font_name, (winid window_type, char *font_name), "2is", A
 
 | 项目 | 说明 |
 |------|------|
-| **fmt** | `"2is"` — 返回 short(int16)，一个 int + 一个 string 参数 |
+| **fmt** | `"2is"` — 格式串声称返回 4 字节整数，参数为一个 int + 一个 string |
 | **参数** | `window_type` (int): 窗口类型；`font_name` (string): 字体名称 |
-| **返回值** | short/int16 |
-| **说明** | 仅在 MAC 平台构建时存在 |
+| **返回值** | C 原型实际为 `short` |
+| **说明** | 函数声明始终存在，但只在 `CHANGE_COLOR` 与 Mac 条件同时满足时注册到窗口表 |
+
+这里同时存在两个桥接缺陷：C 返回类型是 16 位 `short`，格式串却使用表示
+4 字节值的 `"2"`；`setPointerValue()` 又没有 `"2"` 写回分支。当前 WASM
+构建不会注册该函数，前端不能把这条声明当成可用接口。
 
 #### shim_get_color_string
 
@@ -1099,9 +1219,9 @@ WASM shim 没有实现该分支。
 | `shim_status_init` | `v` | VDECLCB | 状态栏 |
 | `shim_status_enablefield` | `vippb` | VDECLCB | 状态栏 |
 | `shim_status_update` | `vipiiip` | VDECLCB | 状态栏 |
-| `shim_update_inventory` | *(特殊)* | 直接实现 | 背包 |
-| `shim_player_selection` | *(特殊)* | 直接实现 | 角色选择 |
-| `shim_ctrl_nhwindow` | *(特殊)* | 直接实现 | 窗口管理 |
+| `shim_update_inventory` | *(WASM 特殊)* / `vi` (原生) | WASM 直接实现 / 原生 VDECLCB | 背包 |
+| `shim_player_selection` | *(WASM 特殊)* / `v` (原生) | WASM 直接实现 / 原生 VDECLCB | 角色选择 |
+| `shim_ctrl_nhwindow` | *(WASM 特殊)* / `viip` (原生) | WASM 直接实现 / 原生 DECLCB | 窗口管理 |
 
 上表列的是 `winshim.c` 中的声明和特殊实现，不等于当前 WASM 构建中
 全部都能由核心调用：
@@ -1115,14 +1235,19 @@ WASM shim 没有实现该分支。
 - `shim_change_background` 和 `set_shim_font_name` 还要求 Mac 条件；
   当前 WASM 构建不可达。
 
-此外，`shim_procs` 中还使用了以下**通用实现**（不经过 shim 回调，直接用 NetHack 内置函数）：
-- `genl_putmixed` — 混合文本输出（ASCII + 特殊符号编码）
-- `genl_outrip` — 死亡墓碑
-- `genl_status_finish` — 状态系统清理
-- `genl_status_enablefield` — 状态字段启用；`shim_status_enablefield`
-  虽然有定义，但未注册到当前窗口表，正常核心调用路径不会到达
-- `genl_status_update` — 在 `STATUS_HILITES` 未启用时使用的通用状态更新
-- `genl_can_suspend_yes` — 返回是否可暂停
+此外，`shim_procs` 中还使用了以下**通用实现**：
+
+- `genl_putmixed` — 先把 `\G...` 编码转换成字符，再调用 `putstr()`；因此没有
+  `shim_putmixed` 事件，但转换后的文本仍会通过 `shim_putstr` 到达前端。
+- `genl_outrip` — 用通用窗口调用构建死亡墓碑；没有 `shim_outrip` 事件，但
+  其中的创建窗口、输出、显示和销毁仍会触发相应 shim 回调。
+- `genl_status_finish` — 只清理通用状态缓存，不触发 shim 回调。
+- `genl_status_enablefield` — 保存通用状态元数据；`shim_status_enablefield`
+  虽然有定义，但未注册到当前窗口表，正常核心调用路径不会到达。
+- `genl_status_update` — 仅在 `STATUS_HILITES` 未启用时使用；它最终把拼接好的
+  两行状态文本交给 `putstr()`。当前构建启用了 `STATUS_HILITES`，实际注册
+  `shim_status_update`。
+- `genl_can_suspend_yes` — 直接返回可暂停，不触发 shim 回调。
 
 ---
 
@@ -1173,10 +1298,13 @@ WASM 的内存模型非常简单：
 │                  ├──────────────┤        │
 │                  │ 堆 (Heap)    │        │
 │                  │ malloc分配   │        │
-│  地址 0x10000000 └──────────────┘        │
+│  当前内存末端     └──────────────┘        │
 │                                          │
 └─────────────────────────────────────────┘
 ```
+
+图中的分区和末端地址仅用于说明概念；实际布局、初始大小以及内存是否增长由
+当前 Emscripten 链接配置决定。
 
 **关键概念：所有 C 中的指针，在 WASM 中就是这个 ArrayBuffer 的偏移量（整数）。**
 
@@ -1306,7 +1434,7 @@ C 字符串和 JS 字符串完全不同：
 
 | | C 字符串 | JS 字符串 |
 |---|---------|----------|
-| 存储位置 | WASM 线性内存中 | JS 堆中（V8 引擎管理） |
+| 存储位置 | WASM 线性内存中 | JS 引擎管理的堆中 |
 | 编码 | 通常是 UTF-8，以 `\0` 结尾 | UTF-16 (内部) |
 | 表示方式 | 一个指针（char*）= 内存地址 | 一个 string 对象 |
 
@@ -1477,7 +1605,14 @@ Asyncify 展开、例如当前项目中的 `main()` 调用使用 async ccall 选
 | `"f"`, `"d"` | `setValue(ptr, value, "double")` | number |
 | `"v"` | 不做任何操作 | — |
 
-**注意**：`setPointerValue` 中 `"s"` 类型的写入使用了硬编码的 1024 字节限制，源码注释标记为 `// TODO: uhh... danger will robinson`——这是一个潜在的缓冲区溢出风险。
+**注意**：
+
+- `"s"` 使用硬编码的 1024 字节限制，源码也标记了危险注释；对于返回
+  `char *` 的槽位，它不是“分配字符串并写入指针”，而是直接覆盖指针变量本身。
+- 写回函数没有处理 `"0"`、`"2"`、`"n"`，而且 `"f"`/`"d"` 的类型检查和
+  存储宽度也不可靠。不要依据格式字符表假定所有返回类型都能正确写回；当前
+  可达回调主要使用 `i`、`c`、`b`、`v`，字符串返回只能采用前述空字符串
+  workaround。`set_shim_font_name` 的 `"2"` 返回在当前构建中不可达。
 
 ---
 
@@ -1623,7 +1758,7 @@ globalThis.nethackGlobal = {
 
     constants: {
         WIN_TYPE: { NHW_MESSAGE: 1, NHW_MAP: 3, ... , 1: "NHW_MESSAGE", 3: "NHW_MAP", ... },
-        STATUS_FIELD: { BL_HP: 20, ... },
+        STATUS_FIELD: { BL_HP: 18, ... },
         GLYPH: { GLYPH_MON_OFF: 0, ... },
         COLORS: { CLR_RED: 1, ... },
         MENU_SELECT: { PICK_NONE: 0, PICK_ONE: 1, PICK_ANY: 2 },
@@ -1643,10 +1778,10 @@ globalThis.nethackGlobal = {
 
     globals: {
         svp: { plname: "Gandalf" },          // getter/setter 绑定
-        WIN_MAP: 3,                           // getter/setter 绑定
-        WIN_MESSAGE: 1,
-        WIN_INVEN: 5,
-        WIN_STATUS: 2,
+        WIN_MAP: number,                      // 动态 winid，不是 NHW_MAP 类型值
+        WIN_MESSAGE: number,
+        WIN_INVEN: number,                    // 未创建时通常为 WIN_ERR (-1)
+        WIN_STATUS: number,                   // 新状态 API 下通常为 WIN_ERR (-1)
         iflags: { window_inited: true, ... },
         flags: { initrole: -1, initrace: -1, ... },
     },
