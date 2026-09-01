@@ -4,6 +4,198 @@
   box-sizing: border-box;
 }
 
+.home-screen,
+.app-loading,
+.session-loading,
+.fatal-screen {
+  min-height: 100svh;
+  background: #080a0b;
+  color: #d8d8d2;
+  font-family: "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  letter-spacing: 0;
+}
+
+.home-screen {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+}
+
+.home-header,
+.home-footer {
+  min-height: 42px;
+  padding: 10px 18px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  border-color: #30363a;
+  color: #8f989d;
+  font-size: 12px;
+}
+
+.home-header {
+  justify-content: space-between;
+  border-bottom: 1px solid #30363a;
+}
+
+.home-version {
+  color: #7ddc8c;
+}
+
+.home-main {
+  width: min(760px, 100%);
+  margin: 0 auto;
+  padding: 8svh 24px 7svh;
+  display: grid;
+  align-content: center;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 280px);
+  gap: 64px;
+}
+
+.home-identity {
+  align-self: center;
+}
+
+.home-mark {
+  width: 12ch;
+  height: 5.5em;
+  margin-bottom: 20px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  align-items: end;
+  border-bottom: 1px solid #5a6268;
+  color: #7ddc8c;
+  font-size: 22px;
+}
+
+.home-mark span:nth-child(2) {
+  color: #ffcf5c;
+  transform: translateY(-1.2em);
+}
+
+.home-mark span:nth-child(3) {
+  color: #d8d8d2;
+  transform: translateY(-2.4em);
+}
+
+.home-identity h1 {
+  margin: 0;
+  color: #fff;
+  font-size: 64px;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.home-identity p {
+  margin: 18px 0 0;
+  color: #aeb6ba;
+  font-size: 14px;
+}
+
+.home-commands {
+  align-self: center;
+  display: grid;
+  gap: 10px;
+}
+
+.home-commands button,
+.fatal-screen button {
+  min-height: 46px;
+  padding: 10px 14px;
+  border: 1px solid #5a6268;
+  border-radius: 3px;
+  background: #111416;
+  color: #f0f0e8;
+  font: inherit;
+  letter-spacing: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.home-commands button:first-child {
+  border-color: #7ddc8c;
+  color: #fff;
+}
+
+.home-commands button:hover:not(:disabled),
+.home-commands button:focus-visible,
+.fatal-screen button:hover,
+.fatal-screen button:focus-visible {
+  background: #19201c;
+  outline: 2px solid #7ddc8c;
+  outline-offset: 2px;
+}
+
+.home-commands button:disabled {
+  border-color: #292e31;
+  color: #636b70;
+  cursor: not-allowed;
+}
+
+.home-footer {
+  flex-wrap: wrap;
+  border-top: 1px solid #30363a;
+}
+
+.home-footer a {
+  margin-left: auto;
+  color: #aeb6ba;
+}
+
+.app-loading,
+.session-loading,
+.fatal-screen {
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.app-loading {
+  grid-auto-flow: column;
+  gap: 12px;
+}
+
+.app-loading-mark,
+.screen-kicker {
+  color: #7ddc8c;
+}
+
+.session-loading {
+  align-content: center;
+  text-align: center;
+}
+
+.session-loading-mark {
+  display: grid;
+  color: #7ddc8c;
+  line-height: 1.25;
+  white-space: pre;
+}
+
+.session-loading h1,
+.fatal-screen h1 {
+  margin: 24px 0 8px;
+  color: #fff;
+  letter-spacing: 0;
+}
+
+.session-loading p,
+.fatal-screen p {
+  color: #aeb6ba;
+}
+
+.fatal-screen section {
+  width: min(620px, 100%);
+}
+
+.fatal-screen code {
+  color: #ffcf5c;
+  overflow-wrap: anywhere;
+}
+
+.fatal-screen button {
+  margin-top: 20px;
+}
+
 .nh-shell {
   min-height: 100svh;
   display: flex;
@@ -387,6 +579,27 @@
 .nh-color-white { color: #fff; }
 
 @media (max-width: 700px) {
+  .home-main {
+    padding: 48px 20px;
+    align-content: start;
+    grid-template-columns: 1fr;
+    gap: 42px;
+  }
+
+  .home-identity h1 {
+    font-size: 46px;
+  }
+
+  .home-footer {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .home-footer a {
+    margin-left: 0;
+  }
+
   .nh-shell {
     font-size: 11px;
   }

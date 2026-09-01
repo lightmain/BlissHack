@@ -26,6 +26,11 @@ function captureErrors(page: Page): CapturedErrors {
  */
 async function startNewGame(page: Page, name: string): Promise<void> {
   await page.goto(`?integration=${encodeURIComponent(name)}`);
+  await expect(page.getByRole("heading", { name: "BlissHack" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Continue" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Settings" })).toBeDisabled();
+  await expect(page.getByRole("textbox", { name: "Who are you?" })).toHaveCount(0);
+  await page.getByRole("button", { name: "New Game" }).click();
 
   const nameInput = page.getByRole("textbox", { name: "Who are you?" });
   await expect(nameInput).toBeVisible();
@@ -152,11 +157,12 @@ test("persists and restores a named game through IDBFS", async ({ page }) => {
   await page.keyboard.press("y");
   await expect(page.getByText("--More--", { exact: true })).toBeVisible();
   await page.keyboard.press("Space");
-  await expect(page.locator(".nh-runtime-exited")).toHaveText("Be seeing you...", {
+  await expect(page.getByRole("button", { name: "New Game" })).toBeVisible({
     timeout: 15_000,
   });
 
   await page.reload();
+  await page.getByRole("button", { name: "New Game" }).click();
   const nameInput = page.getByRole("textbox", { name: "Who are you?" });
   await expect(nameInput).toBeVisible();
   await nameInput.fill(name);

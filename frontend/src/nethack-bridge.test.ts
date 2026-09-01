@@ -17,7 +17,6 @@ import {
   getWindow,
 } from "./game-state";
 import {
-  attachModule,
   dismissDisplay,
   flushPersistentStorage,
   initializePersistentStorage,
@@ -26,7 +25,7 @@ import {
   resetBridgeState,
   sendKey,
   sendPosition,
-  shimCallback,
+  shimCallbackForModule,
   submitExtendedCommand,
   submitLine,
   submitMenuSelection,
@@ -198,10 +197,22 @@ async function expectPending(promise: Promise<unknown>): Promise<void> {
 
 let harness: MockModuleHarness;
 
+/**
+ * Dispatch a callback against the module owned by the current test.
+ * @param name - shim callback name.
+ * @param args - decoded callback arguments.
+ * @returns the callback result.
+ */
+function shimCallback(
+  name: string,
+  ...args: unknown[]
+): Promise<unknown> {
+  return shimCallbackForModule(harness.module, name, ...args);
+}
+
 beforeEach(() => {
   harness = createMockModule();
   resetBridgeState();
-  attachModule(harness.module);
   (globalThis as Record<string, unknown>).nethackGlobal = {
     globals: {
       flags: {},
