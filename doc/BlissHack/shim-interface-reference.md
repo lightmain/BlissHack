@@ -3,6 +3,8 @@
 > 本文档是 BlissHack 项目的核心技术参考，面向从未接触过 WASM 开发的前端工程师。
 > 源码版本：NetHack 5.0 (`win/shim/winshim.c`, `sys/libnh/libnhmain.c`)
 
+参考官方文档：`sys/libnh/README.md`，`doc/window.txt`
+
 > **当前 WASM 构建勘误：**
 > 1. `shim_add_menu` 的 identifier 在 C 中是指针，但格式串第三位实际为 `i`，
 >    所以 TypeScript 收到的是已解引用的 32 位值，不是指针。
