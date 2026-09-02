@@ -1,8 +1,17 @@
+import { useEffect, useRef } from "react";
+import type { SaveListEntry } from "../storage/storage-service";
+import { SavePickerPopover } from "./SavePickerPopover";
+
 /** Properties for the application home screen. */
 interface HomeScreenProps {
   hasSaves?: boolean;
+  moduleId?: string;
   onContinue?: () => void;
+  onContinueSave?: (save: SaveListEntry) => void;
+  onDismissSavePicker?: () => void;
   onNewGame: () => void;
+  savePickerOpen?: boolean;
+  saves?: SaveListEntry[];
   storageAvailable?: boolean;
 }
 
@@ -13,10 +22,40 @@ interface HomeScreenProps {
  */
 export function HomeScreen({
   hasSaves = false,
+  moduleId = "home",
   onContinue = () => undefined,
+  onContinueSave = () => undefined,
+  onDismissSavePicker = () => undefined,
   onNewGame,
+  savePickerOpen = false,
+  saves = [],
   storageAvailable = true,
 }: HomeScreenProps) {
+  const continueRegionRef = useRef<HTMLDivElement>(null);
+  const savePickerId = "home-save-picker";
+
+  useEffect(() => {
+    if (!savePickerOpen) return undefined;
+
+    const dismissOutside = (event: PointerEvent): void => {
+      if (
+        event.target instanceof Node
+        && !continueRegionRef.current?.contains(event.target)
+      ) {
+        onDismissSavePicker();
+      }
+    };
+    const dismissWithEscape = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") onDismissSavePicker();
+    };
+    document.addEventListener("pointerdown", dismissOutside);
+    document.addEventListener("keydown", dismissWithEscape);
+    return () => {
+      document.removeEventListener("pointerdown", dismissOutside);
+      document.removeEventListener("keydown", dismissWithEscape);
+    };
+  }, [onDismissSavePicker, savePickerOpen]);
+
   return (
     <main className="home-screen" aria-labelledby="home-title">
       <header className="home-header">
@@ -25,6 +64,31 @@ export function HomeScreen({
       </header>
 
       <section className="home-main">
+        <nav aria-label="Main commands" className="home-commands">
+          <button onClick={onNewGame} type="button">New Game</button>
+          <div className="home-command-slot" ref={continueRegionRef}>
+            <button
+              aria-controls={savePickerId}
+              aria-expanded={savePickerOpen}
+              aria-haspopup="dialog"
+              disabled={!storageAvailable || !hasSaves}
+              onClick={savePickerOpen ? onDismissSavePicker : onContinue}
+              type="button"
+            >
+              Continue
+            </button>
+            {savePickerOpen && (
+              <SavePickerPopover
+                id={savePickerId}
+                moduleId={moduleId}
+                onContinue={onContinueSave}
+                saves={saves}
+              />
+            )}
+          </div>
+          <button disabled type="button">Settings</button>
+        </nav>
+
         <div className="home-identity">
           <div aria-hidden="true" className="home-mark">
             <span>@</span>
@@ -34,18 +98,6 @@ export function HomeScreen({
           <h1 id="home-title">BlissHack</h1>
           <p>An unofficial NetHack 5.0 port</p>
         </div>
-
-        <nav aria-label="Main commands" className="home-commands">
-          <button onClick={onNewGame} type="button">New Game</button>
-          <button
-            disabled={!storageAvailable || !hasSaves}
-            onClick={onContinue}
-            type="button"
-          >
-            Continue
-          </button>
-          <button disabled type="button">Settings</button>
-        </nav>
         {!storageAvailable && (
           <p className="home-storage-warning" role="status">
             Persistent storage is unavailable. New games are temporary.

@@ -14,12 +14,8 @@ type StageTwoState =
   | {
     phase: "home";
     moduleId: string;
+    savePickerOpen: boolean;
     storageAvailable: boolean;
-  }
-  | {
-    phase: "save-picker";
-    moduleId: string;
-    storageAvailable: true;
   }
   | {
     phase: "session";
@@ -96,6 +92,7 @@ describe("stage-two module lifecycle state", () => {
     })).toEqual({
       phase: "home",
       moduleId: "module-1",
+      savePickerOpen: false,
       storageAvailable: true,
     });
   });
@@ -104,6 +101,7 @@ describe("stage-two module lifecycle state", () => {
     const home: StageTwoState = {
       phase: "home",
       moduleId: "module-1",
+      savePickerOpen: false,
       storageAvailable: true,
     };
     const picker = reduce(home, {
@@ -112,8 +110,9 @@ describe("stage-two module lifecycle state", () => {
     });
 
     expect(picker).toEqual({
-      phase: "save-picker",
+      phase: "home",
       moduleId: "module-1",
+      savePickerOpen: true,
       storageAvailable: true,
     });
     expect(reduce(picker, {
@@ -129,6 +128,7 @@ describe("stage-two module lifecycle state", () => {
     const home: StageTwoState = {
       phase: "home",
       moduleId: "module-1",
+      savePickerOpen: false,
       storageAvailable: true,
     };
 
@@ -147,6 +147,7 @@ describe("stage-two module lifecycle state", () => {
     const home: StageTwoState = {
       phase: "home",
       moduleId: "module-2",
+      savePickerOpen: false,
       storageAvailable: true,
     };
 

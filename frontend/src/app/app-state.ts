@@ -7,8 +7,12 @@ export type SessionStatus = "starting" | "running" | "saving" | "exiting";
 /** Authoritative top-level application state. */
 export type AppState =
   | { phase: "booting"; moduleId: string | null; status: BootStatus }
-  | { phase: "home"; moduleId: string; storageAvailable: boolean }
-  | { phase: "save-picker"; moduleId: string; storageAvailable: true }
+  | {
+    phase: "home";
+    moduleId: string;
+    savePickerOpen: boolean;
+    storageAvailable: boolean;
+  }
   | {
     phase: "session";
     moduleId: string;
@@ -82,6 +86,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         ? {
           phase: "home",
           moduleId: action.moduleId,
+          savePickerOpen: false,
           storageAvailable: action.storageAvailable,
         }
         : state;
@@ -89,26 +94,18 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return isCurrentModule(state, action.moduleId)
         && state.phase === "home"
         && state.storageAvailable
-        ? {
-          phase: "save-picker",
-          moduleId: action.moduleId,
-          storageAvailable: true,
-        }
+        ? { ...state, savePickerOpen: true }
         : state;
     case "SAVE_PICKER_CLOSED":
       return isCurrentModule(state, action.moduleId)
-        && state.phase === "save-picker"
-        ? {
-          phase: "home",
-          moduleId: action.moduleId,
-          storageAvailable: true,
-        }
+        && state.phase === "home"
+        ? { ...state, savePickerOpen: false }
         : state;
     case "NEW_GAME":
     case "CONTINUE_GAME":
     case "SESSION_CREATED":
       return isCurrentModule(state, action.moduleId)
-        && (state.phase === "home" || state.phase === "save-picker")
+        && state.phase === "home"
         ? {
           phase: "session",
           moduleId: action.moduleId,

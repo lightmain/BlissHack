@@ -7,7 +7,15 @@ import { HomeScreen } from "./HomeScreen";
 interface StageTwoHomeProps {
   hasSaves: boolean;
   onContinue: () => void;
+  onContinueSave?: (save: unknown) => void;
+  onDismissSavePicker?: () => void;
   onNewGame: () => void;
+  savePickerOpen?: boolean;
+  saves?: Array<{
+    path: string;
+    status: "ready";
+    identity: { playerName: string };
+  }>;
   storageAvailable: boolean;
 }
 
@@ -106,5 +114,30 @@ describe("HomeScreen", () => {
     expect(buttonMarkup(html, "New Game")).not.toMatch(/\sdisabled(?:=""|>)/i);
     expect(buttonMarkup(html, "Continue")).toMatch(/\sdisabled(?:=""|>)/i);
     expect(html).toMatch(/storage|persist|IndexedDB|存档/i);
+  });
+
+  it("renders the save picker as a Continue popover inside home", () => {
+    const StageTwoHome = HomeScreen as ComponentType<StageTwoHomeProps>;
+    const html = renderToStaticMarkup(createElement(StageTwoHome, {
+      hasSaves: true,
+      onContinue: vi.fn(),
+      onContinueSave: vi.fn(),
+      onDismissSavePicker: vi.fn(),
+      onNewGame: vi.fn(),
+      savePickerOpen: true,
+      saves: [{
+        path: "/save/0Ada",
+        status: "ready",
+        identity: { playerName: "Ada" },
+      }],
+      storageAvailable: true,
+    }));
+
+    expect(html.match(/<main\b/g)).toHaveLength(1);
+    expect(html).toMatch(/aria-expanded="true"/);
+    expect(html).toMatch(/role="dialog"/);
+    expect(html).toMatch(/aria-label="Saved games"/);
+    expect(html).toMatch(/Ada/);
+    expect(html).not.toMatch(/>\s*Back\s*</);
   });
 });

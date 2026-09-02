@@ -59,8 +59,28 @@ describe("appReducer legal transitions", () => {
     })).toEqual({
       phase: "home",
       moduleId: "module-1",
+      savePickerOpen: false,
       storageAvailable: true,
     });
+  });
+
+  it("opens and closes the save picker without leaving home", () => {
+    const home = homeState();
+    const opened = appReducer(home, {
+      type: "SAVE_PICKER_OPENED",
+      moduleId: "module-1",
+    });
+
+    expect(opened).toEqual({
+      phase: "home",
+      moduleId: "module-1",
+      savePickerOpen: true,
+      storageAvailable: true,
+    });
+    expect(appReducer(opened, {
+      type: "SAVE_PICKER_CLOSED",
+      moduleId: "module-1",
+    })).toEqual(home);
   });
 
   it("claims the prepared module and starts a session", () => {
@@ -80,6 +100,24 @@ describe("appReducer legal transitions", () => {
       type: "SESSION_RUNNING",
       sessionId: "session-1",
     })).toMatchObject({ phase: "session", status: "running" });
+  });
+
+  it("starts a new game while the save picker is open", () => {
+    const opened = appReducer(homeState(), {
+      type: "SAVE_PICKER_OPENED",
+      moduleId: "module-1",
+    });
+
+    expect(appReducer(opened, {
+      type: "NEW_GAME",
+      moduleId: "module-1",
+      sessionId: "session-1",
+    })).toEqual({
+      phase: "session",
+      moduleId: "module-1",
+      sessionId: "session-1",
+      status: "starting",
+    });
   });
 
   it("moves through booting before returning home after cleanup", () => {

@@ -5,7 +5,6 @@
 }
 
 .home-screen,
-.save-picker-screen,
 .app-loading,
 .session-loading,
 .fatal-screen {
@@ -43,17 +42,22 @@
 }
 
 .home-main {
-  width: min(760px, 100%);
+  width: min(820px, 100%);
   margin: 0 auto;
   padding: 8svh 24px 7svh;
   display: grid;
   align-content: center;
-  grid-template-columns: minmax(0, 1fr) minmax(220px, 280px);
+  grid-template-areas:
+    "commands identity"
+    "warning identity";
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
   gap: 64px;
 }
 
 .home-identity {
+  grid-area: identity;
   align-self: center;
+  justify-self: end;
 }
 
 .home-mark {
@@ -93,14 +97,15 @@
 }
 
 .home-commands {
+  grid-area: commands;
   align-self: center;
   display: grid;
   gap: 10px;
 }
 
-.home-commands button,
+.home-commands > button,
+.home-command-slot > button,
 .save-picker-entry,
-.save-picker-back,
 .fatal-screen button {
   min-height: 46px;
   padding: 10px 14px;
@@ -114,17 +119,17 @@
   cursor: pointer;
 }
 
-.home-commands button:first-child {
+.home-commands > button:first-child {
   border-color: #7ddc8c;
   color: #fff;
 }
 
-.home-commands button:hover:not(:disabled),
-.home-commands button:focus-visible,
+.home-commands > button:hover:not(:disabled),
+.home-commands > button:focus-visible,
+.home-command-slot > button:hover:not(:disabled),
+.home-command-slot > button:focus-visible,
 .save-picker-entry:hover:not(:disabled),
 .save-picker-entry:focus-visible,
-.save-picker-back:hover,
-.save-picker-back:focus-visible,
 .fatal-screen button:hover,
 .fatal-screen button:focus-visible {
   background: #19201c;
@@ -132,14 +137,23 @@
   outline-offset: 2px;
 }
 
-.home-commands button:disabled {
+.home-commands > button:disabled,
+.home-command-slot > button:disabled {
   border-color: #292e31;
   color: #636b70;
   cursor: not-allowed;
 }
 
+.home-command-slot {
+  position: relative;
+}
+
+.home-command-slot > button {
+  width: 100%;
+}
+
 .home-storage-warning {
-  grid-column: 2;
+  grid-area: warning;
   margin: 4px 0 0;
   color: #ffcf5c;
   font-size: 12px;
@@ -211,23 +225,26 @@
   margin-top: 20px;
 }
 
-.save-picker-screen {
-  padding: 40px 24px;
+.save-picker-popover {
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + 8px);
+  left: 0;
+  width: min(360px, calc(100vw - 48px));
+  max-height: min(420px, 55svh);
+  padding: 8px;
+  overflow-y: auto;
+  border: 1px solid #5a6268;
+  border-radius: 3px;
+  background: #0d1011;
+  box-shadow: 0 14px 36px rgb(0 0 0 / 45%);
 }
 
-.save-picker-header,
-.save-picker-list,
-.save-picker-back {
-  width: min(620px, 100%);
-  margin-right: auto;
-  margin-left: auto;
-}
-
-.save-picker-header h1 {
-  margin: 8px 0 28px;
-  color: #fff;
-  font-size: 32px;
-  letter-spacing: 0;
+.save-picker-heading {
+  padding: 6px 6px 10px;
+  color: #8f989d;
+  font-size: 12px;
+  text-transform: uppercase;
 }
 
 .save-picker-list {
@@ -252,11 +269,6 @@
 
 .save-picker-entry:disabled small {
   color: #d57676;
-}
-
-.save-picker-back {
-  display: block;
-  margin-top: 24px;
 }
 
 .nh-shell {
@@ -645,8 +657,16 @@
   .home-main {
     padding: 48px 20px;
     align-content: start;
+    grid-template-areas:
+      "identity"
+      "commands"
+      "warning";
     grid-template-columns: 1fr;
     gap: 42px;
+  }
+
+  .home-identity {
+    justify-self: start;
   }
 
   .home-identity h1 {
@@ -663,12 +683,8 @@
     margin-left: 0;
   }
 
-  .home-storage-warning {
-    grid-column: 1;
-  }
-
-  .save-picker-screen {
-    padding: 28px 16px;
+  .save-picker-popover {
+    width: min(360px, calc(100vw - 40px));
   }
 
   .nh-shell {
