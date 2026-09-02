@@ -1,35 +1,33 @@
 import type { SaveListEntry } from "../storage/storage-service";
 
-/** Properties for the saved-game selection screen. */
-interface SavePickerScreenProps {
+/** Properties for the saved-game popover anchored to Continue. */
+interface SavePickerPopoverProps {
+  id?: string;
   moduleId: string;
-  onBack: () => void;
   onContinue: (save: SaveListEntry) => void;
   saves: SaveListEntry[];
 }
 
 /**
- * Render saves which were enumerated by the current home module.
- * @param props - current module identity, saves, and navigation handlers.
- * @returns the saved-game selection screen.
+ * Render saves without replacing the surrounding home screen.
+ * @param props - current module identity, saves, and selection handler.
+ * @returns a compact saved-game popover.
  */
-export function SavePickerScreen({
+export function SavePickerPopover({
+  id,
   moduleId,
-  onBack,
   onContinue,
   saves,
-}: SavePickerScreenProps) {
+}: SavePickerPopoverProps) {
   return (
-    <main
-      className="save-picker-screen"
+    <div
+      aria-label="Saved games"
+      className="save-picker-popover"
       data-module-id={moduleId}
-      aria-labelledby="save-picker-title"
+      id={id}
+      role="dialog"
     >
-      <header className="save-picker-header">
-        <p className="screen-kicker">Saved games</p>
-        <h1 id="save-picker-title">Continue</h1>
-      </header>
-
+      <div className="save-picker-heading">Saved games</div>
       <div className="save-picker-list">
         {saves.map((save) => {
           const ready = save.status === "ready";
@@ -54,11 +52,7 @@ export function SavePickerScreen({
           );
         })}
       </div>
-
-      <button className="save-picker-back" onClick={onBack} type="button">
-        Back
-      </button>
-    </main>
+    </div>
   );
 }
 

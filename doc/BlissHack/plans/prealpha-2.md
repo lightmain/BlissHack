@@ -85,7 +85,7 @@ frontend/src/
 ├── screens/
 │   ├── HomeScreen.tsx
 │   ├── GameScreen.tsx
-│   ├── SavePickerScreen.tsx
+│   ├── SavePickerPopover.tsx
 │   └── FatalScreen.tsx
 ├── App.tsx
 ├── main.tsx
@@ -126,12 +126,8 @@ type AppState =
   | {
       phase: "home";
       moduleId: string;
+      savePickerOpen: boolean;
       storageAvailable: boolean;
-    }
-  | {
-      phase: "save-picker";
-      moduleId: string;
-      storageAvailable: true;
     }
   | {
       phase: "session";
@@ -153,10 +149,11 @@ storage populate；`session.status` 只描述用户选择之后的活动游戏�
 `moduleId` 并派发 `MODULE_LOADING`，后续用它拒绝旧 module 的异步完成事件。
 `sessionId` 在用户选择 New Game 或 Continue 时生成，用于隔离游戏 callback。
 
-`home` 和 `save-picker` 不存在活动 session，但持有同一个已初始化、尚未调用
-`main()` 的下一局 game module。资源清理完成后先创建并初始化下一 module，
-再进入 `home`；module 准备或活动 session 的不可恢复错误都进入顶层
-`fatal`。实际 `EmscriptenModule` 对象由 manager 持有，不放进 reducer。
+`home` 不存在活动 session，但持有一个已初始化、尚未调用 `main()` 的下一局
+game module。存档列表是 `home.savePickerOpen` 控制的局部 popover，不切换
+顶层界面。资源清理完成后先创建并初始化下一 module，再进入 `home`；module
+准备或活动 session 的不可恢复错误都进入顶层 `fatal`。实际
+`EmscriptenModule` 对象由 manager 持有，不放进 reducer。
 
 后续阶段可以增加 `importing` 等顶层状态，但所有状态转换必须继续由同一个
 reducer 处理。
@@ -211,10 +208,11 @@ reducer 处理。
 - 页面初始化时先生成 `moduleId`：
   `booting/loading-module -> booting/loading-storage -> home`。
 - 首页打开和关闭存档列表：
-  `home -> save-picker -> home`；三者使用同一个 `moduleId`。
+  `home/savePickerOpen:false -> home/savePickerOpen:true -> home`；始终使用
+  同一个 `moduleId`。
 - 点击新游戏或选择存档：
-  `home|save-picker -> session/starting`；认领已经准备好的 module，并生成
-  `sessionId`。
+  `home -> session/starting`；即使 popover 展开也可以点击 New Game，认领
+  已经准备好的 module，并生成 `sessionId`。
 - 调用 `main()` 并收到 `shim_init_nhwindows`：
   `session/starting -> session/running`。
 - 后续保存流程：
@@ -351,8 +349,8 @@ reducer 处理。
 ### 4.2 存储服务需求
 
 1. 将 IDBFS 操作从 bridge 中提取为独立 storage service。
-2. 存储实现放在 `frontend/src/storage/`，存档列表界面放在
-   `frontend/src/screens/SavePickerScreen.tsx`。
+2. 存储实现放在 `frontend/src/storage/`，存档列表弹层放在
+   `frontend/src/screens/SavePickerPopover.tsx`。
 3. storage service 至少提供：
 
    ```text
@@ -393,7 +391,8 @@ reducer 处理。
 
 - 没有存档时，`Continue` 保持 disabled。
 - 有至少一个可继续存档时，`Continue` 启用。
-- 点击后进入简单存档列表，支持选择和返回主界面。
+- 点击后从 Continue 按钮展开存档列表，不切换主界面。
+- 点击弹层以外的空白区域或按 Escape 关闭；展开时 New Game 仍可直接启动。
 - 本版本只显示格式评审确认能够可靠读取的字段。
 - 无法读取元数据的文件显示为不可继续，并提供错误状态；不得猜测。
 - 本阶段不提供删除按钮；删除、覆盖及其确认流程留到阶段三评审。

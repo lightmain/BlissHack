@@ -10,7 +10,6 @@ import {
 } from "./app/app-state";
 import { HomeScreen } from "./screens/HomeScreen";
 import { GameScreen } from "./screens/GameScreen";
-import { SavePickerScreen } from "./screens/SavePickerScreen";
 import { createSessionManager } from "./session/session-manager";
 import type { SaveListEntry } from "./storage/storage-service";
 
@@ -49,7 +48,7 @@ function App() {
 
   /** Return from the save list without replacing its prepared module. */
   function closeSavePicker(): void {
-    if (state.phase !== "save-picker") return;
+    if (state.phase !== "home" || !state.savePickerOpen) return;
     dispatch({ type: "SAVE_PICKER_CLOSED", moduleId: state.moduleId });
   }
 
@@ -78,23 +77,14 @@ function App() {
     return (
       <HomeScreen
         hasSaves={saves.some((save) => save.status === "ready")}
-        onContinue={openSavePicker}
-        onNewGame={startNewGame}
-        storageAvailable={state.storageAvailable}
-      />
-    );
-  }
-
-  if (state.phase === "save-picker") {
-    const preparation = sessionManager.getHomePreparation();
-    return (
-      <SavePickerScreen
         moduleId={state.moduleId}
-        onBack={closeSavePicker}
-        onContinue={continueGame}
-        saves={preparation?.moduleId === state.moduleId
-          ? preparation.saves
-          : []}
+        onContinue={openSavePicker}
+        onContinueSave={continueGame}
+        onDismissSavePicker={closeSavePicker}
+        onNewGame={startNewGame}
+        savePickerOpen={state.savePickerOpen}
+        saves={saves}
+        storageAvailable={state.storageAvailable}
       />
     );
   }

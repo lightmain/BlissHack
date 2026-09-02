@@ -30,6 +30,11 @@ async function startNewGame(page: Page, name: string): Promise<void> {
   await expect(page.getByRole("button", { name: "Continue" })).toBeDisabled();
   await expect(page.getByRole("button", { name: "Settings" })).toBeDisabled();
   await expect(page.getByRole("textbox", { name: "Who are you?" })).toHaveCount(0);
+  const [commands, identity] = await Promise.all([
+    page.locator(".home-commands").boundingBox(),
+    page.locator(".home-identity").boundingBox(),
+  ]);
+  expect(commands?.x).toBeLessThan(identity?.x ?? 0);
   await page.getByRole("button", { name: "New Game" }).click();
 
   const nameInput = page.getByRole("textbox", { name: "Who are you?" });
@@ -79,7 +84,7 @@ async function saveAndReturnHome(page: Page): Promise<void> {
  */
 async function continueSavedGame(page: Page, name: string): Promise<void> {
   await page.getByRole("button", { name: "Continue" }).click();
-  await expect(page.getByRole("heading", { name: "Continue" })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Saved games" })).toBeVisible();
   await page.getByRole("button", { name }).click();
 }
 
@@ -202,6 +207,11 @@ test("enumerates a persisted save after returning home and refreshing", async ({
   await page.reload();
   await expect(page.getByRole("button", { name: "Continue" })).toBeEnabled();
   await page.getByRole("button", { name: "Continue" }).click();
+  await expect(page.getByRole("heading", { name: "BlissHack" })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Saved games" })).toBeVisible();
+  await page.locator(".home-footer").click();
+  await expect(page.getByRole("dialog", { name: "Saved games" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Continue" }).click();
   await expect(page.getByRole("button", { name })).toBeVisible();
   expect(errors).toEqual({ console: [], page: [] });
 });
@@ -240,6 +250,8 @@ test("retires the first module before preparing and running the second game", as
   await saveAndReturnHome(page);
 
   await expect(page.getByRole("button", { name: "Continue" })).toBeEnabled();
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expect(page.getByRole("dialog", { name: "Saved games" })).toBeVisible();
   await page.getByRole("button", { name: "New Game" }).click();
   await expect(page.getByRole("textbox", { name: "Who are you?" })).toBeVisible();
   await expect(page.locator(".nh-cursor")).toHaveCount(0);
