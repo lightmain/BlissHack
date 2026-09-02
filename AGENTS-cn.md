@@ -1,8 +1,16 @@
 # BlissHack
 
+## 新 Session 启动
+
+每个 Agent 在新 session 开始工作时，必须先完整阅读
+`doc/BlissHack/session-start.md`，并按其中的清单读取基础文档、检查 Git
+现场和选择任务相关资料。不得默认沿用上一 session 的仓库状态、当前阶段或
+测试结果。
+
 ## 项目目的
 
-当前项目是基于 NetHack 5.0 的分支 BlissHack，该项目的目的是将 NetHack 游戏设计成一个画面和体验更加现代化的浏览器版本。
+当前项目是基于 NetHack 5.0 的独立衍生项目 BlissHack，该项目的目的是将
+NetHack 游戏设计成一个画面和体验更加现代化的浏览器版本。
 
 ### 技术架构
 
@@ -20,8 +28,12 @@ React 前端 (TSX + Vite)
 
 这个架构的优势：
 - 零网络开销、零序列化——C 代码和 JS 在同一进程中通信
-- 不需要修改任何 NetHack 原版 C 代码，完全通过官方提供的 shim 接口对接
-- shim 传递的数据与 window_procs 完全一致，不存在数据丢失
+- 绝大多数功能通过官方 shim 接口在 TypeScript 侧实现
+- 允许对 C 侧 shim 做少量、经过验证且有测试覆盖的功能补全；具体修改记录在
+  `doc/BlissHack/shim-interface-reference.md` 的“当前项目对 shim 接口的修改”
+  章节
+- shim ABI 存在已知限制，不能假定所有 `window_procs` 数据都能无损传递；
+  必须以接口文档和实际源码为准
 - 游戏状态在浏览器内存中，通过 IndexedDB (IDBFS) 实现存档持久化
 
 ### 前端
@@ -54,7 +66,7 @@ React 前端 (TSX + Vite)
 src/            游戏核心源代码（C），包含游戏逻辑、战斗、地图生成等
 include/        头文件，包含数据结构定义、函数声明（winprocs.h 尤为重要）
 dat/            游戏数据文件（Lua 关卡定义、文本数据、帮助文件等）
-doc/            文档（guidebook.txt 游戏说明、各版本修复日志等）
+doc/            文档（Guidebook.txt 游戏说明、各版本修复日志等）
 win/            窗口界面实现目录，每个子目录是一种图形前端：
   win/tty/        终端文本界面
   win/curses/     curses 库界面
@@ -107,7 +119,8 @@ sys/unix/hints/include/cross-pre2.500   WASM 交叉编译配置
 有关设计方法、选型等的信息可以参考这些：
 
 1. NetHack 官方 wiki：https://nethackwiki.com/wiki/Main_Page
-2. 项目内的游戏玩法说明：doc/guidebook.txt（超过 5000 行，参见 doc/BlissHack/guidebook-index-cn.md 获取章节索引）
+2. 项目内的游戏玩法说明：`doc/Guidebook.txt`（超过 5000 行，先参见
+   `doc/BlissHack/guidebook-index-cn.md` 获取章节索引）
 3. shim 窗口接口的具体实现：win/shim/winshim.c
 4. WASM 桥接层的具体实现：sys/libnh/libnhmain.c
 5. 现有的 WASM NetHack 项目可供参考：
@@ -125,7 +138,7 @@ Skills 是 AI Agent 的可复用技能脚本，存放在 `.agents/skills/` 目�
 1. **NetHack 代码导航**：帮助 Agent 理解 NetHack 的 C 代码结构，快速定位
    shim 回调事件、游戏循环逻辑、glyph 系统等关键代码。
 
-2. **guidebook 阅读辅助**：`doc/guidebook.txt` 超过 5000 行，需要分段摘要
+2. **Guidebook 阅读辅助**：`doc/Guidebook.txt` 超过 5000 行，需要分段摘要
    脚本来避免耗尽上下文窗口。可开发按章节索引的 skill。
 
 3. **构建与测试**：封装 WASM 交叉编译流程（Emscripten + make CROSS_TO_WASM=1），
@@ -139,7 +152,19 @@ Skills 是 AI Agent 的可复用技能脚本，存放在 `.agents/skills/` 目�
 
 ### 开发约束
 
-不修改任何 NetHack 原版代码。所有功能通过 shim 回调在 TypeScript 侧实现。
+优先通过 shim 回调在 TypeScript 侧实现功能，不修改 NetHack 游戏逻辑核心。
+只有在官方接口文档和实际源码共同证明 shim C 实现存在缺失或错误，且前端无法
+正确修复时，才允许对 C 侧 shim 做最小修改。修改前必须检查相关调用链，修改后
+必须补充测试并重新构建、提交成对的 `frontend/public/nethack.js` 和
+`frontend/public/nethack.wasm`。
+
+修改任何上游 NetHack 文件时，必须依照 NetHack General Public License，在
+文件中显著注明 BlissHack 修改者、日期和修改目的，并在
+`doc/BlissHack/shim-interface-reference.md` 的“当前项目对 shim 接口的修改”
+章节记录行为差异。
+
+不得猜测未暴露的 WASM 地址、结构布局或回调语义。官方文档与当前实现冲突时，
+必须检查实际调用链；确认文档过时后才以代码为准。
 
 对于新开发的代码，要对于每一个函数的功能、参数、返回值等信息进行注释。
 
