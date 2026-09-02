@@ -50,9 +50,14 @@ import {
   type TextLine,
 } from "./game-state";
 import { readDlbEntry } from "./dlb";
+import type {
+  SaveIdentity,
+  SaveValidation,
+  StorageModule,
+} from "./storage/storage-service";
 
 /** Emscripten filesystem surface used by DLB access and save persistence. */
-interface EmscriptenFileSystem {
+export interface EmscriptenFileSystem {
   analyzePath(path: string): { exists: boolean };
   mkdir(path: string): unknown;
   mount(type: unknown, options: Record<string, unknown>, path: string): unknown;
@@ -180,41 +185,6 @@ const INTERNALCMD = 0x0040;
 let pendingAction: PendingAction | null = null;
 const queuedKeys: number[] = [];
 let typeaheadEnabled = false;
-const persistentModules = new WeakSet<EmscriptenModule>();
-
-/**
- * Mount the Unix save directory on IDBFS and restore browser-persisted files.
- * @param module - initialized Emscripten module.
- * @returns whether persistent storage is available in this environment.
- */
-export async function initializePersistentStorage(
-  module: EmscriptenModule,
-): Promise<boolean> {
-  if (
-    module.IDBFS === undefined
-    || typeof globalThis.indexedDB === "undefined"
-  ) {
-    return false;
-  }
-  if (persistentModules.has(module)) return true;
-
-  if (!module.FS.analyzePath("/save").exists) module.FS.mkdir("/save");
-  module.FS.mount(module.IDBFS, { autoPersist: true }, "/save");
-  await syncFilesystem(module, true);
-  persistentModules.add(module);
-  return true;
-}
-
-/**
- * Persist the mounted save directory to IndexedDB.
- * @param module - initialized Emscripten module.
- */
-export async function flushPersistentStorage(
-  module: EmscriptenModule,
-): Promise<void> {
-  if (!persistentModules.has(module)) return;
-  await syncFilesystem(module, false);
-}
 
 /**
  * Remove Emscripten's synthetic login name before NetHack calls whoami().
@@ -225,6 +195,117 @@ export function preparePlayerNamePrompt(module: EmscriptenModule): void {
   module.ENV ??= {};
   module.ENV.USER = "";
   module.ENV.LOGNAME = "";
+}
+
+/**
+ * Set the identity NetHack will use for save lookup when main starts.
+ * @param module - prepared module which has not called main.
+ * @param identity - validated identity read from the selected save.
+ */
+export function setStartupIdentity(
+  module: EmscriptenModule,
+  identity: SaveIdentity,
+): void {
+  module.ccall(
+    "shim_graphics_set_player_name",
+    null,
+    ["string"],
+    [identity.playerName],
+  );
+}
+
+/**
+ * Require this module to restore rather than fall through to character setup.
+ * @param module - prepared module which has not called main.
+ * @param required - whether player selection represents restore failure.
+ */
+export function setRestoreRequired(
+  module: EmscriptenModule,
+  required: boolean,
+): void {
+  module.ccall(
+    "shim_graphics_set_restore_required",
+    null,
+    ["number"],
+    [required ? 1 : 0],
+  );
+}
+
+/**
+ * Validate a save with NetHack's own header reader and return its identity.
+ * @param storageModule - module which owns the save file.
+ * @param path - absolute virtual save path.
+ * @returns a ready identity or an explicit invalid result.
+ */
+export async function validateSaveMetadata(
+  storageModule: StorageModule,
+  path: string,
+): Promise<SaveValidation> {
+  const module = storageModule as unknown as EmscriptenModule;
+  const outputSize = 256;
+  const outputPtr = module._malloc(outputSize);
+  try {
+    const fingerprintSize = Number(module.ccall(
+      "shim_graphics_get_save_fingerprint",
+      "number",
+      ["number", "number"],
+      [outputPtr, outputSize],
+    ));
+    if (fingerprintSize <= 0 || fingerprintSize > outputSize) {
+      return {
+        status: "invalid",
+        error: "Could not determine the current save format",
+      };
+    }
+
+    const fileData = storageModule.FS.readFile(path);
+    if (typeof fileData === "string") {
+      return { status: "invalid", error: "Save is not binary data" };
+    }
+    if (fileData.length < fingerprintSize + 4 + 49) {
+      return { status: "invalid", error: "Save is truncated" };
+    }
+    for (let index = 0; index < fingerprintSize; index += 1) {
+      if (
+        fileData[index]
+        !== (Number(module.getValue(outputPtr + index, "i8")) & 0xff)
+      ) {
+        return {
+          status: "invalid",
+          error: "Save is incompatible with this BlissHack build",
+        };
+      }
+    }
+
+    const identitySize = new DataView(
+      fileData.buffer,
+      fileData.byteOffset + fingerprintSize,
+      4,
+    ).getInt32(0, true);
+    if (identitySize !== 49) {
+      return { status: "invalid", error: "Save identity block is invalid" };
+    }
+    const identity = fileData.subarray(
+      fingerprintSize + 4,
+      fingerprintSize + 4 + identitySize,
+    );
+    const nameEnd = identity.indexOf(0);
+    if (nameEnd <= 0) {
+      return { status: "invalid", error: "Save player name is invalid" };
+    }
+    const playerName = new TextDecoder("utf-8", { fatal: true })
+      .decode(identity.subarray(0, nameEnd));
+    const fileName = path.slice(path.lastIndexOf("/") + 1);
+    if (!playerName || fileName !== `0${playerName}`) {
+      return {
+        status: "invalid",
+        error: "Save identity does not match its file name",
+      };
+    }
+    return { status: "ready", identity: { playerName } };
+  } finally {
+    module._free(outputPtr);
+  }
 }
 
 /**
@@ -242,7 +323,7 @@ export async function createGameModule(
   const imported = await import(/* @vite-ignore */ loaderUrl) as {
     default: EmscriptenFactory;
   };
-  const module = await imported.default({
+  return imported.default({
     noInitialRun: true,
     locateFile: (path: string) => new URL(path, loaderUrl).href,
     preRun: (runtimeModule: EmscriptenModule) =>
@@ -254,15 +335,6 @@ export async function createGameModule(
       if (isCurrent()) appendWindowText(-1, ATR_BOLD, text);
     },
   });
-  try {
-    await initializePersistentStorage(module);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (isCurrent()) {
-      appendWindowText(-1, ATR_BOLD, `Persistent storage unavailable: ${message}`);
-    }
-  }
-  return module;
 }
 
 /**
@@ -510,12 +582,6 @@ async function dispatchShimCallback(
       return undefined;
     case "shim_exit_nhwindows":
       setExitReason(asString(args[0]));
-      try {
-        await flushPersistentStorage(module);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        appendWindowText(-1, ATR_BOLD, `Could not persist save data: ${message}`);
-      }
       return undefined;
     case "shim_create_nhwindow":
       return createWindow(asNumber(args[0]));
@@ -1109,23 +1175,6 @@ const STATUS_FORMATS: Readonly<Record<number, readonly [string, string]>> = {
   25: [" ", ""],
   26: [" ", ""],
 };
-
-/**
- * Resolve Emscripten's callback-style filesystem synchronization.
- * @param module - initialized Emscripten module.
- * @param populate - true to load IndexedDB into memory, false to persist.
- */
-function syncFilesystem(
-  module: EmscriptenModule,
-  populate: boolean,
-): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
-    module.FS.syncfs(populate, (error) => {
-      if (error) reject(error);
-      else resolve();
-    });
-  });
-}
 
 /**
  * Install one pending Asyncify action and reject impossible reentry.

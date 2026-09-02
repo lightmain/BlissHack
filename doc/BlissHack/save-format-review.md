@@ -56,9 +56,10 @@ save/0<角色名>
 角色名最长 31 bytes，文件名中的 UID 和角色名之间没有分隔符。
 
 仓库的 Unix 配置默认定义外部 `/usr/bin/compress` 和 `.Z`。浏览器不能按
-本地 Unix 方式执行该程序，因此不能只根据宏定义断言最终是否带压缩后缀。
-实现文件筛选前必须用当前生成的 `nethack.js`/`nethack.wasm` 实际保存一次，
-记录 `/save` 中的真实文件名和 bytes，再确定规则。
+本地 Unix 方式执行该程序，因此不能只根据宏定义判断结果。阶段二使用当前
+生成的 `nethack.js`/`nethack.wasm` 实际保存后，确认 IDBFS 中的正式文件为
+未带 `.Z` 后缀的 `/save/0<角色名>`，payload 首字节为 historical binary
+格式标志 `h`。
 
 ## 3. 保存与恢复生命周期
 
@@ -72,8 +73,8 @@ save/0<角色名>
 - 部分深层恢复失败路径也可能删除原 save，并继续进入同名新游戏流程。
 - 死亡、逃离、飞升等游戏结束不会留下可继续的正式存档。
 
-阶段二必须阻止“用户选择继续，但恢复失败后静默开始同名新游戏”。具体保护
-方式仍需在确定读取方案后设计。
+阶段二通过“原始 bytes 备份 + 必须恢复标志”阻止“用户选择继续，但恢复失败
+后静默开始同名新游戏”，具体见第 7 节。
 
 ## 4. IndexedDB 中实际保存的内容
 
@@ -162,6 +163,7 @@ storage service 位于 `frontend/src/storage/`，拥有 Emscripten FS 适配器�
 initialize()
 listSaves()
 readSave(path)
+restoreOriginalSave(path, bytes)
 flush()
 ```
 
@@ -175,24 +177,37 @@ flush()
 IndexedDB 缺失、挂载或首次同步失败时，应用仍可用内存 FS 开始临时新游戏，
 但必须禁用 Continue，并明确提示本次游戏无法持久保存。
 
-## 7. 读取方案仍待确认
+## 7. 阶段二读取与恢复方案
 
-阶段二需要从以下方案中选择，并在实现前记录决定：
+阶段二采用“C 生成当前构建 fingerprint，TypeScript 最小解析 header，
+核心最终恢复”的组合：
 
-1. TypeScript 只解析 save header，再由核心 `validate()` 完成最终校验。
-2. 导出一个窄 C 接口，复用核心 `validate()` 和角色信息读取逻辑。
-3. 直接导出并适配原版 `get_saved_games()`。
+1. shim 的 `shim_graphics_get_save_fingerprint()` 从当前构建的
+   `critical_sizes` 和 `nomakedefs` 生成预期 header 前缀。
+2. TypeScript 从 Emscripten `FS` 读取原始 bytes，逐字节比较 fingerprint。
+3. fingerprint 后读取 4-byte little-endian 角色块长度，只接受 49。
+4. 从固定 49-byte 块读取 NUL 结尾的角色名，并要求它与 `0<角色名>` 文件名
+   一致。
+5. 列表校验不打开、写入、删除、解压或重新压缩原文件。
+6. 用户选择 Continue 后，仍由原版 `restore_saved_game()` 和 `validate()`
+   执行最终完整校验与恢复。
 
-选择标准：
+没有在 `main()` 前直接调用 `validate()`：该函数的错误和截断路径可能调用
+尚未初始化的窗口函数。fingerprint 由 C 生成，避免 TypeScript 硬编码当前
+80 项结构尺寸和版本三元组，同时保持列表扫描只读。
 
-- 不复制容易随 NetHack 变化的 ABI 常量。
-- 能可靠取得角色身份，而不是只猜文件名。
-- 能标记不兼容或损坏文件。
-- 不在列表扫描时修改、删除或重新压缩原文件。
-- 恢复失败时不会静默开始同名新游戏。
+Continue 启动流程：
 
-在读取方案确认前，不实现存档列表元数据。无论采用哪种方案，真实
-`/save` 文件是事实来源，不在阶段二引入 sidecar index。
+1. 在调用 `main()` 前复制原始 save bytes。
+2. 通过 `shim_graphics_set_player_name()` 设置 C `USER`、`LOGNAME` 和启动
+   名字。
+3. 通过 `shim_graphics_set_restore_required(1)` 标记本次启动只能恢复。
+4. 如果核心恢复失败并进入 `shim_player_selection()`，shim 立即以失败状态
+   结束，不能进入 `genl_player_setup()`。
+5. session manager 把备份写回原路径并成功 flush 后才进入错误状态。
+6. 成功恢复并进入第一次游戏按键等待后，释放内存中的备份。
+
+真实 `/save` 文件仍是唯一事实来源，不引入 sidecar index。
 
 ## 8. 阶段三边界
 
@@ -207,18 +222,14 @@ IndexedDB 缺失、挂载或首次同步失败时，应用仍可用内存 FS 开
 
 本阶段不对这些问题作决定。
 
-## 9. 当前确认状态
-
-已经确认：
+## 9. 阶段二确认结果
 
 1. IndexedDB 中由 IDBFS 持久化的文件内容是原版 NetHack 二进制 save bytes。
 2. 不修改 NetHack 内部存档格式。
 3. 每局 game module 在进入首页读取存档时创建，随后由同一局调用一次
    `main()`。
 4. 阶段三导入导出方案推迟到阶段三评审。
-
-尚待确认：
-
-1. 阶段二采用第 7 节中的哪种读取和校验方案。
-2. 当前 WASM 实际生成的存档文件名、压缩结果和 header bytes。
-3. 恢复失败保护采用何种最小且可验证的机制。
+5. 当前 WASM 生成 `/save/0<角色名>`，没有 `.Z` 后缀。
+6. 列表校验使用 C fingerprint 和 TypeScript 最小 header 解析；核心恢复
+   仍是最终校验。
+7. 恢复失败会终止该 module，并在 flush 后保留原始 bytes。

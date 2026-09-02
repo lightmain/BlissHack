@@ -322,7 +322,7 @@ EMCC_LFLAGS += -s ALLOW_TABLE_GROWTH
 EMCC_LFLAGS += -s ASYNCIFY -s ASYNCIFY_IMPORTS='["local_callback"]'
 EMCC_LFLAGS += -O3
 EMCC_LFLAGS += -s MODULARIZE
-EMCC_LFLAGS += -s EXPORTED_FUNCTIONS='["_main", "_shim_graphics_set_callback", "_repopulate_perminvent", "_malloc"]'
+EMCC_LFLAGS += -s EXPORTED_FUNCTIONS='["_main", "_shim_graphics_set_callback", "_shim_graphics_set_player_name", "_shim_graphics_set_restore_required", "_shim_graphics_get_save_fingerprint", "_repopulate_perminvent", "_malloc", "_free"]'
 EMCC_LFLAGS += -s EXPORTED_RUNTIME_METHODS='["cwrap", "ccall", "addFunction", \
 			"removeFunction", "UTF8ToString", "stringToUTF8", "getValue", \
 			"setValue", "ENV", "FS", "IDBFS"]'
@@ -621,4 +621,3 @@ endif  # BUILD_TARGET_LUA
 #
 # End of cross-compiling -PRE section
 #===============-=================================================
-

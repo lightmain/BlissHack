@@ -18,17 +18,18 @@ import {
 } from "./game-state";
 import {
   dismissDisplay,
-  flushPersistentStorage,
-  initializePersistentStorage,
   isWaitingForInput,
   preparePlayerNamePrompt,
   resetBridgeState,
   sendKey,
   sendPosition,
+  setRestoreRequired,
+  setStartupIdentity,
   shimCallbackForModule,
   submitExtendedCommand,
   submitLine,
   submitMenuSelection,
+  validateSaveMetadata,
   type EmscriptenModule,
 } from "./nethack-bridge";
 
@@ -324,6 +325,24 @@ describe("player setup and line input", () => {
       LOGNAME: "",
       USER: "",
     });
+  });
+
+  it("sets a validated identity and required-restore flag before main", () => {
+    setStartupIdentity(harness.module, { playerName: "Ada" });
+    setRestoreRequired(harness.module, true);
+
+    expect(harness.module.ccall).toHaveBeenCalledWith(
+      "shim_graphics_set_player_name",
+      null,
+      ["string"],
+      ["Ada"],
+    );
+    expect(harness.module.ccall).toHaveBeenCalledWith(
+      "shim_graphics_set_restore_required",
+      null,
+      ["number"],
+      [1],
+    );
   });
 
   it("delegates role selection to genl_player_setup", async () => {
@@ -720,27 +739,36 @@ describe("files, history, extended commands, and lifecycle", () => {
     ]);
   });
 
-  it("mounts and synchronizes the save directory through IDBFS", async () => {
-    vi.stubGlobal("indexedDB", {});
+  it("matches the shim fingerprint before reading save identity", async () => {
+    const fingerprint = Uint8Array.of(104, 0);
+    const save = new Uint8Array(fingerprint.length + 4 + 49);
+    save.set(fingerprint);
+    new DataView(save.buffer).setInt32(fingerprint.length, 49, true);
+    save.set(new TextEncoder().encode("Ada"), fingerprint.length + 4);
+    harness.files.set("/save/0Ada", save);
+    vi.mocked(harness.module.ccall).mockImplementation((
+      name,
+      _returnType,
+      _argumentTypes,
+      arguments_,
+    ) => {
+      if (name !== "shim_graphics_get_save_fingerprint") return undefined;
+      harness.memory.set(fingerprint, arguments_[0] as number);
+      return fingerprint.length;
+    });
 
-    await initializePersistentStorage(harness.module);
-    await flushPersistentStorage(harness.module);
-
-    expect(harness.module.FS.mkdir).toHaveBeenCalledWith("/save");
-    expect(harness.module.FS.mount).toHaveBeenCalledWith(
-      harness.module.IDBFS,
-      { autoPersist: true },
-      "/save",
-    );
-    expect(harness.module.FS.syncfs).toHaveBeenNthCalledWith(
-      1,
-      true,
-      expect.any(Function),
-    );
-    expect(harness.module.FS.syncfs).toHaveBeenNthCalledWith(
-      2,
-      false,
-      expect.any(Function),
+    await expect(validateSaveMetadata(
+      harness.module as never,
+      "/save/0Ada",
+    )).resolves.toEqual({
+      status: "ready",
+      identity: { playerName: "Ada" },
+    });
+    expect(harness.module.ccall).toHaveBeenCalledWith(
+      "shim_graphics_get_save_fingerprint",
+      "number",
+      ["number", "number"],
+      [expect.any(Number), 256],
     );
   });
 

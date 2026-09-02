@@ -7,26 +7,51 @@ import {
   resetBridgeState,
   sendKey,
   sendPosition,
+  setRestoreRequired,
+  setStartupIdentity,
   shimCallbackForModule,
   submitExtendedCommand,
   submitLine,
   submitMenuSelection,
+  validateSaveMetadata,
   type EmscriptenModule,
 } from "../nethack-bridge";
+import {
+  createStorageService,
+  type SaveIdentity,
+  type SaveListEntry,
+  type StorageModule,
+  type StorageService,
+} from "../storage/storage-service";
 
 /** A started session and the callback registered for its WASM module. */
 export interface SessionHandle {
+  moduleId: string;
   sessionId: string;
   callbackName: string;
   module: EmscriptenModule;
 }
 
-/** Public controls for the single-session lifecycle. */
+/** Result of preparing the game module displayed by Home. */
+export interface HomePreparation {
+  moduleId: string;
+  saves: SaveListEntry[];
+  storageAvailable: boolean;
+}
+
+/** Request which claims the prepared home module for one game. */
+export type SessionStartRequest =
+  | { kind: "new" }
+  | { kind: "continue"; save: SaveListEntry };
+
+/** Public controls for the single-module and single-session lifecycle. */
 export interface SessionManager {
-  startSession: () => Promise<SessionHandle>;
+  initialize: () => Promise<HomePreparation>;
+  startSession: (request?: SessionStartRequest) => Promise<SessionHandle>;
   cleanupSession: (sessionId: string) => Promise<void>;
   dispose: () => Promise<void>;
   getActiveSession: () => SessionHandle | null;
+  getHomePreparation: () => HomePreparation | null;
   isWaitingForInput: () => boolean;
   sendKey: (value: number) => void;
   sendPosition: (x: number, y: number, modifier: 1 | 2) => void;
@@ -41,232 +66,424 @@ export interface SessionManager {
 /** Dependencies used to create a session manager. */
 export interface SessionManagerOptions {
   callbackHost?: Record<string, unknown>;
+  createModuleId?: () => string;
   createSessionId?: () => string;
+  createStorageService?: (module: EmscriptenModule) => StorageService;
   dispatch: (action: AppAction) => void;
   moduleFactory?: () => Promise<EmscriptenModule>;
+  setRestoreRequired?: (
+    module: EmscriptenModule,
+    required: boolean,
+  ) => void;
+  setStartupIdentity?: (
+    module: EmscriptenModule,
+    identity: SaveIdentity,
+  ) => void;
+  /** Retained for stage-one callers; storage availability now comes from initialize. */
   storageAvailable?: () => boolean;
+}
+
+interface ModuleRecord {
+  moduleId: string;
+  module: EmscriptenModule | null;
+  storage: StorageService | null;
+  preparation: HomePreparation | null;
+  session: SessionRecord | null;
+  closed: boolean;
 }
 
 interface SessionRecord {
   sessionId: string;
   callbackName: string;
-  module: EmscriptenModule | null;
-  mainPromise: Promise<unknown> | null;
+  handle: SessionHandle;
+  mainPromise: Promise<unknown>;
   cleanupPromise: Promise<void> | null;
+  continuation: {
+    path: string;
+    originalBytes: Uint8Array;
+    restoreFailed: boolean;
+  } | null;
+  exitFlushed: boolean;
   closed: boolean;
 }
 
+let generatedModuleId = 0;
 let generatedSessionId = 0;
 
 /**
- * Create the manager which owns the sole active WASM session.
+ * Create the manager which owns the next game module and sole active session.
  * @param options - lifecycle dependencies and application dispatcher.
- * @returns a single-session manager.
+ * @returns a manager spanning Home preparation through session retirement.
  */
 export function createSessionManager(
   options: SessionManagerOptions,
 ): SessionManager {
   const callbackHost = options.callbackHost
     ?? globalThis as unknown as Record<string, unknown>;
+  const createModuleId = options.createModuleId ?? defaultModuleId;
   const createSessionId = options.createSessionId ?? defaultSessionId;
-  const storageAvailable = options.storageAvailable ?? (() => true);
-  let activeRecord: SessionRecord | null = null;
-  let activeHandle: SessionHandle | null = null;
+  const applyStartupIdentity = options.setStartupIdentity ?? setStartupIdentity;
+  const applyRestoreRequired = options.setRestoreRequired ?? setRestoreRequired;
+  let currentModule: ModuleRecord | null = null;
+  let initializePromise: Promise<HomePreparation> | null = null;
   let startPromise: Promise<SessionHandle> | null = null;
+  let disposed = false;
 
-  /**
-   * Start a fresh module, register its callback, and invoke main once.
-   * @returns the active session handle.
-   */
-  function startSession(): Promise<SessionHandle> {
-    if (startPromise) return startPromise;
+  /** Prepare one module and its storage before Home becomes ready. */
+  function initialize(): Promise<HomePreparation> {
+    disposed = false;
+    if (currentModule?.preparation) {
+      return Promise.resolve(currentModule.preparation);
+    }
+    if (initializePromise) return initializePromise;
+    return prepareModule(createModuleId());
+  }
 
-    resetBridgeState();
-    const sessionId = createSessionId();
-    const callbackName = callbackNameFor(sessionId);
-    const record: SessionRecord = {
-      sessionId,
-      callbackName,
+  /** Create and populate one named module generation. */
+  function prepareModule(moduleId: string): Promise<HomePreparation> {
+    const record: ModuleRecord = {
+      moduleId,
       module: null,
-      mainPromise: null,
-      cleanupPromise: null,
+      storage: null,
+      preparation: null,
+      session: null,
       closed: false,
     };
-    activeRecord = record;
-    options.dispatch({ type: "SESSION_CREATED", sessionId });
-    options.dispatch({ type: "MODULE_LOADING", sessionId });
+    currentModule = record;
+    options.dispatch({ type: "MODULE_LOADING", moduleId });
 
     const modulePromise = options.moduleFactory
       ? options.moduleFactory()
       : createGameModule(undefined, {
-        isCurrent: () => activeRecord === record && !record.closed,
+        isCurrent: () =>
+          currentModule === record && !record.closed && !disposed,
       });
-    startPromise = modulePromise
-      .then((module) => initializeSession(record, module))
+
+    initializePromise = modulePromise
+      .then(async (module) => {
+        assertCurrentModule(record);
+        record.module = module;
+        const storage = options.createStorageService
+          ? options.createStorageService(module)
+          : createStorageService(module as unknown as StorageModule, {
+            validateSaveMetadata,
+          });
+        record.storage = storage;
+        options.dispatch({ type: "STORAGE_LOADING", moduleId });
+
+        let storageAvailable = false;
+        let saves: SaveListEntry[] = [];
+        try {
+          storageAvailable = await storage.initialize();
+          if (storageAvailable) saves = await storage.listSaves();
+        } catch {
+          storageAvailable = false;
+        }
+        assertCurrentModule(record);
+
+        const preparation = { moduleId, saves, storageAvailable };
+        record.preparation = preparation;
+        options.dispatch({
+          type: "HOME_READY",
+          moduleId,
+          storageAvailable,
+        });
+        return preparation;
+      })
       .catch((error: unknown) => {
-        failSession(record, error);
+        if (currentModule === record && !record.closed && !disposed) {
+          record.closed = true;
+          options.dispatch({
+            type: "MODULE_FATAL_ERROR",
+            moduleId,
+            errorId: errorIdentifier(moduleId, error),
+          });
+        }
         throw error;
       });
-    return startPromise;
+    return initializePromise;
   }
 
   /**
-   * Register one loaded module and start its Asyncify main call.
-   * @param record - session record being initialized.
-   * @param module - freshly created Emscripten module.
-   * @returns active session handle.
+   * Claim the prepared module, register its callback, and invoke main once.
+   * @param request - whether to start fresh or restore a validated save.
+   * @returns the active session handle.
    */
-  function initializeSession(
-    record: SessionRecord,
-    module: EmscriptenModule,
-  ): SessionHandle {
-    if (activeRecord !== record || record.closed) {
-      throw new Error(`Session ${record.sessionId} was cancelled while loading`);
+  function startSession(
+    request: SessionStartRequest = { kind: "new" },
+  ): Promise<SessionHandle> {
+    if (startPromise) return startPromise;
+    startPromise = startPreparedSession(request).catch((error: unknown) => {
+      const session = currentModule?.session;
+      if (session && !session.closed) void failSession(session, error);
+      else startPromise = null;
+      throw error;
+    });
+    return startPromise;
+  }
+
+  /** Complete the asynchronous work needed before calling main. */
+  async function startPreparedSession(
+    request: SessionStartRequest,
+  ): Promise<SessionHandle> {
+    await initialize();
+    const owner = currentModule;
+    if (
+      !owner
+      || owner.closed
+      || !owner.module
+      || !owner.storage
+      || !owner.preparation
+      || owner.session
+    ) {
+      throw new Error("No ready game module is available");
     }
-    record.module = module;
+
+    const sessionId = createSessionId();
+    const callbackName = callbackNameFor(sessionId);
     const handle: SessionHandle = {
-      sessionId: record.sessionId,
-      callbackName: record.callbackName,
-      module,
+      moduleId: owner.moduleId,
+      sessionId,
+      callbackName,
+      module: owner.module,
     };
-    activeHandle = handle;
-
-    callbackHost[record.callbackName] = async (
-      name: string,
-      ...args: unknown[]
-    ): Promise<unknown> => {
-      if (activeRecord !== record || record.closed) return undefined;
-      const result = await shimCallbackForModule(module, name, ...args);
-      if (activeRecord !== record || record.closed) return result;
-      if (getSnapshot().phase === "error") {
-        failSession(record, new Error(`Bridge callback failed: ${name}`));
-        return result;
-      }
-      if (name === "shim_init_nhwindows") {
-        options.dispatch({
-          type: "SESSION_RUNNING",
-          sessionId: record.sessionId,
-        });
-      } else if (name === "shim_exit_nhwindows") {
-        options.dispatch({
-          type: "SESSION_EXITING",
-          sessionId: record.sessionId,
-        });
-        await cleanupSession(record.sessionId);
-      }
-      return result;
+    const session: SessionRecord = {
+      sessionId,
+      callbackName,
+      handle,
+      mainPromise: Promise.resolve(),
+      cleanupPromise: null,
+      continuation: null,
+      exitFlushed: false,
+      closed: false,
     };
+    owner.session = session;
 
-    module.ccall(
+    if (request.kind === "continue") {
+      if (request.save.status !== "ready") {
+        throw new Error("Cannot continue an invalid save");
+      }
+      const listedSave = owner.preparation.saves.find(
+        (save) => save.path === request.save.path && save.status === "ready",
+      );
+      if (!listedSave || listedSave.status !== "ready") {
+        throw new Error("Selected save is not part of the current module");
+      }
+      session.continuation = {
+        path: listedSave.path,
+        originalBytes: await owner.storage.readSave(listedSave.path),
+        restoreFailed: false,
+      };
+      applyStartupIdentity(owner.module, listedSave.identity);
+      applyRestoreRequired(owner.module, true);
+    }
+
+    resetBridgeState();
+    options.dispatch({
+      type: "SESSION_CREATED",
+      moduleId: owner.moduleId,
+      sessionId,
+    });
+    registerCallback(owner, session);
+    owner.module.ccall(
       "shim_graphics_set_callback",
       null,
       ["string"],
-      [record.callbackName],
+      [callbackName],
     );
-    options.dispatch({
-      type: "MODULE_READY",
-      sessionId: record.sessionId,
-    });
-    const mainResult = module.ccall(
+
+    const mainResult = owner.module.ccall(
       "main",
       "number",
       [],
       [],
       { async: true },
     );
-    record.mainPromise = Promise.resolve(mainResult);
-    void record.mainPromise.then(
-      () => finishSession(record),
+    session.mainPromise = Promise.resolve(mainResult);
+    void session.mainPromise.then(
+      () => finishSession(owner, session),
       (error: unknown) => {
-        if (isSuccessfulExit(error)) finishSession(record);
-        else failSession(record, error);
+        if (session.continuation) {
+          void failRestore(owner, session, error);
+        } else if (isSuccessfulExit(error)) {
+          void finishSession(owner, session);
+        } else {
+          void failSession(session, error);
+        }
       },
     );
     return handle;
   }
 
-  /**
-   * Release the active session exactly once.
-   * @param sessionId - identity of the session to release.
-   * @returns completion after all local resources have been cleared.
-   */
-  function cleanupSession(sessionId: string): Promise<void> {
-    const record = activeRecord;
-    if (!record || record.sessionId !== sessionId) return Promise.resolve();
-    if (record.cleanupPromise) return record.cleanupPromise;
+  /** Register the callback owned by one session and module. */
+  function registerCallback(owner: ModuleRecord, session: SessionRecord): void {
+    const module = owner.module as EmscriptenModule;
+    callbackHost[session.callbackName] = async (
+      name: string,
+      ...args: unknown[]
+    ): Promise<unknown> => {
+      if (!isCurrentSession(owner, session)) return undefined;
+      if (name === "shim_player_selection_or_tty" && session.continuation) {
+        session.continuation.restoreFailed = true;
+      }
 
-    record.cleanupPromise = Promise.resolve().then(() => {
-      if (record.closed) return;
-      record.closed = true;
-      delete callbackHost[record.callbackName];
+      const result = await shimCallbackForModule(module, name, ...args);
+      if (!isCurrentSession(owner, session)) return result;
+      if (getSnapshot().phase === "error") {
+        const error = new Error(`Bridge callback failed: ${name}`);
+        if (session.continuation) await failRestore(owner, session, error);
+        else await failSession(session, error);
+        return result;
+      }
+      if (name === "shim_init_nhwindows") {
+        options.dispatch({ type: "SESSION_RUNNING", sessionId: session.sessionId });
+      } else if (name === "shim_exit_nhwindows") {
+        options.dispatch({ type: "SESSION_EXITING", sessionId: session.sessionId });
+        try {
+          await (owner.storage as StorageService).flush();
+          session.exitFlushed = true;
+        } catch (error) {
+          await failSession(session, error);
+        }
+      } else if (name === "shim_nhgetch" && session.continuation) {
+        session.continuation = null;
+      }
+      return result;
+    };
+  }
+
+  /** Complete a normal main return, retire its module, and prepare the next. */
+  async function finishSession(
+    owner: ModuleRecord,
+    session: SessionRecord,
+  ): Promise<void> {
+    if (!isCurrentSession(owner, session)) return;
+    if (!session.exitFlushed) {
+      options.dispatch({ type: "SESSION_EXITING", sessionId: session.sessionId });
+      await (owner.storage as StorageService).flush();
+      session.exitFlushed = true;
+    }
+    await retireSession(owner, session, true);
+  }
+
+  /** Restore preserved bytes after the core rejected a Continue attempt. */
+  async function failRestore(
+    owner: ModuleRecord,
+    session: SessionRecord,
+    error: unknown,
+  ): Promise<void> {
+    if (!isCurrentSession(owner, session) || !session.continuation) return;
+    const backup = session.continuation;
+    try {
+      await (owner.storage as StorageService).restoreOriginalSave(
+        backup.path,
+        backup.originalBytes,
+      );
+      await (owner.storage as StorageService).flush();
+    } catch (restoreError) {
+      error = restoreError;
+    }
+    await failSession(session, error);
+  }
+
+  /** Release one session and optionally prepare the next home module. */
+  async function retireSession(
+    owner: ModuleRecord,
+    session: SessionRecord,
+    prepareNext: boolean,
+  ): Promise<void> {
+    if (session.cleanupPromise) return session.cleanupPromise;
+    session.cleanupPromise = Promise.resolve().then(async () => {
+      if (session.closed) return;
+      session.closed = true;
+      owner.closed = true;
+      delete callbackHost[session.callbackName];
       resetBridgeState();
-      if (activeRecord === record) {
-        activeRecord = null;
-        activeHandle = null;
+      if (currentModule === owner) {
+        currentModule = null;
+        initializePromise = null;
         startPromise = null;
       }
-      options.dispatch({
-        type: "SESSION_CLEANUP_COMPLETED",
-        sessionId: record.sessionId,
-        storageAvailable: storageAvailable(),
-      });
+      if (prepareNext && !disposed) {
+        const nextModuleId = createModuleId();
+        options.dispatch({
+          type: "SESSION_CLEANUP_COMPLETED",
+          sessionId: session.sessionId,
+          nextModuleId,
+        });
+        await prepareModule(nextModuleId);
+      }
     });
-    return record.cleanupPromise;
+    return session.cleanupPromise;
   }
 
-  /** Dispose the current manager and its active session, if any. */
-  function dispose(): Promise<void> {
-    return activeRecord
-      ? cleanupSession(activeRecord.sessionId)
-      : Promise.resolve();
+  /** Release the active session exactly once. */
+  function cleanupSession(sessionId: string): Promise<void> {
+    const owner = currentModule;
+    const session = owner?.session;
+    if (!owner || !session || session.sessionId !== sessionId) {
+      return Promise.resolve();
+    }
+    return retireSession(owner, session, true);
   }
 
-  /**
-   * Finish a session whose main function returned without an exit callback.
-   * @param record - session whose WASM main call has completed.
-   */
-  function finishSession(record: SessionRecord): void {
-    if (activeRecord !== record || record.closed) return;
-    options.dispatch({
-      type: "SESSION_EXITING",
-      sessionId: record.sessionId,
-    });
-    void cleanupSession(record.sessionId);
-  }
-
-  /**
-   * Invalidate a failed session without reporting successful cleanup.
-   * @param record - failed session record.
-   * @param error - failure used to derive the visible error ID.
-   */
-  function failSession(record: SessionRecord, error: unknown): void {
-    if (activeRecord !== record || record.closed) return;
-    record.closed = true;
-    delete callbackHost[record.callbackName];
-    resetBridgeState();
-    activeRecord = null;
-    activeHandle = null;
-    startPromise = null;
+  /** Invalidate a failed session without reporting successful cleanup. */
+  async function failSession(
+    session: SessionRecord,
+    error: unknown,
+  ): Promise<void> {
+    const owner = currentModule;
+    if (!owner || !isCurrentSession(owner, session)) return;
+    await retireSession(owner, session, false);
     options.dispatch({
       type: "SESSION_FATAL_ERROR",
-      sessionId: record.sessionId,
-      errorId: errorIdentifier(record.sessionId, error),
+      sessionId: session.sessionId,
+      errorId: errorIdentifier(session.sessionId, error),
     });
+  }
+
+  /** Dispose the current manager without creating another module. */
+  async function dispose(): Promise<void> {
+    disposed = true;
+    const owner = currentModule;
+    if (!owner) return;
+    if (owner.storage) {
+      try {
+        await owner.storage.flush();
+      } catch {
+        // Page teardown cannot present a recoverable storage workflow.
+      }
+    }
+    if (owner.session) {
+      await retireSession(owner, owner.session, false);
+    } else {
+      owner.closed = true;
+      currentModule = null;
+      initializePromise = null;
+    }
   }
 
   /** Run an input operation only while a live session owns the bridge. */
   function withActiveSession(operation: () => void): void {
-    if (!activeRecord || activeRecord.closed || !activeHandle) return;
+    const session = currentModule?.session;
+    if (!session || session.closed) return;
     operation();
   }
 
   return {
+    initialize,
     startSession,
     cleanupSession,
     dispose,
-    getActiveSession: () => activeHandle,
-    isWaitingForInput: () =>
-      activeRecord !== null && !activeRecord.closed && isWaitingForInput(),
+    getActiveSession: () => currentModule?.session?.handle ?? null,
+    getHomePreparation: () => currentModule?.preparation ?? null,
+    isWaitingForInput: () => {
+      const session = currentModule?.session;
+      return session !== null
+        && session !== undefined
+        && !session.closed
+        && isWaitingForInput();
+    },
     sendKey: (value) => withActiveSession(() => sendKey(value)),
     sendPosition: (x, y, modifier) =>
       withActiveSession(() => sendPosition(x, y, modifier)),
@@ -279,48 +496,59 @@ export function createSessionManager(
   };
 }
 
-/**
- * Generate a session identity which cannot contain player information.
- * @returns unique identity for the current tab lifetime.
- */
-function defaultSessionId(): string {
-  generatedSessionId += 1;
-  const random = globalThis.crypto?.randomUUID?.()
-    ?? Math.random().toString(36).slice(2);
-  return `${generatedSessionId}-${random}`;
+/** Throw when an asynchronous result belongs to an obsolete module. */
+function assertCurrentModule(record: ModuleRecord): void {
+  if (record.closed) throw new Error(`Module ${record.moduleId} is obsolete`);
 }
 
-/**
- * Convert a session ID into a legal, unique JavaScript callback identifier.
- * @param sessionId - owning session identity.
- * @returns global callback property name.
- */
+/** Return whether a session still owns the current module. */
+function isCurrentSession(
+  owner: ModuleRecord,
+  session: SessionRecord,
+): boolean {
+  return !owner.closed && !session.closed && owner.session === session;
+}
+
+/** Generate a non-sensitive module identity for the current tab. */
+function defaultModuleId(): string {
+  generatedModuleId += 1;
+  return `module-${generatedModuleId}-${randomId()}`;
+}
+
+/** Generate a non-sensitive session identity for the current tab. */
+function defaultSessionId(): string {
+  generatedSessionId += 1;
+  return `session-${generatedSessionId}-${randomId()}`;
+}
+
+/** Return a random suffix without incorporating player information. */
+function randomId(): string {
+  return globalThis.crypto?.randomUUID?.()
+    ?? Math.random().toString(36).slice(2);
+}
+
+/** Convert a session ID into a legal, unique JavaScript callback identifier. */
 function callbackNameFor(sessionId: string): string {
   const safeId = sessionId.replace(/[^A-Za-z0-9_$]/g, "_");
   return `blissCallback_${safeId}`;
 }
 
-/**
- * Create a non-sensitive identifier for one session failure.
- * @param sessionId - failed session identity.
- * @param error - failure value.
- * @returns identifier suitable for the fatal screen.
- */
-function errorIdentifier(sessionId: string, error: unknown): string {
+/** Create a non-sensitive identifier for one lifecycle failure. */
+function errorIdentifier(identity: string, error: unknown): string {
   const category = error instanceof Error && error.name
     ? error.name
     : "SessionError";
-  return `${sessionId}:${category}`;
+  return `${identity}:${category}`;
 }
 
-/**
- * Detect Emscripten's successful ExitStatus rejection.
- * @param error - rejected main result.
- * @returns whether the program terminated with exit status zero.
- */
+/** Detect Emscripten's successful ExitStatus rejection. */
 function isSuccessfulExit(error: unknown): boolean {
   if (typeof error !== "object" || error === null) return false;
-  const candidate = error as { message?: unknown; name?: unknown; status?: unknown };
+  const candidate = error as {
+    message?: unknown;
+    name?: unknown;
+    status?: unknown;
+  };
   if (candidate.status === 0) return true;
   return candidate.name === "ExitStatus"
     && typeof candidate.message === "string"

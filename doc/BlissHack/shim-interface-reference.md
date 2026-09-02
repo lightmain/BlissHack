@@ -1831,12 +1831,16 @@ BlissHack 修改为：
 ```c
 void shim_player_selection() {
     boolean do_genl_player_setup = shim_player_selection_or_tty();
+    if (shim_restore_required)
+        nh_terminate(EXIT_FAILURE);
     if (do_genl_player_setup && !genl_player_setup(80))
         nh_terminate(EXIT_SUCCESS);
 }
 ```
 
-这与 `genl_player_selection()`、tty 和 curses 窗口端口的语义一致。由于
+`shim_restore_required` 的分支属于下一节描述的 Continue 保护。正常新游戏
+中该值为 false，其余逻辑与 `genl_player_selection()`、tty 和 curses
+窗口端口的语义一致。由于
 该早期退出路径不会调用 `shim_exit_nhwindows()`，前端 session manager
 还会把 WASM `main()` 的正常返回或状态为 0 的 Emscripten `ExitStatus`
 作为正常 session 结束，完成清理后回到主界面。
@@ -1846,6 +1850,32 @@ void shim_player_selection() {
 - `shim_yn_function` 在无限制输入模式下原样返回 `q`。
 - WASM `main()` 在游戏开始前正常结束时清理 session。
 - 浏览器中在上述 `[ynaq]` 提示按 `q` 后显示主界面，且不创建地图。
+
+### 6.2 阶段二存档启动接口
+
+阶段二新增三个只在 Emscripten 构建中导出的同步接口：
+
+```c
+void shim_graphics_set_player_name(const char *player_name);
+void shim_graphics_set_restore_required(int required);
+int shim_graphics_get_save_fingerprint(uchar *outbuf, int outbufsz);
+```
+
+`shim_graphics_set_player_name()` 在调用 `main()` 前设置 C 环境中的 `USER`、
+`LOGNAME` 和 `svp.plname`。原版 `early_init()` 会重置 C 全局结构，但
+`whoami()` 随后会从 C 环境重新取得该名字，因此 Continue 不经过
+`shim_askname`。
+
+`shim_graphics_set_restore_required(1)` 表示本次启动只能恢复已有游戏。如果
+原版恢复失败并进入 `shim_player_selection()`，shim 在调用
+`genl_player_setup()` 前执行 `nh_terminate(EXIT_FAILURE)`。前端据此恢复
+预先复制的原始 save bytes，防止静默开始同名新游戏。
+
+`shim_graphics_get_save_fingerprint()` 不读取存档。它调用幂等的
+`runtime_info_init()`，把当前构建的 historical 格式标志、critical sizes
+和 version info 写入调用方缓冲区。TypeScript 用该 fingerprint 对比文件
+header，再读取固定 49-byte 角色身份块。完整存档校验仍由原版
+`restore_saved_game()` 和 `validate()` 完成。
 
 ---
 

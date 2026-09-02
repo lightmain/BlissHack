@@ -120,7 +120,7 @@ XState。应用状态至少包括：
 type AppState =
   | {
       phase: "booting";
-      moduleId: string;
+      moduleId: string | null;
       status: "loading-module" | "loading-storage";
     }
   | {
@@ -149,7 +149,8 @@ type AppState =
 
 `phase` 决定当前顶层界面。`booting.status` 描述下一局 module 的创建与
 storage populate；`session.status` 只描述用户选择之后的活动游戏。
-`moduleId` 在 factory 调用前生成，用于拒绝旧 module 的异步完成事件；
+初始 `booting` 的 `moduleId` 为 `null`；manager 在 factory 调用前生成
+`moduleId` 并派发 `MODULE_LOADING`，后续用它拒绝旧 module 的异步完成事件。
 `sessionId` 在用户选择 New Game 或 Continue 时生成，用于隔离游戏 callback。
 
 `home` 和 `save-picker` 不存在活动 session，但持有同一个已初始化、尚未调用
@@ -358,11 +359,13 @@ reducer 处理。
    initialize()
    listSaves()
    readSave()
+   restoreOriginalSave()
    flush()
    ```
 
-   最终签名由存储与读取方案评审决定。阶段二不公开导入、覆盖或用户删除所需
-   的写入接口；NetHack 核心仍直接创建和删除正式 save。
+   `restoreOriginalSave()` 只用于 Continue 失败回滚，不是通用写入接口。
+   阶段二不公开导入、覆盖或用户删除所需的写入接口；NetHack 核心仍直接创建
+   和删除正式 save。
 
 4. `/save` 只挂载一次，并在读取列表前执行 `syncfs(true)`。
 5. 所有 `syncfs` 操作通过同一异步队列串行化；阶段三若增加 write、rename
@@ -377,11 +380,13 @@ reducer 处理。
    IDBFS 内容。
 9. 恢复必须使用 NetHack 原有的角色名查找机制，不能从 JS 直接恢复
    C 内部结构。
-10. 进入首页前创建下一局 game module，并用它 initialize 和 list；选择存档
+10. 列表校验比较 shim 根据当前构建生成的 header fingerprint，只最小解析
+    49-byte 角色身份块；最终完整校验仍由核心 `validate()` 完成。
+11. 进入首页前创建下一局 game module，并用它 initialize 和 list；选择存档
     后由新 session 认领同一个 module、设置对应启动身份，再调用 NetHack
     `main()`，由核心自行执行 `restore_saved_game()`。
-11. 恢复失败不能静默开始一个同名新游戏并覆盖原存档。
-12. 核心退出后必须等待 `flush()` 完成并清理旧 module，再创建下一 module、
+12. 恢复失败不能静默开始一个同名新游戏并覆盖原存档。
+13. 核心退出后必须等待 `flush()` 完成并清理旧 module，再创建下一 module、
     重新枚举并把 UI 标记为已经安全返回主界面。
 
 ### 4.3 Continue UI

@@ -1,6 +1,9 @@
 /** Properties for the application home screen. */
 interface HomeScreenProps {
+  hasSaves?: boolean;
+  onContinue?: () => void;
   onNewGame: () => void;
+  storageAvailable?: boolean;
 }
 
 /**
@@ -8,7 +11,12 @@ interface HomeScreenProps {
  * @param props - home-screen command handlers.
  * @returns the application home screen.
  */
-export function HomeScreen({ onNewGame }: HomeScreenProps) {
+export function HomeScreen({
+  hasSaves = false,
+  onContinue = () => undefined,
+  onNewGame,
+  storageAvailable = true,
+}: HomeScreenProps) {
   return (
     <main className="home-screen" aria-labelledby="home-title">
       <header className="home-header">
@@ -29,9 +37,20 @@ export function HomeScreen({ onNewGame }: HomeScreenProps) {
 
         <nav aria-label="Main commands" className="home-commands">
           <button onClick={onNewGame} type="button">New Game</button>
-          <button disabled type="button">Continue</button>
+          <button
+            disabled={!storageAvailable || !hasSaves}
+            onClick={onContinue}
+            type="button"
+          >
+            Continue
+          </button>
           <button disabled type="button">Settings</button>
         </nav>
+        {!storageAvailable && (
+          <p className="home-storage-warning" role="status">
+            Persistent storage is unavailable. New games are temporary.
+          </p>
+        )}
       </section>
 
       <footer className="home-footer">

@@ -1,8 +1,8 @@
 /* NetHack 5.0 winshim.c    $NHDT-Date: 1781973099 2026/06/20 16:31:39 $  $NHDT-Branch: NetHack-5.0 $:$NHDT-Revision: 1.34 $ */
 /* Copyright (c) Adam Powers, 2020                                */
 /* NetHack may be freely redistributed.  See license for details. */
-/* Modified for BlissHack by lightmain, 2026-09-01: preserve quit
- * semantics during character selection. */
+/* Modified for BlissHack by lightmain, 2026-09-02: preserve character
+ * selection quit semantics and expose narrow browser save helpers. */
 
 /* not an actual windowing port, but a fake win port for libnethack */
 
@@ -35,7 +35,16 @@
  ************/
 EMSCRIPTEN_KEEPALIVE
 static char *shim_callback_name = NULL;
+static boolean shim_restore_required = FALSE;
+struct shim_critical_size_with_name {
+    uchar ucsize;
+    const char *name;
+};
+extern struct shim_critical_size_with_name critical_sizes[];
 void shim_graphics_set_callback(char *cbName);
+void shim_graphics_set_player_name(const char *player_name);
+void shim_graphics_set_restore_required(int required);
+int shim_graphics_get_save_fingerprint(uchar *outbuf, int outbufsz);
 
 void shim_graphics_set_callback(char *cbName) {
     if (shim_callback_name != NULL) free(shim_callback_name);
@@ -48,6 +57,50 @@ void shim_graphics_set_callback(char *cbName) {
     }
     /* TODO: free(shim_callback_name) during shutdown? */
 }
+
+EMSCRIPTEN_KEEPALIVE
+void
+shim_graphics_set_player_name(const char *player_name)
+{
+    memset(svp.plname, 0, sizeof svp.plname);
+    if (player_name) {
+        strncpy(svp.plname, player_name, sizeof svp.plname - 1);
+        (void) setenv("USER", player_name, 1);
+        (void) setenv("LOGNAME", player_name, 1);
+    }
+}
+
+EMSCRIPTEN_KEEPALIVE
+void
+shim_graphics_set_restore_required(int required)
+{
+    shim_restore_required = required ? TRUE : FALSE;
+}
+
+EMSCRIPTEN_KEEPALIVE
+int
+shim_graphics_get_save_fingerprint(uchar *outbuf, int outbufsz)
+{
+    struct version_info version_data;
+    int count = get_critical_size_count(),
+        required = 2 + count + (int) sizeof version_data, i;
+
+    if (!outbuf || outbufsz < required)
+        return required;
+
+    runtime_info_init();
+    outbuf[0] = (uchar) 'h';
+    outbuf[1] = (uchar) count;
+    for (i = 0; i < count; ++i)
+        outbuf[2 + i] = critical_sizes[i].ucsize;
+
+    version_data.incarnation = nomakedefs.version_number;
+    version_data.feature_set = nomakedefs.version_features;
+    version_data.entity_count = nomakedefs.version_sanity1;
+    memcpy(&outbuf[2 + count], &version_data, sizeof version_data);
+    return required;
+}
+
 void local_callback (const char *cb_name, const char *shim_name, void *ret_ptr, const char *fmt_str, void *args);
 
 /* A2P = Argument to Pointer */
@@ -184,6 +237,8 @@ void shim_update_inventory(int a1 UNUSED) {
 
 void shim_player_selection() {
     boolean do_genl_player_setup = shim_player_selection_or_tty();
+    if (shim_restore_required)
+        nh_terminate(EXIT_FAILURE);
     if (do_genl_player_setup && !genl_player_setup(80))
         nh_terminate(EXIT_SUCCESS);
 }

@@ -1,7 +1,15 @@
 import { createElement } from "react";
+import type { ComponentType } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { HomeScreen } from "./HomeScreen";
+
+interface StageTwoHomeProps {
+  hasSaves: boolean;
+  onContinue: () => void;
+  onNewGame: () => void;
+  storageAvailable: boolean;
+}
 
 /**
  * Return the opening button tag whose accessible text matches a label.
@@ -61,5 +69,42 @@ describe("HomeScreen", () => {
     expect(buttonMarkup(html, "New Game")).not.toMatch(/\sdisabled(?:=|>)/i);
     expect(buttonMarkup(html, "Continue")).toMatch(/\sdisabled(?:=""|>)/i);
     expect(buttonMarkup(html, "Settings")).toMatch(/\sdisabled(?:=""|>)/i);
+  });
+
+  it("enables Continue only when persistent storage has a validated save", () => {
+    const StageTwoHome = HomeScreen as ComponentType<StageTwoHomeProps>;
+    const enabled = renderToStaticMarkup(createElement(StageTwoHome, {
+      hasSaves: true,
+      onContinue: vi.fn(),
+      onNewGame: vi.fn(),
+      storageAvailable: true,
+    }));
+    const noSaves = renderToStaticMarkup(createElement(StageTwoHome, {
+      hasSaves: false,
+      onContinue: vi.fn(),
+      onNewGame: vi.fn(),
+      storageAvailable: true,
+    }));
+
+    expect(buttonMarkup(enabled, "Continue")).not.toMatch(
+      /\sdisabled(?:=""|>)/i,
+    );
+    expect(buttonMarkup(noSaves, "Continue")).toMatch(
+      /\sdisabled(?:=""|>)/i,
+    );
+  });
+
+  it("keeps New Game available but warns and disables Continue without IDBFS", () => {
+    const StageTwoHome = HomeScreen as ComponentType<StageTwoHomeProps>;
+    const html = renderToStaticMarkup(createElement(StageTwoHome, {
+      hasSaves: true,
+      onContinue: vi.fn(),
+      onNewGame: vi.fn(),
+      storageAvailable: false,
+    }));
+
+    expect(buttonMarkup(html, "New Game")).not.toMatch(/\sdisabled(?:=""|>)/i);
+    expect(buttonMarkup(html, "Continue")).toMatch(/\sdisabled(?:=""|>)/i);
+    expect(html).toMatch(/storage|persist|IndexedDB|存档/i);
   });
 });
