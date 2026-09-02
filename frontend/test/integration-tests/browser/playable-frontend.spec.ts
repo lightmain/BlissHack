@@ -34,7 +34,10 @@ async function startNewGame(page: Page, name: string): Promise<void> {
     page.locator(".home-commands").boundingBox(),
     page.locator(".home-identity").boundingBox(),
   ]);
-  expect(commands?.x).toBeLessThan(identity?.x ?? 0);
+  expect(Math.abs((commands?.x ?? 0) - (identity?.x ?? 0))).toBeLessThan(2);
+  expect(commands?.y).toBeGreaterThan(
+    (identity?.y ?? 0) + (identity?.height ?? 0),
+  );
   await page.getByRole("button", { name: "New Game" }).click();
 
   const nameInput = page.getByRole("textbox", { name: "Who are you?" });
@@ -209,6 +212,13 @@ test("enumerates a persisted save after returning home and refreshing", async ({
   await page.getByRole("button", { name: "Continue" }).click();
   await expect(page.getByRole("heading", { name: "BlissHack" })).toBeVisible();
   await expect(page.getByRole("dialog", { name: "Saved games" })).toBeVisible();
+  const [continueButton, savePopover] = await Promise.all([
+    page.getByRole("button", { name: "Continue", exact: true }).boundingBox(),
+    page.getByRole("dialog", { name: "Saved games" }).boundingBox(),
+  ]);
+  expect(savePopover?.x).toBeGreaterThanOrEqual(
+    (continueButton?.x ?? 0) + (continueButton?.width ?? 0),
+  );
   await page.locator(".home-footer").click();
   await expect(page.getByRole("dialog", { name: "Saved games" })).toHaveCount(0);
   await page.getByRole("button", { name: "Continue" }).click();
