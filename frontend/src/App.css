@@ -42,22 +42,27 @@
 }
 
 .home-main {
-  width: min(820px, 100%);
+  width: min(1040px, 100%);
+  min-height: 0;
   margin: 0 auto;
-  padding: 8svh 24px 7svh;
+  padding: 7svh 32px 5svh;
   display: grid;
-  align-content: center;
+  align-content: start;
   grid-template-areas:
-    "commands identity"
-    "warning identity";
+    "identity ."
+    ". ."
+    "commands ."
+    "warning .";
   grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
-  gap: 64px;
+  grid-template-rows: auto minmax(36px, 40px) auto auto;
+  column-gap: 64px;
+  row-gap: 10px;
 }
 
 .home-identity {
   grid-area: identity;
-  align-self: center;
-  justify-self: end;
+  align-self: start;
+  justify-self: start;
 }
 
 .home-mark {
@@ -98,7 +103,7 @@
 
 .home-commands {
   grid-area: commands;
-  align-self: center;
+  align-self: end;
   display: grid;
   gap: 10px;
 }
@@ -228,8 +233,9 @@
 .save-picker-popover {
   position: absolute;
   z-index: 10;
-  top: calc(100% + 8px);
-  left: 0;
+  right: auto;
+  top: 0;
+  left: calc(100% + 10px);
   width: min(360px, calc(100vw - 48px));
   max-height: min(420px, 55svh);
   padding: 8px;
@@ -655,14 +661,17 @@
 
 @media (max-width: 700px) {
   .home-main {
-    padding: 48px 20px;
-    align-content: start;
+    padding: 48px 20px 32px;
+    align-content: stretch;
     grid-template-areas:
-      "identity"
-      "commands"
-      "warning";
-    grid-template-columns: 1fr;
-    gap: 42px;
+      "identity identity"
+      ". ."
+      "commands ."
+      "warning .";
+    grid-template-columns: minmax(120px, 46vw) minmax(0, 1fr);
+    grid-template-rows: auto minmax(42px, 1fr) auto auto;
+    column-gap: 8px;
+    row-gap: 10px;
   }
 
   .home-identity {
@@ -684,7 +693,9 @@
   }
 
   .save-picker-popover {
-    width: min(360px, calc(100vw - 40px));
+    left: calc(100% + 8px);
+    width: min(280px, calc(100vw - 48px - 100%));
+    min-width: 120px;
   }
 
   .nh-shell {
