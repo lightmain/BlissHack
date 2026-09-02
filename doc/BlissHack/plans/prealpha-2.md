@@ -25,7 +25,8 @@ prealpha-2 的目标是为现有可游玩的字符版前端增加可靠的浏览
 ### 2.1 本版本包含
 
 - 同一标签页内至多存在一个活动的 NetHack WASM 会话。
-- 每局游戏使用独立 session ID 和独立 WASM 实例。
+- 每局游戏使用独立 session ID 和独立 WASM 实例；该实例在进入首页读取
+  存档时创建，玩家选择后由同一局使用。
 - React 顶层应用状态机和简单主界面。
 - 从 IDBFS 枚举、读取、写入和同步存档。
 - 新游戏、继续游戏、保存并返回主界面。
@@ -102,9 +103,11 @@ frontend/src/
 
 ### 3.1 目的
 
-建立统一的应用生命周期：页面打开时显示主界面，点击新游戏后创建
-唯一 WASM session，游戏结束并完成清理后返回主界面。替换当前由模块
-级 `wasmModule` 和 `startupPromise` 隐式管理一局游戏的方式。
+建立统一的应用生命周期：页面打开时先创建下一局的唯一 WASM module，
+用它读取存档后显示主界面；点击新游戏或继续游戏时，同一个 module 创建
+活动 session 并调用一次 `main()`。游戏结束并完成同步和清理后，创建下一
+module，再返回准备完成的主界面。替换当前由模块级 `wasmModule` 和
+`startupPromise` 隐式管理一局游戏的方式。
 
 本阶段只保留一个对外权威状态机。
 
@@ -115,51 +118,76 @@ XState。应用状态至少包括：
 
 ```ts
 type AppState =
-  | { phase: "booting" }
-  | { phase: "home"; storageAvailable: boolean }
+  | {
+      phase: "booting";
+      moduleId: string;
+      status: "loading-module" | "loading-storage";
+    }
+  | {
+      phase: "home";
+      moduleId: string;
+      storageAvailable: boolean;
+    }
+  | {
+      phase: "save-picker";
+      moduleId: string;
+      storageAvailable: true;
+    }
   | {
       phase: "session";
+      moduleId: string;
       sessionId: string;
-      status:
-        | "creating"
-        | "loading"
-        | "ready"
-        | "running"
-        | "saving"
-        | "exiting";
+      status: "starting" | "running" | "saving" | "exiting";
     }
-  | { phase: "fatal"; sessionId: string | null; errorId: string };
+  | {
+      phase: "fatal";
+      moduleId: string | null;
+      sessionId: string | null;
+      errorId: string;
+    }
 ```
 
-`phase` 决定当前顶层界面，`status` 描述当前 session 的资源生命周期。
-`home` 状态不存在活动 session。资源清理完成事件使 reducer 直接回到
-`home`；不可恢复的 session 错误事件使 reducer 进入顶层 `fatal`。
+`phase` 决定当前顶层界面。`booting.status` 描述下一局 module 的创建与
+storage populate；`session.status` 只描述用户选择之后的活动游戏。
+`moduleId` 在 factory 调用前生成，用于拒绝旧 module 的异步完成事件；
+`sessionId` 在用户选择 New Game 或 Continue 时生成，用于隔离游戏 callback。
 
-后续阶段可以增加 `save-picker` 和 `importing` 等顶层状态，但所有状态
-转换必须继续由同一个 reducer 处理。
+`home` 和 `save-picker` 不存在活动 session，但持有同一个已初始化、尚未调用
+`main()` 的下一局 game module。资源清理完成后先创建并初始化下一 module，
+再进入 `home`；module 准备或活动 session 的不可恢复错误都进入顶层
+`fatal`。实际 `EmscriptenModule` 对象由 manager 持有，不放进 reducer。
+
+后续阶段可以增加 `importing` 等顶层状态，但所有状态转换必须继续由同一个
+reducer 处理。
 
 ### 3.3 Session manager 职责
 
-1. 新增 session manager，负责创建、启动、退出和释放 WASM 实例。
-2. 每次创建 session 都生成唯一 session ID。ID 在当前标签页生命周期
+1. 新增 session manager，负责为首页准备 module，并负责 session 的认领、
+   启动、退出和释放。
+2. 每次用户从首页开始或继续游戏时生成唯一 session ID。ID 在当前标签页生命周期
    内不得重复，也不得从角色名等用户信息推导。
 3. session manager 通过事件向 reducer 报告：
 
    ```text
-   SESSION_CREATED
    MODULE_LOADING
-   MODULE_READY
+   STORAGE_LOADING
+   HOME_READY
+   SAVE_PICKER_OPENED
+   SAVE_PICKER_CLOSED
+   SESSION_CREATED
    SESSION_RUNNING
    SESSION_SAVING
    SESSION_EXITING
    SESSION_CLEANUP_COMPLETED
+   MODULE_FATAL_ERROR
    SESSION_FATAL_ERROR
    ```
 
 4. reducer 是应用状态的唯一事实来源。session manager 不得自行切换
    React screen，也不得暴露另一份可独立修改的 public lifecycle state。
-5. 同一时间只能有一个活动 session。重复点击开始按钮必须复用当前
-   启动 Promise 或被 reducer 拒绝，不能第二次调用 `main()`。
+5. 同一时间只能有一个当前 module 和一个活动 session。重复点击开始按钮
+   必须认领同一个 ready module 一次，复用当前启动 Promise 或被 reducer
+   拒绝，不能创建第二个 module 或第二次调用 `main()`。
 6. 每个 session 使用唯一的全局 shim callback 名称，不能让新旧实例
    共享固定的 `blissCallback`。
 7. shim callback 必须闭包绑定所属 module 和 session ID，不能通过
@@ -179,20 +207,27 @@ type AppState =
 
 ### 3.4 状态转换要求
 
-- 页面初始化完成：`booting -> home`。
-- 点击新游戏：
-  `home -> session/creating -> session/loading -> session/ready`。
+- 页面初始化时先生成 `moduleId`：
+  `booting/loading-module -> booting/loading-storage -> home`。
+- 首页打开和关闭存档列表：
+  `home -> save-picker -> home`；三者使用同一个 `moduleId`。
+- 点击新游戏或选择存档：
+  `home|save-picker -> session/starting`；认领已经准备好的 module，并生成
+  `sessionId`。
 - 调用 `main()` 并收到 `shim_init_nhwindows`：
-  `session/ready -> session/running`。
+  `session/starting -> session/running`。
 - 后续保存流程：
   `session/running -> session/saving -> session/exiting`。
 - 普通游戏结束：
   `session/running -> session/exiting`。
 - 角色选择阶段按 `q`：
-  `session/running -> session/exiting -> home`。
-- 核心退出、同步和清理全部完成：`session/exiting -> home`。
+  `session/running -> session/exiting -> booting -> home`。
+- 核心退出、同步和清理全部完成：
+  `session/exiting -> booting -> home`；`booting` 中准备下一 module。
+- module 准备失败：任意 `booting` status 进入 `fatal`，`sessionId=null`。
 - 当前 session 的致命错误：任意 session status 进入 `fatal`。
-- stale session 事件不能触发 reducer 状态转换。
+- `moduleId` 不匹配的 module/storage 事件和 `sessionId` 不匹配的 session
+  事件不能触发 reducer 状态转换。
 - `session/running` 不能通过普通 `RETURN_HOME` 事件绕过核心退出。
 - 不允许出现 UI 显示游戏中、session manager 却认为 session 已失败
   等两套状态不一致的组合。
@@ -214,8 +249,8 @@ type AppState =
    - 一种主强调色，加上中性灰色层级。
    - 卡片圆角不超过 8px。
 8. 桌面和移动宽度下按钮文字不得溢出或重叠。
-9. 主界面不创建 WASM 游戏实例；允许预取静态 loader，但不得调用
-   `main()`。
+9. 进入主界面前创建下一局 WASM module，用于挂载 IDBFS 和枚举存档；主界面
+   不调用 `main()`，也不存在活动 NetHack session。
 
 ### 3.6 游戏结束要求
 
@@ -223,7 +258,8 @@ type AppState =
 - 用户完成原版结束信息后，以 `shim_exit_nhwindows` 作为核心退出信号。
 - 收到退出信号后 reducer 进入 `session/exiting`。
 - 退出时先完成必要同步，再清理 session，最后回主界面。
-- 一局结束后可以创建全新的 session，旧地图和消息不得残留。
+- 一局结束并完成 flush 和清理后，创建下一局的新 module；旧地图和消息不得
+  残留。
 - 本版本不增加结算 Scene，不解析六类 disclosure 数据。
 
 ### 3.7 预期代码范围
@@ -247,9 +283,11 @@ type AppState =
   `SESSION_CLEANUP_COMPLETED` 和 `SESSION_FATAL_ERROR`。
 - `session/running` 不能通过普通 `RETURN_HOME` 绕过核心退出。
 - reducer 对未知 action 触发 TypeScript 穷尽检查。
-- 主界面渲染时不会调用 session factory。
-- 连续派发 `NEW_GAME` 只创建一个 module、只调用一次 `main()`。
-- 第一局退出后开始第二局，会创建不同 module 和不同 session ID。
+- HomeScreen 组件渲染本身不调用 module factory；顶层生命周期在进入首页前
+  只创建一个 module。
+- 连续派发 `NEW_GAME` 只认领一个 ready module、只调用一次 `main()`。
+- 第一局退出并完成 flush 后，为第二局创建不同 module；开始第二局时生成不同
+  session ID。
 - 旧 session callback 到达时不会更新第二局状态。
 - 旧 session 指针只能由旧 module 解码。
 - pending menu、`yn`、line input 和按键队列在 session 结束后全部清空。
@@ -291,9 +329,9 @@ type AppState =
 
 ### 4.1 强制设计评审门禁
 
-进入本阶段时，先停止功能开发，与用户详细讨论并确认存档文件形式。
-在讨论完成、文档获得用户确认前，不实现导入、导出、存档列表元数据
-或覆盖规则。
+进入本阶段时，先停止功能开发，与用户详细讨论并确认浏览器内存储和读取
+方案。在讨论完成、文档获得用户确认前，不实现存档列表元数据或继续游戏。
+导入、导出和覆盖规则不属于本门禁，统一推迟到阶段三开始前单独评审。
 
 研究结果写入独立文档，至少回答：
 
@@ -303,11 +341,11 @@ type AppState =
 4. save header 中的版本、数据模型和角色信息如何编码。
 5. 同一 BlissHack 版本、不同 BlissHack 版本、桌面 NetHack 与 WASM
    存档分别具有什么兼容性。
-6. 导出格式采用原始 save bytes，还是带 manifest 的 BlissHack 容器。
-7. 元数据包括哪些字段，是否需要 checksum 和 build ID。
-8. 导入时如何确定目标文件名、角色名和冲突策略。
-9. 是否需要 sidecar index，以及 index 与真实文件不一致时谁是事实来源。
-10. 单个文件和整个导入包的合理大小上限。
+6. IndexedDB、IDBFS 虚拟文件和原版 NetHack bytes 之间是什么关系。
+7. 阶段二如何读取并校验角色身份和兼容性。
+8. 每局 game module 在首页、活动 session 和退出期间如何流转。
+9. 恢复失败时如何阻止静默创建同名新游戏。
+10. 阶段二能够可靠展示哪些元数据。
 
 ### 4.2 存储服务需求
 
@@ -320,28 +358,31 @@ type AppState =
    initialize()
    listSaves()
    readSave()
-   writeSave()
-   deleteSave()
    flush()
    ```
 
-   最终签名由存档格式评审决定。
+   最终签名由存储与读取方案评审决定。阶段二不公开导入、覆盖或用户删除所需
+   的写入接口；NetHack 核心仍直接创建和删除正式 save。
 
 4. `/save` 只挂载一次，并在读取列表前执行 `syncfs(true)`。
-5. 所有 `syncfs`、write、rename 和 delete 操作通过同一异步队列串行化。
-6. IndexedDB 不可用时：
+5. 所有 `syncfs` 操作通过同一异步队列串行化；阶段三若增加 write、rename
+   和 delete，也必须复用同一队列。
+6. IndexedDB 中由 IDBFS 保存的文件内容必须保持为 NetHack 原版二进制
+   save bytes，不转换为 JSON 或 BlissHack 容器。
+7. IndexedDB 不可用时：
    - 新游戏仍可运行。
    - 主界面明确显示存档不可持久化。
    - `Continue`、导入和导出按实际能力禁用。
-7. 列表只展示被确认是存档的文件，不展示临时文件、备份文件或其他
+8. 列表只展示被确认是存档的文件，不展示临时文件、备份文件或其他
    IDBFS 内容。
-8. 恢复必须使用 NetHack 原有的角色名查找机制，不能从 JS 直接恢复
+9. 恢复必须使用 NetHack 原有的角色名查找机制，不能从 JS 直接恢复
    C 内部结构。
-9. 选择存档后创建新 session，设置对应启动身份，再调用 NetHack
-   `main()`，由核心自行执行 `restore_saved_game()`。
-10. 恢复失败不能静默开始一个同名新游戏并覆盖原存档。
-11. 核心退出后必须等待 `flush()` 完成，再把 UI 标记为已经安全返回
-    主界面。
+10. 进入首页前创建下一局 game module，并用它 initialize 和 list；选择存档
+    后由新 session 认领同一个 module、设置对应启动身份，再调用 NetHack
+    `main()`，由核心自行执行 `restore_saved_game()`。
+11. 恢复失败不能静默开始一个同名新游戏并覆盖原存档。
+12. 核心退出后必须等待 `flush()` 完成并清理旧 module，再创建下一 module、
+    重新枚举并把 UI 标记为已经安全返回主界面。
 
 ### 4.3 Continue UI
 
@@ -350,7 +391,7 @@ type AppState =
 - 点击后进入简单存档列表，支持选择和返回主界面。
 - 本版本只显示格式评审确认能够可靠读取的字段。
 - 无法读取元数据的文件显示为不可继续，并提供错误状态；不得猜测。
-- 删除按钮可以在本阶段或阶段三加入，但必须二次确认。
+- 本阶段不提供删除按钮；删除、覆盖及其确认流程留到阶段三评审。
 - `Settings` 始终 disabled。
 
 ### 4.4 单元测试要求
@@ -361,7 +402,8 @@ type AppState =
 - IndexedDB 缺失、挂载失败、读取失败和同步失败均有确定返回结果。
 - 文件筛选排除临时、备份和无关文件。
 - 空列表使 Continue disabled，非空列表使其 enabled。
-- 选择存档时把正确身份传给新 session。
+- 选择存档时把正确身份传给认领当前 module 的新 session，不创建第二个
+  module。
 - 恢复失败时原文件仍然存在，不创建同名新游戏。
 - session 退出前不会提前报告保存成功。
 
@@ -383,6 +425,18 @@ type AppState =
 
 ## 5. 阶段三：导入、导出及保存并返回主菜单
 
+### 5.0 导入导出设计评审门禁
+
+开始导入、导出、覆盖或用户删除功能前，单独与用户确认：
+
+- 裸 NetHack save 或 BlissHack 容器；
+- 扩展名、MIME type、manifest、checksum 和 build ID；
+- 文件和导入包大小限制；
+- 导入目标名、冲突、替换、备份和回滚策略；
+- 是否需要可重建的 sidecar index。
+
+阶段二的浏览器内存储方案不预先决定这些内容。
+
 ### 5.1 保存并返回主菜单
 
 1. 游戏 screen 提供 `Save and Return` 命令。
@@ -401,9 +455,9 @@ type AppState =
 
 - 只能从主界面或存档列表导出，不在活动游戏中读取可能变化的文件。
 - 导出前等待所有 storage operations 完成。
-- 导出格式、扩展名和 MIME type 由阶段二的格式评审确定。
+- 导出格式、扩展名和 MIME type 由本阶段开始时的导入导出评审确定。
 - 导出文件名必须可读、可跨平台保存，不包含路径分隔符。
-- 导出内容包含格式评审确定的版本和完整性信息。
+- 导出内容是否包含额外版本和完整性信息由本阶段评审确定。
 - 导出不修改、删除或锁定原存档。
 - 下载失败时原存档保持不变，并显示可理解的错误。
 
@@ -413,7 +467,8 @@ type AppState =
 - 导入事务实现放在 `frontend/src/storage/storage-transaction.ts`，
   不写入 React screen 或 bridge。
 - 使用浏览器文件选择器读取，不接受远程 URL。
-- 在写入正式存档前完成格式、版本、大小、文件名和 checksum 校验。
+- 在写入正式存档前完成本阶段评审所确定的格式、版本、大小、文件名和完整性
+  校验。
 - 不兼容文件不得写入正式路径。
 - 同名冲突必须让用户明确选择取消或替换，不允许静默覆盖。
 - 替换采用临时文件和备份文件，任何一步失败都恢复旧存档。
@@ -426,7 +481,7 @@ type AppState =
 - 删除存档必须显示角色或文件标识并二次确认。
 - 删除完成并成功 flush 后才从列表移除。
 - 删除或 flush 失败时列表恢复到真实文件系统状态。
-- 删除功能不提供撤销时，应先建议导出；是否保留短期备份由格式评审
+- 删除功能不提供撤销时，应先建议导出；是否保留短期备份由本阶段评审
   决定。
 
 ### 5.5 单元测试要求
@@ -809,7 +864,8 @@ npm run test:long
 强制暂停点：
 
 - 阶段一完成后，审核主界面、状态机和 session 生命周期行为。
-- 阶段二开始时，详细讨论并确认存档文件及导出容器形式。
+- 阶段二开始时，详细讨论并确认浏览器内存储、读取、校验和 module 生命周期。
+- 阶段三开始时，详细讨论并确认导入、导出、删除和覆盖方案。
 - 阶段三完成后，人工执行一次导出、删除、导入和继续。
 - 阶段六完成后，执行全部自动命令和手动最终验收。
 

@@ -32,7 +32,10 @@
 - `frontend/src/app/app-state.ts` 是顶层应用生命周期的唯一状态机。
 - `frontend/src/session/session-manager.ts` 管理唯一活动 WASM session、module、
   callback 和清理过程。
-- 主界面不得创建 WASM 实例；用户开始或继续游戏时才创建新 session。
+- 每局 game module 在进入首页读取存档时创建；首页没有活动 session，也不调用
+  `main()`。用户开始或继续游戏时，新 session 认领同一个 module。
+- module、session 和首页之间的权威生命周期见
+  `doc/BlissHack/module-lifecycle.md`。
 - 项目主要在 TypeScript 侧开发，但允许对 C 侧 shim 做少量、经过源码验证且
   有测试覆盖的功能补全。
 - shim ABI 有已知限制。不得假定它能无损表达全部 `window_procs` 契约，也不得
@@ -100,12 +103,14 @@
 读取：
 
 - `doc/BlissHack/plans/prealpha-2.md` 的阶段二至四相关部分
+- `doc/BlissHack/save-format-review.md`
+- `doc/BlissHack/module-lifecycle.md`
 - `sys/libnh/README.md`
 - 当前 storage 实现和测试
 - NetHack 保存、恢复调用链的相关 C 源码
 
-阶段二的存档格式设计评审是强制门禁；获得用户确认前不得实现导入、导出、
-元数据或覆盖策略。
+阶段二的浏览器内存储和读取方案评审是强制门禁；获得用户确认前不得实现
+存档列表元数据或继续游戏。导入、导出和覆盖策略在阶段三开始前另行评审。
 
 ## 4. 修改与验证
 
