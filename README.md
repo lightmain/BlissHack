@@ -14,6 +14,10 @@
 BlissHack runs a more modern NetHack experience in a web
 browser. The NetHack C core is compiled to WebAssembly and connected to a
 React/TypeScript terminal through the upstream shim window interface.
+BlissHack makes a small number of targeted changes to the NetHack C code,
+primarily to fix missing shim interface behavior required by the browser
+frontend. These changes are documented in
+[Current project modifications to the shim interface](doc/BlissHack/shim-interface-reference.md#6-当前项目对-shim-接口的修改).
 
 ## Project Status
 
@@ -121,5 +125,7 @@ The original NetHack copyright and license notices are retained. Third-party
 frontend dependencies remain subject to their respective licenses.
 
 BlissHack modifications documented in this repository were added in 2026.
-During prealpha-1, the browser frontend, tests, documentation, and deployment
-configuration were added without modifying the NetHack C core.
+Most changes are confined to the browser frontend, tests, documentation, and
+deployment configuration. The small number of modifications to NetHack C code
+carry file-level modification notices and are documented in the
+[shim interface reference](doc/BlissHack/shim-interface-reference.md#6-当前项目对-shim-接口的修改).

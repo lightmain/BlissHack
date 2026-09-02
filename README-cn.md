@@ -12,6 +12,9 @@
 BlissHack 的目标是在现代浏览器中运行更加现代化版本的 NetHack。NetHack C
 内核被编译为 WebAssembly，并通过上游 shim 窗口接口连接到 React/TypeScript
 终端前端。
+BlissHack 对 NetHack C 代码进行了少量有针对性的修改，主要用于修复浏览器
+前端所需但 shim 接口尚未完整实现的行为。详情见
+[当前项目对 shim 接口的修改](doc/BlissHack/shim-interface-reference.md#6-当前项目对-shim-接口的修改)。
 
 ## 项目状态
 
@@ -111,4 +114,6 @@ NetHack 原始版权和许可证声明均予以保留。前端第三方依赖仍
 许可证。
 
 本仓库记录的 BlissHack 修改始于 2026 年。prealpha-1 增加了浏览器前端、
-测试、文档和部署配置，没有修改 NetHack C 内核。
+测试、文档和部署配置。项目对 NetHack C 代码的少量修改均在对应文件中标明，
+并记录于
+[Shim 接口参考的“当前项目对 shim 接口的修改”章节](doc/BlissHack/shim-interface-reference.md#6-当前项目对-shim-接口的修改)。
