@@ -39,7 +39,8 @@ BlissHack 对 NetHack C 代码进行了少量有针对性的修改，主要用�
 <https://lightmain.github.io/BlissHack/>
 
 存档保存在当前浏览器配置中，不会上传到服务器，也不会自动同步到其他浏览器或
-设备。
+设备。NetHack 写入的文件内容仍是原版二进制 save bytes；IDBFS 只负责把
+Emscripten 虚拟文件及其文件系统元数据持久化到 IndexedDB。
 
 ## 操作方式
 
@@ -92,6 +93,9 @@ npm run test:integration
 ## 仓库文档
 
 - [prealpha-1 计划](doc/BlissHack/plans/prealpha-1.md)
+- [prealpha-2 计划](doc/BlissHack/plans/prealpha-2.md)
+- [存档存储与读取方案评审](doc/BlissHack/save-format-review.md)
+- [Game Module 生命周期](doc/BlissHack/module-lifecycle.md)
 - [WASM 构建流程](doc/BlissHack/build-process.md)
 - [Shim 接口参考](doc/BlissHack/shim-interface-reference.md)
 - [按键输入参考](doc/BlissHack/key-input-reference.md)

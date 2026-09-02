@@ -1,169 +1,224 @@
-# BlissHack 存档格式评审
+# BlissHack 存档存储与读取方案评审
 
-本文记录 prealpha-2 阶段二开始前的存档格式调查和建议。结论依据当前
-NetHack 5.0 源码、WASM 构建配置和 Emscripten 生成运行时；在用户确认前，
-不据此实现导入、导出、存档元数据或覆盖规则。
+本文记录 prealpha-2 阶段二开始前的存档调查、已确认决策和待讨论问题。
+结论依据当前 NetHack 5.0 源码、WASM 构建配置和 Emscripten 运行时。
 
-## 1. 当前文件与命名
+阶段二只处理浏览器内的保存、枚举和继续游戏。阶段三的导入、导出格式、
+扩展名、完整性校验、大小限制和覆盖策略留到阶段三开始前单独评审，本文件
+不预设 BlissHack 容器或原始文件导出方案。
 
-WASM 构建使用 Unix 文件逻辑，`getuid()` 在当前 Emscripten 运行时返回 `0`。
-`set_savefile_name()` 因此把普通存档命名为：
+## 1. 原版 NetHack 的文件模型
+
+TTY 只是 NetHack 的窗口端口，不定义存档格式。TTY、curses、X11 和当前
+BlissHack shim 都调用同一套 `save.c`、`restore.c`、`files.c` 和
+`version.c`。
+
+原版运行期间存在两类不同文件：
+
+1. 正式 save file：玩家确认保存后，核心把整局状态写入一个二进制文件并退出。
+2. level/checkpoint files：活动游戏使用的锁和分层文件；崩溃时可由
+   `recover` 重组，不等同于玩家正常保存产生的 save file。
+
+正式 save file 是顺序二进制流，主要顺序为：
+
+```text
+格式与兼容性 header
+角色身份块
+当前地牢层
+全局游戏状态
+其他地牢层，直到 EOF
+```
+
+当前核心使用 historical binary struct-level 格式。header 包含格式标志、
+关键 C 类型和结构的尺寸、NetHack 版本、feature set、实体数量校验值，以及
+固定 49 bytes 的角色信息块。正文包含地图、怪物、物品、陷阱、玩家状态、
+背包、地牢拓扑、计时器、消息历史和其他层等完整游戏状态。
+
+这不是稳定的跨平台交换格式。即使 NetHack 版本相同，32/64 位数据模型、
+编译 feature、结构尺寸或实体数量不同也可能使存档不兼容。核心
+`validate()` 是兼容性判断的权威。
+
+## 2. 当前 WASM 文件与命名
+
+WASM 构建沿用 Unix 文件逻辑。当前 Emscripten 运行时的 `getuid()` 返回
+`0`，`set_savefile_name()` 因此构造：
+
+```text
+save/0<角色名>
+```
+
+在浏览器虚拟文件系统中对应：
 
 ```text
 /save/0<角色名>
 ```
 
-当前构建没有定义 `SAVE_EXTENSION`、`ZLIB_COMP` 或可在浏览器中工作的外部
-`COMPRESS`，所以正常存档没有扩展名，也不压缩。`/save` 是当前唯一挂载到
-IDBFS 的目录。正常保存只留下一个完整存档；关卡锁文件位于挂载目录之外，
-不属于持久化存档列表。
+角色名最长 31 bytes，文件名中的 UID 和角色名之间没有分隔符。
 
-列表候选应只接受文件名匹配 `^0[^/]{1,31}$` 的普通文件，并排除目录、
-`.tmp`、`.bak`、`.e`、压缩后缀及其他内容。文件名只用于定位，角色身份仍需
-与 save header 中的角色名一致。
+仓库的 Unix 配置默认定义外部 `/usr/bin/compress` 和 `.Z`。浏览器不能按
+本地 Unix 方式执行该程序，因此不能只根据宏定义断言最终是否带压缩后缀。
+实现文件筛选前必须用当前生成的 `nethack.js`/`nethack.wasm` 实际保存一次，
+记录 `/save` 中的真实文件名和 bytes，再确定规则。
 
-## 2. 创建、恢复与删除生命周期
+## 3. 保存与恢复生命周期
 
-- 新游戏开始时不会创建完整 save 文件，只创建运行期锁和关卡文件。
-- 玩家确认保存后，核心以截断模式创建目标 save，依次写入版本头、角色信息、
-  当前层、全局状态和其他层；成功后删除关卡文件并退出。
-- 创建或中途读取关卡失败时，核心删除不完整 save。
-- 启动时，核心根据角色名构造同一路径并调用 `restore_saved_game()`。
-- `validate()` 先校验格式、关键类型尺寸、版本、feature set 和实体数量。
-- 普通模式恢复成功后，核心立即删除原 save；后续再次保存会重新创建它。
-- 部分深层恢复失败路径也会删除原 save，然后可能进入同名新游戏流程。因此
-  “继续游戏”前必须保留内存副本，恢复失败时恢复该副本，并且 UI 不得静默
-  进入角色选择。
-- 死亡、逃离、飞升等游戏结束不会产生可继续存档。
+- 新游戏开始时不会创建正式 save file，只创建运行期锁和关卡文件。
+- 玩家确认保存后，核心创建或截断目标 save，写入 header、角色信息、当前层、
+  全局状态和其他层；成功后删除运行期关卡文件并退出。
+- 创建或中途读取关卡失败时，核心可能删除不完整 save。
+- 启动时，核心根据 UID 和角色名构造路径并调用 `restore_saved_game()`。
+- 恢复前，`validate()` 校验格式、关键尺寸、版本、feature set 和实体数量。
+- 普通模式恢复成功后，核心删除正式 save；后续再次保存时重新创建。
+- 部分深层恢复失败路径也可能删除原 save，并继续进入同名新游戏流程。
+- 死亡、逃离、飞升等游戏结束不会留下可继续的正式存档。
 
-## 3. Save Header
+阶段二必须阻止“用户选择继续，但恢复失败后静默开始同名新游戏”。具体保护
+方式仍需在确定读取方案后设计。
 
-当前格式是 NetHack 的 historical binary struct-level 格式。文件开头顺序为：
+## 4. IndexedDB 中实际保存的内容
 
-1. 格式标志，当前值为 ASCII `h`，1 byte。
-2. critical-size 项目数，1 byte。
-3. 每项关键 C 类型或结构的尺寸，各 1 byte；末项包含
-   `SAVEFILE_REVISION_LEVEL`。
-4. `struct version_info`：
-   `incarnation`、`feature_set`、`entity_count` 三个 `unsigned long`。
-   WASM32 当前每项为 4 bytes、小端序。
-5. 角色信息块长度，一个 C `int`，WASM32 当前为 4 bytes、小端序。
-6. 固定 49 bytes 的角色信息：
-   `角色名\0职业-种族-性别-阵营...模式`。
+### 4.1 已确认结论
 
-当前源码生成值为：
+阶段二不会把正式存档转换成 JSON，也不会包装成 BlissHack 容器。
+
+NetHack 核心仍向 `/save/...` 写入原版 historical binary save bytes。
+Emscripten IDBFS 把虚拟文件系统节点同步到 IndexedDB。IndexedDB 中会有
+IDBFS 自己的 object store、路径、时间戳、权限和文件内容记录，因此数据库
+记录本身不是一个可直接下载的裸文件；但其中的文件内容 payload 与 NetHack
+写入虚拟文件的 bytes 一致。
+
+分层关系是：
 
 ```text
-VERSION_NUMBER   = 0x05000000
-VERSION_FEATURES = 0x00060040
-VERSION_SANITY1  = 0x211e117f
-SAVEFILE_REVISION_LEVEL = 0
-PL_NSIZ_PLUS = 49
+NetHack 原版二进制 save bytes
+        ↓ 写入
+Emscripten 虚拟文件 /save/0<角色名>
+        ↓ IDBFS syncfs(false)
+IndexedDB 中的 IDBFS 记录
 ```
 
-阶段二的 TypeScript 解析器只读取上述前缀，不解析后续游戏状态。它应对长度、
-格式标志、critical-size 指纹、三个版本字段、角色块长度、NUL 终止、角色名
-和文件名一致性执行严格校验。无法确认的文件保留在存储中，但显示为不可继续。
+读取方向相反：
 
-## 4. 兼容性
+```text
+IndexedDB 中的 IDBFS 记录
+        ↓ IDBFS syncfs(true)
+Emscripten 虚拟文件 /save/0<角色名>
+        ↓
+NetHack 原版 restore_saved_game()
+```
 
-- 同一 BlissHack 构建：完整 header 指纹一致时可继续。
-- 不同 BlissHack 构建：只有 NetHack 版本、feature set、实体数量、critical
-  sizes 和 savefile revision 均兼容时才可能恢复；本版本不作跨构建承诺。
-- 桌面 NetHack 与 WASM：数据模型、编译特性或实体数量通常不同，默认不兼容。
-- 其他 WASM NetHack：即使版本号相同，也必须通过完整 header 校验，不能仅看
-  文件名或版本号。
+BlissHack 不直接把 IndexedDB 的私有 schema 当作应用数据格式。storage
+service 通过 Emscripten `FS` 和 `IDBFS` 操作文件。
 
-核心 `validate()` 是最终兼容性权威。前端校验用于在调用 `main()` 前拒绝明显
-不兼容或损坏的文件，并阻止失败后静默创建同名新游戏。
+### 4.2 WASM 与桌面存档
 
-## 5. 阶段二元数据
+“原版 bytes”表示由未经修改的 NetHack 存档代码生成，不表示与任意桌面
+NetHack 文件逐字兼容。当前 WASM32 的 pointer、`long` 和 `size_t` 通常是
+4 bytes，而常见 64 位 Unix 构建通常是 8 bytes。historical binary 格式会
+把这些 ABI 差异反映到 header 和正文中，因此桌面与 WASM 默认视为不兼容。
 
-阶段二建议只展示能够从当前文件可靠取得的字段：
+## 5. Game module 生命周期
 
-- 角色名；
-- 职业、种族、性别、阵营的三字符 filecode；
-- 普通、探索或调试模式；
-- 文件字节数；
-- IDBFS 文件修改时间。
+`nethack.js` 是 Emscripten module factory。每次调用 factory 都会创建一套
+独立的 `EmscriptenModule`，其中包含 WASM 实例、线性内存、C 全局变量、
+虚拟文件系统、环境变量和 Asyncify 状态。一个 module 近似浏览器中的一个
+NetHack 进程。
 
-每条记录同时保留内部路径、兼容状态和明确错误原因。阶段二不增加 sidecar
-index；每次 `listSaves()` 都以 `/save` 实际文件和 header 为事实来源，避免
-index 与真实文件漂移。
+不再使用“候选 module”一词。每一局的 game module 生命周期从进入首页、
+读取已有存档时开始，而不是从点击 New Game 或 Continue 时开始：
 
-## 6. 服务边界与启动方式
+```text
+进入首页
+创建下一局的 game module
+挂载 /save 并执行 syncfs(true)
+枚举存档，展示首页
+玩家选择 New Game 或 Continue
+同一个 module 调用一次 main()
+核心退出
+等待 syncfs(false) 和清理完成
+废弃旧 module
+创建下一局的新 game module
+```
+
+首页存在一个已经加载但尚未调用 `main()` 的 game module；此时没有正在运行
+的 NetHack 游戏。玩家开始或继续时复用这个 module，不额外创建临时 module。
+
+每个 module 必须遵守：
+
+1. 最多调用一次 `main()`。
+2. 首页枚举和随后的一局游戏使用同一个 FS 视图。
+3. 上一 module 完成所有 flush 和清理后，才能创建下一 module。
+4. 同一时间最多有一个当前 module；过期异步结果不得接管 UI。
+5. 退出后移除 callback、pending input 和所有强引用，让运行时可被回收。
+
+完整状态定义见 `doc/BlissHack/module-lifecycle.md`。
+
+## 6. 阶段二 Storage Service 边界
 
 storage service 位于 `frontend/src/storage/`，拥有 Emscripten FS 适配器和
-单一 Promise 队列，提供：
+单一 Promise 队列，预期提供：
 
 ```text
 initialize()
 listSaves()
 readSave(path)
-writeSave(path, bytes)
-deleteSave(path)
 flush()
 ```
 
-`initialize()` 对同一 module 幂等，只挂载 `/save` 一次，并在第一次枚举前
-执行 `syncfs(true)`。write、rename、delete 和所有 `syncfs` 都进入同一队列。
+阶段二没有导入、导出、覆盖和用户删除，因此暂不要求公开 `writeSave()`、
+`deleteSave()` 或 `rename()`。核心仍负责创建和删除正式 save。
 
-刷新后在首页枚举 IDBFS 需要 Emscripten `FS`，但首页不得启动游戏。建议在
-`booting` 阶段预加载一个候选 module，挂载并枚举后才进入首页；此时不注册
-shim callback、不调用 `main()`、不创建活动 session。玩家开始或继续游戏时，
-该 module 被当前 session 接管。session 结束后仍用该 module 完成 flush 和
-重新枚举，下一局再创建新 module。
+`initialize()` 对同一 module 幂等，只挂载 `/save` 一次，并在首次枚举前
+执行 `syncfs(true)`。所有 `syncfs` 操作进入同一异步队列。核心退出后必须
+等待 `syncfs(false)` 成功，才能废弃 module 并显示下一次首页。
 
-IndexedDB 缺失、挂载或首次同步失败时，应用进入
-`home/storageAvailable=false`；新游戏使用内存 FS，Continue 禁用，并显示
-“本次游戏无法持久保存”的明确警告。
+IndexedDB 缺失、挂载或首次同步失败时，应用仍可用内存 FS 开始临时新游戏，
+但必须禁用 Continue，并明确提示本次游戏无法持久保存。
 
-## 7. 恢复保护
+## 7. 读取方案仍待确认
 
-继续游戏采用以下顺序：
+阶段二需要从以下方案中选择，并在实现前记录决定：
 
-1. 串行读取并严格校验目标 save，保留原始 bytes。
-2. 创建新 session，把 header 中已验证的角色名写入 module 的
-   `ENV.USER` 和 `ENV.LOGNAME`。
-3. 调用 NetHack `main()`，由核心自行执行 `restore_saved_game()`。
-4. 如果恢复路径进入 `shim_player_selection_or_tty`，视为恢复失败，不允许
-   把它当作同名新游戏；退出该 session，并把步骤 1 的 bytes 写回原路径后
-   flush。
-5. session 核心退出后，等待 storage queue 的 `flush()` 完成，再报告清理
-   完成并回到首页。
+1. TypeScript 只解析 save header，再由核心 `validate()` 完成最终校验。
+2. 导出一个窄 C 接口，复用核心 `validate()` 和角色信息读取逻辑。
+3. 直接导出并适配原版 `get_saved_games()`。
 
-阶段二不提供删除按钮，避免在格式与恢复路径刚落地时扩大破坏性操作面。
+选择标准：
 
-## 8. 阶段三导入导出建议
+- 不复制容易随 NetHack 变化的 ABI 常量。
+- 能可靠取得角色身份，而不是只猜文件名。
+- 能标记不兼容或损坏文件。
+- 不在列表扫描时修改、删除或重新压缩原文件。
+- 恢复失败时不会静默开始同名新游戏。
 
-阶段三建议采用 BlissHack 容器，而不是裸 save bytes。容器包含：
+在读取方案确认前，不实现存档列表元数据。无论采用哪种方案，真实
+`/save` 文件是事实来源，不在阶段二引入 sidecar index。
 
-- schema version；
-- NetHack 版本与完整 save header 指纹；
-- BlissHack build ID；
-- 原始文件名和经过解析的角色字段；
-- payload 长度；
-- payload 的 SHA-256；
-- 原始 save bytes。
+## 8. 阶段三边界
 
-导入目标名由已验证 header 中的角色名重新计算，不信任外部文件名。冲突只提供
-取消或显式替换；替换使用 `.tmp` 和 `.bak`，成功 flush 后才删除备份。
+阶段三开始前重新讨论：
 
-建议限制：
+- 下载的是裸 NetHack save 还是带 manifest 的容器；
+- 扩展名和 MIME type；
+- checksum、build ID 和兼容性信息；
+- 导入大小限制；
+- 文件名、冲突、替换和回滚策略；
+- 是否需要可重建的 sidecar index。
 
-- 单个原始 save 最大 32 MiB；
-- 单个导入容器最大 40 MiB；
-- 本版本一次只导入一个 save。
+本阶段不对这些问题作决定。
 
-这两个上限远高于正常存档，同时能限制内存复制和恶意输入。sidecar index 暂不
-需要；若未来为大量存档优化列表，真实文件仍是事实来源，index 只能重建。
+## 9. 当前确认状态
 
-## 9. 待确认决策
+已经确认：
 
-建议确认以下组合后进入实现：
+1. IndexedDB 中由 IDBFS 持久化的文件内容是原版 NetHack 二进制 save bytes。
+2. 不修改 NetHack 内部存档格式。
+3. 每局 game module 在进入首页读取存档时创建，随后由同一局调用一次
+   `main()`。
+4. 阶段三导入导出方案推迟到阶段三评审。
 
-1. 阶段二使用严格 header 解析，只展示第 5 节字段。
-2. 阶段二不提供删除、导入和导出；这些留到阶段三。
-3. `booting` 阶段预加载但不运行一个候选 WASM module，用于首页 IDBFS 枚举。
-4. 阶段三采用带 manifest 和 SHA-256 的 BlissHack 容器，限制为
-   32 MiB 原始 save、40 MiB 容器。
+尚待确认：
+
+1. 阶段二采用第 7 节中的哪种读取和校验方案。
+2. 当前 WASM 实际生成的存档文件名、压缩结果和 header bytes。
+3. 恢复失败保护采用何种最小且可验证的机制。
