@@ -5,6 +5,7 @@
 }
 
 .home-screen,
+.save-picker-screen,
 .app-loading,
 .session-loading,
 .fatal-screen {
@@ -98,6 +99,8 @@
 }
 
 .home-commands button,
+.save-picker-entry,
+.save-picker-back,
 .fatal-screen button {
   min-height: 46px;
   padding: 10px 14px;
@@ -118,6 +121,10 @@
 
 .home-commands button:hover:not(:disabled),
 .home-commands button:focus-visible,
+.save-picker-entry:hover:not(:disabled),
+.save-picker-entry:focus-visible,
+.save-picker-back:hover,
+.save-picker-back:focus-visible,
 .fatal-screen button:hover,
 .fatal-screen button:focus-visible {
   background: #19201c;
@@ -129,6 +136,14 @@
   border-color: #292e31;
   color: #636b70;
   cursor: not-allowed;
+}
+
+.home-storage-warning {
+  grid-column: 2;
+  margin: 4px 0 0;
+  color: #ffcf5c;
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .home-footer {
@@ -194,6 +209,54 @@
 
 .fatal-screen button {
   margin-top: 20px;
+}
+
+.save-picker-screen {
+  padding: 40px 24px;
+}
+
+.save-picker-header,
+.save-picker-list,
+.save-picker-back {
+  width: min(620px, 100%);
+  margin-right: auto;
+  margin-left: auto;
+}
+
+.save-picker-header h1 {
+  margin: 8px 0 28px;
+  color: #fff;
+  font-size: 32px;
+  letter-spacing: 0;
+}
+
+.save-picker-list {
+  display: grid;
+  gap: 8px;
+}
+
+.save-picker-entry {
+  display: grid;
+  gap: 4px;
+}
+
+.save-picker-entry small {
+  color: #8f989d;
+}
+
+.save-picker-entry:disabled {
+  border-color: #542f34;
+  color: #8f989d;
+  cursor: not-allowed;
+}
+
+.save-picker-entry:disabled small {
+  color: #d57676;
+}
+
+.save-picker-back {
+  display: block;
+  margin-top: 24px;
 }
 
 .nh-shell {
@@ -598,6 +661,14 @@
 
   .home-footer a {
     margin-left: 0;
+  }
+
+  .home-storage-warning {
+    grid-column: 1;
+  }
+
+  .save-picker-screen {
+    padding: 28px 16px;
   }
 
   .nh-shell {

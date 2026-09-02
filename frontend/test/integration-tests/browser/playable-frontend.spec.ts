@@ -58,6 +58,32 @@ async function startNewGame(page: Page, name: string): Promise<void> {
 }
 
 /**
+ * Save through the real NetHack command flow and wait for the next home module.
+ * @param page - running NetHack page.
+ */
+async function saveAndReturnHome(page: Page): Promise<void> {
+  await page.keyboard.press("S");
+  await expect(page.getByText(/Really save/)).toBeVisible();
+  await page.keyboard.press("y");
+  await expect(page.getByText("--More--", { exact: true })).toBeVisible();
+  await page.keyboard.press("Space");
+  await expect(page.getByRole("button", { name: "New Game" })).toBeVisible({
+    timeout: 15_000,
+  });
+}
+
+/**
+ * Open the save picker and select one validated character.
+ * @param page - page showing the ready home screen.
+ * @param name - validated character name shown by the picker.
+ */
+async function continueSavedGame(page: Page, name: string): Promise<void> {
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expect(page.getByRole("heading", { name: "Continue" })).toBeVisible();
+  await page.getByRole("button", { name }).click();
+}
+
+/**
  * Move to an adjacent floor square without depending on dungeon randomness.
  * @param page - running NetHack page.
  */
@@ -164,30 +190,58 @@ test("plays through startup and routes terminal UI input", async ({ page }) => {
   expect(errors).toEqual({ console: [], page: [] });
 });
 
-test("persists and restores a named game through IDBFS", async ({ page }) => {
+test("enumerates a persisted save after returning home and refreshing", async ({
+  page,
+}) => {
   const errors = captureErrors(page);
   const name = "E2ESave";
   await startNewGame(page, name);
+  await saveAndReturnHome(page);
 
-  await page.keyboard.press("S");
-  await expect(page.getByText(/Really save/)).toBeVisible();
-  await page.keyboard.press("y");
-  await expect(page.getByText("--More--", { exact: true })).toBeVisible();
-  await page.keyboard.press("Space");
-  await expect(page.getByRole("button", { name: "New Game" })).toBeVisible({
-    timeout: 15_000,
-  });
-
+  await expect(page.getByRole("button", { name: "Continue" })).toBeEnabled();
   await page.reload();
-  await page.getByRole("button", { name: "New Game" }).click();
-  const nameInput = page.getByRole("textbox", { name: "Who are you?" });
-  await expect(nameInput).toBeVisible();
-  await nameInput.fill(name);
-  await nameInput.press("Enter");
+  await expect(page.getByRole("button", { name: "Continue" })).toBeEnabled();
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expect(page.getByRole("button", { name })).toBeVisible();
+  expect(errors).toEqual({ console: [], page: [] });
+});
+
+test("continues through the core restore path without asking for a new name", async ({
+  page,
+}) => {
+  const errors = captureErrors(page);
+  const name = "E2ERestore";
+  await startNewGame(page, name);
+  await moveToAdjacentFloor(page);
+  await saveAndReturnHome(page);
+  await page.reload();
+  await continueSavedGame(page, name);
 
   await expect(page.getByLabel(new RegExp(`${name} the .+, \\d+% HP`)))
     .toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("textbox", { name: "Who are you?" })).toHaveCount(0);
   await expect(page.getByText(/Shall I pick character's/)).toHaveCount(0);
   await expect(page.getByText("Running", { exact: true })).toBeVisible();
+  expect(errors).toEqual({ console: [], page: [] });
+});
+
+test("retires the first module before preparing and running the second game", async ({
+  page,
+}) => {
+  const errors = captureErrors(page);
+  const name = "E2ETwoGames";
+  await startNewGame(page, name);
+  await saveAndReturnHome(page);
+
+  await expect(page.getByRole("button", { name: "Continue" })).toBeEnabled();
+  await continueSavedGame(page, name);
+  await expect(page.getByLabel(new RegExp(`${name} the .+, \\d+% HP`)))
+    .toBeVisible({ timeout: 15_000 });
+  await saveAndReturnHome(page);
+
+  await expect(page.getByRole("button", { name: "Continue" })).toBeEnabled();
+  await page.getByRole("button", { name: "New Game" }).click();
+  await expect(page.getByRole("textbox", { name: "Who are you?" })).toBeVisible();
+  await expect(page.locator(".nh-cursor")).toHaveCount(0);
   expect(errors).toEqual({ console: [], page: [] });
 });

@@ -10,7 +10,9 @@ import {
 } from "./app/app-state";
 import { HomeScreen } from "./screens/HomeScreen";
 import { GameScreen } from "./screens/GameScreen";
+import { SavePickerScreen } from "./screens/SavePickerScreen";
 import { createSessionManager } from "./session/session-manager";
+import type { SaveListEntry } from "./storage/storage-service";
 
 /**
  * Render the top-level BlissHack state machine and active screen.
@@ -21,16 +23,12 @@ function App() {
   const sessionManager = useMemo(
     () => createSessionManager({
       dispatch,
-      storageAvailable: () => "indexedDB" in globalThis,
     }),
     [dispatch],
   );
 
   useEffect(() => {
-    dispatch({
-      type: "BOOT_COMPLETED",
-      storageAvailable: "indexedDB" in globalThis,
-    });
+    void sessionManager.initialize().catch(() => undefined);
     return () => {
       void sessionManager.dispose();
     };
@@ -40,7 +38,27 @@ function App() {
    * Start one session and leave startup failures to the reducer event.
    */
   function startNewGame(): void {
-    void sessionManager.startSession().catch(() => undefined);
+    void sessionManager.startSession({ kind: "new" }).catch(() => undefined);
+  }
+
+  /** Open the save list owned by the current home module. */
+  function openSavePicker(): void {
+    if (state.phase !== "home") return;
+    dispatch({ type: "SAVE_PICKER_OPENED", moduleId: state.moduleId });
+  }
+
+  /** Return from the save list without replacing its prepared module. */
+  function closeSavePicker(): void {
+    if (state.phase !== "save-picker") return;
+    dispatch({ type: "SAVE_PICKER_CLOSED", moduleId: state.moduleId });
+  }
+
+  /** Continue one validated save with the module which enumerated it. */
+  function continueGame(save: SaveListEntry): void {
+    void sessionManager.startSession({
+      kind: "continue",
+      save,
+    }).catch(() => undefined);
   }
 
   if (state.phase === "booting") {
@@ -53,7 +71,32 @@ function App() {
   }
 
   if (state.phase === "home") {
-    return <HomeScreen onNewGame={startNewGame} />;
+    const preparation = sessionManager.getHomePreparation();
+    const saves = preparation?.moduleId === state.moduleId
+      ? preparation.saves
+      : [];
+    return (
+      <HomeScreen
+        hasSaves={saves.some((save) => save.status === "ready")}
+        onContinue={openSavePicker}
+        onNewGame={startNewGame}
+        storageAvailable={state.storageAvailable}
+      />
+    );
+  }
+
+  if (state.phase === "save-picker") {
+    const preparation = sessionManager.getHomePreparation();
+    return (
+      <SavePickerScreen
+        moduleId={state.moduleId}
+        onBack={closeSavePicker}
+        onContinue={continueGame}
+        saves={preparation?.moduleId === state.moduleId
+          ? preparation.saves
+          : []}
+      />
+    );
   }
 
   if (state.phase === "fatal") {
@@ -71,9 +114,7 @@ function App() {
     );
   }
 
-  if (state.status === "creating"
-    || state.status === "loading"
-    || state.status === "ready") {
+  if (state.status === "starting") {
     return (
       <main className="session-loading" aria-live="polite">
         <div className="session-loading-mark" aria-hidden="true">
@@ -82,23 +123,12 @@ function App() {
           <span>└──────────┘</span>
         </div>
         <h1>BlissHack</h1>
-        <p>{loadingLabel(state.status)}</p>
+        <p>Entering the dungeon</p>
       </main>
     );
   }
 
   return <GameScreen />;
-}
-
-/**
- * Convert a session startup state into concise interface text.
- * @param status - current session lifecycle status.
- * @returns user-facing loading label.
- */
-function loadingLabel(status: "creating" | "loading" | "ready"): string {
-  if (status === "creating") return "Creating session";
-  if (status === "loading") return "Loading NetHack";
-  return "Entering the dungeon";
 }
 
 export default App;

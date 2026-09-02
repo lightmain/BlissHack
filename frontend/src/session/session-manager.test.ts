@@ -1,8 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  appReducer,
   type AppAction,
-  type AppState,
 } from "../app/app-state";
 import {
   NHW_MENU,
@@ -132,17 +130,24 @@ function createHarness(modules: EmscriptenModule[]): {
   dispatch: ReturnType<typeof vi.fn<(action: AppAction) => void>>;
   factory: ReturnType<typeof vi.fn<() => Promise<EmscriptenModule>>>;
 } {
-  let id = 0;
+  let moduleId = 0;
+  let sessionId = 0;
   const callbackHost: Record<string, unknown> = {};
   const dispatch = vi.fn<(action: AppAction) => void>();
   const factory = vi.fn(async () => {
-    const module = modules.shift();
-    if (!module) throw new Error("No module fixture remains");
-    return module;
+    return modules.shift() ?? createModuleHarness("next-home").module;
   });
   const manager = createSessionManager({
     callbackHost,
-    createSessionId: () => `session-${++id}`,
+    createModuleId: () => `module-${++moduleId}`,
+    createSessionId: () => `session-${++sessionId}`,
+    createStorageService: () => ({
+      initialize: vi.fn(async () => true),
+      listSaves: vi.fn(async () => []),
+      readSave: vi.fn(async () => new Uint8Array()),
+      restoreOriginalSave: vi.fn(async () => undefined),
+      flush: vi.fn(async () => undefined),
+    }),
     dispatch,
     moduleFactory: factory,
   });
@@ -182,9 +187,10 @@ describe("session creation and startup", () => {
     );
     expect(firstModule.module.ccall).toHaveBeenCalledTimes(2);
     expect(dispatch.mock.calls.map(([action]) => action.type)).toEqual([
-      "SESSION_CREATED",
       "MODULE_LOADING",
-      "MODULE_READY",
+      "STORAGE_LOADING",
+      "HOME_READY",
+      "SESSION_CREATED",
     ]);
   });
 
@@ -287,29 +293,6 @@ describe("session callback isolation", () => {
 });
 
 describe("session cleanup", () => {
-  it("returns home when main exits successfully before gameplay", async () => {
-    const module = createModuleHarness("module");
-    let state: AppState = { phase: "home", storageAvailable: true };
-    const callbackHost: Record<string, unknown> = {};
-    const manager = createSessionManager({
-      callbackHost,
-      createSessionId: () => "session-1",
-      dispatch: (action: AppAction) => {
-        state = appReducer(state, action);
-      },
-      moduleFactory: async () => module.module,
-    });
-    const session = await manager.startSession();
-    await callbackFor(callbackHost, session)("shim_init_nhwindows", 0, 0);
-
-    module.resolveMain(0);
-
-    await vi.waitFor(() => {
-      expect(state).toEqual({ phase: "home", storageAvailable: true });
-    });
-    expect(callbackHost[session.callbackName]).toBeUndefined();
-  });
-
   it("treats Emscripten exit status zero as successful termination", async () => {
     const module = createModuleHarness("module");
     const { manager, callbackHost, dispatch } = createHarness([module.module]);
@@ -319,11 +302,11 @@ describe("session cleanup", () => {
     module.rejectMain({ name: "ExitStatus", status: 0 });
 
     await vi.waitFor(() => {
-      expect(dispatch).toHaveBeenCalledWith({
+      expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({
         type: "SESSION_CLEANUP_COMPLETED",
         sessionId: session.sessionId,
-        storageAvailable: true,
-      });
+        nextModuleId: expect.any(String),
+      }));
     });
     expect(callbackHost[session.callbackName]).toBeUndefined();
     expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({
@@ -428,32 +411,4 @@ describe("session cleanup", () => {
     )).toHaveLength(1);
   });
 
-  it.each(["normal", "saved"] as const)(
-    "returns the reducer to home after %s exit cleanup",
-    async (exitKind) => {
-      const module = createModuleHarness("module");
-      let state: AppState = { phase: "home", storageAvailable: true };
-      const callbackHost: Record<string, unknown> = {};
-      let id = 0;
-      const manager = createSessionManager({
-        callbackHost,
-        createSessionId: () => `session-${++id}`,
-        dispatch: (action: AppAction) => {
-          state = appReducer(state, action);
-        },
-        moduleFactory: async () => module.module,
-      });
-      const start = manager.startSession();
-      const sessionId = "session-1";
-      state = appReducer(state, { type: "NEW_GAME", sessionId });
-      const session = await start;
-      await callbackFor(callbackHost, session)("shim_init_nhwindows", 0, 0);
-      if (exitKind === "saved") {
-        state = appReducer(state, { type: "SESSION_SAVING", sessionId });
-      }
-      await callbackFor(callbackHost, session)("shim_exit_nhwindows", exitKind);
-
-      expect(state).toEqual({ phase: "home", storageAvailable: true });
-    },
-  );
 });

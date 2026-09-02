@@ -4,80 +4,86 @@ import {
   initialAppState,
   type AppAction,
   type AppState,
+  type SessionStatus,
 } from "./app-state";
 
-/**
- * Reduce a sequence of application actions from a supplied state.
- * @param state - state before the first action.
- * @param actions - ordered actions to apply.
- * @returns the state after the final action.
- */
-function reduce(
-  state: AppState,
-  ...actions: AppAction[]
-): AppState {
+/** Reduce an ordered action sequence from a supplied state. */
+function reduce(state: AppState, ...actions: AppAction[]): AppState {
   return actions.reduce(appReducer, state);
 }
 
-/**
- * Create a running session using only legal lifecycle actions.
- * @param sessionId - identity assigned to the session.
- * @returns the running session state.
- */
+/** Prepare one home module using only legal lifecycle actions. */
+function homeState(moduleId = "module-1"): AppState {
+  return reduce(
+    initialAppState,
+    { type: "MODULE_LOADING", moduleId },
+    { type: "STORAGE_LOADING", moduleId },
+    { type: "HOME_READY", moduleId, storageAvailable: true },
+  );
+}
+
+/** Create a running session which has claimed a prepared module. */
 function runningSession(sessionId = "session-1"): AppState {
   return reduce(
-    { phase: "home", storageAvailable: true },
-    { type: "NEW_GAME", sessionId },
-    { type: "MODULE_LOADING", sessionId },
-    { type: "MODULE_READY", sessionId },
+    homeState(),
+    { type: "NEW_GAME", moduleId: "module-1", sessionId },
     { type: "SESSION_RUNNING", sessionId },
   );
 }
 
 describe("appReducer legal transitions", () => {
-  it("moves from booting through every new-game lifecycle status", () => {
-    const home = appReducer(initialAppState, {
-      type: "BOOT_COMPLETED",
+  it("prepares a module before entering home", () => {
+    const loadingModule = appReducer(initialAppState, {
+      type: "MODULE_LOADING",
+      moduleId: "module-1",
+    });
+    expect(loadingModule).toEqual({
+      phase: "booting",
+      moduleId: "module-1",
+      status: "loading-module",
+    });
+
+    const loadingStorage = appReducer(loadingModule, {
+      type: "STORAGE_LOADING",
+      moduleId: "module-1",
+    });
+    expect(loadingStorage).toMatchObject({
+      phase: "booting",
+      status: "loading-storage",
+    });
+
+    expect(appReducer(loadingStorage, {
+      type: "HOME_READY",
+      moduleId: "module-1",
+      storageAvailable: true,
+    })).toEqual({
+      phase: "home",
+      moduleId: "module-1",
       storageAvailable: true,
     });
-    expect(home).toEqual({ phase: "home", storageAvailable: true });
-
-    const creating = appReducer(home, {
-      type: "NEW_GAME",
-      sessionId: "session-1",
-    });
-    expect(creating).toEqual({
-      phase: "session",
-      sessionId: "session-1",
-      status: "creating",
-    });
-    expect(appReducer(creating, {
-      type: "SESSION_CREATED",
-      sessionId: "session-1",
-    })).toBe(creating);
-
-    const loading = appReducer(creating, {
-      type: "MODULE_LOADING",
-      sessionId: "session-1",
-    });
-    expect(loading).toMatchObject({ phase: "session", status: "loading" });
-
-    const ready = appReducer(loading, {
-      type: "MODULE_READY",
-      sessionId: "session-1",
-    });
-    expect(ready).toMatchObject({ phase: "session", status: "ready" });
-
-    const running = appReducer(ready, {
-      type: "SESSION_RUNNING",
-      sessionId: "session-1",
-    });
-    expect(running).toMatchObject({ phase: "session", status: "running" });
   });
 
-  it("supports the normal-exit path and returns home only after cleanup", () => {
-    const running = runningSession();
-    const exiting = appReducer(running, {
+  it("claims the prepared module and starts a session", () => {
+    const starting = appReducer(homeState(), {
+      type: "NEW_GAME",
+      moduleId: "module-1",
+      sessionId: "session-1",
+    });
+    expect(starting).toEqual({
+      phase: "session",
+      moduleId: "module-1",
+      sessionId: "session-1",
+      status: "starting",
+    });
+
+    expect(appReducer(starting, {
+      type: "SESSION_RUNNING",
+      sessionId: "session-1",
+    })).toMatchObject({ phase: "session", status: "running" });
+  });
+
+  it("moves through booting before returning home after cleanup", () => {
+    const exiting = appReducer(runningSession(), {
       type: "SESSION_EXITING",
       sessionId: "session-1",
     });
@@ -86,63 +92,72 @@ describe("appReducer legal transitions", () => {
     expect(appReducer(exiting, {
       type: "SESSION_CLEANUP_COMPLETED",
       sessionId: "session-1",
-      storageAvailable: true,
-    })).toEqual({ phase: "home", storageAvailable: true });
+      nextModuleId: "module-2",
+    })).toEqual({
+      phase: "booting",
+      moduleId: "module-2",
+      status: "loading-module",
+    });
   });
 
-  it("supports the save-exit path and returns home only after cleanup", () => {
+  it("supports the save-exit path", () => {
     const saving = appReducer(runningSession(), {
       type: "SESSION_SAVING",
       sessionId: "session-1",
     });
     expect(saving).toMatchObject({ phase: "session", status: "saving" });
 
-    const exiting = appReducer(saving, {
+    expect(appReducer(saving, {
       type: "SESSION_EXITING",
       sessionId: "session-1",
-    });
-    expect(exiting).toMatchObject({ phase: "session", status: "exiting" });
-    expect(appReducer(exiting, {
-      type: "SESSION_CLEANUP_COMPLETED",
-      sessionId: "session-1",
-      storageAvailable: false,
-    })).toEqual({ phase: "home", storageAvailable: false });
+    })).toMatchObject({ phase: "session", status: "exiting" });
   });
 
   it.each([
-    "creating",
-    "loading",
-    "ready",
+    "starting",
     "running",
     "saving",
     "exiting",
-  ] as const)("moves session/%s to fatal for the current session", (status) => {
-    const state: AppState = {
-      phase: "session",
-      sessionId: "session-1",
-      status,
-    };
+  ] satisfies SessionStatus[])(
+    "moves session/%s to fatal for the current session",
+    (status) => {
+      const state: AppState = {
+        phase: "session",
+        moduleId: "module-1",
+        sessionId: "session-1",
+        status,
+      };
 
-    expect(appReducer(state, {
-      type: "SESSION_FATAL_ERROR",
-      sessionId: "session-1",
-      errorId: "error-1",
-    })).toEqual({
-      phase: "fatal",
-      sessionId: "session-1",
-      errorId: "error-1",
-    });
-  });
+      expect(appReducer(state, {
+        type: "SESSION_FATAL_ERROR",
+        sessionId: "session-1",
+        errorId: "error-1",
+      })).toEqual({
+        phase: "fatal",
+        moduleId: "module-1",
+        sessionId: "session-1",
+        errorId: "error-1",
+      });
+    },
+  );
 });
 
 describe("appReducer lifecycle guards", () => {
+  it("ignores stale module events", () => {
+    const state = homeState("module-1");
+    expect(appReducer(state, {
+      type: "HOME_READY",
+      moduleId: "stale-module",
+      storageAvailable: false,
+    })).toBe(state);
+    expect(appReducer(state, {
+      type: "SAVE_PICKER_OPENED",
+      moduleId: "stale-module",
+    })).toBe(state);
+  });
+
   it.each([
     { type: "SESSION_RUNNING", sessionId: "stale-session" },
-    {
-      type: "SESSION_CLEANUP_COMPLETED",
-      sessionId: "stale-session",
-      storageAvailable: true,
-    },
     {
       type: "SESSION_FATAL_ERROR",
       sessionId: "stale-session",
@@ -155,22 +170,16 @@ describe("appReducer lifecycle guards", () => {
 
   it("does not let RETURN_HOME bypass a running core", () => {
     const state = runningSession();
-    expect(appReducer(state, { type: "RETURN_HOME" })).toBe(state);
+    expect(appReducer(state, {
+      type: "RETURN_HOME",
+      moduleId: "module-2",
+    })).toBe(state);
   });
 
-  it("rejects an unknown runtime action instead of silently accepting it", () => {
+  it("rejects an unknown runtime action", () => {
     expect(() => appReducer(
-      { phase: "home", storageAvailable: true },
+      homeState(),
       { type: "UNKNOWN_ACTION" } as never,
     )).toThrow(/unknown|unsupported|unreachable/i);
-  });
-
-  it("keeps unknown variants outside the AppAction discriminated union", () => {
-    type ContainsUnknown = Extract<
-      AppAction,
-      { type: "UNKNOWN_ACTION" }
-    > extends never ? false : true;
-    const containsUnknown: ContainsUnknown = false;
-    expect(containsUnknown).toBe(false);
   });
 });

@@ -153,6 +153,35 @@ async function run() {
   assert(typeof module.ccall === "function", "module.ccall exists");
   assert(typeof module.FS === "object", "module.FS exists");
 
+  // --- Stage-two save helpers before main ---
+  console.log("\n--- Save helpers before main ---");
+  module.ccall(
+    "shim_graphics_set_restore_required",
+    null,
+    ["number"],
+    [0],
+  );
+  assert(true, "shim_graphics_set_restore_required is exported");
+  module.ccall(
+    "shim_graphics_set_player_name",
+    null,
+    ["string"],
+    [""],
+  );
+  assert(true, "shim_graphics_set_player_name is exported");
+  const metadataPtr = module._malloc(256);
+  const fingerprintSize = module.ccall(
+    "shim_graphics_get_save_fingerprint",
+    "number",
+    ["number", "number"],
+    [metadataPtr, 256],
+  );
+  module._free(metadataPtr);
+  assert(
+    fingerprintSize > 0 && fingerprintSize < 256,
+    "shim_graphics_get_save_fingerprint works before main",
+  );
+
   // --- Callback registration ---
   console.log("\n--- Callback registration ---");
   module.ccall("shim_graphics_set_callback", null, ["string"], ["blissCallback"]);
