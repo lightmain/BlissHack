@@ -117,7 +117,7 @@ export function keyboardEventToNetHackKey(
   if (
     event.isComposing
     || event.getModifierState("AltGraph")
-    || event.key === "Dead"
+    || (event.key === "Dead" && !event.altKey)
     || event.key === "Process"
   ) {
     return null;
