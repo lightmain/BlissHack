@@ -110,7 +110,6 @@
 
 .home-commands > button,
 .home-command-slot > button,
-.save-picker-entry,
 .fatal-screen button {
   min-height: 46px;
   padding: 10px 14px;
@@ -133,8 +132,6 @@
 .home-commands > button:focus-visible,
 .home-command-slot > button:hover:not(:disabled),
 .home-command-slot > button:focus-visible,
-.save-picker-entry:hover:not(:disabled),
-.save-picker-entry:focus-visible,
 .fatal-screen button:hover,
 .fatal-screen button:focus-visible {
   background: #19201c;
@@ -259,22 +256,113 @@
 }
 
 .save-picker-entry {
+  position: relative;
   display: grid;
-  gap: 4px;
+  grid-template-columns: minmax(0, 1fr) 44px;
+  border: 1px solid #5a6268;
+  border-radius: 3px;
+  background: #111416;
 }
 
-.save-picker-entry small {
+.save-picker-choice {
+  min-width: 0;
+  min-height: 58px;
+  padding: 10px 12px;
+  display: grid;
+  grid-column: 1;
+  grid-row: 1;
+  gap: 4px;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  color: #f0f0e8;
+  font: inherit;
+  letter-spacing: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.save-picker-choice:hover:not(:disabled),
+.save-picker-choice:focus-visible {
+  background: #19201c;
+  outline: 2px solid #7ddc8c;
+  outline-offset: -2px;
+}
+
+.save-picker-choice small {
   color: #8f989d;
 }
 
-.save-picker-entry:disabled {
+.save-picker-entry-invalid {
   border-color: #542f34;
+}
+
+.save-picker-choice:disabled {
   color: #8f989d;
   cursor: not-allowed;
 }
 
-.save-picker-entry:disabled small {
+.save-picker-choice:disabled small {
   color: #d57676;
+}
+
+.save-delete-control {
+  position: relative;
+  grid-column: 2;
+  grid-row: 1;
+  display: grid;
+  place-items: center;
+}
+
+.save-delete-button {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 1px solid #df5555;
+  border-radius: 3px;
+  background: transparent;
+  color: #df5555;
+  cursor: pointer;
+}
+
+.save-delete-button:hover:not(:disabled),
+.save-delete-button:focus-visible {
+  border-color: #df5555;
+  background: #df5555;
+  color: #fff;
+  outline: 2px solid #ff8b8b;
+  outline-offset: 2px;
+}
+
+.save-delete-button:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.save-delete-confirmation {
+  position: absolute;
+  right: 6px;
+  bottom: calc(100% + 3px);
+  z-index: 1;
+  padding: 3px 5px;
+  border: 1px solid #df5555;
+  border-radius: 3px;
+  background: #171011;
+  color: #ff8b8b;
+  font-size: 13px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.save-delete-error {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  padding: 0 12px 9px;
+  color: #ff8b8b;
+  font-size: 11px;
+  overflow-wrap: anywhere;
 }
 
 .nh-shell {

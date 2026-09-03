@@ -46,6 +46,8 @@ STORAGE_LOADING --失败--> HOME_READY(storageAvailable=false)
   v
 HOME_READY(storageAvailable=true)
   |
+  +-- Delete save --> 备份 bytes --> unlink --> flush --> HOME_READY
+  |
   +-- New Game ----+
   |                |
   +-- Continue ----+--> SESSION_STARTING
@@ -84,6 +86,11 @@ module 生命周期从 `MODULE_LOADING` 开始，早于 session。两段准备�
 
 这里的 module 不是临时扫描器。玩家开始游戏时直接复用它，避免重复实例化、
 两个 FS 快照不一致，以及并发 IDBFS 操作。
+
+Home 可以使用同一个 module 删除当前已经枚举的 save。删除前复制原始 bytes，
+成功 `unlink` 后等待 `syncfs(false)`，再重新枚举并更新 Home；同步失败时写回
+原始 bytes 并再次同步。删除事务结束前，New Game 或 Continue 的 session
+启动等待该事务完成。
 
 ## 4. 新游戏与继续游戏
 
@@ -125,6 +132,7 @@ Continue：
 - module 创建、populate、session 启动、退出和 flush 使用 generation 或
   session ID 防止过期 Promise 接管 UI。
 - 重复点击 New Game 或 Continue 只能认领同一个 ready module 一次。
+- 同一时间只执行一个 Home 删除事务；删除和 session 启动不能并发访问 FS。
 - HMR、React Strict Mode 重复 effect 和页面卸载不得创建第二个当前 module。
 - 当前版本不支持同一站点的多个标签页同时运行游戏；后续若支持，需要单独设计
   跨标签页锁。
@@ -135,6 +143,7 @@ Continue：
 - IndexedDB 不可用或 populate 失败：允许使用同一 module 运行临时新游戏，
   Continue 禁用，并明确提示无法持久保存。
 - 存档枚举失败：不猜测列表，Continue 禁用。
+- 删除 flush 失败：恢复原始 bytes，保留列表项并显示可恢复错误。
 - `main()` 失败：隔离当前 session，仍先处理可安全完成的 flush 和清理。
 - flush 失败：不得报告保存成功，也不得立即创建下一 module 覆盖现场。
 

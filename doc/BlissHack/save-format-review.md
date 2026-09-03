@@ -164,11 +164,15 @@ initialize()
 listSaves()
 readSave(path)
 restoreOriginalSave(path, bytes)
+deleteSave(path)
 flush()
 ```
 
-阶段二没有导入、导出、覆盖和用户删除，因此暂不要求公开 `writeSave()`、
-`deleteSave()` 或 `rename()`。核心仍负责创建和删除正式 save。
+阶段二没有导入、导出和覆盖，因此不公开通用 `writeSave()` 或 `rename()`。
+用户确认增加的 `deleteSave()` 只接受当前首页已经枚举的直接 `/save/0...`
+路径。它先复制原始 bytes，再执行 `FS.unlink()` 和 `syncfs(false)`；同步失败
+时写回原始 bytes 并再次同步，然后向 UI 报告失败。核心仍负责游戏流程中的
+正式 save 创建和恢复消费。
 
 `initialize()` 对同一 module 幂等，只挂载 `/save` 一次，并在首次枚举前
 执行 `syncfs(true)`。所有 `syncfs` 操作进入同一异步队列。核心退出后必须
@@ -233,3 +237,5 @@ Continue 启动流程：
 6. 列表校验使用 C fingerprint 和 TypeScript 最小 header 解析；核心恢复
    仍是最终校验。
 7. 恢复失败会终止该 module，并在 flush 后保留原始 bytes。
+8. 首页可以删除当前枚举的本地 save；只有删除 flush 成功后才更新列表，
+   flush 失败时自动写回原始 bytes。

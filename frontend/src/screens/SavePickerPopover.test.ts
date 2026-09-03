@@ -27,6 +27,12 @@ describe("SavePickerPopover", () => {
     expect(html).toMatch(/Ada/);
     expect(html).toMatch(/incompatible|damaged/i);
     expect(html).toMatch(/<button[^>]*disabled[^>]*>[\s\S]*Broken/i);
+    expect(html).toMatch(/aria-label="Delete save Ada"/);
+    expect(html).toMatch(/aria-label="Delete save Broken"/);
+    expect(html.indexOf('aria-label="Delete save Ada"'))
+      .toBeGreaterThan(html.indexOf(">Ada<"));
+    expect(html.indexOf('aria-label="Delete save Broken"'))
+      .toBeGreaterThan(html.indexOf(">Broken<"));
     expect(html).not.toMatch(/>\s*Back\s*</);
   });
 });

@@ -60,6 +60,14 @@ function App() {
     }).catch(() => undefined);
   }
 
+  /** Delete one save through the module which supplied the Home list. */
+  async function deleteSave(save: SaveListEntry): Promise<void> {
+    if (state.phase !== "home") {
+      throw new Error("Save deletion is only available from Home");
+    }
+    await sessionManager.deleteSave(state.moduleId, save.path);
+  }
+
   if (state.phase === "booting") {
     return (
       <main className="app-loading" aria-label="BlissHack loading">
@@ -80,6 +88,7 @@ function App() {
         moduleId={state.moduleId}
         onContinue={openSavePicker}
         onContinueSave={continueGame}
+        onDeleteSave={deleteSave}
         onDismissSavePicker={closeSavePicker}
         onNewGame={startNewGame}
         savePickerOpen={state.savePickerOpen}
