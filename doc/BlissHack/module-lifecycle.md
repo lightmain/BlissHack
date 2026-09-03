@@ -48,6 +48,10 @@ HOME_READY(storageAvailable=true)
   |
   +-- Delete save --> 备份 bytes --> unlink --> flush --> HOME_READY
   |
+  +-- Import save --> 校验 bytes --> 冲突确认 --> replace --> flush --> HOME_READY
+  |
+  +-- Export save --> 读取原始 bytes --> browser download --> HOME_READY
+  |
   +-- New Game ----+
   |                |
   +-- Continue ----+--> SESSION_STARTING
@@ -92,6 +96,12 @@ Home 可以使用同一个 module 删除当前已经枚举的 save。删除前�
 原始 bytes 并再次同步。删除事务结束前，New Game 或 Continue 的 session
 启动等待该事务完成。
 
+Home 也使用同一个 module 导入和导出 raw save。导入在正式路径外写入并验证
+临时文件，同名覆盖前保留旧 bytes，rename 后只有 `syncfs(false)` 成功才
+重新枚举；失败时恢复旧 bytes 或删除新增文件并再次同步。导出只读取当前列表
+中的 ready save，不修改或 flush 文件。导入、导出、删除和 session 启动使用
+同一个 Home operation 门禁。
+
 ## 4. 新游戏与继续游戏
 
 New Game：
@@ -132,7 +142,8 @@ Continue：
 - module 创建、populate、session 启动、退出和 flush 使用 generation 或
   session ID 防止过期 Promise 接管 UI。
 - 重复点击 New Game 或 Continue 只能认领同一个 ready module 一次。
-- 同一时间只执行一个 Home 删除事务；删除和 session 启动不能并发访问 FS。
+- 同一时间只执行一个 Home 存档操作；导入、导出、删除和 session 启动不能
+  并发访问 FS。
 - HMR、React Strict Mode 重复 effect 和页面卸载不得创建第二个当前 module。
 - 当前版本不支持同一站点的多个标签页同时运行游戏；后续若支持，需要单独设计
   跨标签页锁。
@@ -144,6 +155,9 @@ Continue：
   Continue 禁用，并明确提示无法持久保存。
 - 存档枚举失败：不猜测列表，Continue 禁用。
 - 删除 flush 失败：恢复原始 bytes，保留列表项并显示可恢复错误。
+- 导入校验失败：不创建正式文件，确认错误后返回 Home。
+- 导入覆盖 flush 失败：恢复旧 bytes 并再次 flush，不更新列表。
+- 导出失败：不修改 save，并在 Home 显示可理解错误。
 - `main()` 失败：隔离当前 session，仍先处理可安全完成的 flush 和清理。
 - flush 失败：不得报告保存成功，也不得立即创建下一 module 覆盖现场。
 

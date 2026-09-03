@@ -13,6 +13,7 @@ import {
   submitExtendedCommand,
   submitLine,
   submitMenuSelection,
+  validateSaveBytes,
   validateSaveMetadata,
   type EmscriptenModule,
 } from "../nethack-bridge";
@@ -20,6 +21,8 @@ import {
   createStorageService,
   type SaveIdentity,
   type SaveListEntry,
+  type RawSaveImportRequest,
+  type RawSaveImportResult,
   type StorageModule,
   type StorageService,
 } from "../storage/storage-service";
@@ -44,6 +47,18 @@ export type SessionStartRequest =
   | { kind: "new" }
   | { kind: "continue"; save: SaveListEntry };
 
+/** Successful import includes the refreshed Home preparation. */
+export type HomeSaveImportResult =
+  | Exclude<RawSaveImportResult, { status: "imported" }>
+  | { status: "imported"; preparation: HomePreparation };
+
+/** Browser download payload for one raw save. */
+export interface RawSaveExport {
+  bytes: Uint8Array;
+  fileName: string;
+  mimeType: "application/octet-stream";
+}
+
 /** Public controls for the single-module and single-session lifecycle. */
 export interface SessionManager {
   initialize: () => Promise<HomePreparation>;
@@ -52,6 +67,14 @@ export interface SessionManager {
     moduleId: string,
     path: string,
   ) => Promise<HomePreparation>;
+  importSave: (
+    moduleId: string,
+    request: RawSaveImportRequest,
+  ) => Promise<HomeSaveImportResult>;
+  exportSave: (
+    moduleId: string,
+    path: string,
+  ) => Promise<RawSaveExport>;
   cleanupSession: (sessionId: string) => Promise<void>;
   dispose: () => Promise<void>;
   getActiveSession: () => SessionHandle | null;
@@ -131,7 +154,7 @@ export function createSessionManager(
   let currentModule: ModuleRecord | null = null;
   let initializePromise: Promise<HomePreparation> | null = null;
   let startPromise: Promise<SessionHandle> | null = null;
-  let deletePromise: Promise<HomePreparation> | null = null;
+  let homeOperationPromise: Promise<unknown> | null = null;
   let disposed = false;
 
   /** Prepare one module and its storage before Home becomes ready. */
@@ -171,6 +194,7 @@ export function createSessionManager(
         const storage = options.createStorageService
           ? options.createStorageService(module)
           : createStorageService(module as unknown as StorageModule, {
+            validateSaveBytes,
             validateSaveMetadata,
           });
         record.storage = storage;
@@ -232,7 +256,7 @@ export function createSessionManager(
     request: SessionStartRequest,
   ): Promise<SessionHandle> {
     await initialize();
-    await deletePromise?.catch(() => undefined);
+    await homeOperationPromise?.catch(() => undefined);
     const owner = currentModule;
     if (
       !owner
@@ -331,15 +355,10 @@ export function createSessionManager(
     moduleId: string,
     path: string,
   ): Promise<HomePreparation> {
-    if (deletePromise) {
-      return Promise.reject(new Error("A save deletion is already active"));
-    }
-    const operation = deletePreparedSave(moduleId, path);
-    deletePromise = operation;
-    void operation.finally(() => {
-      if (deletePromise === operation) deletePromise = null;
-    }).catch(() => undefined);
-    return operation;
+    return runHomeOperation(
+      () => deletePreparedSave(moduleId, path),
+      "Another save operation is already active",
+    );
   }
 
   /** Execute a validated Home deletion against its module-bound storage. */
@@ -377,6 +396,131 @@ export function createSessionManager(
       saves,
     });
     return preparation;
+  }
+
+  /** Return the current prepared Home owner or reject a stale operation. */
+  function currentHomeOwner(
+    moduleId: string,
+    operation: string,
+  ): ModuleRecord & {
+    storage: StorageService;
+    preparation: HomePreparation;
+  } {
+    const owner = currentModule;
+    if (
+      !owner
+      || owner.closed
+      || owner.moduleId !== moduleId
+      || !owner.storage
+      || !owner.preparation
+      || owner.session
+    ) {
+      throw new Error(
+        `Save ${operation} does not belong to the current Home module`,
+      );
+    }
+    return owner as ModuleRecord & {
+      storage: StorageService;
+      preparation: HomePreparation;
+    };
+  }
+
+  /**
+   * Validate and import raw bytes for the current Home module.
+   * @param moduleId - module generation which opened the file picker.
+   * @param request - raw bytes, file timestamp, and explicit overwrite choice.
+   */
+  function importSave(
+    moduleId: string,
+    request: RawSaveImportRequest,
+  ): Promise<HomeSaveImportResult> {
+    return runHomeOperation(
+      () => importPreparedSave(moduleId, request),
+      "Another save operation is already active",
+    );
+  }
+
+  /** Import one file and refresh Home only after durable persistence. */
+  async function importPreparedSave(
+    moduleId: string,
+    request: RawSaveImportRequest,
+  ): Promise<HomeSaveImportResult> {
+    const owner = currentHomeOwner(moduleId, "import");
+    if (!owner.preparation.storageAvailable) {
+      throw new Error("Persistent storage is unavailable");
+    }
+
+    const result = await owner.storage.importSave(request);
+    assertCurrentHomeModule(owner);
+    if (result.status === "conflict") return result;
+
+    const saves = await owner.storage.listSaves();
+    assertCurrentHomeModule(owner);
+    const preparation = { ...owner.preparation, saves };
+    owner.preparation = preparation;
+    options.dispatch({
+      type: "HOME_SAVES_UPDATED",
+      moduleId,
+      saves,
+    });
+    return { status: "imported", preparation };
+  }
+
+  /**
+   * Read one listed ready save for a browser download.
+   * @param moduleId - module generation which displayed the save.
+   * @param path - exact path selected from that module's list.
+   */
+  function exportSave(
+    moduleId: string,
+    path: string,
+  ): Promise<RawSaveExport> {
+    return runHomeOperation(
+      () => exportPreparedSave(moduleId, path),
+      "Another save operation is already active",
+    );
+  }
+
+  /** Build a raw download without modifying or flushing the save. */
+  async function exportPreparedSave(
+    moduleId: string,
+    path: string,
+  ): Promise<RawSaveExport> {
+    const owner = currentHomeOwner(moduleId, "export");
+    const listedSave = owner.preparation.saves.find(
+      (save) => save.path === path && save.status === "ready",
+    );
+    if (!listedSave || listedSave.status !== "ready") {
+      throw new Error("Save is not a listed ready save");
+    }
+    const bytes = await owner.storage.exportSave(path);
+    assertCurrentHomeModule(owner);
+    return {
+      bytes,
+      fileName: `${safeDownloadName(listedSave.identity.playerName)}.nhsave`,
+      mimeType: "application/octet-stream",
+    };
+  }
+
+  /** Serialize one Home file operation against session startup. */
+  function runHomeOperation<T>(
+    operation: () => Promise<T>,
+    busyMessage: string,
+  ): Promise<T> {
+    if (startPromise) {
+      return Promise.reject(
+        new Error("Cannot change saves while an active session owns Home"),
+      );
+    }
+    if (homeOperationPromise) {
+      return Promise.reject(new Error(busyMessage));
+    }
+    const promise = operation();
+    homeOperationPromise = promise;
+    void promise.finally(() => {
+      if (homeOperationPromise === promise) homeOperationPromise = null;
+    }).catch(() => undefined);
+    return promise;
   }
 
   /** Register the callback owned by one session and module. */
@@ -538,6 +682,8 @@ export function createSessionManager(
     initialize,
     startSession,
     deleteSave,
+    importSave,
+    exportSave,
     cleanupSession,
     dispose,
     getActiveSession: () => currentModule?.session?.handle ?? null,
@@ -559,6 +705,18 @@ export function createSessionManager(
       withActiveSession(() => submitExtendedCommand(sourceIndex)),
     dismissDisplay: () => withActiveSession(dismissDisplay),
   };
+}
+
+/** Remove characters which are unsafe in cross-platform download names. */
+function safeDownloadName(playerName: string): string {
+  const forbidden = '<>:"/\\|?*';
+  const safeName = Array.from(playerName, (character) =>
+    character.charCodeAt(0) < 32 || forbidden.includes(character)
+      ? "_"
+      : character)
+    .join("")
+    .replace(/[. ]+$/g, "");
+  return safeName || "nethack-save";
 }
 
 /** Throw when a storage operation no longer belongs to the current Home. */

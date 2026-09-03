@@ -8,6 +8,7 @@ export interface SyncRequest {
 
 /** In-memory Emscripten filesystem fixture used by storage contract tests. */
 export interface StorageModuleHarness {
+  fileModifiedAt: Map<string, number>;
   files: Map<string, Uint8Array>;
   module: {
     FS: {
@@ -17,6 +18,7 @@ export interface StorageModuleHarness {
       mount: ReturnType<typeof vi.fn>;
       readFile: ReturnType<typeof vi.fn>;
       readdir: ReturnType<typeof vi.fn>;
+      rename: ReturnType<typeof vi.fn>;
       stat: ReturnType<typeof vi.fn>;
       syncfs: ReturnType<typeof vi.fn>;
       unlink: ReturnType<typeof vi.fn>;
@@ -42,6 +44,7 @@ export function createStorageModuleHarness(
   options: StorageModuleHarnessOptions = {},
 ): StorageModuleHarness {
   const files = new Map<string, Uint8Array>();
+  const fileModifiedAt = new Map<string, number>();
   const directories = new Set(["/"]);
   const syncRequests: SyncRequest[] = [];
 
@@ -69,8 +72,22 @@ export function createStorageModuleHarness(
         .filter((name) => name.length > 0 && !name.includes("/"));
       return [".", "..", ...names];
     }),
+    rename: vi.fn((oldPath: string, newPath: string) => {
+      const bytes = files.get(oldPath);
+      if (!bytes) throw new Error(`ENOENT: ${oldPath}`);
+      files.set(newPath, bytes);
+      files.delete(oldPath);
+      const modifiedAt = fileModifiedAt.get(oldPath);
+      if (modifiedAt !== undefined) fileModifiedAt.set(newPath, modifiedAt);
+      fileModifiedAt.delete(oldPath);
+    }),
     stat: vi.fn((path: string) => {
-      if (files.has(path)) return { mode: 0x8000 };
+      if (files.has(path)) {
+        return {
+          mode: 0x8000,
+          mtime: new Date(fileModifiedAt.get(path) ?? 0),
+        };
+      }
       if (directories.has(path)) return { mode: 0x4000 };
       throw new Error(`ENOENT: ${path}`);
     }),
@@ -85,13 +102,16 @@ export function createStorageModuleHarness(
     }),
     unlink: vi.fn((path: string) => {
       if (!files.delete(path)) throw new Error(`ENOENT: ${path}`);
+      fileModifiedAt.delete(path);
     }),
     writeFile: vi.fn((path: string, bytes: Uint8Array) => {
       files.set(path, bytes.slice());
+      fileModifiedAt.set(path, Date.now());
     }),
   };
 
   return {
+    fileModifiedAt,
     files,
     module: {
       FS,

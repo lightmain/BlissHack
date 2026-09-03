@@ -1,5 +1,9 @@
 import { useEffect, useRef } from "react";
-import type { SaveListEntry } from "../storage/storage-service";
+import type { HomeSaveImportResult } from "../session/session-manager";
+import type {
+  RawSaveImportRequest,
+  SaveListEntry,
+} from "../storage/storage-service";
 import { SavePickerPopover } from "./SavePickerPopover";
 
 /** Properties for the application home screen. */
@@ -10,6 +14,10 @@ interface HomeScreenProps {
   onContinueSave?: (save: SaveListEntry) => void;
   onDeleteSave?: (save: SaveListEntry) => Promise<void>;
   onDismissSavePicker?: () => void;
+  onExportSave?: (save: SaveListEntry) => Promise<void>;
+  onImportSave?: (
+    request: RawSaveImportRequest,
+  ) => Promise<HomeSaveImportResult>;
   onNewGame: () => void;
   savePickerOpen?: boolean;
   saves?: SaveListEntry[];
@@ -22,12 +30,15 @@ interface HomeScreenProps {
  * @returns the application home screen.
  */
 export function HomeScreen({
-  hasSaves = false,
   moduleId = "home",
   onContinue = () => undefined,
   onContinueSave = () => undefined,
   onDeleteSave = async () => undefined,
   onDismissSavePicker = () => undefined,
+  onExportSave = async () => undefined,
+  onImportSave = async () => {
+    throw new Error("Raw save import is unavailable");
+  },
   onNewGame,
   savePickerOpen = false,
   saves = [],
@@ -73,7 +84,7 @@ export function HomeScreen({
               aria-controls={savePickerId}
               aria-expanded={savePickerOpen}
               aria-haspopup="dialog"
-              disabled={!storageAvailable || !hasSaves}
+              disabled={!storageAvailable}
               onClick={savePickerOpen ? onDismissSavePicker : onContinue}
               type="button"
             >
@@ -85,6 +96,9 @@ export function HomeScreen({
                 moduleId={moduleId}
                 onContinue={onContinueSave}
                 onDelete={onDeleteSave}
+                onDismiss={onDismissSavePicker}
+                onExport={onExportSave}
+                onImport={onImportSave}
                 saves={saves}
               />
             )}

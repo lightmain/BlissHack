@@ -1,3 +1,8 @@
+import { importRawSaveTransaction } from "./storage-transaction";
+
+/** Largest raw save accepted before allocating or writing imported content. */
+export const MAX_RAW_SAVE_BYTES = 64 * 1024 * 1024;
+
 /** File-system operations required from an Emscripten module. */
 export interface StorageFileSystem {
   analyzePath(path: string): { exists: boolean };
@@ -6,7 +11,8 @@ export interface StorageFileSystem {
   mount(type: unknown, options: Record<string, unknown>, path: string): unknown;
   readFile(path: string): string | Uint8Array;
   readdir(path: string): string[];
-  stat(path: string): { mode: number };
+  rename(oldPath: string, newPath: string): unknown;
+  stat(path: string): { mode: number; mtime?: Date | number };
   syncfs(
     populate: boolean,
     callback: (error: unknown | null) => void,
@@ -24,6 +30,10 @@ export interface StorageModule {
 /** Identity read from a NetHack save by the shim validator. */
 export interface SaveIdentity {
   playerName: string;
+  role: string;
+  race: string;
+  gender: string;
+  alignment: string;
 }
 
 /** Result of validating one save candidate. */
@@ -32,7 +42,10 @@ export type SaveValidation =
   | { status: "invalid"; error: string };
 
 /** One file displayed by the save picker. */
-export type SaveListEntry = { path: string } & SaveValidation;
+export type SaveListEntry = {
+  path: string;
+  modifiedAt: number | null;
+} & SaveValidation;
 
 /** Narrow validator implemented by the NetHack shim in production. */
 export type SaveMetadataValidator = (
@@ -40,19 +53,51 @@ export type SaveMetadataValidator = (
   path: string,
 ) => Promise<SaveValidation>;
 
-/** Public storage operations required during stage two. */
+/** Validate uploaded bytes without first writing them into /save. */
+export type SaveBytesValidator = (
+  module: StorageModule,
+  bytes: Uint8Array,
+) => Promise<SaveValidation>;
+
+/** User-approved request to import one raw save. */
+export interface RawSaveImportRequest {
+  bytes: Uint8Array;
+  modifiedAt: number | null;
+  overwrite: boolean;
+}
+
+/** Metadata shown for one side of a same-name conflict. */
+export interface RawSaveSummary {
+  identity: SaveIdentity;
+  modifiedAt: number | null;
+}
+
+/** Import either completes or pauses before an unapproved replacement. */
+export type RawSaveImportResult =
+  | { status: "imported"; path: string }
+  | {
+    status: "conflict";
+    path: string;
+    existing: RawSaveSummary;
+    incoming: RawSaveSummary;
+  };
+
+/** Public storage operations owned by one prepared game module. */
 export interface StorageService {
   initialize(): Promise<boolean>;
   listSaves(): Promise<SaveListEntry[]>;
   readSave(path: string): Promise<Uint8Array>;
   restoreOriginalSave(path: string, bytes: Uint8Array): Promise<void>;
   deleteSave(path: string): Promise<void>;
+  exportSave(path: string): Promise<Uint8Array>;
+  importSave(request: RawSaveImportRequest): Promise<RawSaveImportResult>;
   flush(): Promise<void>;
 }
 
 /** Dependencies for a module-bound storage service. */
 export interface StorageServiceOptions {
   validateSaveMetadata: SaveMetadataValidator;
+  validateSaveBytes?: SaveBytesValidator;
 }
 
 const SAVE_DIRECTORY = "/save";
@@ -124,7 +169,7 @@ export function createStorageService(
     for (const fileName of module.FS.readdir(SAVE_DIRECTORY)) {
       if (!isSaveCandidate(fileName)) continue;
       const path = `${SAVE_DIRECTORY}/${fileName}`;
-      let stat: { mode: number };
+      let stat: { mode: number; mtime?: Date | number };
       try {
         stat = module.FS.stat(path);
       } catch {
@@ -134,10 +179,15 @@ export function createStorageService(
 
       try {
         const validation = await options.validateSaveMetadata(module, path);
-        entries.push({ path, ...validation });
+        entries.push({
+          path,
+          modifiedAt: fileModificationTime(stat),
+          ...validation,
+        });
       } catch (error) {
         entries.push({
           path,
+          modifiedAt: fileModificationTime(stat),
           status: "invalid",
           error: errorMessage(error),
         });
@@ -184,6 +234,69 @@ export function createStorageService(
     }
   }
 
+  /** Return an exact copy of one raw save without changing its FS state. */
+  function exportSave(path: string): Promise<Uint8Array> {
+    return readSave(path);
+  }
+
+  /** Validate and transactionally persist one uploaded raw save. */
+  async function importSave(
+    request: RawSaveImportRequest,
+  ): Promise<RawSaveImportResult> {
+    if (
+      request.bytes.length === 0
+      || request.bytes.length > MAX_RAW_SAVE_BYTES
+    ) {
+      throw new Error(
+        request.bytes.length === 0
+          ? "Save file is empty"
+          : "Save file exceeds the 64 MiB limit",
+      );
+    }
+    if (!options.validateSaveBytes) {
+      throw new Error("Raw save import validation is unavailable");
+    }
+    const validation = await options.validateSaveBytes(module, request.bytes);
+    if (validation.status === "invalid") {
+      throw new Error(validation.error);
+    }
+
+    const path = `${SAVE_DIRECTORY}/0${validation.identity.playerName}`;
+    assertSavePath(path);
+    if (module.FS.analyzePath(path).exists && !request.overwrite) {
+      const existingValidation = await options.validateSaveMetadata(
+        module,
+        path,
+      );
+      if (existingValidation.status === "invalid") {
+        throw new Error(
+          "An invalid same-name save already exists; delete it before importing",
+        );
+      }
+      return {
+        status: "conflict",
+        path,
+        existing: {
+          identity: existingValidation.identity,
+          modifiedAt: statModificationTime(module.FS, path),
+        },
+        incoming: {
+          identity: validation.identity,
+          modifiedAt: validTimestamp(request.modifiedAt),
+        },
+      };
+    }
+
+    await importRawSaveTransaction({
+      fileSystem: module.FS,
+      destinationPath: path,
+      bytes: request.bytes,
+      overwrite: request.overwrite,
+      flush,
+    });
+    return { status: "imported", path };
+  }
+
   function flush(): Promise<void> {
     return persistent ? enqueueSync(false) : Promise.resolve();
   }
@@ -194,8 +307,33 @@ export function createStorageService(
     readSave,
     restoreOriginalSave,
     deleteSave,
+    exportSave,
+    importSave,
     flush,
   };
+}
+
+/** Read a file's modification timestamp without inventing missing metadata. */
+function statModificationTime(
+  fileSystem: StorageFileSystem,
+  path: string,
+): number | null {
+  return fileModificationTime(fileSystem.stat(path));
+}
+
+/** Normalize Emscripten's Date-shaped mtime. */
+function fileModificationTime(
+  stat: { mtime?: Date | number },
+): number | null {
+  const value = stat.mtime instanceof Date ? stat.mtime.getTime() : stat.mtime;
+  return validTimestamp(value);
+}
+
+/** Keep only finite, non-negative millisecond timestamps. */
+function validTimestamp(value: number | null | undefined): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : null;
 }
 
 /** Return whether a direct /save entry can be a normal WASM save file. */
