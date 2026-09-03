@@ -141,15 +141,18 @@ describe("SavePickerPopover deletion confirmation", () => {
     let html = renderToStaticMarkup(tree);
     expect(onDelete).not.toHaveBeenCalled();
     expect(html.match(/Sure\?/g)).toHaveLength(1);
-    expect(html.indexOf("Sure?")).toBeLessThan(html.indexOf(">Ada<"));
+    expect(html).toMatch(
+      /class="save-delete-control"><span class="save-delete-confirmation">Sure\?<\/span><button aria-label="Delete save Ada"/,
+    );
 
     clickDelete(tree, "Bob");
     tree = renderPicker(onDelete);
     html = renderToStaticMarkup(tree);
     expect(onDelete).not.toHaveBeenCalled();
     expect(html.match(/Sure\?/g)).toHaveLength(1);
-    expect(html.indexOf("Sure?")).toBeGreaterThan(html.indexOf(">Ada<"));
-    expect(html.indexOf("Sure?")).toBeLessThan(html.indexOf(">Bob<"));
+    expect(html).toMatch(
+      /class="save-delete-control"><span class="save-delete-confirmation">Sure\?<\/span><button aria-label="Delete save Bob"/,
+    );
   });
 
   it("calls async deletion once and disables repeat deletion while pending", async () => {
