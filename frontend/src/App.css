@@ -730,13 +730,21 @@
   min-height: 2.3em;
   padding: 3px 0;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 1ch;
 }
 
 .nh-line-input label {
+  padding-top: 2px;
   color: #fff;
   white-space: nowrap;
+}
+
+.nh-line-input-field {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 4px;
 }
 
 .nh-line-input input,
@@ -752,6 +760,16 @@
   font: inherit;
   letter-spacing: 0;
   caret-color: #7ddc8c;
+}
+
+.nh-line-input-field input {
+  width: 100%;
+}
+
+.nh-existing-save-hint {
+  color: #e6cb74;
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .nh-fatal {

@@ -418,6 +418,28 @@ test("acknowledges an invalid raw save and returns to normal Home", async ({
   expect(errors).toEqual({ console: [], page: [] });
 });
 
+test("warns that a New Game name will continue an existing save", async ({
+  page,
+}) => {
+  const errors = captureErrors(page);
+  const name = "E2ENameHint";
+  const hint = "A save with this name already exists. "
+    + "The game will continue from that save.";
+  await startNewGame(page, name);
+  await saveAndReturnHome(page);
+
+  await page.getByRole("button", { name: "New Game" }).click();
+  const nameInput = page.getByRole("textbox", { name: "Who are you?" });
+  await nameInput.fill("DifferentName");
+  await expect(page.getByText(hint, { exact: true })).toHaveCount(0);
+
+  await nameInput.fill(`  ${name}  `);
+  await expect(page.getByText(hint, { exact: true })).toBeVisible();
+  await nameInput.press("Enter");
+  await expect(page.locator(".nh-hp-bar")).toBeVisible({ timeout: 15_000 });
+  expect(errors).toEqual({ console: [], page: [] });
+});
+
 test("retires the first module before preparing and running the second game", async ({
   page,
 }) => {
