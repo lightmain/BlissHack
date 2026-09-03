@@ -240,7 +240,8 @@ VDECLCB(shim_exit_nhwindows, (const char *str), "vs", P2V str)
 prealpha-2 阶段二会把这部分职责移入独立 storage service。每局 game module
 在进入首页时创建并完成 mount、populate 和存档枚举；用户选择新游戏或继续
 游戏时，同一个 module 才注册活动 session callback 并调用一次 `main()`。
-完整约束见 `doc/BlissHack/module-lifecycle.md`。
+完整约束见
+`doc/BlissHack/plans/in-prealpha-2/module-lifecycle.md`。
 
 IDBFS 只改变持久化介质：NetHack 写入虚拟 `/save` 文件的 payload 仍是原版
 historical binary save bytes。IndexedDB 中另外存在 IDBFS 自己的路径、

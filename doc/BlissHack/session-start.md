@@ -35,7 +35,7 @@
 - 每局 game module 在进入首页读取存档时创建；首页没有活动 session，也不调用
   `main()`。用户开始或继续游戏时，新 session 认领同一个 module。
 - module、session 和首页之间的权威生命周期见
-  `doc/BlissHack/module-lifecycle.md`。
+  `doc/BlissHack/plans/in-prealpha-2/module-lifecycle.md`。
 - 项目主要在 TypeScript 侧开发，但允许对 C 侧 shim 做少量、经过源码验证且
   有测试覆盖的功能补全。
 - shim ABI 有已知限制。不得假定它能无损表达全部 `window_procs` 契约，也不得
@@ -103,8 +103,8 @@
 读取：
 
 - `doc/BlissHack/plans/prealpha-2.md` 的阶段二至四相关部分
-- `doc/BlissHack/save-format-review.md`
-- `doc/BlissHack/module-lifecycle.md`
+- `doc/BlissHack/plans/in-prealpha-2/save-format-review.md`
+- `doc/BlissHack/plans/in-prealpha-2/module-lifecycle.md`
 - `sys/libnh/README.md`
 - 当前 storage 实现和测试
 - NetHack 保存、恢复调用链的相关 C 源码
