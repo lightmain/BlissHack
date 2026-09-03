@@ -35,6 +35,7 @@ import { buildMapRuns, mapPositionFromPoint } from "../map-rendering";
 import { buildHitPointBar } from "../status-rendering";
 import {
   dismissDisplay,
+  normalizePlayerNameInput,
   sendKey,
   sendPosition,
   submitExtendedCommand,
@@ -411,7 +412,13 @@ const InputArea = memo(function InputArea({
   request: GameSnapshot["inputRequest"];
 }) {
   if (request?.kind === "line") {
-    return <LineInput purpose={request.purpose} query={request.query} />;
+    return (
+      <LineInput
+        existingSaveNames={request.existingSaveNames ?? []}
+        purpose={request.purpose}
+        query={request.query}
+      />
+    );
   }
   if (request?.kind === "yn") {
     const choices = request.choices?.split("\u001b")[0] ?? "";
@@ -438,13 +445,17 @@ const InputArea = memo(function InputArea({
  * @returns a focused terminal input form.
  */
 function LineInput({
+  existingSaveNames,
   purpose,
   query,
 }: {
+  existingSaveNames: string[];
   purpose: "name" | "getlin";
   query: string;
 }) {
   const [value, setValue] = useState("");
+  const continuesExistingSave = purpose === "name"
+    && existingSaveNames.includes(normalizePlayerNameInput(value));
 
   /**
    * Submit the current text value.
@@ -470,15 +481,30 @@ function LineInput({
   return (
     <form className="nh-line-input" onSubmit={handleSubmit}>
       <label htmlFor="nh-command-input">{query}</label>
-      <input
-        autoComplete="off"
-        autoFocus
-        id="nh-command-input"
-        onChange={(event) => setValue(event.target.value)}
-        onKeyDown={handleKeyDown}
-        spellCheck={false}
-        value={value}
-      />
+      <div className="nh-line-input-field">
+        <input
+          aria-describedby={continuesExistingSave
+            ? "nh-existing-save-hint"
+            : undefined}
+          autoComplete="off"
+          autoFocus
+          id="nh-command-input"
+          onChange={(event) => setValue(event.target.value)}
+          onKeyDown={handleKeyDown}
+          spellCheck={false}
+          value={value}
+        />
+        {continuesExistingSave && (
+          <span
+            className="nh-existing-save-hint"
+            id="nh-existing-save-hint"
+            role="status"
+          >
+            A save with this name already exists. The game will continue from
+            that save.
+          </span>
+        )}
+      </div>
     </form>
   );
 }

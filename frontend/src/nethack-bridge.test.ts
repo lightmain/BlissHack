@@ -19,10 +19,12 @@ import {
 import {
   dismissDisplay,
   isWaitingForInput,
+  normalizePlayerNameInput,
   preparePlayerNamePrompt,
   resetBridgeState,
   sendKey,
   sendPosition,
+  setKnownSaveNames,
   setRestoreRequired,
   setStartupIdentity,
   shimCallbackForModule,
@@ -370,6 +372,26 @@ describe("player setup and line input", () => {
 
     const name = globalThis.nethackGlobal?.globals?.svp?.plname ?? "";
     expect(new TextEncoder().encode(name).length).toBeLessThanOrEqual(31);
+  });
+
+  it("publishes known save names with askname and normalizes input identically", async () => {
+    setKnownSaveNames(["Ada", "Bob"]);
+    const promise = shimCallback("shim_askname");
+    await expectPending(promise);
+
+    expect(getSnapshot().inputRequest).toEqual({
+      kind: "line",
+      purpose: "name",
+      query: "Who are you?",
+      existingSaveNames: ["Ada", "Bob"],
+    });
+    expect(normalizePlayerNameInput("  Ada  ")).toBe("Ada");
+    expect(
+      new TextEncoder().encode(normalizePlayerNameInput("é".repeat(40))).length,
+    ).toBeLessThanOrEqual(31);
+
+    submitLine("Ada");
+    await promise;
   });
 
   it("writes getlin input to its 256-byte buffer and writes ESC on cancel", async () => {

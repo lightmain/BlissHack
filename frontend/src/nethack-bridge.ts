@@ -185,6 +185,7 @@ const INTERNALCMD = 0x0040;
 let pendingAction: PendingAction | null = null;
 const queuedKeys: number[] = [];
 let typeaheadEnabled = false;
+let knownSaveNames: string[] = [];
 
 /**
  * Remove Emscripten's synthetic login name before NetHack calls whoami().
@@ -195,6 +196,23 @@ export function preparePlayerNamePrompt(module: EmscriptenModule): void {
   module.ENV ??= {};
   module.ENV.USER = "";
   module.ENV.LOGNAME = "";
+}
+
+/**
+ * Supply names which askname may resolve to an existing save.
+ * @param names - validated names enumerated by the current Home module.
+ */
+export function setKnownSaveNames(names: string[]): void {
+  knownSaveNames = [...new Set(names)];
+}
+
+/**
+ * Apply exactly the same cleanup used when a player name is submitted.
+ * @param value - current name input.
+ * @returns the value NetHack receives.
+ */
+export function normalizePlayerNameInput(value: string): string {
+  return truncateUtf8(value.trim(), PLAYER_NAME_BUFFER_SIZE - 1);
 }
 
 /**
@@ -464,7 +482,7 @@ export function submitLine(value: string | null): void {
 
   if (pending.purpose === "name") {
     if (value === null || value.trim() === "") return;
-    const name = truncateUtf8(value.trim(), PLAYER_NAME_BUFFER_SIZE - 1);
+    const name = normalizePlayerNameInput(value);
     const globals = globalThis.nethackGlobal?.globals;
     if (globals?.svp) globals.svp.plname = name;
   } else {
@@ -574,6 +592,7 @@ export function resetBridgeState(): void {
   pendingAction = null;
   queuedKeys.length = 0;
   typeaheadEnabled = false;
+  knownSaveNames = [];
   resetGameState();
 }
 
@@ -1031,7 +1050,16 @@ function waitForLine(
   query: string,
   bufferPtr: number,
 ): Promise<void> {
-  setInputRequest({ kind: "line", purpose, query });
+  setInputRequest(
+    purpose === "name" && knownSaveNames.length > 0
+      ? {
+        kind: "line",
+        purpose,
+        query,
+        existingSaveNames: [...knownSaveNames],
+      }
+      : { kind: "line", purpose, query },
+  );
   return new Promise<void>((resolve) => {
     setPending({ kind: "line", resolve, purpose, bufferPtr, module });
   });

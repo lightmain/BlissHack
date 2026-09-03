@@ -109,7 +109,12 @@ export type InputRequest =
   | { kind: "key" }
   | { kind: "position" }
   | { kind: "yn"; query: string; choices: string | null; defaultCode: number }
-  | { kind: "line"; purpose: "name" | "getlin"; query: string }
+  | {
+    kind: "line";
+    purpose: "name" | "getlin";
+    query: string;
+    existingSaveNames?: string[];
+  }
   | { kind: "message"; message: string; acceptedCode: number };
 
 /** Immutable top-level snapshot consumed by React. */

@@ -7,6 +7,7 @@ import {
   resetBridgeState,
   sendKey,
   sendPosition,
+  setKnownSaveNames,
   setRestoreRequired,
   setStartupIdentity,
   shimCallbackForModule,
@@ -308,7 +309,12 @@ export function createSessionManager(
       applyRestoreRequired(owner.module, true);
     }
 
+    const knownSaveNames = request.kind === "new"
+      ? owner.preparation.saves.flatMap((save) =>
+        save.status === "ready" ? [save.identity.playerName] : [])
+      : [];
     resetBridgeState();
+    setKnownSaveNames(knownSaveNames);
     options.dispatch({
       type: "SESSION_CREATED",
       moduleId: owner.moduleId,
