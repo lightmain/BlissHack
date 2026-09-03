@@ -287,6 +287,6 @@ describe("SavePickerPopover raw save transfer", () => {
       overwrite: false,
     });
     expect(currentTarget.value).toBe("");
-    expect(renderToStaticMarkup(tree)).toMatch(/导入成功/);
+    expect(renderToStaticMarkup(tree)).toMatch(/Import successful/);
   });
 });

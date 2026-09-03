@@ -97,8 +97,8 @@ describe("raw save import dialogs", () => {
     expect(html).toMatch(/Ada/);
     expect(html).toMatch(/Existing[\s\S]*Wiz[\s\S]*Hum[\s\S]*Fem[\s\S]*Neu/);
     expect(html).toMatch(/Incoming[\s\S]*Arc[\s\S]*Hum[\s\S]*Fem[\s\S]*Law/);
-    expect(html).toMatch(/取消/);
-    expect(html).toMatch(/覆盖/);
+    expect(html).toMatch(/Cancel/);
+    expect(html).toMatch(/Overwrite/);
   });
 
   it("requires an explicit confirmation for an import error", () => {
@@ -109,6 +109,6 @@ describe("raw save import dialogs", () => {
 
     expect(html).toMatch(/role="alertdialog"/);
     expect(html).toMatch(/incompatible/i);
-    expect(html).toMatch(/确定/);
+    expect(html).toMatch(/OK/);
   });
 });

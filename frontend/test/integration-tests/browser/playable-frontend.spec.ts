@@ -337,7 +337,8 @@ test("exports, deletes, imports, and continues the same raw save", async ({
     mimeType: "application/octet-stream",
     buffer: rawBytes,
   });
-  await expect(savePicker.getByText("导入成功", { exact: true })).toBeVisible();
+  await expect(savePicker.getByText("Import successful", { exact: true }))
+    .toBeVisible();
   await expect(savePicker.getByRole("button", {
     name: new RegExp(`^${name}\\b`),
   })).toBeVisible();
@@ -372,7 +373,7 @@ test("shows raw save conflict details and requires cancel or overwrite", async (
     mimeType: "application/octet-stream",
     buffer: rawBytes,
   });
-  const conflict = page.getByRole("dialog", { name: "存档冲突" });
+  const conflict = page.getByRole("dialog", { name: "Save conflict" });
   await expect(conflict).toBeVisible();
   await expect(conflict.getByText("Existing", { exact: true })).toBeVisible();
   await expect(conflict.getByText("Incoming", { exact: true })).toBeVisible();
@@ -380,7 +381,7 @@ test("shows raw save conflict details and requires cancel or overwrite", async (
   await expect(conflict.getByText(/Race/)).toHaveCount(2);
   await expect(conflict.getByText(/Gender/)).toHaveCount(2);
   await expect(conflict.getByText(/Alignment/)).toHaveCount(2);
-  await conflict.getByRole("button", { name: "取消" }).click();
+  await conflict.getByRole("button", { name: "Cancel" }).click();
   await expect(conflict).toHaveCount(0);
 
   await input.setInputFiles({
@@ -388,9 +389,10 @@ test("shows raw save conflict details and requires cancel or overwrite", async (
     mimeType: "application/octet-stream",
     buffer: rawBytes,
   });
-  await page.getByRole("dialog", { name: "存档冲突" })
-    .getByRole("button", { name: "覆盖" }).click();
-  await expect(savePicker.getByText("导入成功", { exact: true })).toBeVisible();
+  await page.getByRole("dialog", { name: "Save conflict" })
+    .getByRole("button", { name: "Overwrite" }).click();
+  await expect(savePicker.getByText("Import successful", { exact: true }))
+    .toBeVisible();
   expect(errors).toEqual({ console: [], page: [] });
 });
 
@@ -407,9 +409,9 @@ test("acknowledges an invalid raw save and returns to normal Home", async ({
     buffer: Buffer.from([0x00, 0x01, 0x02]),
   });
 
-  const errorDialog = page.getByRole("alertdialog", { name: "导入失败" });
+  const errorDialog = page.getByRole("alertdialog", { name: "Import failed" });
   await expect(errorDialog).toBeVisible();
-  await errorDialog.getByRole("button", { name: "确定" }).click();
+  await errorDialog.getByRole("button", { name: "OK" }).click();
   await expect(errorDialog).toHaveCount(0);
   await expect(savePicker).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "BlissHack" })).toBeVisible();
