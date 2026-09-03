@@ -114,6 +114,15 @@ describe("keyboardEventToNetHackKey", () => {
     ).toBe(0xbf);
   });
 
+  it("falls back to the physical key for macOS Option dead keys", () => {
+    expect(
+      keyboardEventToNetHackKey(
+        keyEvent({ key: "Dead", code: "KeyU", altKey: true }),
+        { numberPad: false },
+      ),
+    ).toBe(0xf5);
+  });
+
   it.each([
     ["Escape", "Escape", 27],
     ["Enter", "Enter", 10],

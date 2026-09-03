@@ -99,12 +99,13 @@ Shift 没有独立修饰位。它通过 `event.key` 改变字符，例如 `a →
 ## 5. 浏览器事件规则
 
 1. 普通字符优先读取布局感知的 `event.key`。
-2. macOS Option 等组合可能让 `event.key` 变成非 ASCII 字符；此时才使用
-   `event.code` 恢复物理 ASCII 键，再设置 Meta 高位。
+2. macOS Option 等组合可能让 `event.key` 变成非 ASCII 字符或 `Dead`；
+   当 `altKey` 为真时使用 `event.code` 恢复物理 ASCII 键，再设置 Meta
+   高位。例如 `Option+U` 必须编码为 `M-u`，不能被当作重音符 dead key 丢弃。
 3. `altKey` 表示 NetHack Meta；浏览器 `metaKey` 表示系统 Command/Windows
    修饰键，默认不传入核心，以免吞掉系统快捷键。
-4. `AltGraph`、IME composing、Dead、Process、Unidentified、非 ASCII 字符和
-   未支持的功能键不传入核心。
+4. `AltGraph`、IME composing、非 Alt 的 Dead、Process、Unidentified、
+   非 ASCII 字符和未支持的功能键不传入核心。
 5. 只有成功转换的事件调用 `preventDefault()`。Tab、Space、方向键、
    Backspace、Delete、Enter 以及已接受的 Ctrl/Alt 组合都必须阻止浏览器
    默认行为；被保留的浏览器 Meta 组合不阻止默认行为。

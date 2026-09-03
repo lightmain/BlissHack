@@ -191,6 +191,10 @@ test("plays through startup and routes terminal UI input", async ({ page }) => {
   await expect(page.getByText(/What do you want to adjust/)).toBeVisible();
   await page.keyboard.press("Escape");
 
+  await page.keyboard.press("Alt+u");
+  await expect(page.getByText("In what direction?", { exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
+
   await page.keyboard.press("o");
   await expect(page.getByText("In what direction?", { exact: true })).toBeVisible();
   await page.keyboard.press("Alt+h");
