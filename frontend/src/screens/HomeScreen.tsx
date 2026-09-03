@@ -8,6 +8,7 @@ interface HomeScreenProps {
   moduleId?: string;
   onContinue?: () => void;
   onContinueSave?: (save: SaveListEntry) => void;
+  onDeleteSave?: (save: SaveListEntry) => Promise<void>;
   onDismissSavePicker?: () => void;
   onNewGame: () => void;
   savePickerOpen?: boolean;
@@ -25,6 +26,7 @@ export function HomeScreen({
   moduleId = "home",
   onContinue = () => undefined,
   onContinueSave = () => undefined,
+  onDeleteSave = async () => undefined,
   onDismissSavePicker = () => undefined,
   onNewGame,
   savePickerOpen = false,
@@ -82,6 +84,7 @@ export function HomeScreen({
                 id={savePickerId}
                 moduleId={moduleId}
                 onContinue={onContinueSave}
+                onDelete={onDeleteSave}
                 saves={saves}
               />
             )}

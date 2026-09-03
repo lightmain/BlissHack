@@ -146,6 +146,7 @@ function createHarness(modules: EmscriptenModule[]): {
       listSaves: vi.fn(async () => []),
       readSave: vi.fn(async () => new Uint8Array()),
       restoreOriginalSave: vi.fn(async () => undefined),
+      deleteSave: vi.fn(async () => undefined),
       flush: vi.fn(async () => undefined),
     }),
     dispatch,

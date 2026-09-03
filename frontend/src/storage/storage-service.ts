@@ -11,6 +11,7 @@ export interface StorageFileSystem {
     populate: boolean,
     callback: (error: unknown | null) => void,
   ): void;
+  unlink(path: string): unknown;
   writeFile(path: string, bytes: Uint8Array): unknown;
 }
 
@@ -45,6 +46,7 @@ export interface StorageService {
   listSaves(): Promise<SaveListEntry[]>;
   readSave(path: string): Promise<Uint8Array>;
   restoreOriginalSave(path: string, bytes: Uint8Array): Promise<void>;
+  deleteSave(path: string): Promise<void>;
   flush(): Promise<void>;
 }
 
@@ -161,6 +163,27 @@ export function createStorageService(
     module.FS.writeFile(path, bytes);
   }
 
+  /** Delete one save and restore its bytes if persistence fails. */
+  async function deleteSave(path: string): Promise<void> {
+    assertSavePath(path);
+    const originalBytes = await readSave(path);
+    module.FS.unlink(path);
+    try {
+      await flush();
+    } catch (deleteError) {
+      try {
+        module.FS.writeFile(path, originalBytes);
+        await flush();
+      } catch (restoreError) {
+        throw new AggregateError(
+          [deleteError, restoreError],
+          `Could not delete or restore save at ${path}`,
+        );
+      }
+      throw deleteError;
+    }
+  }
+
   function flush(): Promise<void> {
     return persistent ? enqueueSync(false) : Promise.resolve();
   }
@@ -170,6 +193,7 @@ export function createStorageService(
     listSaves,
     readSave,
     restoreOriginalSave,
+    deleteSave,
     flush,
   };
 }

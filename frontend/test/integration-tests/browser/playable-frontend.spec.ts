@@ -88,7 +88,9 @@ async function saveAndReturnHome(page: Page): Promise<void> {
 async function continueSavedGame(page: Page, name: string): Promise<void> {
   await page.getByRole("button", { name: "Continue" }).click();
   await expect(page.getByRole("dialog", { name: "Saved games" })).toBeVisible();
-  await page.getByRole("button", { name }).click();
+  await page.getByRole("button", {
+    name: new RegExp(`^${name}\\b`),
+  }).click();
 }
 
 /**
@@ -222,7 +224,9 @@ test("enumerates a persisted save after returning home and refreshing", async ({
   await page.locator(".home-footer").click();
   await expect(page.getByRole("dialog", { name: "Saved games" })).toHaveCount(0);
   await page.getByRole("button", { name: "Continue" }).click();
-  await expect(page.getByRole("button", { name })).toBeVisible();
+  await expect(page.getByRole("button", {
+    name: new RegExp(`^${name}\\b`),
+  })).toBeVisible();
   expect(errors).toEqual({ console: [], page: [] });
 });
 
@@ -242,6 +246,44 @@ test("continues through the core restore path without asking for a new name", as
   await expect(page.getByRole("textbox", { name: "Who are you?" })).toHaveCount(0);
   await expect(page.getByText(/Shall I pick character's/)).toHaveCount(0);
   await expect(page.getByText("Running", { exact: true })).toBeVisible();
+  expect(errors).toEqual({ console: [], page: [] });
+});
+
+test("deletes a saved game only after confirmation and persists deletion", async ({
+  page,
+}) => {
+  const errors = captureErrors(page);
+  const name = "E2EDelete";
+  await startNewGame(page, name);
+  await saveAndReturnHome(page);
+
+  const continueButton = page.getByRole("button", {
+    name: "Continue",
+    exact: true,
+  });
+  await expect(continueButton).toBeEnabled();
+  await continueButton.click();
+  const savePicker = page.getByRole("dialog", { name: "Saved games" });
+  const saveEntry = savePicker.getByRole("button", {
+    name: new RegExp(`^${name}\\b`),
+  });
+  const deleteButton = savePicker.getByRole("button", {
+    name: `Delete save ${name}`,
+  });
+  await expect(saveEntry).toBeVisible();
+  await expect(deleteButton).toBeVisible();
+
+  await deleteButton.click();
+  await expect(savePicker.getByText("Sure?", { exact: true })).toBeVisible();
+  await expect(saveEntry).toBeVisible();
+  await expect(continueButton).toBeEnabled();
+
+  await deleteButton.click();
+  await expect(saveEntry).toHaveCount(0);
+  await expect(continueButton).toBeDisabled();
+
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Continue" })).toBeDisabled();
   expect(errors).toEqual({ console: [], page: [] });
 });
 

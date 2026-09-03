@@ -24,6 +24,7 @@ interface StorageServiceContract {
   listSaves(): Promise<SaveListEntry[]>;
   readSave(path: string): Promise<Uint8Array>;
   restoreOriginalSave(path: string, bytes: Uint8Array): Promise<void>;
+  deleteSave(path: string): Promise<void>;
   flush(): Promise<void>;
 }
 
@@ -287,5 +288,96 @@ describe("save file access", () => {
     );
     expect(harness.files.get("/save/0Ada")).toEqual(original);
     expect("writeSave" in service).toBe(false);
+  });
+});
+
+describe("save deletion", () => {
+  it("backs up bytes before unlinking and persists the deletion", async () => {
+    const harness = createStorageModuleHarness();
+    const original = Uint8Array.of(0x10, 0x00, 0xff, 0x20);
+    harness.files.set("/save/0Ada", original);
+    const service = await createService(harness);
+    const initialization = service.initialize();
+    harness.syncRequests[0].complete();
+    await initialization;
+
+    const deletion = service.deleteSave("/save/0Ada");
+    await vi.waitFor(() => {
+      expect(harness.syncRequests).toHaveLength(2);
+    });
+
+    expect(harness.module.FS.readFile).toHaveBeenCalledWith("/save/0Ada");
+    expect(harness.module.FS.unlink).toHaveBeenCalledWith("/save/0Ada");
+    expect(harness.files.has("/save/0Ada")).toBe(false);
+    expect(harness.syncRequests[1].populate).toBe(false);
+    expect(harness.module.FS.readFile.mock.invocationCallOrder[0])
+      .toBeLessThan(harness.module.FS.unlink.mock.invocationCallOrder[0]);
+    expect(harness.module.FS.unlink.mock.invocationCallOrder[0])
+      .toBeLessThan(harness.module.FS.syncfs.mock.invocationCallOrder[1]);
+
+    harness.syncRequests[1].complete();
+    await expect(deletion).resolves.toBeUndefined();
+    expect(harness.files.has("/save/0Ada")).toBe(false);
+  });
+
+  it.each([
+    "/save",
+    "/save/",
+    "/save/../0Ada",
+    "/save/nested/0Ada",
+    "/save/0Ada.bak",
+    "/tmp/0Ada",
+  ])("rejects invalid deletion path %s without touching the file system", async (
+    path,
+  ) => {
+    const harness = createStorageModuleHarness();
+    harness.files.set("/save/0Ada", Uint8Array.of(1, 2, 3));
+    const service = await createService(harness);
+    const initialization = service.initialize();
+    harness.syncRequests[0].complete();
+    await initialization;
+
+    await expect(service.deleteSave(path)).rejects.toThrow("Invalid save path");
+
+    expect(harness.module.FS.readFile).not.toHaveBeenCalled();
+    expect(harness.module.FS.unlink).not.toHaveBeenCalled();
+    expect(harness.module.FS.writeFile).not.toHaveBeenCalled();
+    expect(harness.syncRequests).toHaveLength(1);
+    expect(harness.files.get("/save/0Ada")).toEqual(Uint8Array.of(1, 2, 3));
+  });
+
+  it("restores original bytes and syncs again when persisting deletion fails", async () => {
+    const harness = createStorageModuleHarness();
+    const original = Uint8Array.of(0xde, 0xad, 0xbe, 0xef);
+    harness.files.set("/save/0Ada", original);
+    const service = await createService(harness);
+    const initialization = service.initialize();
+    harness.syncRequests[0].complete();
+    await initialization;
+
+    const deletion = service.deleteSave("/save/0Ada");
+    const rejection = expect(deletion).rejects.toThrow("quota exceeded");
+    await vi.waitFor(() => {
+      expect(harness.syncRequests).toHaveLength(2);
+    });
+    expect(harness.files.has("/save/0Ada")).toBe(false);
+
+    harness.syncRequests[1].complete(new Error("quota exceeded"));
+    await vi.waitFor(() => {
+      expect(harness.module.FS.writeFile).toHaveBeenCalledWith(
+        "/save/0Ada",
+        original,
+      );
+      expect(harness.syncRequests).toHaveLength(3);
+    });
+
+    expect(harness.files.get("/save/0Ada")).toEqual(original);
+    expect(harness.syncRequests[2].populate).toBe(false);
+    expect(harness.module.FS.writeFile.mock.invocationCallOrder[0])
+      .toBeLessThan(harness.module.FS.syncfs.mock.invocationCallOrder[2]);
+
+    harness.syncRequests[2].complete();
+    await rejection;
+    expect(harness.files.get("/save/0Ada")).toEqual(original);
   });
 });

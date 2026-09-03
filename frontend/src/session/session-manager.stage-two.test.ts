@@ -30,6 +30,7 @@ interface SessionStartRequest {
 interface StageTwoSessionManager {
   initialize(): Promise<HomePreparation>;
   startSession(request: SessionStartRequest): Promise<SessionHandle>;
+  deleteSave(moduleId: string, path: string): Promise<HomePreparation>;
 }
 
 interface Deferred<T> {
@@ -50,6 +51,7 @@ interface StorageServiceFake {
   restoreOriginalSave: ReturnType<
     typeof vi.fn<(path: string, bytes: Uint8Array) => Promise<void>>
   >;
+  deleteSave: ReturnType<typeof vi.fn<(path: string) => Promise<void>>>;
   flush: ReturnType<typeof vi.fn<() => Promise<void>>>;
 }
 
@@ -162,6 +164,7 @@ describe("home module ownership", () => {
       }),
       readSave: vi.fn(async () => Uint8Array.of(1, 2, 3)),
       restoreOriginalSave: vi.fn(async () => undefined),
+      deleteSave: vi.fn(async () => undefined),
       flush: vi.fn(async () => undefined),
     };
     const factory = vi.fn(async () => {
@@ -246,6 +249,7 @@ describe("home module ownership", () => {
       listSaves: vi.fn(async () => [save]),
       readSave: vi.fn(async () => originalBytes.slice()),
       restoreOriginalSave: vi.fn(async () => undefined),
+      deleteSave: vi.fn(async () => undefined),
       flush: vi.fn(async () => undefined),
     };
     const callbackHost: Record<string, unknown> = {};
@@ -300,6 +304,128 @@ describe("home module ownership", () => {
   });
 });
 
+describe("home save deletion", () => {
+  it("deletes a currently listed save, re-enumerates, and notifies the UI", async () => {
+    const module = createModuleHarness();
+    const save: ValidatedSave = {
+      path: "/save/0Ada",
+      status: "ready",
+      identity: { playerName: "Ada" },
+    };
+    const storage: StorageServiceFake = {
+      initialize: vi.fn(async () => true),
+      listSaves: vi.fn()
+        .mockResolvedValueOnce([save])
+        .mockResolvedValueOnce([]),
+      readSave: vi.fn(async () => new Uint8Array()),
+      restoreOriginalSave: vi.fn(async () => undefined),
+      deleteSave: vi.fn(async () => undefined),
+      flush: vi.fn(async () => undefined),
+    };
+    const dispatch = vi.fn<(action: AppAction) => void>();
+    const manager = createStageTwoManager({
+      createModuleId: () => "module-1",
+      createSessionId: () => "session-1",
+      createStorageService: () => storage,
+      dispatch,
+      moduleFactory: vi.fn(async () => module.module),
+    });
+    await manager.initialize();
+    dispatch.mockClear();
+
+    await expect(manager.deleteSave("module-1", save.path)).resolves.toEqual({
+      moduleId: "module-1",
+      saves: [],
+      storageAvailable: true,
+    });
+
+    expect(storage.deleteSave).toHaveBeenCalledOnce();
+    expect(storage.deleteSave).toHaveBeenCalledWith(save.path);
+    expect(storage.listSaves).toHaveBeenCalledTimes(2);
+    expect(storage.deleteSave.mock.invocationCallOrder[0])
+      .toBeLessThan(storage.listSaves.mock.invocationCallOrder[1]);
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "HOME_SAVES_UPDATED",
+      moduleId: "module-1",
+      saves: [],
+    });
+  });
+
+  it("rejects deletion while the current module has an active session", async () => {
+    const module = createModuleHarness();
+    const save: ValidatedSave = {
+      path: "/save/0Ada",
+      status: "ready",
+      identity: { playerName: "Ada" },
+    };
+    const storage: StorageServiceFake = {
+      initialize: vi.fn(async () => true),
+      listSaves: vi.fn(async () => [save]),
+      readSave: vi.fn(async () => new Uint8Array()),
+      restoreOriginalSave: vi.fn(async () => undefined),
+      deleteSave: vi.fn(async () => undefined),
+      flush: vi.fn(async () => undefined),
+    };
+    const manager = createStageTwoManager({
+      createModuleId: () => "module-1",
+      createSessionId: () => "session-1",
+      createStorageService: () => storage,
+      dispatch: vi.fn(),
+      moduleFactory: vi.fn(async () => module.module),
+    });
+    await manager.initialize();
+    await manager.startSession({ kind: "new" });
+
+    await expect(manager.deleteSave("module-1", save.path)).rejects.toThrow(
+      /home|active session/i,
+    );
+    expect(storage.deleteSave).not.toHaveBeenCalled();
+    expect(storage.listSaves).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    {
+      name: "stale module",
+      moduleId: "module-stale",
+      path: "/save/0Ada",
+    },
+    {
+      name: "unknown path",
+      moduleId: "module-1",
+      path: "/save/0Unknown",
+    },
+  ])("rejects a $name without deleting storage", async ({ moduleId, path }) => {
+    const module = createModuleHarness();
+    const save: ValidatedSave = {
+      path: "/save/0Ada",
+      status: "ready",
+      identity: { playerName: "Ada" },
+    };
+    const storage: StorageServiceFake = {
+      initialize: vi.fn(async () => true),
+      listSaves: vi.fn(async () => [save]),
+      readSave: vi.fn(async () => new Uint8Array()),
+      restoreOriginalSave: vi.fn(async () => undefined),
+      deleteSave: vi.fn(async () => undefined),
+      flush: vi.fn(async () => undefined),
+    };
+    const manager = createStageTwoManager({
+      createModuleId: () => "module-1",
+      createSessionId: () => "session-1",
+      createStorageService: () => storage,
+      dispatch: vi.fn(),
+      moduleFactory: vi.fn(async () => module.module),
+    });
+    await manager.initialize();
+
+    await expect(manager.deleteSave(moduleId, path)).rejects.toThrow(
+      /current|listed|unknown|stale/i,
+    );
+    expect(storage.deleteSave).not.toHaveBeenCalled();
+    expect(storage.listSaves).toHaveBeenCalledOnce();
+  });
+});
+
 describe("module retirement ordering", () => {
   it("flushes and retires the first module before creating the next home module", async () => {
     const firstModule = createModuleHarness();
@@ -317,6 +443,7 @@ describe("module retirement ordering", () => {
       }),
       readSave: vi.fn(async () => new Uint8Array()),
       restoreOriginalSave: vi.fn(async () => undefined),
+      deleteSave: vi.fn(async () => undefined),
       flush: vi.fn(() => {
         order.push("flush:first");
         return flush.promise;
@@ -333,6 +460,7 @@ describe("module retirement ordering", () => {
       }),
       readSave: vi.fn(async () => new Uint8Array()),
       restoreOriginalSave: vi.fn(async () => undefined),
+      deleteSave: vi.fn(async () => undefined),
       flush: vi.fn(async () => undefined),
     };
     const modules = [firstModule.module, secondModule.module];

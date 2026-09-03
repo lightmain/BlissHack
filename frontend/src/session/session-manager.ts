@@ -48,6 +48,10 @@ export type SessionStartRequest =
 export interface SessionManager {
   initialize: () => Promise<HomePreparation>;
   startSession: (request?: SessionStartRequest) => Promise<SessionHandle>;
+  deleteSave: (
+    moduleId: string,
+    path: string,
+  ) => Promise<HomePreparation>;
   cleanupSession: (sessionId: string) => Promise<void>;
   dispose: () => Promise<void>;
   getActiveSession: () => SessionHandle | null;
@@ -127,6 +131,7 @@ export function createSessionManager(
   let currentModule: ModuleRecord | null = null;
   let initializePromise: Promise<HomePreparation> | null = null;
   let startPromise: Promise<SessionHandle> | null = null;
+  let deletePromise: Promise<HomePreparation> | null = null;
   let disposed = false;
 
   /** Prepare one module and its storage before Home becomes ready. */
@@ -227,6 +232,7 @@ export function createSessionManager(
     request: SessionStartRequest,
   ): Promise<SessionHandle> {
     await initialize();
+    await deletePromise?.catch(() => undefined);
     const owner = currentModule;
     if (
       !owner
@@ -313,6 +319,64 @@ export function createSessionManager(
       },
     );
     return handle;
+  }
+
+  /**
+   * Delete one save owned by the current Home module and refresh its list.
+   * @param moduleId - module generation which displayed the save.
+   * @param path - exact path previously enumerated for that module.
+   * @returns the refreshed Home preparation.
+   */
+  function deleteSave(
+    moduleId: string,
+    path: string,
+  ): Promise<HomePreparation> {
+    if (deletePromise) {
+      return Promise.reject(new Error("A save deletion is already active"));
+    }
+    const operation = deletePreparedSave(moduleId, path);
+    deletePromise = operation;
+    void operation.finally(() => {
+      if (deletePromise === operation) deletePromise = null;
+    }).catch(() => undefined);
+    return operation;
+  }
+
+  /** Execute a validated Home deletion against its module-bound storage. */
+  async function deletePreparedSave(
+    moduleId: string,
+    path: string,
+  ): Promise<HomePreparation> {
+    const owner = currentModule;
+    if (
+      !owner
+      || owner.closed
+      || owner.moduleId !== moduleId
+      || !owner.storage
+      || !owner.preparation
+    ) {
+      throw new Error("Save deletion does not belong to the current Home module");
+    }
+    if (owner.session) {
+      throw new Error("Cannot delete a save while an active session owns Home");
+    }
+    if (!owner.preparation.saves.some((save) => save.path === path)) {
+      throw new Error("Save path is not listed by the current Home module");
+    }
+
+    await owner.storage.deleteSave(path);
+    assertCurrentHomeModule(owner);
+    const saves = await owner.storage.listSaves();
+    assertCurrentHomeModule(owner);
+
+    const preparation = { ...owner.preparation, saves };
+    owner.preparation = preparation;
+    options.dispatch({
+      type: "HOME_SAVES_UPDATED",
+      moduleId,
+      saves,
+    });
+    return preparation;
   }
 
   /** Register the callback owned by one session and module. */
@@ -473,6 +537,7 @@ export function createSessionManager(
   return {
     initialize,
     startSession,
+    deleteSave,
     cleanupSession,
     dispose,
     getActiveSession: () => currentModule?.session?.handle ?? null,
@@ -494,6 +559,13 @@ export function createSessionManager(
       withActiveSession(() => submitExtendedCommand(sourceIndex)),
     dismissDisplay: () => withActiveSession(dismissDisplay),
   };
+}
+
+/** Throw when a storage operation no longer belongs to the current Home. */
+function assertCurrentHomeModule(record: ModuleRecord): void {
+  if (record.closed || record.session) {
+    throw new Error(`Module ${record.moduleId} no longer owns Home`);
+  }
 }
 
 /** Throw when an asynchronous result belongs to an obsolete module. */

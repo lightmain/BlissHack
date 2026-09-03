@@ -1,3 +1,5 @@
+import type { SaveListEntry } from "../storage/storage-service";
+
 /** Lifecycle statuses for a module before it is claimed by a game session. */
 export type BootStatus = "loading-module" | "loading-storage";
 
@@ -37,6 +39,11 @@ export type AppAction =
   }
   | { type: "SAVE_PICKER_OPENED"; moduleId: string }
   | { type: "SAVE_PICKER_CLOSED"; moduleId: string }
+  | {
+    type: "HOME_SAVES_UPDATED";
+    moduleId: string;
+    saves: SaveListEntry[];
+  }
   | { type: "NEW_GAME"; moduleId: string; sessionId: string }
   | { type: "CONTINUE_GAME"; moduleId: string; sessionId: string }
   | { type: "SESSION_CREATED"; moduleId: string; sessionId: string }
@@ -100,6 +107,15 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return isCurrentModule(state, action.moduleId)
         && state.phase === "home"
         ? { ...state, savePickerOpen: false }
+        : state;
+    case "HOME_SAVES_UPDATED":
+      return isCurrentModule(state, action.moduleId)
+        && state.phase === "home"
+        ? {
+          ...state,
+          savePickerOpen: state.savePickerOpen
+            && action.saves.some((save) => save.status === "ready"),
+        }
         : state;
     case "NEW_GAME":
     case "CONTINUE_GAME":

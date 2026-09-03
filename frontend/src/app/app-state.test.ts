@@ -83,6 +83,28 @@ describe("appReducer legal transitions", () => {
     })).toEqual(home);
   });
 
+  it("closes the save picker when no ready saves remain after deletion", () => {
+    const opened = appReducer(homeState(), {
+      type: "SAVE_PICKER_OPENED",
+      moduleId: "module-1",
+    });
+
+    expect(appReducer(opened, {
+      type: "HOME_SAVES_UPDATED",
+      moduleId: "module-1",
+      saves: [{
+        path: "/save/0Broken",
+        status: "invalid",
+        error: "Save is incompatible or damaged",
+      }],
+    })).toEqual({
+      phase: "home",
+      moduleId: "module-1",
+      savePickerOpen: false,
+      storageAvailable: true,
+    });
+  });
+
   it("claims the prepared module and starts a session", () => {
     const starting = appReducer(homeState(), {
       type: "NEW_GAME",

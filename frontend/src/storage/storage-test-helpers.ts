@@ -19,6 +19,7 @@ export interface StorageModuleHarness {
       readdir: ReturnType<typeof vi.fn>;
       stat: ReturnType<typeof vi.fn>;
       syncfs: ReturnType<typeof vi.fn>;
+      unlink: ReturnType<typeof vi.fn>;
       writeFile: ReturnType<typeof vi.fn>;
     };
     IDBFS?: object;
@@ -81,6 +82,9 @@ export function createStorageModuleHarness(
         populate,
         complete: (error?: unknown) => callback(error ?? null),
       });
+    }),
+    unlink: vi.fn((path: string) => {
+      if (!files.delete(path)) throw new Error(`ENOENT: ${path}`);
     }),
     writeFile: vi.fn((path: string, bytes: Uint8Array) => {
       files.set(path, bytes.slice());
