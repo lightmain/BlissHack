@@ -229,9 +229,14 @@ test("enumerates a persisted save after returning home and refreshing", async ({
   await page.locator(".home-footer").click();
   await expect(page.getByRole("dialog", { name: "Saved games" })).toHaveCount(0);
   await page.getByRole("button", { name: "Continue" }).click();
-  await expect(page.getByRole("button", {
+  const saveChoice = page.getByRole("button", {
     name: new RegExp(`^${name}\\b`),
-  })).toBeVisible();
+  });
+  await expect(saveChoice).toBeVisible();
+  await expect(saveChoice.locator("small")).toHaveText(
+    /^[A-Za-z]{3} · [A-Za-z]{3} · [A-Za-z]{3} · [A-Za-z]{3}$/,
+  );
+  await expect(saveChoice).not.toContainText("Ready to continue");
   expect(errors).toEqual({ console: [], page: [] });
 });
 
