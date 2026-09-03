@@ -237,7 +237,14 @@ export function SavePickerPopover({
               >
                 <span>{label}</span>
                 <small>
-                  {ready ? "Ready to continue" : save.error}
+                  {ready
+                    ? [
+                      save.identity.role,
+                      save.identity.race,
+                      save.identity.gender,
+                      save.identity.alignment,
+                    ].join(" · ")
+                    : save.error}
                 </small>
               </button>
               {ready && (

@@ -39,6 +39,8 @@ describe("SavePickerPopover", () => {
     expect(html).toMatch(/role="dialog"/);
     expect(html).toMatch(/aria-label="Saved games"/);
     expect(html).toMatch(/Ada/);
+    expect(html).toMatch(/Wiz · Hum · Fem · Neu/);
+    expect(html).not.toMatch(/Ready to continue/);
     expect(html).toMatch(/incompatible|damaged/i);
     expect(html).toMatch(/<button[^>]*disabled[^>]*>[\s\S]*Broken/i);
     expect(html).toMatch(/Import save/i);
