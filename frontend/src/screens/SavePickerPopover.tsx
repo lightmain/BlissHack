@@ -95,7 +95,7 @@ export function SavePickerPopover({
     if (!file || transferPending) return;
     if (file.size === 0 || file.size > MAX_RAW_SAVE_BYTES) {
       setOperationError({
-        title: "导入失败",
+        title: "Import failed",
         message: file.size === 0
           ? "Save file is empty"
           : "Save file exceeds the 64 MiB limit",
@@ -120,7 +120,7 @@ export function SavePickerPopover({
       }
     } catch (error) {
       setOperationError({
-        title: "导入失败",
+        title: "Import failed",
         message: operationErrorMessage(error, "Could not import save"),
       });
     } finally {
@@ -145,7 +145,7 @@ export function SavePickerPopover({
     } catch (error) {
       setImportConflict(null);
       setOperationError({
-        title: "导入失败",
+        title: "Import failed",
         message: operationErrorMessage(error, "Could not replace save"),
       });
     } finally {
@@ -161,7 +161,7 @@ export function SavePickerPopover({
       await onExport(save);
     } catch (error) {
       setOperationError({
-        title: "导出失败",
+        title: "Export failed",
         message: operationErrorMessage(error, "Could not export save"),
       });
     } finally {
@@ -185,7 +185,7 @@ export function SavePickerPopover({
             key={importSuccessSerial}
             role="status"
           >
-            导入成功
+            Import successful
           </span>
         )}
         <button
@@ -321,20 +321,20 @@ export function SaveConflictDialog({
       onPointerDown={(event) => event.stopPropagation()}
     >
       <section
-        aria-label="存档冲突"
+        aria-label="Save conflict"
         aria-modal="true"
         className="save-modal"
         role="dialog"
       >
-        <h2>存档冲突</h2>
-        <p>同名角色已经存在。请选择取消或覆盖。</p>
+        <h2>Save conflict</h2>
+        <p>A save for this character already exists. Choose Cancel or Overwrite.</p>
         <div className="save-conflict-comparison">
           <SaveSummary label="Existing" summary={conflict.existing} />
           <SaveSummary label="Incoming" summary={conflict.incoming} />
         </div>
         <div className="save-modal-actions">
           <button autoFocus disabled={pending} onClick={onCancel} type="button">
-            取消
+            Cancel
           </button>
           <button
             className="save-modal-danger"
@@ -342,7 +342,7 @@ export function SaveConflictDialog({
             onClick={onOverwrite}
             type="button"
           >
-            覆盖
+            Overwrite
           </button>
         </div>
       </section>
@@ -360,7 +360,7 @@ interface SaveImportErrorDialogProps {
 export function SaveImportErrorDialog({
   message,
   onConfirm,
-  title = "导入失败",
+  title = "Import failed",
 }: SaveImportErrorDialogProps) {
   return (
     <div
@@ -377,7 +377,7 @@ export function SaveImportErrorDialog({
         <h2>{title}</h2>
         <p>{message}</p>
         <div className="save-modal-actions">
-          <button autoFocus onClick={onConfirm} type="button">确定</button>
+          <button autoFocus onClick={onConfirm} type="button">OK</button>
         </div>
       </section>
     </div>

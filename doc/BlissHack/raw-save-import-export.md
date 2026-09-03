@@ -70,14 +70,14 @@ Historical save 不包含可直接作为“保存时间”的 wall-clock timesta
 导入成功后：
 
 1. 重新枚举 `/save`；
-2. 在 Import 按钮上方短暂显示“导入成功”；
+2. 在 Import 按钮上方短暂显示 `Import successful`；
 3. popover 保持打开，新存档立即出现在列表中；
 4. 成功提示自动消失，不改变 Home 生命周期。
 
 普通导入失败时：
 
 1. 显示阻塞式错误对话框；
-2. 对话框只有“确定”按钮；
+2. 对话框只有 `OK` 按钮；
 3. 点击后关闭对话框和 save popover，返回正常 Home；
 4. 正式 save 和列表保持不变。
 
@@ -94,8 +94,9 @@ Historical save 不包含可直接作为“保存时间”的 wall-clock timesta
 
 操作只有：
 
-- 取消：不修改 FS，关闭冲突对话框，保留 save popover；
-- 覆盖：执行覆盖事务，成功后重新枚举并显示“导入成功”。
+- `Cancel`：不修改 FS，关闭冲突对话框，保留 save popover；
+- `Overwrite`：执行覆盖事务，成功后重新枚举并显示
+  `Import successful`。
 
 冲突判断只按规范化目标路径，不按上传文件名。用户不能把导入文件重命名为
 另一个角色，也不能静默覆盖。
@@ -136,6 +137,6 @@ module-bound storage queue。React screen 不直接操作 Emscripten FS。
 - Import、Export 只出现在 Home save popover。
 - 没有本地存档时仍能打开 popover 并导入。
 - 冲突对话框展示双方时间及 role/race/gender/alignment。
-- 普通失败需要“确定”，确认后回到正常 Home。
+- 普通失败需要 `OK`，确认后回到正常 Home。
 - 成功提示短暂显示，新存档出现在重新枚举后的列表中。
 - Playwright 捕获下载并逐字节比较，再删除、上传并 Continue 同一角色。
