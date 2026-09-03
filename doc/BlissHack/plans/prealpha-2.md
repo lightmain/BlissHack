@@ -455,7 +455,7 @@ reducer 处理。
 - 真实 `/save` 文件继续是唯一事实来源，不增加 sidecar index。
 
 完整格式、事务和 UI 设计见
-`doc/BlissHack/raw-save-import-export.md`。
+`doc/BlissHack/plans/in-prealpha-2/raw-save-import-export.md`。
 
 ### 5.1 保存并返回主菜单
 

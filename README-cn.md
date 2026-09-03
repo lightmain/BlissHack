@@ -94,8 +94,8 @@ npm run test:integration
 
 - [prealpha-1 计划](doc/BlissHack/plans/prealpha-1.md)
 - [prealpha-2 计划](doc/BlissHack/plans/prealpha-2.md)
-- [存档存储与读取方案评审](doc/BlissHack/save-format-review.md)
-- [Game Module 生命周期](doc/BlissHack/module-lifecycle.md)
+- [存档存储与读取方案评审](doc/BlissHack/plans/in-prealpha-2/save-format-review.md)
+- [Game Module 生命周期](doc/BlissHack/plans/in-prealpha-2/module-lifecycle.md)
 - [WASM 构建流程](doc/BlissHack/build-process.md)
 - [Shim 接口参考](doc/BlissHack/shim-interface-reference.md)
 - [按键输入参考](doc/BlissHack/key-input-reference.md)
