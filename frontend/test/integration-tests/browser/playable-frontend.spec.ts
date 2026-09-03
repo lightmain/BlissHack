@@ -274,9 +274,20 @@ test("deletes a saved game only after confirmation and persists deletion", async
   await expect(deleteButton).toBeVisible();
 
   await deleteButton.click();
-  await expect(savePicker.getByText("Sure?", { exact: true })).toBeVisible();
+  const confirmation = savePicker.getByText("Sure?", { exact: true });
+  await expect(confirmation).toBeVisible();
   await expect(saveEntry).toBeVisible();
   await expect(continueButton).toBeEnabled();
+  const [confirmationBox, deleteButtonBox] = await Promise.all([
+    confirmation.boundingBox(),
+    deleteButton.boundingBox(),
+  ]);
+  expect(Math.abs(
+    (confirmationBox?.x ?? 0) + (confirmationBox?.width ?? 0) / 2
+      - (deleteButtonBox?.x ?? 0) - (deleteButtonBox?.width ?? 0) / 2,
+  )).toBeLessThan(1);
+  expect((confirmationBox?.y ?? 0) + (confirmationBox?.height ?? 0))
+    .toBeLessThan(deleteButtonBox?.y ?? 0);
 
   await deleteButton.click();
   await expect(saveEntry).toHaveCount(0);

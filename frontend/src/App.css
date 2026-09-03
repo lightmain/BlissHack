@@ -343,8 +343,8 @@
 
 .save-delete-confirmation {
   position: absolute;
-  right: 6px;
-  bottom: calc(100% + 3px);
+  bottom: calc(100% - 5px);
+  left: 50%;
   z-index: 1;
   padding: 3px 5px;
   border: 1px solid #df5555;
@@ -353,6 +353,7 @@
   color: #ff8b8b;
   font-size: 13px;
   line-height: 1;
+  transform: translateX(-50%);
   white-space: nowrap;
 }
 

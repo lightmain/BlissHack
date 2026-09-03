@@ -80,9 +80,6 @@ export function SavePickerPopover({
               className={`save-picker-entry${ready ? "" : " save-picker-entry-invalid"}`}
               key={save.path}
             >
-              {confirming && !deleting && (
-                <span className="save-delete-confirmation">Sure?</span>
-              )}
               <button
                 className="save-picker-choice"
                 disabled={!ready}
@@ -97,6 +94,9 @@ export function SavePickerPopover({
                 </small>
               </button>
               <div className="save-delete-control">
+                {confirming && !deleting && (
+                  <span className="save-delete-confirmation">Sure?</span>
+                )}
                 <button
                   aria-label={`Delete save ${label}`}
                   className="save-delete-button"
