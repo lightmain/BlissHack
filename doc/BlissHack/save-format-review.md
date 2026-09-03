@@ -3,9 +3,9 @@
 本文记录 prealpha-2 阶段二开始前的存档调查、已确认决策和待讨论问题。
 结论依据当前 NetHack 5.0 源码、WASM 构建配置和 Emscripten 运行时。
 
-阶段二只处理浏览器内的保存、枚举和继续游戏。阶段三的导入、导出格式、
-扩展名、完整性校验、大小限制和覆盖策略留到阶段三开始前单独评审，本文件
-不预设 BlissHack 容器或原始文件导出方案。
+阶段二只处理浏览器内的保存、枚举和继续游戏。阶段三开始时已经完成
+raw save 导入导出评审；本文件第 8 节记录结论，详细设计见
+`doc/BlissHack/raw-save-import-export.md`。
 
 ## 1. 原版 NetHack 的文件模型
 
@@ -213,18 +213,18 @@ Continue 启动流程：
 
 真实 `/save` 文件仍是唯一事实来源，不引入 sidecar index。
 
-## 8. 阶段三边界
+## 8. 阶段三 Raw Save 决策
 
-阶段三开始前重新讨论：
+阶段三第一版只导入和导出未经包装的 NetHack historical binary save：
 
-- 下载的是裸 NetHack save 还是带 manifest 的容器；
-- 扩展名和 MIME type；
-- checksum、build ID 和兼容性信息；
-- 导入大小限制；
-- 文件名、冲突、替换和回滚策略；
-- 是否需要可重建的 sidecar index。
+- IDBFS 文件 bytes 与下载、上传 bytes 保持一致；
+- 不增加 BlissHack 容器、manifest、checksum 或 build ID；
+- 不集成 `sfctool` portable format，也不承诺跨 ABI 恢复；
+- 导入限制为单文件 64 MiB，目标名从 save 身份块读取；
+- 同名覆盖必须展示双方文件时间和角色四项 filecode，并支持取消和事务回滚；
+- 不增加 sidecar index，真实 `/save` 仍是唯一事实来源。
 
-本阶段不对这些问题作决定。
+详细设计见 `doc/BlissHack/raw-save-import-export.md`。
 
 ## 9. 阶段二确认结果
 
@@ -232,7 +232,8 @@ Continue 启动流程：
 2. 不修改 NetHack 内部存档格式。
 3. 每局 game module 在进入首页读取存档时创建，随后由同一局调用一次
    `main()`。
-4. 阶段三导入导出方案推迟到阶段三评审。
+4. 阶段三第一版使用 raw historical save，不增加 BlissHack 容器或
+   `sfctool` 转换。
 5. 当前 WASM 生成 `/save/0<角色名>`，没有 `.Z` 后缀。
 6. 列表校验使用 C fingerprint 和 TypeScript 最小 header 解析；核心恢复
    仍是最终校验。

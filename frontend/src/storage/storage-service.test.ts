@@ -10,7 +10,7 @@ type SaveValidation =
   | { status: "invalid"; error: string };
 
 /** Save-list record produced from a candidate path and its validation. */
-type SaveListEntry = { path: string } & SaveValidation;
+type SaveListEntry = { path: string; modifiedAt: number | null } & SaveValidation;
 
 /** Metadata validator backed in production by the narrow shim C interface. */
 type MetadataValidator = (
@@ -198,6 +198,7 @@ describe("save file access", () => {
     const harness = createStorageModuleHarness();
     const validatedSave: SaveListEntry = {
       path: "/save/0Ada",
+      modifiedAt: 0,
       status: "ready",
       identity: { playerName: "Ada" },
     };
@@ -240,6 +241,7 @@ describe("save file access", () => {
 
     await expect(service.listSaves()).resolves.toEqual([{
       path: "/save/0Broken",
+      modifiedAt: 0,
       status: "invalid",
       error: "Save is incompatible or damaged",
     }]);

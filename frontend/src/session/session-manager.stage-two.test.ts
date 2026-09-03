@@ -10,9 +10,14 @@ import {
 
 interface ValidatedSave {
   path: string;
+  modifiedAt: number | null;
   status: "ready";
   identity: {
     playerName: string;
+    role: string;
+    race: string;
+    gender: string;
+    alignment: string;
   };
 }
 
@@ -52,7 +57,26 @@ interface StorageServiceFake {
     typeof vi.fn<(path: string, bytes: Uint8Array) => Promise<void>>
   >;
   deleteSave: ReturnType<typeof vi.fn<(path: string) => Promise<void>>>;
+  exportSave: ReturnType<
+    typeof vi.fn<(path: string) => Promise<Uint8Array>>
+  >;
+  importSave: ReturnType<
+    typeof vi.fn<
+      (request: unknown) => Promise<{ status: "imported"; path: string }>
+    >
+  >;
   flush: ReturnType<typeof vi.fn<() => Promise<void>>>;
+}
+
+/** Create complete metadata for a ready save fixture. */
+function identity(playerName: string): ValidatedSave["identity"] {
+  return {
+    playerName,
+    role: "Wiz",
+    race: "Hum",
+    gender: "Fem",
+    alignment: "Neu",
+  };
 }
 
 type ShimCallback = (name: string, ...args: unknown[]) => Promise<unknown>;
@@ -145,8 +169,9 @@ describe("home module ownership", () => {
       kind: "continue" as const,
       save: {
         path: "/save/0Ada",
+        modifiedAt: 1_700_000_000_000,
         status: "ready" as const,
-        identity: { playerName: "Ada" },
+        identity: identity("Ada"),
       },
     },
   ])("prepares before home and lets $kind claim that module once", async (request) => {
@@ -165,6 +190,8 @@ describe("home module ownership", () => {
       readSave: vi.fn(async () => Uint8Array.of(1, 2, 3)),
       restoreOriginalSave: vi.fn(async () => undefined),
       deleteSave: vi.fn(async () => undefined),
+      exportSave: vi.fn(async () => new Uint8Array()),
+      importSave: vi.fn(async () => ({ status: "imported", path: "/save/0Ada" })),
       flush: vi.fn(async () => undefined),
     };
     const factory = vi.fn(async () => {
@@ -240,8 +267,9 @@ describe("home module ownership", () => {
     const module = createModuleHarness();
     const save: ValidatedSave = {
       path: "/save/0Ada",
+      modifiedAt: 1_700_000_000_000,
       status: "ready",
-      identity: { playerName: "Ada" },
+      identity: identity("Ada"),
     };
     const originalBytes = Uint8Array.of(0x10, 0x20, 0x30);
     const storage: StorageServiceFake = {
@@ -250,6 +278,8 @@ describe("home module ownership", () => {
       readSave: vi.fn(async () => originalBytes.slice()),
       restoreOriginalSave: vi.fn(async () => undefined),
       deleteSave: vi.fn(async () => undefined),
+      exportSave: vi.fn(async () => new Uint8Array()),
+      importSave: vi.fn(async () => ({ status: "imported", path: "/save/0Ada" })),
       flush: vi.fn(async () => undefined),
     };
     const callbackHost: Record<string, unknown> = {};
@@ -309,8 +339,9 @@ describe("home save deletion", () => {
     const module = createModuleHarness();
     const save: ValidatedSave = {
       path: "/save/0Ada",
+      modifiedAt: 1_700_000_000_000,
       status: "ready",
-      identity: { playerName: "Ada" },
+      identity: identity("Ada"),
     };
     const storage: StorageServiceFake = {
       initialize: vi.fn(async () => true),
@@ -320,6 +351,8 @@ describe("home save deletion", () => {
       readSave: vi.fn(async () => new Uint8Array()),
       restoreOriginalSave: vi.fn(async () => undefined),
       deleteSave: vi.fn(async () => undefined),
+      exportSave: vi.fn(async () => new Uint8Array()),
+      importSave: vi.fn(async () => ({ status: "imported", path: "/save/0Ada" })),
       flush: vi.fn(async () => undefined),
     };
     const dispatch = vi.fn<(action: AppAction) => void>();
@@ -355,8 +388,9 @@ describe("home save deletion", () => {
     const module = createModuleHarness();
     const save: ValidatedSave = {
       path: "/save/0Ada",
+      modifiedAt: 1_700_000_000_000,
       status: "ready",
-      identity: { playerName: "Ada" },
+      identity: identity("Ada"),
     };
     const storage: StorageServiceFake = {
       initialize: vi.fn(async () => true),
@@ -364,6 +398,8 @@ describe("home save deletion", () => {
       readSave: vi.fn(async () => new Uint8Array()),
       restoreOriginalSave: vi.fn(async () => undefined),
       deleteSave: vi.fn(async () => undefined),
+      exportSave: vi.fn(async () => new Uint8Array()),
+      importSave: vi.fn(async () => ({ status: "imported", path: "/save/0Ada" })),
       flush: vi.fn(async () => undefined),
     };
     const manager = createStageTwoManager({
@@ -398,8 +434,9 @@ describe("home save deletion", () => {
     const module = createModuleHarness();
     const save: ValidatedSave = {
       path: "/save/0Ada",
+      modifiedAt: 1_700_000_000_000,
       status: "ready",
-      identity: { playerName: "Ada" },
+      identity: identity("Ada"),
     };
     const storage: StorageServiceFake = {
       initialize: vi.fn(async () => true),
@@ -407,6 +444,8 @@ describe("home save deletion", () => {
       readSave: vi.fn(async () => new Uint8Array()),
       restoreOriginalSave: vi.fn(async () => undefined),
       deleteSave: vi.fn(async () => undefined),
+      exportSave: vi.fn(async () => new Uint8Array()),
+      importSave: vi.fn(async () => ({ status: "imported", path: "/save/0Ada" })),
       flush: vi.fn(async () => undefined),
     };
     const manager = createStageTwoManager({
@@ -444,6 +483,8 @@ describe("module retirement ordering", () => {
       readSave: vi.fn(async () => new Uint8Array()),
       restoreOriginalSave: vi.fn(async () => undefined),
       deleteSave: vi.fn(async () => undefined),
+      exportSave: vi.fn(async () => new Uint8Array()),
+      importSave: vi.fn(async () => ({ status: "imported", path: "/save/0Ada" })),
       flush: vi.fn(() => {
         order.push("flush:first");
         return flush.promise;
@@ -461,6 +502,8 @@ describe("module retirement ordering", () => {
       readSave: vi.fn(async () => new Uint8Array()),
       restoreOriginalSave: vi.fn(async () => undefined),
       deleteSave: vi.fn(async () => undefined),
+      exportSave: vi.fn(async () => new Uint8Array()),
+      importSave: vi.fn(async () => ({ status: "imported", path: "/save/0Ada" })),
       flush: vi.fn(async () => undefined),
     };
     const modules = [firstModule.module, secondModule.module];

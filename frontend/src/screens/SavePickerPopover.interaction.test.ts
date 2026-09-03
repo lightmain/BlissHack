@@ -50,6 +50,14 @@ interface DeletableSavePickerProps {
   moduleId: string;
   onContinue: (save: SaveListEntry) => void;
   onDelete: (save: SaveListEntry) => Promise<void>;
+  onExport: (save: SaveListEntry) => Promise<void>;
+  onImport: (
+    request: {
+      bytes: Uint8Array;
+      modifiedAt: number | null;
+      overwrite: boolean;
+    },
+  ) => Promise<{ status: "imported" }>;
   saves: SaveListEntry[];
 }
 
@@ -60,19 +68,37 @@ type DeletableSavePicker = (
 const saves: SaveListEntry[] = [
   {
     path: "/save/0Ada",
+    modifiedAt: 1_700_000_000_000,
     status: "ready",
-    identity: { playerName: "Ada" },
+    identity: {
+      playerName: "Ada",
+      role: "Wiz",
+      race: "Hum",
+      gender: "Fem",
+      alignment: "Neu",
+    },
   },
   {
     path: "/save/0Bob",
+    modifiedAt: 1_710_000_000_000,
     status: "ready",
-    identity: { playerName: "Bob" },
+    identity: {
+      playerName: "Bob",
+      role: "Arc",
+      race: "Hum",
+      gender: "Mal",
+      alignment: "Law",
+    },
   },
 ];
 
 /** Render one Popover pass while retaining hook state between passes. */
 function renderPicker(
   onDelete: DeletableSavePickerProps["onDelete"],
+  onExport: DeletableSavePickerProps["onExport"] = async () => undefined,
+  onImport: DeletableSavePickerProps["onImport"] = async () => ({
+    status: "imported",
+  }),
 ): ReactElement {
   hooks.beginRender();
   const Component = SavePickerPopover as unknown as DeletableSavePicker;
@@ -80,6 +106,8 @@ function renderPicker(
     moduleId: "module-1",
     onContinue: vi.fn(),
     onDelete,
+    onExport,
+    onImport,
     saves,
   });
 }
@@ -125,6 +153,29 @@ function clickDelete(tree: ReactElement, playerName: string): unknown {
 async function flushPromises(): Promise<void> {
   await Promise.resolve();
   await Promise.resolve();
+}
+
+/** Find the raw save file input. */
+function importInput(tree: ReactElement): ReactElement<{
+  onChange?: (event: {
+    currentTarget: {
+      files: Array<{
+        name: string;
+        size: number;
+        lastModified: number;
+        arrayBuffer(): Promise<ArrayBuffer>;
+      }>;
+      value: string;
+    };
+  }) => unknown;
+}> {
+  const input = allElements(tree).find((element) => {
+    const props = element.props as Record<string, unknown>;
+    return element.type === "input"
+      && props["aria-label"] === "Import save file";
+  });
+  expect(input, "missing Import save input").toBeDefined();
+  return input as ReturnType<typeof importInput>;
 }
 
 beforeEach(() => {
@@ -194,5 +245,48 @@ describe("SavePickerPopover deletion confirmation", () => {
     expect(html).toMatch(/Could not delete save/);
     expect(html).toMatch(/>Ada</);
     expect(deleteButton(tree, "Ada")).toBeDefined();
+  });
+});
+
+describe("SavePickerPopover raw save transfer", () => {
+  it("routes export through the ready save action", () => {
+    const onExport = vi.fn(async () => undefined);
+    const tree = renderPicker(async () => undefined, onExport);
+    const button = allElements(tree).find((element) => {
+      const props = element.props as Record<string, unknown>;
+      return props["aria-label"] === "Export save Ada";
+    }) as ReactElement<{ onClick?: () => unknown }> | undefined;
+
+    expect(button).toBeDefined();
+    button?.props.onClick?.();
+    expect(onExport).toHaveBeenCalledWith(saves[0]);
+  });
+
+  it("reads one file, ignores its name for identity, and shows success", async () => {
+    const bytes = Uint8Array.of(0x68, 0x01, 0x02);
+    const onImport = vi.fn(async () => ({ status: "imported" as const }));
+    let tree = renderPicker(async () => undefined, undefined, onImport);
+    const input = importInput(tree);
+    const currentTarget = {
+      files: [{
+        name: "renamed.bin",
+        size: bytes.length,
+        lastModified: 1_725_000_000_000,
+        arrayBuffer: async () => bytes.buffer,
+      }],
+      value: "renamed.bin",
+    };
+
+    await input.props.onChange?.({ currentTarget });
+    await flushPromises();
+    tree = renderPicker(async () => undefined, undefined, onImport);
+
+    expect(onImport).toHaveBeenCalledWith({
+      bytes,
+      modifiedAt: 1_725_000_000_000,
+      overwrite: false,
+    });
+    expect(currentTarget.value).toBe("");
+    expect(renderToStaticMarkup(tree)).toMatch(/导入成功/);
   });
 });

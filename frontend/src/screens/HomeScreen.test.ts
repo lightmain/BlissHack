@@ -69,17 +69,17 @@ describe("HomeScreen", () => {
     expect(settingsIndex).toBeGreaterThan(continueIndex);
   });
 
-  it("uses native disabled attributes for Continue and Settings only", () => {
+  it("keeps Home actions native and disables only unfinished Settings", () => {
     const html = renderToStaticMarkup(createElement(HomeScreen, {
       onNewGame: vi.fn(),
     }));
 
     expect(buttonMarkup(html, "New Game")).not.toMatch(/\sdisabled(?:=|>)/i);
-    expect(buttonMarkup(html, "Continue")).toMatch(/\sdisabled(?:=""|>)/i);
+    expect(buttonMarkup(html, "Continue")).not.toMatch(/\sdisabled(?:=""|>)/i);
     expect(buttonMarkup(html, "Settings")).toMatch(/\sdisabled(?:=""|>)/i);
   });
 
-  it("enables Continue only when persistent storage has a validated save", () => {
+  it("enables Continue with persistent storage even when import is the only action", () => {
     const StageTwoHome = HomeScreen as ComponentType<StageTwoHomeProps>;
     const enabled = renderToStaticMarkup(createElement(StageTwoHome, {
       hasSaves: true,
@@ -97,7 +97,7 @@ describe("HomeScreen", () => {
     expect(buttonMarkup(enabled, "Continue")).not.toMatch(
       /\sdisabled(?:=""|>)/i,
     );
-    expect(buttonMarkup(noSaves, "Continue")).toMatch(
+    expect(buttonMarkup(noSaves, "Continue")).not.toMatch(
       /\sdisabled(?:=""|>)/i,
     );
   });

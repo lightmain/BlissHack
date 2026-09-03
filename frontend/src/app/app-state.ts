@@ -111,11 +111,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     case "HOME_SAVES_UPDATED":
       return isCurrentModule(state, action.moduleId)
         && state.phase === "home"
-        ? {
-          ...state,
-          savePickerOpen: state.savePickerOpen
-            && action.saves.some((save) => save.status === "ready"),
-        }
+        ? { ...state }
         : state;
     case "NEW_GAME":
     case "CONTINUE_GAME":

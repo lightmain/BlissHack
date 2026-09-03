@@ -29,6 +29,7 @@ import {
   submitExtendedCommand,
   submitLine,
   submitMenuSelection,
+  validateSaveBytes,
   validateSaveMetadata,
   type EmscriptenModule,
 } from "./nethack-bridge";
@@ -328,7 +329,13 @@ describe("player setup and line input", () => {
   });
 
   it("sets a validated identity and required-restore flag before main", () => {
-    setStartupIdentity(harness.module, { playerName: "Ada" });
+    setStartupIdentity(harness.module, {
+      playerName: "Ada",
+      role: "Wiz",
+      race: "Hum",
+      gender: "Fem",
+      alignment: "Neu",
+    });
     setRestoreRequired(harness.module, true);
 
     expect(harness.module.ccall).toHaveBeenCalledWith(
@@ -744,7 +751,11 @@ describe("files, history, extended commands, and lifecycle", () => {
     const save = new Uint8Array(fingerprint.length + 4 + 49);
     save.set(fingerprint);
     new DataView(save.buffer).setInt32(fingerprint.length, 49, true);
-    save.set(new TextEncoder().encode("Ada"), fingerprint.length + 4);
+    save.set(
+      new TextEncoder().encode("Ada\0Wiz-Hum-Fem-Neu"),
+      fingerprint.length + 4,
+    );
+    save[save.length - 1] = "-".charCodeAt(0);
     harness.files.set("/save/0Ada", save);
     vi.mocked(harness.module.ccall).mockImplementation((
       name,
@@ -762,7 +773,13 @@ describe("files, history, extended commands, and lifecycle", () => {
       "/save/0Ada",
     )).resolves.toEqual({
       status: "ready",
-      identity: { playerName: "Ada" },
+      identity: {
+        playerName: "Ada",
+        role: "Wiz",
+        race: "Hum",
+        gender: "Fem",
+        alignment: "Neu",
+      },
     });
     expect(harness.module.ccall).toHaveBeenCalledWith(
       "shim_graphics_get_save_fingerprint",
@@ -770,6 +787,43 @@ describe("files, history, extended commands, and lifecycle", () => {
       ["number", "number"],
       [expect.any(Number), 256],
     );
+  });
+
+  it("validates uploaded bytes without trusting their external file name", async () => {
+    const fingerprint = Uint8Array.of(104, 0);
+    const save = new Uint8Array(fingerprint.length + 4 + 49);
+    save.set(fingerprint);
+    new DataView(save.buffer).setInt32(fingerprint.length, 49, true);
+    save.set(
+      new TextEncoder().encode("Ada\0Wiz-Hum-Fem-Neu"),
+      fingerprint.length + 4,
+    );
+    save[save.length - 1] = "-".charCodeAt(0);
+    vi.mocked(harness.module.ccall).mockImplementation((
+      name,
+      _returnType,
+      _argumentTypes,
+      arguments_,
+    ) => {
+      if (name !== "shim_graphics_get_save_fingerprint") return undefined;
+      harness.memory.set(fingerprint, arguments_[0] as number);
+      return fingerprint.length;
+    });
+
+    await expect(validateSaveBytes(
+      harness.module as never,
+      save,
+    )).resolves.toEqual({
+      status: "ready",
+      identity: {
+        playerName: "Ada",
+        role: "Wiz",
+        race: "Hum",
+        gender: "Fem",
+        alignment: "Neu",
+      },
+    });
+    expect(harness.module.FS.readFile).not.toHaveBeenCalled();
   });
 
   it("parses the WASM extcmdlist and returns the selected source index", async () => {

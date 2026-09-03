@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { expect, test, type Page } from "@playwright/test";
 
 interface CapturedErrors {
@@ -27,7 +28,7 @@ function captureErrors(page: Page): CapturedErrors {
 async function startNewGame(page: Page, name: string): Promise<void> {
   await page.goto(`?integration=${encodeURIComponent(name)}`);
   await expect(page.getByRole("heading", { name: "BlissHack" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Continue" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Continue" })).toBeEnabled();
   await expect(page.getByRole("button", { name: "Settings" })).toBeDisabled();
   await expect(page.getByRole("textbox", { name: "Who are you?" })).toHaveCount(0);
   const [commands, identity] = await Promise.all([
@@ -295,10 +296,123 @@ test("deletes a saved game only after confirmation and persists deletion", async
 
   await deleteButton.click();
   await expect(saveEntry).toHaveCount(0);
-  await expect(continueButton).toBeDisabled();
+  await expect(continueButton).toBeEnabled();
+  await expect(savePicker.getByText("No saved games")).toBeVisible();
 
   await page.reload();
-  await expect(page.getByRole("button", { name: "Continue" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Continue" })).toBeEnabled();
+  expect(errors).toEqual({ console: [], page: [] });
+});
+
+test("exports, deletes, imports, and continues the same raw save", async ({
+  page,
+}) => {
+  const errors = captureErrors(page);
+  const name = "E2ERawTransfer";
+  await startNewGame(page, name);
+  await saveAndReturnHome(page);
+
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  const savePicker = page.getByRole("dialog", { name: "Saved games" });
+  const downloadPromise = page.waitForEvent("download");
+  await savePicker.getByRole("button", {
+    name: `Export save ${name}`,
+  }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe(`${name}.nhsave`);
+  const downloadPath = await download.path();
+  expect(downloadPath).not.toBeNull();
+  const rawBytes = await readFile(downloadPath!);
+  expect(rawBytes.byteLength).toBeGreaterThan(100);
+
+  const deleteButton = savePicker.getByRole("button", {
+    name: `Delete save ${name}`,
+  });
+  await deleteButton.click();
+  await deleteButton.click();
+  await expect(savePicker.getByText("No saved games")).toBeVisible();
+
+  await savePicker.getByLabel("Import save file").setInputFiles({
+    name: "renamed-by-user.bin",
+    mimeType: "application/octet-stream",
+    buffer: rawBytes,
+  });
+  await expect(savePicker.getByText("导入成功", { exact: true })).toBeVisible();
+  await expect(savePicker.getByRole("button", {
+    name: new RegExp(`^${name}\\b`),
+  })).toBeVisible();
+
+  await page.reload();
+  await continueSavedGame(page, name);
+  await expect(page.getByLabel(new RegExp(`${name} the .+, \\d+% HP`)))
+    .toBeVisible({ timeout: 15_000 });
+  expect(errors).toEqual({ console: [], page: [] });
+});
+
+test("shows raw save conflict details and requires cancel or overwrite", async ({
+  page,
+}) => {
+  const errors = captureErrors(page);
+  const name = "E2EConflict";
+  await startNewGame(page, name);
+  await saveAndReturnHome(page);
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  const savePicker = page.getByRole("dialog", { name: "Saved games" });
+  const downloadPromise = page.waitForEvent("download");
+  await savePicker.getByRole("button", {
+    name: `Export save ${name}`,
+  }).click();
+  const download = await downloadPromise;
+  const downloadPath = await download.path();
+  const rawBytes = await readFile(downloadPath!);
+
+  const input = savePicker.getByLabel("Import save file");
+  await input.setInputFiles({
+    name: "conflicting-save",
+    mimeType: "application/octet-stream",
+    buffer: rawBytes,
+  });
+  const conflict = page.getByRole("dialog", { name: "存档冲突" });
+  await expect(conflict).toBeVisible();
+  await expect(conflict.getByText("Existing", { exact: true })).toBeVisible();
+  await expect(conflict.getByText("Incoming", { exact: true })).toBeVisible();
+  await expect(conflict.getByText(/Role/)).toHaveCount(2);
+  await expect(conflict.getByText(/Race/)).toHaveCount(2);
+  await expect(conflict.getByText(/Gender/)).toHaveCount(2);
+  await expect(conflict.getByText(/Alignment/)).toHaveCount(2);
+  await conflict.getByRole("button", { name: "取消" }).click();
+  await expect(conflict).toHaveCount(0);
+
+  await input.setInputFiles({
+    name: "conflicting-save",
+    mimeType: "application/octet-stream",
+    buffer: rawBytes,
+  });
+  await page.getByRole("dialog", { name: "存档冲突" })
+    .getByRole("button", { name: "覆盖" }).click();
+  await expect(savePicker.getByText("导入成功", { exact: true })).toBeVisible();
+  expect(errors).toEqual({ console: [], page: [] });
+});
+
+test("acknowledges an invalid raw save and returns to normal Home", async ({
+  page,
+}) => {
+  const errors = captureErrors(page);
+  await page.goto("?integration=invalid-raw-import");
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  const savePicker = page.getByRole("dialog", { name: "Saved games" });
+  await savePicker.getByLabel("Import save file").setInputFiles({
+    name: "not-a-save.bin",
+    mimeType: "application/octet-stream",
+    buffer: Buffer.from([0x00, 0x01, 0x02]),
+  });
+
+  const errorDialog = page.getByRole("alertdialog", { name: "导入失败" });
+  await expect(errorDialog).toBeVisible();
+  await errorDialog.getByRole("button", { name: "确定" }).click();
+  await expect(errorDialog).toHaveCount(0);
+  await expect(savePicker).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "BlissHack" })).toBeVisible();
   expect(errors).toEqual({ console: [], page: [] });
 });
 

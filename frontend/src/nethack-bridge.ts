@@ -241,6 +241,33 @@ export async function validateSaveMetadata(
   storageModule: StorageModule,
   path: string,
 ): Promise<SaveValidation> {
+  const fileData = storageModule.FS.readFile(path);
+  if (typeof fileData === "string") {
+    return { status: "invalid", error: "Save is not binary data" };
+  }
+  const validation = await validateSaveBytes(storageModule, fileData);
+  if (validation.status === "invalid") return validation;
+
+  const fileName = path.slice(path.lastIndexOf("/") + 1);
+  if (fileName !== `0${validation.identity.playerName}`) {
+    return {
+      status: "invalid",
+      error: "Save identity does not match its file name",
+    };
+  }
+  return validation;
+}
+
+/**
+ * Validate raw save bytes before they are allowed into the formal save path.
+ * @param storageModule - module which supplies the current build fingerprint.
+ * @param fileData - untrusted uploaded bytes.
+ * @returns a ready identity or an explicit invalid result.
+ */
+export async function validateSaveBytes(
+  storageModule: StorageModule,
+  fileData: Uint8Array,
+): Promise<SaveValidation> {
   const module = storageModule as unknown as EmscriptenModule;
   const outputSize = 256;
   const outputPtr = module._malloc(outputSize);
@@ -258,10 +285,6 @@ export async function validateSaveMetadata(
       };
     }
 
-    const fileData = storageModule.FS.readFile(path);
-    if (typeof fileData === "string") {
-      return { status: "invalid", error: "Save is not binary data" };
-    }
     if (fileData.length < fingerprintSize + 4 + 49) {
       return { status: "invalid", error: "Save is truncated" };
     }
@@ -293,16 +316,40 @@ export async function validateSaveMetadata(
     if (nameEnd <= 0) {
       return { status: "invalid", error: "Save player name is invalid" };
     }
-    const playerName = new TextDecoder("utf-8", { fatal: true })
-      .decode(identity.subarray(0, nameEnd));
-    const fileName = path.slice(path.lastIndexOf("/") + 1);
-    if (!playerName || fileName !== `0${playerName}`) {
+    const detailsEnd = identity.indexOf(0, nameEnd + 1);
+    if (detailsEnd <= nameEnd + 1) {
       return {
         status: "invalid",
-        error: "Save identity does not match its file name",
+        error: "Save character identity is invalid",
       };
     }
-    return { status: "ready", identity: { playerName } };
+    try {
+      const decoder = new TextDecoder("utf-8", { fatal: true });
+      const playerName = decoder.decode(identity.subarray(0, nameEnd));
+      const details = decoder.decode(
+        identity.subarray(nameEnd + 1, detailsEnd),
+      ).split("-");
+      if (
+        !playerName
+        || details.length !== 4
+        || details.some((value) => !/^[A-Za-z]{3}$/.test(value))
+      ) {
+        return {
+          status: "invalid",
+          error: "Save character identity is invalid",
+        };
+      }
+      const [role, race, gender, alignment] = details;
+      return {
+        status: "ready",
+        identity: { playerName, role, race, gender, alignment },
+      };
+    } catch {
+      return {
+        status: "invalid",
+        error: "Save character identity is invalid",
+      };
+    }
   } finally {
     module._free(outputPtr);
   }

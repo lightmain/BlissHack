@@ -11,7 +11,10 @@ import {
 import { HomeScreen } from "./screens/HomeScreen";
 import { GameScreen } from "./screens/GameScreen";
 import { createSessionManager } from "./session/session-manager";
-import type { SaveListEntry } from "./storage/storage-service";
+import type {
+  RawSaveImportRequest,
+  SaveListEntry,
+} from "./storage/storage-service";
 
 /**
  * Render the top-level BlissHack state machine and active screen.
@@ -68,6 +71,26 @@ function App() {
     await sessionManager.deleteSave(state.moduleId, save.path);
   }
 
+  /** Import one user-selected raw save through the current Home module. */
+  async function importSave(request: RawSaveImportRequest) {
+    if (state.phase !== "home") {
+      throw new Error("Save import is only available from Home");
+    }
+    return sessionManager.importSave(state.moduleId, request);
+  }
+
+  /** Read one raw save and hand it to the browser download mechanism. */
+  async function exportSave(save: SaveListEntry): Promise<void> {
+    if (state.phase !== "home") {
+      throw new Error("Save export is only available from Home");
+    }
+    const exported = await sessionManager.exportSave(
+      state.moduleId,
+      save.path,
+    );
+    downloadRawSave(exported);
+  }
+
   if (state.phase === "booting") {
     return (
       <main className="app-loading" aria-label="BlissHack loading">
@@ -84,12 +107,13 @@ function App() {
       : [];
     return (
       <HomeScreen
-        hasSaves={saves.some((save) => save.status === "ready")}
         moduleId={state.moduleId}
         onContinue={openSavePicker}
         onContinueSave={continueGame}
         onDeleteSave={deleteSave}
         onDismissSavePicker={closeSavePicker}
+        onExportSave={exportSave}
+        onImportSave={importSave}
         onNewGame={startNewGame}
         savePickerOpen={state.savePickerOpen}
         saves={saves}
@@ -128,6 +152,25 @@ function App() {
   }
 
   return <GameScreen />;
+}
+
+/** Trigger one browser download and release its temporary object URL. */
+function downloadRawSave(exported: {
+  bytes: Uint8Array;
+  fileName: string;
+  mimeType: string;
+}): void {
+  const blob = new Blob([Uint8Array.from(exported.bytes).buffer], {
+    type: exported.mimeType,
+  });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = exported.fileName;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  globalThis.setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 export default App;

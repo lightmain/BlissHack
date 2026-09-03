@@ -147,6 +147,11 @@ function createHarness(modules: EmscriptenModule[]): {
       readSave: vi.fn(async () => new Uint8Array()),
       restoreOriginalSave: vi.fn(async () => undefined),
       deleteSave: vi.fn(async () => undefined),
+      exportSave: vi.fn(async () => new Uint8Array()),
+      importSave: vi.fn(async () => ({
+        status: "imported" as const,
+        path: "/save/0Ada",
+      })),
       flush: vi.fn(async () => undefined),
     }),
     dispatch,

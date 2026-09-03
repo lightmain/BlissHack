@@ -295,7 +295,8 @@ reducer 处理。
 - callback 全局名称不会碰撞，并在 session 结束后删除。
 - 对已经退出的 session 再次发送输入不会调用任何 resolver。
 - 重复清理同一 session 是幂等操作。
-- `Continue` 和 `Settings` 具有 disabled 属性。
+- `Settings` 始终具有 disabled 属性；`Continue` 只在持久存储不可用时
+  disabled，没有本地存档时仍可打开 Import。
 - 正常退出和保存退出最终都回到 `home`。
 - 在初始 `[ynaq]` 角色选择提示按 `q` 会结束 session 并回到 `home`。
 
@@ -370,8 +371,8 @@ reducer 处理。
    核心仍负责游戏流程中的正式 save 创建和消费。
 
 4. `/save` 只挂载一次，并在读取列表前执行 `syncfs(true)`。
-5. 所有 `syncfs` 操作通过同一异步队列串行化；首页删除复用该队列，阶段三
-   若增加 write 和 rename 也必须复用同一队列。
+5. 所有 `syncfs` 操作通过同一异步队列串行化；首页删除和阶段三导入的
+   write、rename、回滚均复用该队列。
 6. IndexedDB 中由 IDBFS 保存的文件内容必须保持为 NetHack 原版二进制
    save bytes，不转换为 JSON 或 BlissHack 容器。
 7. IndexedDB 不可用时：
@@ -442,15 +443,19 @@ reducer 处理。
 
 ### 5.0 导入导出设计评审门禁
 
-开始导入、导出或覆盖功能前，单独与用户确认：
+本阶段第一版已经确认只实现 raw NetHack historical save：
 
-- 裸 NetHack save 或 BlissHack 容器；
-- 扩展名、MIME type、manifest、checksum 和 build ID；
-- 文件和导入包大小限制；
-- 导入目标名、冲突、替换、备份和回滚策略；
-- 是否需要可重建的 sidecar index。
+- 不增加 BlissHack 容器、manifest、checksum 或 build ID；
+- 不实现 `sfctool` portable format 或跨 ABI 转换；
+- MIME type 使用 `application/octet-stream`，下载扩展名使用 `.nhsave`；
+- 单文件上限 64 MiB，上传文件名不参与身份判断；
+- 同名冲突由 save 内部角色名决定，必须显示双方文件时间以及
+  role/race/gender/alignment，并由用户选择取消或覆盖；
+- 覆盖采用临时文件、内存 bytes 备份和失败回滚；
+- 真实 `/save` 文件继续是唯一事实来源，不增加 sidecar index。
 
-阶段二的浏览器内存储方案不预先决定这些内容。
+完整格式、事务和 UI 设计见
+`doc/BlissHack/raw-save-import-export.md`。
 
 ### 5.1 保存并返回主菜单
 
@@ -470,9 +475,9 @@ reducer 处理。
 
 - 只能从主界面或存档列表导出，不在活动游戏中读取可能变化的文件。
 - 导出前等待所有 storage operations 完成。
-- 导出格式、扩展名和 MIME type 由本阶段开始时的导入导出评审确定。
+- 导出内容是 IDBFS 中未经包装的原始 NetHack save bytes。
+- 下载扩展名为 `.nhsave`，MIME type 为 `application/octet-stream`。
 - 导出文件名必须可读、可跨平台保存，不包含路径分隔符。
-- 导出内容是否包含额外版本和完整性信息由本阶段评审确定。
 - 导出不修改、删除或锁定原存档。
 - 下载失败时原存档保持不变，并显示可理解的错误。
 
@@ -482,14 +487,20 @@ reducer 处理。
 - 导入事务实现放在 `frontend/src/storage/storage-transaction.ts`，
   不写入 React screen 或 bridge。
 - 使用浏览器文件选择器读取，不接受远程 URL。
-- 在写入正式存档前完成本阶段评审所确定的格式、版本、大小、文件名和完整性
-  校验。
+- 每次只导入一个文件；空文件和超过 64 MiB 的文件在读取前拒绝。
+- 在写入正式存档前完成 raw save fingerprint、身份块和角色信息校验。
+- 上传文件名不决定目标；目标始终是身份块角色名对应的 `/save/0<角色名>`。
 - 不兼容文件不得写入正式路径。
 - 同名冲突必须让用户明确选择取消或替换，不允许静默覆盖。
-- 替换采用临时文件和备份文件，任何一步失败都恢复旧存档。
+- 冲突提示同时展示双方的文件修改时间以及
+  role/race/gender/alignment。
+- 替换采用临时文件和内存 bytes 备份，任何一步失败都恢复旧存档。
 - 导入成功的定义是正式文件可读且 `syncfs(false)` 成功。
 - 导入完成后重新从 IDBFS 枚举列表，不能只修改 React 内存。
-- 临时文件和备份文件在成功后清理；失败恢复所需备份不得提前删除。
+- 临时文件在成功后清理；失败恢复所需备份不得提前释放。
+- 没有本地存档时 Continue 仍可打开 popover，以便使用 Import。
+- 普通失败显示只有“确定”的错误对话框；确认后关闭 popover 回到 Home。
+- 成功后在 Import 按钮上方短暂显示“导入成功”，并立即显示重新枚举的列表。
 
 ### 5.4 阶段二删除功能边界
 
@@ -503,8 +514,8 @@ save，不决定导出格式、导入冲突或覆盖策略。阶段三增加导�
 - 连续点击保存只发送一次保存命令。
 - 玩家拒绝保存后回到 `playing`，不会返回主界面。
 - 核心退出但 flush 失败时不会报告成功。
-- 导出 bytes 与存储中的原文件完全一致或能从容器无损还原。
-- 无效版本、超大文件、checksum 错误和截断文件均被拒绝。
+- 导出 bytes 与存储中的原文件完全一致。
+- 无效版本、空文件、超大文件和截断文件均被拒绝。
 - 同名导入取消时不修改任何文件。
 - 同名替换成功时旧文件被新文件取代。
 - write、rename、delete 或 flush 任一步失败时旧文件 hash 不变。
@@ -514,7 +525,7 @@ save，不决定导出格式、导入冲突或覆盖策略。阶段三增加导�
 ### 5.6 自动验收标准
 
 - 所有存档操作单元测试通过。
-- Playwright 能捕获导出下载并验证导出包。
+- Playwright 能捕获导出下载并验证 raw save bytes。
 - Playwright 能上传刚导出的文件并继续该游戏。
 - 测试覆盖导入冲突的取消和替换路径。
 - 测试覆盖同步失败，不产生虚假的成功状态。
@@ -565,13 +576,12 @@ save，不决定导出格式、导入冲突或覆盖策略。阶段三增加导�
 
 ```text
 读取导入文件
-校验导入包
+校验 raw save
+读取旧文件 bytes 作为内存回滚备份（存在同名文件时）
 写入临时文件
 读取并验证临时文件
-将旧文件改名为备份
 将临时文件改名为正式文件
 syncfs(false)
-删除备份
 最终重新扫描
 ```
 

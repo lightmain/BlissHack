@@ -83,7 +83,7 @@ describe("appReducer legal transitions", () => {
     })).toEqual(home);
   });
 
-  it("closes the save picker when no ready saves remain after deletion", () => {
+  it("keeps the save picker open for importing when no ready saves remain", () => {
     const opened = appReducer(homeState(), {
       type: "SAVE_PICKER_OPENED",
       moduleId: "module-1",
@@ -94,13 +94,14 @@ describe("appReducer legal transitions", () => {
       moduleId: "module-1",
       saves: [{
         path: "/save/0Broken",
+        modifiedAt: null,
         status: "invalid",
         error: "Save is incompatible or damaged",
       }],
     })).toEqual({
       phase: "home",
       moduleId: "module-1",
-      savePickerOpen: false,
+      savePickerOpen: true,
       storageAvailable: true,
     });
   });
