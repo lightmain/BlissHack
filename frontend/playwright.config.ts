@@ -24,7 +24,7 @@ export default defineConfig({
   webServer: {
     command: `VITE_BASE_PATH=${deploymentBasePath} npm run build && VITE_BASE_PATH=${deploymentBasePath} npm run preview -- --host 127.0.0.1 --port 4174 --strictPort`,
     url: `${previewOrigin}${deploymentBasePath}`,
-    reuseExistingServer: false,
+    reuseExistingServer: !process.env.CI,
     timeout: 120_000,
   },
 });

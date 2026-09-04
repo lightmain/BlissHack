@@ -85,10 +85,11 @@ cd frontend
 npm test
 npm run lint
 npm run test:integration
+npm run test:long
 ```
 
 集成测试会运行真实 WASM 回调链和生产浏览器构建，覆盖启动、键盘输入、状态栏、
-存档和恢复流程。
+存档和恢复流程。长流程测试用于发布前重复验证游戏会话、继续保存和存档传输。
 
 ## 仓库文档
 
