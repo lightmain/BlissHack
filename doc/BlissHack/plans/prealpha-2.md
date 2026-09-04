@@ -640,112 +640,89 @@ syncfs(false) 失败后的内存回滚
 
 ## 7. 阶段五：致命错误页和本地诊断日志
 
-### 7.1 日志模型
+详细设计、事件清单、隐私限制和实现边界见
+`doc/BlissHack/plans/in-prealpha-2/fatal-errors-and-diagnostics.md`。
 
-新增容量固定为 500 条的环形缓冲区。第 501 条写入时覆盖最旧一条。
-日志默认存储在浏览器本地，并跨页面刷新保留，以便分析刷新前错误。
-实现放在 `frontend/src/diagnostics/diagnostic-log.ts`，致命错误界面放在
-`frontend/src/screens/FatalScreen.tsx`。
+### 7.1 诊断日志
 
-每条记录至少包括：
+- 按发生顺序保存最多 500 条低频诊断事件，第 501 条覆盖最早一条。
+- 诊断事件使用固定字段，包含顺序号、时间、严重程度、代码区域、事件名称、
+  错误编号、game module ID、游戏会话 ID 和经过限制的附加字段。
+- 诊断日志保存在浏览器 `localStorage` 的
+  `blisshack.diagnostics.v1`；保存失败后退化为本页内存日志。
+- GitHub Actions 构建使用 Git 提交编号作为构建编号，本地构建使用明确的开发
+  标识。
+- `warning`、`error` 和 `fatal` 同时向浏览器 Console 输出一行精简记录；
+  `info` 不输出到 Console。
 
-```ts
-interface DiagnosticEvent {
-  sequence: number;
-  timestamp: string;
-  level: "info" | "warning" | "error" | "fatal";
-  area: "app" | "session" | "wasm" | "bridge" | "storage" | "browser";
-  event: string;
-  sessionId: string | null;
-  detail?: Record<string, string | number | boolean | null>;
-}
-```
+### 7.2 记录范围和隐私限制
 
-### 7.2 记录范围
+- 记录应用启动、game module 创建、游戏会话状态、NetHack `main()`、
+  浏览器存储操作、bridge 约束错误、浏览器未处理异常和诊断日志导出。
+- 不逐条记录输入状态、按键、游戏回合、消息、菜单或地图更新。
+- 不记录角色名、存档路径、存档字节、上传文件内容、错误消息正文和浏览器地址
+  查询参数。
+- 附加字段采用固定允许列表；JavaScript 调用位置删除错误消息行并限制行数和
+  长度。
+- 阶段四已经取消复杂存档事务，因此不记录事务状态机或虚构的事务步骤。
 
-必须记录：
+### 7.3 查看和导出
 
-- 应用启动和 build/version ID。
-- session 创建、状态变化、正常退出、清理和失败。
-- WASM loader、module factory 和 `main()` 的成功或失败。
-- IDBFS mount、populate、flush 和事务步骤。
-- 顶层 pending input 类型变化，但不记录具体按键或输入内容。
-- bridge 不支持的 callback、重复 pending action 和 Asyncify 重入。
-- `window.onerror` 和 `unhandledrejection`。
-- 致命错误页操作，例如导出日志和返回主界面。
+- Home 页脚和致命错误页都提供 `Export Diagnostic Log`。
+- 点击后下载 UTF-8 JSON 文件 `blisshack-diagnostics.json`，其中包含格式
+  版本、构建编号、导出时间、浏览器基本信息和最多 500 条诊断事件。
+- 玩家也可以在浏览器开发工具的 Application 页面查看
+  `blisshack.diagnostics.v1`。
+- 不增加网络上传接口，不持续写入玩家选择的本地文件，不周期性触发下载。
 
-不得逐条记录：
+### 7.4 致命错误
 
-- `shim_print_glyph` 和每个地图格更新。
-- 完整按键、角色名和命令参数。
-- 完整游戏消息、菜单文本和用户输入。
-- 存档 bytes、导入文件内容和 checksum 以外的敏感数据。
+以下情况进入 fatal 应用状态：
 
-高频事件应记录计数或摘要，例如一次 flush 更新了多少地图格。
+- game module 加载器或 module factory 失败；
+- NetHack `main()` 异常结束；
+- bridge 回调或等待输入约束被破坏；
+- 活动游戏会话退出时无法完成必要的存储同步；
+- 恢复原始存档失败，应用无法确认继续操作是否安全；
+- 浏览器报告未处理的 `error` 或 `unhandledrejection`；
+- React 组件树发生未处理的渲染错误。
 
-### 7.3 本地持久化和导出
+发生游戏会话级 fatal 后，session manager 删除全局回调、清除等待输入并拒绝
+向旧 game module 发送后续输入。发生模块级 fatal 且没有活动游戏会话时，玩家
+可以废弃失败模块并返回新 Home；存在失败游戏会话时只能重新加载应用。
 
-- 日志写入失败不能导致游戏失败。
-- localStorage 不可用或 quota 超限时退化为内存环形缓冲区。
-- 导出格式为 UTF-8 JSON，包含 schema version、build ID、浏览器基本
-  信息和最多 500 条事件。
-- 导出前执行字段 allowlist 和长度限制，避免意外写入大型对象。
-- 日志只保存在本地，不增加网络上传接口。
+### 7.5 可恢复错误
 
-### 7.4 致命错误分类
+浏览器不支持 IndexedDB、无效导入文件、同名导入冲突以及已经确认存档状态的
+单次导入、导出或删除失败属于 warning 或可恢复错误。错误分类依据是应用能否
+证明当前 game module、游戏会话和存档状态仍然有效。
 
-以下情况进入 fatal page：
+### 7.6 致命错误页
 
-- WASM loader 或 module factory 失败。
-- `main()` 异常退出。
-- Asyncify 重入或 callback 协议不变量被破坏。
-- 活动 session 使用了错误 module 的指针。
-- 无法确定存档事务是否成功且继续操作可能覆盖有效存档。
-
-以下情况默认是 warning 或可恢复错误：
-
-- 浏览器不支持 IndexedDB。
-- 用户选择了无效导入文件。
-- 单次导出下载被浏览器取消。
-- 主界面重新扫描存档失败，但没有写操作正在进行。
-
-### 7.5 致命错误页需求
-
-- 显示简短、人类可读的错误摘要和 error ID。
-- 提供 `Export Diagnostic Log`。
-- 没有活动 session 时提供 `Return Home`。
-- 存在不可安全恢复的 session 时提供 `Reload Application`，不得假装
-  可以继续当前游戏。
-- 不直接向普通玩家展示完整 JS stack；stack 只进入导出日志。
-- fatal page 本身发生异常时仍应能显示最低限度纯文本错误。
-
-### 7.6 单元测试要求
-
-- 写入 501 条后仅保留 500 条，最旧事件被覆盖。
-- sequence 在覆盖和页面恢复后仍保持稳定顺序。
-- 日志字段过滤会移除按键、消息和超长 detail。
-- localStorage 抛错时自动退化到内存，不递归记录错误。
-- JSON 导出可重新解析，并包含 schema/build 信息。
-- `error` 和 `unhandledrejection` 各只记录一次对应异常。
-- fatal 事件使 session 失效，后续 callback 不能恢复到 playing。
-- warning 不会错误地进入 fatal page。
-- fatal page 的返回、重载和日志导出按钮按状态启用。
+- 显示固定的人类可读摘要和错误编号，不显示原始错误消息。
+- 始终提供 `Export Diagnostic Log`。
+- 没有活动游戏会话时提供 `Return Home`。
+- 存在失败游戏会话时提供 `Reload Application`。
+- React 根节点错误边界在正常界面无法渲染时提供最低限度错误页、日志导出和
+  重新加载操作。
 
 ### 7.7 自动验收标准
 
-- diagnostics 单元测试全部通过。
-- 浏览器测试注入 unhandled rejection 后能看到 fatal page。
-- 导出的诊断 JSON 不包含测试输入的角色名、按键或消息正文。
-- 发生 fatal 后不能向旧 WASM 发送新输入。
-- 控制台错误与诊断 error ID 能在 Playwright artifact 中关联。
+- 写入 501 条诊断事件后只保留最新 500 条，页面恢复后顺序号继续递增。
+- 浏览器本地存储损坏或抛错不会阻止应用运行。
+- JSON 导出包含格式版本和构建编号，并且可以重新解析。
+- 同一个错误对象只产生一个 fatal 诊断事件和一个错误编号。
+- fatal 发生后旧回调、等待输入和活动游戏会话全部失效。
+- 浏览器测试注入未处理 Promise 拒绝后显示 fatal 页并成功下载诊断 JSON。
+- Console 与导出文件使用同一错误编号，且都不包含测试角色名、按键或游戏消息。
 
 ### 7.8 手动观察标准
 
-- 断开或重命名 WASM 资源后显示致命错误页，而不是空白终端。
-- 可以下载并阅读格式化诊断 JSON。
-- 刷新后仍能看到上一会话的关键错误事件。
-- 正常游戏不会因为日志写入产生可感知卡顿。
-- 日志中不出现玩家名称、游戏对话和完整键盘输入。
+- 断开或重命名 WebAssembly 资源后显示致命错误页，不显示空白页面。
+- Home 和致命错误页都可以下载并阅读格式化诊断 JSON。
+- 页面刷新后仍能导出上一页面保存的关键诊断事件。
+- 正常游戏不会因为低频诊断事件写入产生可感知卡顿。
+- 浏览器本地存储、Console 和导出文件中均不出现玩家名称、游戏对话和完整输入。
 
 ## 8. 阶段六：浏览器端到端测试
 

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type AppAction,
 } from "../app/app-state";
+import { createDiagnosticLog } from "../diagnostics/diagnostic-log";
 import {
   NHW_MENU,
   getSnapshot,
@@ -124,7 +125,15 @@ async function isSettled(promise: Promise<unknown>): Promise<boolean> {
  * @param modules - modules returned by consecutive factory calls.
  * @returns manager and its test-visible dependency state.
  */
-function createHarness(modules: EmscriptenModule[]): {
+function createHarness(
+  modules: EmscriptenModule[],
+  diagnostics = createDiagnosticLog({
+    buildId: "test",
+    console: { warn: vi.fn(), error: vi.fn() },
+    createErrorId: () => "BH-TEST0001",
+    storage: null,
+  }),
+): {
   manager: SessionManager;
   callbackHost: Record<string, unknown>;
   dispatch: ReturnType<typeof vi.fn<(action: AppAction) => void>>;
@@ -154,6 +163,7 @@ function createHarness(modules: EmscriptenModule[]): {
       })),
       flush: vi.fn(async () => undefined),
     }),
+    diagnostics,
     dispatch,
     moduleFactory: factory,
   });
@@ -173,6 +183,29 @@ beforeEach(() => {
 });
 
 describe("session creation and startup", () => {
+  it("discards a failed module factory result before returning Home", async () => {
+    const replacement = createModuleHarness("replacement");
+    const { manager, dispatch, factory } = createHarness([replacement.module]);
+    factory.mockRejectedValueOnce(new TypeError("module loader failed"));
+
+    await expect(manager.initialize()).rejects.toThrow("module loader failed");
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "MODULE_FATAL_ERROR",
+      moduleId: "module-1",
+      errorId: "BH-TEST0001",
+    });
+
+    await expect(manager.recoverHome()).resolves.toMatchObject({
+      moduleId: "module-2",
+      storageAvailable: true,
+    });
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "RETURN_HOME",
+      moduleId: "module-2",
+    });
+    expect(factory).toHaveBeenCalledTimes(2);
+  });
+
   it("deduplicates concurrent starts and calls one module main exactly once", async () => {
     const firstModule = createModuleHarness("first");
     const { manager, dispatch, factory } = createHarness([firstModule.module]);
@@ -299,6 +332,36 @@ describe("session callback isolation", () => {
 });
 
 describe("session cleanup", () => {
+  it("invalidates callback and input ownership after a fatal failure", async () => {
+    const module = createModuleHarness("module");
+    const { manager, callbackHost, dispatch } = createHarness([module.module]);
+    const session = await manager.startSession();
+    const staleCallback = callbackFor(callbackHost, session);
+    const pendingInput = staleCallback("shim_nhgetch");
+    expect(manager.isWaitingForInput()).toBe(true);
+
+    await manager.reportFatal(
+      "browser",
+      "browser.unhandled_rejection",
+      new Error("fatal"),
+    );
+
+    expect(callbackHost[session.callbackName]).toBeUndefined();
+    expect(manager.getActiveSession()).toBeNull();
+    expect(manager.isWaitingForInput()).toBe(false);
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "SESSION_FATAL_ERROR",
+      sessionId: session.sessionId,
+      errorId: "BH-TEST0001",
+    });
+
+    dispatch.mockClear();
+    manager.sendKey("h".charCodeAt(0));
+    await staleCallback("shim_init_nhwindows");
+    expect(await isSettled(pendingInput)).toBe(false);
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
   it("treats Emscripten exit status zero as successful termination", async () => {
     const module = createModuleHarness("module");
     const { manager, callbackHost, dispatch } = createHarness([module.module]);

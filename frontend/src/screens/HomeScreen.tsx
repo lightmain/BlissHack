@@ -14,6 +14,7 @@ interface HomeScreenProps {
   onContinueSave?: (save: SaveListEntry) => void;
   onDeleteSave?: (save: SaveListEntry) => Promise<void>;
   onDismissSavePicker?: () => void;
+  onExportDiagnostics?: () => void;
   onExportSave?: (save: SaveListEntry) => Promise<void>;
   onImportSave?: (
     request: RawSaveImportRequest,
@@ -35,6 +36,7 @@ export function HomeScreen({
   onContinueSave = () => undefined,
   onDeleteSave = async () => undefined,
   onDismissSavePicker = () => undefined,
+  onExportDiagnostics = () => undefined,
   onExportSave = async () => undefined,
   onImportSave = async () => {
     throw new Error("Raw save import is unavailable");
@@ -125,6 +127,9 @@ export function HomeScreen({
       <footer className="home-footer">
         <span>BlissHack prealpha-2</span>
         <span>NetHack copyright 1985-2026</span>
+        <button onClick={onExportDiagnostics} type="button">
+          Export Diagnostic Log
+        </button>
         <a
           href="https://www.nethack.org/common/license.html"
           rel="noreferrer"

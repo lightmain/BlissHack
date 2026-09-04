@@ -48,6 +48,10 @@ window-port coverage may change before a stable release.
 Saved games are stored in the current browser profile. They are not uploaded
 to a server and do not automatically move between browsers or devices.
 
+The Home footer and fatal-error screen can export the local diagnostic log.
+The log is never uploaded automatically and excludes player names, keys,
+game messages, and save contents.
+
 ## Controls
 
 BlissHack uses NetHack's standard keyboard commands:
@@ -102,6 +106,8 @@ and raw save transfer before a release.
 ## Repository Guide
 
 - [prealpha-1 plan](doc/BlissHack/plans/prealpha-1.md)
+- [prealpha-2 plan](doc/BlissHack/plans/prealpha-2.md)
+- [Fatal errors and diagnostic log design](doc/BlissHack/plans/in-prealpha-2/fatal-errors-and-diagnostics.md)
 - [WASM build process](doc/BlissHack/build-process.md)
 - [Shim interface reference](doc/BlissHack/shim-interface-reference.md)
 - [Key input reference](doc/BlissHack/key-input-reference.md)

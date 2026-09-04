@@ -8,6 +8,13 @@ import {
   appReducer,
   initialAppState,
 } from "./app/app-state";
+import { installBrowserErrorListeners } from "./diagnostics/browser-errors";
+import {
+  getBrowserDiagnosticLog,
+  type DiagnosticLog,
+} from "./diagnostics/diagnostic-log";
+import { downloadDiagnosticLog } from "./diagnostics/download-diagnostics";
+import { FatalScreen } from "./screens/FatalScreen";
 import { HomeScreen } from "./screens/HomeScreen";
 import { GameScreen } from "./screens/GameScreen";
 import { createSessionManager } from "./session/session-manager";
@@ -20,21 +27,38 @@ import type {
  * Render the top-level BlissHack state machine and active screen.
  * @returns the current application screen.
  */
-function App() {
+function App({
+  diagnostics = getBrowserDiagnosticLog(),
+}: {
+  diagnostics?: DiagnosticLog;
+}) {
   const [state, dispatch] = useReducer(appReducer, initialAppState);
   const sessionManager = useMemo(
     () => createSessionManager({
+      diagnostics,
       dispatch,
     }),
-    [dispatch],
+    [diagnostics, dispatch],
   );
 
   useEffect(() => {
+    diagnostics.record({
+      level: "info",
+      area: "app",
+      event: "app.started",
+      detail: { buildId: diagnostics.buildId },
+    });
+    const removeBrowserErrorListeners = installBrowserErrorListeners(
+      ({ event, error }) => {
+        void sessionManager.reportFatal("browser", event, error);
+      },
+    );
     void sessionManager.initialize().catch(() => undefined);
     return () => {
+      removeBrowserErrorListeners();
       void sessionManager.dispose();
     };
-  }, [sessionManager]);
+  }, [diagnostics, sessionManager]);
 
   /**
    * Start one session and leave startup failures to the reducer event.
@@ -112,6 +136,7 @@ function App() {
         onContinueSave={continueGame}
         onDeleteSave={deleteSave}
         onDismissSavePicker={closeSavePicker}
+        onExportDiagnostics={() => downloadDiagnosticLog(diagnostics)}
         onExportSave={exportSave}
         onImportSave={importSave}
         onNewGame={startNewGame}
@@ -124,16 +149,15 @@ function App() {
 
   if (state.phase === "fatal") {
     return (
-      <main className="fatal-screen" aria-labelledby="fatal-title">
-        <section>
-          <p className="screen-kicker">Session failure</p>
-          <h1 id="fatal-title">BlissHack could not continue</h1>
-          <p>Error ID: <code>{state.errorId}</code></p>
-          <button onClick={() => globalThis.location.reload()} type="button">
-            Reload Application
-          </button>
-        </section>
-      </main>
+      <FatalScreen
+        errorId={state.errorId}
+        hasFailedSession={state.sessionId !== null}
+        onExportDiagnostics={() => downloadDiagnosticLog(diagnostics)}
+        onReload={() => globalThis.location.reload()}
+        onReturnHome={() => {
+          void sessionManager.recoverHome().catch(() => undefined);
+        }}
+      />
     );
   }
 

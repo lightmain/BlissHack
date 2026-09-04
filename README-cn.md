@@ -42,6 +42,9 @@ BlissHack 对 NetHack C 代码进行了少量有针对性的修改，主要用�
 设备。NetHack 写入的文件内容仍是原版二进制 save bytes；IDBFS 只负责把
 Emscripten 虚拟文件及其文件系统元数据持久化到 IndexedDB。
 
+主界面页脚和致命错误页可以导出本地诊断日志。诊断日志不会自动上传，也不记录
+角色名、按键、游戏消息或存档内容。
+
 ## 操作方式
 
 BlissHack 使用 NetHack 的标准键盘命令：
@@ -97,6 +100,7 @@ npm run test:long
 - [prealpha-2 计划](doc/BlissHack/plans/prealpha-2.md)
 - [存档存储与读取方案评审](doc/BlissHack/plans/in-prealpha-2/save-format-review.md)
 - [Game Module 生命周期](doc/BlissHack/plans/in-prealpha-2/module-lifecycle.md)
+- [致命错误和诊断日志设计](doc/BlissHack/plans/in-prealpha-2/fatal-errors-and-diagnostics.md)
 - [WASM 构建流程](doc/BlissHack/build-process.md)
 - [Shim 接口参考](doc/BlissHack/shim-interface-reference.md)
 - [按键输入参考](doc/BlissHack/key-input-reference.md)

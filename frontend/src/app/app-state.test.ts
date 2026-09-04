@@ -201,6 +201,20 @@ describe("appReducer legal transitions", () => {
       });
     },
   );
+
+  it("moves any non-fatal phase to one application fatal state", () => {
+    expect(appReducer(initialAppState, {
+      type: "APP_FATAL_ERROR",
+      moduleId: null,
+      sessionId: null,
+      errorId: "BH-APP00001",
+    })).toEqual({
+      phase: "fatal",
+      moduleId: null,
+      sessionId: null,
+      errorId: "BH-APP00001",
+    });
+  });
 });
 
 describe("appReducer lifecycle guards", () => {
