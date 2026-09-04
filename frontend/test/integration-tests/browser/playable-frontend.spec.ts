@@ -1,126 +1,12 @@
 import { readFile } from "node:fs/promises";
-import { expect, test, type Page } from "@playwright/test";
-
-interface CapturedErrors {
-  console: string[];
-  page: string[];
-}
-
-/**
- * Capture browser errors so an apparently playable UI cannot hide runtime failures.
- * @param page - Playwright page under test.
- * @returns mutable error collections populated for the page lifetime.
- */
-function captureErrors(page: Page): CapturedErrors {
-  const errors: CapturedErrors = { console: [], page: [] };
-  page.on("console", (message) => {
-    if (message.type() === "error") errors.console.push(message.text());
-  });
-  page.on("pageerror", (error) => errors.page.push(error.message));
-  return errors;
-}
-
-/**
- * Start a new game through the real askname and random role-selection flow.
- * @param page - Playwright page under test.
- * @param name - unique player name.
- */
-async function startNewGame(page: Page, name: string): Promise<void> {
-  await page.goto(`?integration=${encodeURIComponent(name)}`);
-  await expect(page.getByRole("heading", { name: "BlissHack" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Continue" })).toBeEnabled();
-  await expect(page.getByRole("button", { name: "Settings" })).toBeDisabled();
-  await expect(page.getByRole("textbox", { name: "Who are you?" })).toHaveCount(0);
-  const [commands, identity] = await Promise.all([
-    page.locator(".home-commands").boundingBox(),
-    page.locator(".home-identity").boundingBox(),
-  ]);
-  expect(Math.abs((commands?.x ?? 0) - (identity?.x ?? 0))).toBeLessThan(2);
-  expect(commands?.y).toBeGreaterThan(
-    (identity?.y ?? 0) + (identity?.height ?? 0),
-  );
-  await page.getByRole("button", { name: "New Game" }).click();
-
-  const nameInput = page.getByRole("textbox", { name: "Who are you?" });
-  await expect(nameInput).toBeVisible();
-  await expect(page.getByText(/Shall I pick character's/)).toHaveCount(0);
-  await nameInput.fill(name);
-  await nameInput.press("Enter");
-
-  await expect(page.getByText(/Shall I pick character's/)).toBeVisible();
-  await page.keyboard.press("y");
-
-  await expect(
-    page.getByRole("dialog", { name: "Is this ok? [ynq]" }),
-  ).toBeVisible();
-  await page.keyboard.press("y");
-
-  await expect(page.locator(".nh-text-dialog")).toBeVisible();
-  await page.keyboard.press("Enter");
-
-  await expect(
-    page.getByRole("dialog", { name: "Do you want a tutorial?" }),
-  ).toBeVisible();
-  await page.keyboard.press("n");
-
-  await expect(page.locator(".nh-hp-bar")).toBeVisible();
-}
-
-/**
- * Save through the real NetHack command flow and wait for the next home module.
- * @param page - running NetHack page.
- */
-async function saveAndReturnHome(page: Page): Promise<void> {
-  await page.keyboard.press("S");
-  await expect(page.getByText(/Really save/)).toBeVisible();
-  await page.keyboard.press("y");
-  await expect(page.getByText("--More--", { exact: true })).toBeVisible();
-  await page.keyboard.press("Space");
-  await expect(page.getByRole("button", { name: "New Game" })).toBeVisible({
-    timeout: 15_000,
-  });
-}
-
-/**
- * Open the save picker and select one validated character.
- * @param page - page showing the ready home screen.
- * @param name - validated character name shown by the picker.
- */
-async function continueSavedGame(page: Page, name: string): Promise<void> {
-  await page.getByRole("button", { name: "Continue" }).click();
-  await expect(page.getByRole("dialog", { name: "Saved games" })).toBeVisible();
-  await page.getByRole("button", {
-    name: new RegExp(`^${name}\\b`),
-  }).click();
-}
-
-/**
- * Move to an adjacent floor square without depending on dungeon randomness.
- * @param page - running NetHack page.
- */
-async function moveToAdjacentFloor(page: Page): Promise<void> {
-  const cursor = page.locator(".nh-cursor");
-  const startX = Number(await cursor.getAttribute("data-start"));
-  const startY = Number(await cursor.locator("..").getAttribute("data-y"));
-  const rows = await page.locator(".nh-map-row").allTextContents();
-  const directions = [
-    { dx: -1, dy: 0, key: "ArrowLeft" },
-    { dx: 1, dy: 0, key: "ArrowRight" },
-    { dx: 0, dy: -1, key: "ArrowUp" },
-    { dx: 0, dy: 1, key: "ArrowDown" },
-  ];
-  const direction = directions.find(
-    ({ dx, dy }) => rows[startY + dy]?.[startX + dx] === ".",
-  );
-
-  expect(direction, "the initial room should have an adjacent floor").toBeTruthy();
-  await page.keyboard.press(direction!.key);
-  await expect.poll(async () => {
-    const x = await cursor.getAttribute("data-start");
-    const y = await cursor.locator("..").getAttribute("data-y");
-    return `${x}:${y}`;
-  }).not.toBe(`${startX}:${startY}`);
-}
+import { expect, test } from "@playwright/test";
+import { captureErrors } from "./helpers/browser-errors";
+import {
+  continueSavedGame,
+  moveToAdjacentFloor,
+  saveAndReturnHome,
+  startNewGame,
+} from "./helpers/game-flow";
 
 test("q quits character selection and returns home", async ({ page }) => {
   const errors = captureErrors(page);
@@ -180,8 +66,6 @@ test("plays through startup and routes terminal UI input", async ({ page }) => {
   expect(strengthBox).not.toBeNull();
   expect(strengthBox!.x - titleBox!.x - titleBox!.width).toBeGreaterThan(4);
 
-  await moveToAdjacentFloor(page);
-
   await page.keyboard.press("Control+p");
   await expect(
     page.getByRole("dialog", { name: "Message history" }),
@@ -201,6 +85,8 @@ test("plays through startup and routes terminal UI input", async ({ page }) => {
   await page.keyboard.press("Alt+h");
   await expect(page.getByText("In what direction?", { exact: true })).toBeVisible();
   await page.keyboard.press("Escape");
+
+  await moveToAdjacentFloor(page);
 
   expect(errors).toEqual({ console: [], page: [] });
 });

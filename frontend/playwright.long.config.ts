@@ -1,18 +1,19 @@
 import { defineConfig } from "@playwright/test";
 
 const deploymentBasePath = "/BlissHack/";
-const previewOrigin = "http://127.0.0.1:4174";
+const previewOrigin = "http://127.0.0.1:4175";
 
 export default defineConfig({
-  testDir: "./test/integration-tests/browser",
-  outputDir: "./test-results/playwright",
+  testDir: "./test/integration-tests/browser-long",
+  outputDir: "./test-results/playwright-long",
   fullyParallel: false,
   workers: 1,
-  forbidOnly: Boolean(process.env.CI),
-  retries: process.env.CI ? 1 : 0,
+  forbidOnly: true,
+  retries: 0,
   reporter: "list",
+  timeout: 10 * 60_000,
   expect: {
-    timeout: 10_000,
+    timeout: 15_000,
   },
   use: {
     baseURL: `${previewOrigin}${deploymentBasePath}`,
@@ -22,7 +23,7 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   webServer: {
-    command: `VITE_BASE_PATH=${deploymentBasePath} npm run build && VITE_BASE_PATH=${deploymentBasePath} npm run preview -- --host 127.0.0.1 --port 4174 --strictPort`,
+    command: `VITE_BASE_PATH=${deploymentBasePath} npm run build && VITE_BASE_PATH=${deploymentBasePath} npm run preview -- --host 127.0.0.1 --port 4175 --strictPort`,
     url: `${previewOrigin}${deploymentBasePath}`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

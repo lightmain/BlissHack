@@ -289,4 +289,32 @@ describe("SavePickerPopover raw save transfer", () => {
     expect(currentTarget.value).toBe("");
     expect(renderToStaticMarkup(tree)).toMatch(/Import successful/);
   });
+
+  it("reports a browser file read failure without starting an import", async () => {
+    const onImport = vi.fn(async () => ({ status: "imported" as const }));
+    let tree = renderPicker(async () => undefined, undefined, onImport);
+    const input = importInput(tree);
+    const currentTarget = {
+      files: [{
+        name: "unreadable.bin",
+        size: 4,
+        lastModified: 1_725_000_000_000,
+        arrayBuffer: async (): Promise<ArrayBuffer> => {
+          throw new Error("browser file read failed");
+        },
+      }],
+      value: "unreadable.bin",
+    };
+
+    input.props.onChange?.({ currentTarget });
+    await vi.waitFor(() => {
+      tree = renderPicker(async () => undefined, undefined, onImport);
+      expect(renderToStaticMarkup(tree)).toMatch(
+        /Import failed[\s\S]*browser file read failed/,
+      );
+    });
+
+    expect(onImport).not.toHaveBeenCalled();
+    expect(currentTarget.value).toBe("");
+  });
 });

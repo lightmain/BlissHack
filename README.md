@@ -91,11 +91,13 @@ cd frontend
 npm test
 npm run lint
 npm run test:integration
+npm run test:long
 ```
 
 The integration command exercises the real WASM callback chain and a production
 browser build, including startup, keyboard input, status rendering, save, and
-restore.
+restore. The long suite repeatedly checks session lifecycle, save restoration,
+and raw save transfer before a release.
 
 ## Repository Guide
 

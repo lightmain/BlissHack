@@ -22,6 +22,12 @@ Run the WASM and browser integration suites:
 npm run test:integration
 ```
 
+Run the release-oriented long browser flows:
+
+```sh
+npm run test:long
+```
+
 ## GitHub Pages
 
 The deployment workflow builds this directory and publishes `dist`. It derives

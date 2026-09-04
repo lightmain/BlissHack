@@ -1,0 +1,196 @@
+import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import {
+  expect,
+  test,
+  type Download,
+  type Page,
+} from "@playwright/test";
+import { captureErrors } from "../browser/helpers/browser-errors";
+import {
+  openHome,
+  saveAndReturnHome,
+  startNewGame,
+} from "../browser/helpers/game-flow";
+
+/**
+ * Return the current saved-game popover after opening it from Home.
+ * @param page - page currently showing the prepared Home screen.
+ */
+async function openSavePicker(page: Page) {
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  const picker = page.getByRole("dialog", { name: "Saved games" });
+  await expect(picker).toBeVisible();
+  return picker;
+}
+
+/**
+ * Read all bytes from one completed Playwright download.
+ * @param download - completed browser download.
+ */
+async function readDownload(download: Download): Promise<Buffer> {
+  const path = await download.path();
+  expect(path).not.toBeNull();
+  return readFile(path!);
+}
+
+/**
+ * Export one ready save through its real browser button.
+ * @param page - page with an open save picker.
+ * @param name - player name used by the accessible export label.
+ */
+async function exportSave(page: Page, name: string): Promise<Buffer> {
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("dialog", { name: "Saved games" }).getByRole(
+    "button",
+    { name: `Export save ${name}` },
+  ).click();
+  return readDownload(await downloadPromise);
+}
+
+/**
+ * Compute the test-only SHA-256 digest for exact transfer comparisons.
+ * @param bytes - downloaded raw save bytes.
+ */
+function saveDigest(bytes: Buffer): string {
+  return createHash("sha256").update(bytes).digest("hex");
+}
+
+test("creates and normally exits ten consecutive sessions", async ({ page }) => {
+  const errors = captureErrors(page);
+  await openHome(page, "long-session-cycle");
+
+  for (let round = 1; round <= 10; round += 1) {
+    await test.step(`round ${round}/10`, async () => {
+      await page.getByRole("button", { name: "New Game" }).click();
+      const nameInput = page.getByRole("textbox", { name: "Who are you?" });
+      await expect(nameInput).toBeVisible();
+      await nameInput.fill(`LongQuit${round}`);
+      await nameInput.press("Enter");
+      await expect(page.getByText(/Shall I pick character's/)).toBeVisible();
+
+      await page.keyboard.press("q");
+
+      await expect(page.getByRole("button", { name: "New Game" })).toBeVisible({
+        timeout: 15_000,
+      });
+      await expect(page.locator(".nh-shell")).toHaveCount(0);
+      await expect(page.getByRole("textbox", { name: "Who are you?" }))
+        .toHaveCount(0);
+    });
+  }
+
+  expect(errors).toEqual({ console: [], page: [] });
+});
+
+test("continues, saves, and reloads one game ten times", async ({ page }) => {
+  const errors = captureErrors(page);
+  const name = "LongRestore";
+  await startNewGame(page, name);
+  await saveAndReturnHome(page);
+
+  for (let round = 1; round <= 10; round += 1) {
+    await test.step(`round ${round}/10`, async () => {
+      await page.reload();
+      await expect(page.getByRole("heading", { name: "BlissHack" }))
+        .toBeVisible();
+      const picker = await openSavePicker(page);
+      await expect(picker.getByRole("button", {
+        name: new RegExp(`^${name}\\b`),
+      })).toHaveCount(1);
+      await picker.getByRole("button", {
+        name: new RegExp(`^${name}\\b`),
+      }).click();
+
+      await expect(page.getByLabel(new RegExp(`${name} the .+, \\d+% HP`)))
+        .toBeVisible({ timeout: 15_000 });
+      await expect(page.getByRole("textbox", { name: "Who are you?" }))
+        .toHaveCount(0);
+      await expect(page.getByText(/Shall I pick character's/)).toHaveCount(0);
+      await saveAndReturnHome(page);
+    });
+  }
+
+  expect(errors).toEqual({ console: [], page: [] });
+});
+
+test("exports, deletes, imports, and continues five times", async ({ page }) => {
+  const errors = captureErrors(page);
+  const name = "LongTransfer";
+  await startNewGame(page, name);
+  await saveAndReturnHome(page);
+
+  for (let round = 1; round <= 5; round += 1) {
+    await test.step(`round ${round}/5`, async () => {
+      const picker = await openSavePicker(page);
+      const original = await exportSave(page, name);
+      expect(original.byteLength).toBeGreaterThan(100);
+      const originalDigest = saveDigest(original);
+
+      const deleteButton = picker.getByRole("button", {
+        name: `Delete save ${name}`,
+      });
+      await deleteButton.click();
+      await deleteButton.click();
+      await expect(picker.getByText("No saved games")).toBeVisible();
+
+      await picker.getByLabel("Import save file").setInputFiles({
+        name: `round-${round}.nhsave`,
+        mimeType: "application/octet-stream",
+        buffer: original,
+      });
+      await expect(picker.getByText("Import successful", { exact: true }))
+        .toBeVisible();
+      await expect(picker.getByRole("button", {
+        name: new RegExp(`^${name}\\b`),
+      })).toHaveCount(1);
+
+      const imported = await exportSave(page, name);
+      expect(imported).toEqual(original);
+      expect(saveDigest(imported)).toBe(originalDigest);
+
+      await picker.getByRole("button", {
+        name: new RegExp(`^${name}\\b`),
+      }).click();
+      await expect(page.getByLabel(new RegExp(`${name} the .+, \\d+% HP`)))
+        .toBeVisible({ timeout: 15_000 });
+      await saveAndReturnHome(page);
+    });
+  }
+
+  expect(errors).toEqual({ console: [], page: [] });
+});
+
+test("returns from the background and repeatedly scans without duplicates", async ({
+  page,
+}) => {
+  const errors = captureErrors(page);
+  const name = "LongScan";
+  await startNewGame(page, name);
+  await saveAndReturnHome(page);
+
+  const otherPage = await page.context().newPage();
+  await otherPage.goto("about:blank");
+  await otherPage.bringToFront();
+  await page.bringToFront();
+  await otherPage.close();
+
+  await expect(page.getByRole("heading", { name: "BlissHack" })).toBeVisible();
+  await expect(page.locator(".nh-shell")).toHaveCount(0);
+
+  for (let round = 1; round <= 5; round += 1) {
+    await test.step(`scan ${round}/5`, async () => {
+      await page.reload();
+      await expect(page.getByRole("heading", { name: "BlissHack" }))
+        .toBeVisible();
+      const picker = await openSavePicker(page);
+      await expect(picker.getByRole("button", {
+        name: new RegExp(`^${name}\\b`),
+      })).toHaveCount(1);
+      await page.keyboard.press("Escape");
+      await expect(picker).toHaveCount(0);
+    });
+  }
+
+  expect(errors).toEqual({ console: [], page: [] });
+});

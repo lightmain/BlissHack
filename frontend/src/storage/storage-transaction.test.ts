@@ -47,6 +47,75 @@ describe("raw save import transaction", () => {
     expect(flush).not.toHaveBeenCalled();
   });
 
+  it("keeps the original save when writing temporary data fails", async () => {
+    const harness = createStorageModuleHarness();
+    const original = Uint8Array.of(0x10, 0x20, 0x30);
+    harness.files.set("/save/0Ada", original);
+    vi.mocked(harness.module.FS.writeFile).mockImplementationOnce(() => {
+      throw new Error("temporary write failed");
+    });
+    const flush = vi.fn(async () => undefined);
+
+    await expect(importRawSaveTransaction({
+      fileSystem: harness.module.FS as never,
+      destinationPath: "/save/0Ada",
+      bytes: Uint8Array.of(0x40, 0x50, 0x60),
+      overwrite: true,
+      flush,
+    })).rejects.toThrow("temporary write failed");
+
+    expect(harness.files.get("/save/0Ada")).toEqual(original);
+    expect(Array.from(harness.files.keys())).toEqual(["/save/0Ada"]);
+    expect(harness.module.FS.rename).not.toHaveBeenCalled();
+    expect(flush).toHaveBeenCalledOnce();
+  });
+
+  it("removes mismatched temporary data without creating a formal save", async () => {
+    const harness = createStorageModuleHarness();
+    vi.mocked(harness.module.FS.readFile).mockImplementation((path: string) => {
+      const bytes = harness.files.get(path);
+      if (!bytes) throw new Error(`ENOENT: ${path}`);
+      return path.endsWith(".tmp")
+        ? Uint8Array.of(0x00)
+        : bytes.slice();
+    });
+    const flush = vi.fn(async () => undefined);
+
+    await expect(importRawSaveTransaction({
+      fileSystem: harness.module.FS as never,
+      destinationPath: "/save/0Ada",
+      bytes: Uint8Array.of(0x68, 0x01),
+      overwrite: false,
+      flush,
+    })).rejects.toThrow("Temporary save verification failed");
+
+    expect(harness.files.size).toBe(0);
+    expect(harness.module.FS.rename).not.toHaveBeenCalled();
+    expect(flush).toHaveBeenCalledOnce();
+  });
+
+  it("removes temporary data and keeps the original when rename fails", async () => {
+    const harness = createStorageModuleHarness();
+    const original = Uint8Array.of(0x10, 0x20, 0x30);
+    harness.files.set("/save/0Ada", original);
+    vi.mocked(harness.module.FS.rename).mockImplementationOnce(() => {
+      throw new Error("rename failed");
+    });
+    const flush = vi.fn(async () => undefined);
+
+    await expect(importRawSaveTransaction({
+      fileSystem: harness.module.FS as never,
+      destinationPath: "/save/0Ada",
+      bytes: Uint8Array.of(0x40, 0x50, 0x60),
+      overwrite: true,
+      flush,
+    })).rejects.toThrow("rename failed");
+
+    expect(harness.files.get("/save/0Ada")).toEqual(original);
+    expect(Array.from(harness.files.keys())).toEqual(["/save/0Ada"]);
+    expect(flush).toHaveBeenCalledOnce();
+  });
+
   it("restores the old bytes and persists rollback when replacement flush fails", async () => {
     const harness = createStorageModuleHarness();
     const original = Uint8Array.of(0x10, 0x20, 0x30);
@@ -90,5 +159,34 @@ describe("raw save import transaction", () => {
     expect(harness.files.has("/save/0Ada")).toBe(false);
     expect(flush).toHaveBeenCalledTimes(2);
     expect(harness.files.size).toBe(0);
+  });
+
+  it("reports both import and rollback errors when both flushes fail", async () => {
+    const harness = createStorageModuleHarness();
+    const original = Uint8Array.of(0x10, 0x20, 0x30);
+    harness.files.set("/save/0Ada", original);
+    const flush = vi.fn()
+      .mockRejectedValueOnce(new Error("import flush failed"))
+      .mockRejectedValueOnce(new Error("rollback flush failed"));
+
+    const result = importRawSaveTransaction({
+      fileSystem: harness.module.FS as never,
+      destinationPath: "/save/0Ada",
+      bytes: Uint8Array.of(0x40, 0x50, 0x60),
+      overwrite: true,
+      flush,
+    });
+
+    await expect(result).rejects.toMatchObject({
+      name: "AggregateError",
+      message: "Could not import or restore save at /save/0Ada",
+      errors: [
+        expect.objectContaining({ message: "import flush failed" }),
+        expect.objectContaining({ message: "rollback flush failed" }),
+      ],
+    });
+    expect(harness.files.get("/save/0Ada")).toEqual(original);
+    expect(Array.from(harness.files.keys())).toEqual(["/save/0Ada"]);
+    expect(flush).toHaveBeenCalledTimes(2);
   });
 });
