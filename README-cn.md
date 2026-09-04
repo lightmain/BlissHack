@@ -101,6 +101,7 @@ npm run test:long
 - [存档存储与读取方案评审](doc/BlissHack/plans/in-prealpha-2/save-format-review.md)
 - [Game Module 生命周期](doc/BlissHack/plans/in-prealpha-2/module-lifecycle.md)
 - [致命错误和诊断日志设计](doc/BlissHack/plans/in-prealpha-2/fatal-errors-and-diagnostics.md)
+- [浏览器端到端测试设计](doc/BlissHack/plans/in-prealpha-2/browser-end-to-end-tests.md)
 - [WASM 构建流程](doc/BlissHack/build-process.md)
 - [Shim 接口参考](doc/BlissHack/shim-interface-reference.md)
 - [按键输入参考](doc/BlissHack/key-input-reference.md)

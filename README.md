@@ -108,6 +108,7 @@ and raw save transfer before a release.
 - [prealpha-1 plan](doc/BlissHack/plans/prealpha-1.md)
 - [prealpha-2 plan](doc/BlissHack/plans/prealpha-2.md)
 - [Fatal errors and diagnostic log design](doc/BlissHack/plans/in-prealpha-2/fatal-errors-and-diagnostics.md)
+- [Browser end-to-end test design](doc/BlissHack/plans/in-prealpha-2/browser-end-to-end-tests.md)
 - [WASM build process](doc/BlissHack/build-process.md)
 - [Shim interface reference](doc/BlissHack/shim-interface-reference.md)
 - [Key input reference](doc/BlissHack/key-input-reference.md)
