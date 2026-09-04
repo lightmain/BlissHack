@@ -1,5 +1,11 @@
 import { expect, type Page } from "@playwright/test";
 
+/** Stable player position read from the rendered NetHack cursor. */
+export interface CursorPosition {
+  x: number;
+  y: number;
+}
+
 /**
  * Open a fresh application page and verify the prepared Home screen.
  * @param page - Playwright page under test.
@@ -83,6 +89,44 @@ export async function saveAndReturnHome(page: Page): Promise<void> {
 }
 
 /**
+ * Quit an active game through NetHack's extended-command and end screens.
+ * @param page - running NetHack page.
+ */
+export async function quitAndReturnHome(page: Page): Promise<void> {
+  await page.keyboard.press("#");
+  const commandDialog = page.getByRole("dialog", { name: "Extended command" });
+  await expect(commandDialog).toBeVisible();
+  const commandInput = commandDialog.locator("input");
+  await commandInput.fill("quit");
+  await commandInput.press("Enter");
+
+  await expect(page.getByText(/Really quit without saving/)).toBeVisible();
+  await page.keyboard.press("y");
+
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    const homeButton = page.getByRole("button", { name: "New Game" });
+    if (await homeButton.isVisible()) return;
+
+    const disclosure = page.getByText(
+      /Do you want (your possessions identified|to see)/,
+    ).first();
+    if (await disclosure.isVisible()) {
+      await page.keyboard.press("q");
+    } else if (await page.locator(".nh-text-dialog").isVisible()) {
+      await page.keyboard.press("Enter");
+    } else if (await page.getByText("--More--", { exact: true }).isVisible()) {
+      await page.keyboard.press("Space");
+    } else {
+      await page.waitForTimeout(100);
+    }
+  }
+
+  await expect(page.getByRole("button", { name: "New Game" })).toBeVisible({
+    timeout: 15_000,
+  });
+}
+
+/**
  * Open the save picker and select one validated character.
  * @param page - page showing the prepared Home screen.
  * @param name - validated character name shown by the picker.
@@ -98,14 +142,28 @@ export async function continueSavedGame(
   }).click();
 }
 
+/** Read the current player position from the rendered map cursor. */
+export async function readCursorPosition(
+  page: Page,
+): Promise<CursorPosition> {
+  const cursor = page.locator(".nh-cursor");
+  await expect(cursor).toBeVisible();
+  return {
+    x: Number(await cursor.getAttribute("data-start")),
+    y: Number(await cursor.locator("..").getAttribute("data-y")),
+  };
+}
+
 /**
  * Move to an adjacent floor square without depending on dungeon randomness.
  * @param page - running NetHack page.
+ * @returns cursor position after the movement completes.
  */
-export async function moveToAdjacentFloor(page: Page): Promise<void> {
+export async function moveToAdjacentFloor(
+  page: Page,
+): Promise<CursorPosition> {
   const cursor = page.locator(".nh-cursor");
-  const startX = Number(await cursor.getAttribute("data-start"));
-  const startY = Number(await cursor.locator("..").getAttribute("data-y"));
+  const { x: startX, y: startY } = await readCursorPosition(page);
   const rows = await page.locator(".nh-map-row").allTextContents();
   const directions = [
     { dx: -1, dy: 0, key: "ArrowLeft" },
@@ -124,4 +182,5 @@ export async function moveToAdjacentFloor(page: Page): Promise<void> {
     const y = await cursor.locator("..").getAttribute("data-y");
     return `${x}:${y}`;
   }).not.toBe(`${startX}:${startY}`);
+  return readCursorPosition(page);
 }

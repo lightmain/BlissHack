@@ -1,52 +1,15 @@
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
-import {
-  expect,
-  test,
-  type Download,
-  type Page,
-} from "@playwright/test";
+import { expect, test } from "../browser/fixtures";
 import { captureErrors } from "../browser/helpers/browser-errors";
 import {
   openHome,
   saveAndReturnHome,
   startNewGame,
 } from "../browser/helpers/game-flow";
-
-/**
- * Return the current saved-game popover after opening it from Home.
- * @param page - page currently showing the prepared Home screen.
- */
-async function openSavePicker(page: Page) {
-  await page.getByRole("button", { name: "Continue", exact: true }).click();
-  const picker = page.getByRole("dialog", { name: "Saved games" });
-  await expect(picker).toBeVisible();
-  return picker;
-}
-
-/**
- * Read all bytes from one completed Playwright download.
- * @param download - completed browser download.
- */
-async function readDownload(download: Download): Promise<Buffer> {
-  const path = await download.path();
-  expect(path).not.toBeNull();
-  return readFile(path!);
-}
-
-/**
- * Export one ready save through its real browser button.
- * @param page - page with an open save picker.
- * @param name - player name used by the accessible export label.
- */
-async function exportSave(page: Page, name: string): Promise<Buffer> {
-  const downloadPromise = page.waitForEvent("download");
-  await page.getByRole("dialog", { name: "Saved games" }).getByRole(
-    "button",
-    { name: `Export save ${name}` },
-  ).click();
-  return readDownload(await downloadPromise);
-}
+import {
+  exportSave,
+  openSavePicker,
+} from "../browser/helpers/save-flow";
 
 /**
  * Compute the test-only SHA-256 digest for exact transfer comparisons.

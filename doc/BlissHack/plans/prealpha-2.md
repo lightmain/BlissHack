@@ -726,116 +726,83 @@ syncfs(false) 失败后的内存回滚
 
 ## 8. 阶段六：浏览器端到端测试
 
+完整测试设计和实现边界见
+`doc/BlissHack/plans/in-prealpha-2/browser-end-to-end-tests.md`。
+
 ### 8.1 测试环境
 
-- 继续使用生产构建和 Vite preview，而不是依赖开发 HMR。
-- 使用 Chromium 作为强制目标；其他浏览器可后续增加。
-- 每个测试使用独立 browser context 或唯一角色名，避免共享 IDBFS。
-- 捕获 console error、pageerror、下载、trace 和必要截图。
-- 不依赖网络服务、外部 API 或远端存档。
+- 使用生产构建、Vite preview 和 Chromium。
+- 普通测试使用独立浏览器上下文，页面刷新在同一个浏览器上下文中保留
+  IndexedDB。
+- 捕获 Console error、pageerror、下载、失败截图和执行跟踪。
+- 测试失败时只读 `blisshack.diagnostics.v1`，并把诊断日志附加到 Playwright
+  测试结果。
+- 不依赖网络服务、外部 API、远端存档或生产测试接口。
+- 普通测试分为 Home 与新游戏、保存与继续、正常退出、存档传输和失败路径
+  5 个文件。
 
 ### 8.2 新游戏测试
 
-步骤：
-
-1. 打开应用。
-2. 断言主界面可见，名字输入和地图不可见。
-3. 断言 Continue 和 Settings disabled。
-4. 点击 New Game。
-5. 完成现有名字、随机角色确认和教程选择流程。
-6. 断言地图、状态和可操作输入出现。
-
-标准：
-
-- 点击前不执行 NetHack `main()`。
-- 只创建一个 session。
-- 没有 console error 或 pageerror。
+- Home 显示 `New Game`、可用于导入的 `Continue` 和禁用的 `Settings`。
+- 空存档列表显示 `No saved games`。
+- 开始游戏前的诊断日志不包含 `wasm.main_started` 或 `session.created`。
+- 完成名字、随机角色确认、介绍文本和教程选择后显示地图、状态和输入。
+- 保存返回后，诊断日志恰好包含一个 `wasm.main_started` 和一个
+  `session.created`。
+- 角色选择阶段输入 `q` 能正常返回 Home。
 
 ### 8.3 保存测试
 
-步骤：
-
-1. 开始一局并执行一个可验证动作。
-2. 点击 Save and Return。
-3. 完成 NetHack 保存确认。
-4. 等待核心退出和 IDBFS flush。
-5. 断言返回主界面且 Continue enabled。
-6. 刷新页面并再次断言存档存在。
-
-标准：
-
-- 保存状态期间不能重复触发命令。
-- flush 完成前不显示成功。
-- 保存文件在新页面 context 中可被 populate。
+- 开始一局并移动到相邻地板，记录地图光标位置。
+- 执行 NetHack 保存命令并等待 Home 出现。
+- 在同一个浏览器上下文中刷新页面，重新扫描 IndexedDB。
+- 断言存档身份可见并能够继续。
+- 存储同步顺序和重复保存继续由单元测试验证，不加入生产故障注入接口。
 
 ### 8.4 继续游戏测试
 
-步骤：
-
-1. 创建并保存一个具备可辨识消息或位置变化的游戏。
-2. 刷新应用，点击 Continue。
-3. 在列表中选择该存档。
-4. 等待 NetHack 核心恢复。
-5. 断言角色身份、消息历史和游戏状态来自旧游戏。
-
-标准：
-
+- 继续后角色身份和地图光标位置与保存前一致。
 - 不重新进入名字和角色创建流程。
-- 使用新的 session ID 和新的 WASM module。
-- 恢复成功后存档遵循 NetHack 正常消费和后续保存语义。
+- session manager 单元测试继续验证旧 game module 被废弃。
+- 浏览器测试通过正式诊断日志验证连续游戏使用不同的游戏会话 ID 和 game
+  module ID。
 
 ### 8.5 正常退出测试
 
-步骤：
-
-1. 开始新游戏。
-2. 通过现有 NetHack 命令执行主动退出。
-3. 完成核心原有确认和结束显示。
-4. 等待 `shim_exit_nhwindows`。
-5. 断言返回主界面。
-6. 再开始一局，断言没有旧状态。
-
-标准：
-
-- 退出不是通过刷新页面或直接丢弃 module 完成。
-- 第二局使用不同 session ID。
-- 第一局的 callback 不能影响第二局。
+- 在活动地图中通过 `#quit` 扩展命令主动退出。
+- 完成 NetHack 原生确认、公开信息询问、文本窗口和 `--More--`。
+- 等待 `shim_exit_nhwindows` 后返回 Home，不通过刷新丢弃 game module。
+- 开始并保存第二局。
+- 诊断日志显示两局使用不同的游戏会话 ID 和 game module ID。
 
 ### 8.6 导出和导入测试
 
-步骤：
-
-1. 保存一局并从主界面导出。
-2. 捕获下载并保存 bytes/hash。
-3. 删除浏览器中的该存档。
-4. 上传刚导出的文件。
-5. 断言导入成功并继续游戏。
-6. 再次导出，验证核心存档内容或规范化容器内容等价。
-
-标准：
-
-- 文件选择、下载和冲突确认均使用真实浏览器流程。
-- 导入后必须经过 IDBFS 重新扫描。
-- 事务过程中没有临时文件遗留。
+- 保存并通过正式浏览器按钮导出 raw save。
+- 删除存档，上传刚导出的文件，再次导出并逐字节比较。
+- 页面刷新后继续导入的存档。
+- 同名冲突测试覆盖 Cancel 和 Overwrite。
+- 截断文件测试验证导入失败，并确认原存档字节不变。
+- 临时文件和回滚细节继续由 storage transaction 单元测试验证。
 
 ### 8.7 失败路径测试
 
-- WASM loader 404 时显示 fatal page。
-- IDBFS populate 失败时主界面显示存储不可用状态。
-- flush 失败时保存不报告成功。
-- 导入截断文件时原存档 hash 不变。
-- stale callback 被忽略并写入诊断事件。
-- unhandled rejection 能导出诊断日志。
+- Playwright 让 `nethack.js` 返回 404，致命错误页显示错误编号和
+  `Return Home`，诊断日志包含 `module.loading_failed`。
+- 测试浏览器不提供 IndexedDB 时，Home 显示存储不可用状态，`Continue`
+  禁用，但允许开始临时游戏。
+- 未处理 Promise 拒绝显示游戏会话级致命错误，并能导出不含玩家输入的诊断
+  日志。
+- 真实 IDBFS populate、flush 和 rollback 回调失败继续由单元测试覆盖。
+- 过期回调继续由 session manager 单元测试覆盖，不增加全局测试接口。
 
 ### 8.8 相关单元测试要求
 
 - app reducer 的新游戏、保存、继续、退出和 fatal 转换已由单元测试
   覆盖，浏览器测试不重复模拟 reducer 内部实现。
-- Playwright helper 对超时、console error、pageerror 和下载失败给出
-  明确错误，不静默吞掉异常。
-- IDBFS 测试夹具能够创建、清空和重新 populate 独立测试数据。
-- session 测试夹具能够读取 session ID，但不能绕过真实 UI 启动流程。
-- 测试数据生成器产生合法导入包、截断包和 checksum 错误包。
+- storage service 测试覆盖 mount、populate、flush 和队列失败。
+- storage transaction 测试覆盖临时写入、读回、改名、同步和回滚失败。
+- session manager 测试覆盖游戏会话 ID、game module ID、过期回调和输入失效。
+- 浏览器合法导入数据来自真实导出的 raw save，不维护伪造合法存档生成器。
 
 ### 8.9 自动验收标准
 
@@ -856,7 +823,8 @@ npm run test:long
 - 不得有未预期 console error。
 - 不得有 pageerror。
 - 不得依赖测试执行顺序。
-- 单个失败必须生成足以定位 session 和 storage 状态的 artifact。
+- 普通浏览器测试 15 条全部通过，长流程测试 4 条全部通过。
+- 单个失败必须生成截图、执行跟踪和浏览器本地诊断日志。
 
 ### 8.10 手动最终验收
 
