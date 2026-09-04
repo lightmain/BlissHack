@@ -57,6 +57,12 @@ export type AppAction =
   }
   | { type: "MODULE_FATAL_ERROR"; moduleId: string; errorId: string }
   | { type: "SESSION_FATAL_ERROR"; sessionId: string; errorId: string }
+  | {
+    type: "APP_FATAL_ERROR";
+    moduleId: string | null;
+    sessionId: string | null;
+    errorId: string;
+  }
   | { type: "RETURN_HOME"; moduleId: string };
 
 /** Initial state before the first module has been allocated an identity. */
@@ -154,6 +160,15 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         sessionId: action.sessionId,
         errorId: action.errorId,
       };
+    case "APP_FATAL_ERROR":
+      return state.phase === "fatal"
+        ? state
+        : {
+          phase: "fatal",
+          moduleId: action.moduleId,
+          sessionId: action.sessionId,
+          errorId: action.errorId,
+        };
     case "RETURN_HOME":
       return state.phase === "fatal" && state.sessionId === null
         ? {

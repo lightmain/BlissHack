@@ -1,4 +1,9 @@
 import type { AppAction } from "../app/app-state";
+import type {
+  DiagnosticArea,
+  DiagnosticEventInput,
+  DiagnosticLog,
+} from "../diagnostics/diagnostic-log";
 import { getSnapshot } from "../game-state";
 import {
   createGameModule,
@@ -77,6 +82,12 @@ export interface SessionManager {
     path: string,
   ) => Promise<RawSaveExport>;
   cleanupSession: (sessionId: string) => Promise<void>;
+  reportFatal: (
+    area: DiagnosticArea,
+    event: string,
+    error: unknown,
+  ) => Promise<void>;
+  recoverHome: () => Promise<HomePreparation>;
   dispose: () => Promise<void>;
   getActiveSession: () => SessionHandle | null;
   getHomePreparation: () => HomePreparation | null;
@@ -97,6 +108,7 @@ export interface SessionManagerOptions {
   createModuleId?: () => string;
   createSessionId?: () => string;
   createStorageService?: (module: EmscriptenModule) => StorageService;
+  diagnostics?: DiagnosticLog;
   dispatch: (action: AppAction) => void;
   moduleFactory?: () => Promise<EmscriptenModule>;
   setRestoreRequired?: (
@@ -156,7 +168,34 @@ export function createSessionManager(
   let initializePromise: Promise<HomePreparation> | null = null;
   let startPromise: Promise<SessionHandle> | null = null;
   let homeOperationPromise: Promise<unknown> | null = null;
+  let fatalErrorId: string | null = null;
   let disposed = false;
+
+  /** Record one optional lifecycle event without coupling manager availability to it. */
+  function recordDiagnostic(input: DiagnosticEventInput): void {
+    options.diagnostics?.record(input);
+  }
+
+  /** Record the first fatal failure and return its correlation identifier. */
+  function identifyFatal(
+    area: DiagnosticArea,
+    event: string,
+    moduleId: string | null,
+    sessionId: string | null,
+    error: unknown,
+    detail?: DiagnosticEventInput["detail"],
+  ): string {
+    if (fatalErrorId) return fatalErrorId;
+    fatalErrorId = options.diagnostics?.recordFatal({
+      area,
+      event,
+      moduleId,
+      sessionId,
+      detail,
+    }, error).errorId
+      ?? errorIdentifier(sessionId ?? moduleId ?? "app", error);
+    return fatalErrorId;
+  }
 
   /** Prepare one module and its storage before Home becomes ready. */
   function initialize(): Promise<HomePreparation> {
@@ -179,19 +218,32 @@ export function createSessionManager(
       closed: false,
     };
     currentModule = record;
+    recordDiagnostic({
+      level: "info",
+      area: "wasm",
+      event: "module.loading",
+      moduleId,
+    });
     options.dispatch({ type: "MODULE_LOADING", moduleId });
 
-    const modulePromise = options.moduleFactory
-      ? options.moduleFactory()
-      : createGameModule(undefined, {
-        isCurrent: () =>
-          currentModule === record && !record.closed && !disposed,
-      });
+    const modulePromise = Promise.resolve().then(() =>
+      options.moduleFactory
+        ? options.moduleFactory()
+        : createGameModule(undefined, {
+          isCurrent: () =>
+            currentModule === record && !record.closed && !disposed,
+        }));
 
     initializePromise = modulePromise
       .then(async (module) => {
         assertCurrentModule(record);
         record.module = module;
+        recordDiagnostic({
+          level: "info",
+          area: "wasm",
+          event: "module.loaded",
+          moduleId,
+        });
         const storage = options.createStorageService
           ? options.createStorageService(module)
           : createStorageService(module as unknown as StorageModule, {
@@ -206,13 +258,32 @@ export function createSessionManager(
         try {
           storageAvailable = await storage.initialize();
           if (storageAvailable) saves = await storage.listSaves();
-        } catch {
+        } catch (error) {
           storageAvailable = false;
+          recordDiagnostic({
+            level: "warning",
+            area: "storage",
+            event: "storage.initialize_failed",
+            moduleId,
+            detail: { errorName: diagnosticErrorName(error) },
+          });
         }
         assertCurrentModule(record);
 
         const preparation = { moduleId, saves, storageAvailable };
         record.preparation = preparation;
+        recordDiagnostic({
+          level: storageAvailable ? "info" : "warning",
+          area: "storage",
+          event: storageAvailable
+            ? "storage.ready"
+            : "storage.unavailable",
+          moduleId,
+          detail: {
+            saveCount: saves.length,
+            storageAvailable,
+          },
+        });
         options.dispatch({
           type: "HOME_READY",
           moduleId,
@@ -226,7 +297,13 @@ export function createSessionManager(
           options.dispatch({
             type: "MODULE_FATAL_ERROR",
             moduleId,
-            errorId: errorIdentifier(moduleId, error),
+            errorId: identifyFatal(
+              "wasm",
+              "module.loading_failed",
+              moduleId,
+              null,
+              error,
+            ),
           });
         }
         throw error;
@@ -289,6 +366,13 @@ export function createSessionManager(
       closed: false,
     };
     owner.session = session;
+    recordDiagnostic({
+      level: "info",
+      area: "session",
+      event: "session.created",
+      moduleId: owner.moduleId,
+      sessionId,
+    });
 
     if (request.kind === "continue") {
       if (request.save.status !== "ready") {
@@ -335,16 +419,29 @@ export function createSessionManager(
       [],
       { async: true },
     );
+    recordDiagnostic({
+      level: "info",
+      area: "wasm",
+      event: "wasm.main_started",
+      moduleId: owner.moduleId,
+      sessionId,
+    });
     session.mainPromise = Promise.resolve(mainResult);
     void session.mainPromise.then(
       () => finishSession(owner, session),
       (error: unknown) => {
         if (session.continuation) {
-          void failRestore(owner, session, error);
+          void failRestore(
+            owner,
+            session,
+            error,
+            "wasm",
+            "wasm.main_failed",
+          );
         } else if (isSuccessfulExit(error)) {
           void finishSession(owner, session);
         } else {
-          void failSession(session, error);
+          void failSession(session, error, "wasm", "wasm.main_failed");
         }
       },
     );
@@ -389,13 +486,32 @@ export function createSessionManager(
       throw new Error("Save path is not listed by the current Home module");
     }
 
-    await owner.storage.deleteSave(path);
-    assertCurrentHomeModule(owner);
-    const saves = await owner.storage.listSaves();
-    assertCurrentHomeModule(owner);
+    let saves: SaveListEntry[];
+    try {
+      await owner.storage.deleteSave(path);
+      assertCurrentHomeModule(owner);
+      saves = await owner.storage.listSaves();
+      assertCurrentHomeModule(owner);
+    } catch (error) {
+      recordDiagnostic({
+        level: "error",
+        area: "storage",
+        event: "storage.delete_failed",
+        moduleId,
+        detail: { errorName: diagnosticErrorName(error) },
+      });
+      throw error;
+    }
 
     const preparation = { ...owner.preparation, saves };
     owner.preparation = preparation;
+    recordDiagnostic({
+      level: "info",
+      area: "storage",
+      event: "storage.delete_completed",
+      moduleId,
+      detail: { saveCount: saves.length },
+    });
     options.dispatch({
       type: "HOME_SAVES_UPDATED",
       moduleId,
@@ -456,14 +572,41 @@ export function createSessionManager(
       throw new Error("Persistent storage is unavailable");
     }
 
-    const result = await owner.storage.importSave(request);
+    let result: RawSaveImportResult;
+    try {
+      result = await owner.storage.importSave(request);
+    } catch (error) {
+      recordDiagnostic({
+        level: "warning",
+        area: "storage",
+        event: "storage.import_rejected",
+        moduleId,
+        detail: { errorName: diagnosticErrorName(error) },
+      });
+      throw error;
+    }
     assertCurrentHomeModule(owner);
-    if (result.status === "conflict") return result;
+    if (result.status === "conflict") {
+      recordDiagnostic({
+        level: "info",
+        area: "storage",
+        event: "storage.import_conflict",
+        moduleId,
+      });
+      return result;
+    }
 
     const saves = await owner.storage.listSaves();
     assertCurrentHomeModule(owner);
     const preparation = { ...owner.preparation, saves };
     owner.preparation = preparation;
+    recordDiagnostic({
+      level: "info",
+      area: "storage",
+      event: "storage.import_completed",
+      moduleId,
+      detail: { saveCount: saves.length },
+    });
     options.dispatch({
       type: "HOME_SAVES_UPDATED",
       moduleId,
@@ -499,8 +642,26 @@ export function createSessionManager(
     if (!listedSave || listedSave.status !== "ready") {
       throw new Error("Save is not a listed ready save");
     }
-    const bytes = await owner.storage.exportSave(path);
-    assertCurrentHomeModule(owner);
+    let bytes: Uint8Array;
+    try {
+      bytes = await owner.storage.exportSave(path);
+      assertCurrentHomeModule(owner);
+    } catch (error) {
+      recordDiagnostic({
+        level: "warning",
+        area: "storage",
+        event: "storage.export_failed",
+        moduleId,
+        detail: { errorName: diagnosticErrorName(error) },
+      });
+      throw error;
+    }
+    recordDiagnostic({
+      level: "info",
+      area: "storage",
+      event: "storage.export_completed",
+      moduleId,
+    });
     return {
       bytes,
       fileName: `${safeDownloadName(listedSave.identity.playerName)}.nhsave`,
@@ -545,19 +706,65 @@ export function createSessionManager(
       if (!isCurrentSession(owner, session)) return result;
       if (getSnapshot().phase === "error") {
         const error = new Error(`Bridge callback failed: ${name}`);
-        if (session.continuation) await failRestore(owner, session, error);
-        else await failSession(session, error);
+        const detail = {
+          callback: name,
+          inputKind: getSnapshot().inputRequest?.kind ?? null,
+        };
+        if (session.continuation) {
+          await failRestore(
+            owner,
+            session,
+            error,
+            "bridge",
+            "bridge.callback_failed",
+            detail,
+          );
+        } else {
+          await failSession(
+            session,
+            error,
+            "bridge",
+            "bridge.callback_failed",
+            detail,
+          );
+        }
         return result;
       }
       if (name === "shim_init_nhwindows") {
+        recordDiagnostic({
+          level: "info",
+          area: "session",
+          event: "session.running",
+          moduleId: owner.moduleId,
+          sessionId: session.sessionId,
+        });
         options.dispatch({ type: "SESSION_RUNNING", sessionId: session.sessionId });
       } else if (name === "shim_exit_nhwindows") {
+        recordDiagnostic({
+          level: "info",
+          area: "session",
+          event: "session.exiting",
+          moduleId: owner.moduleId,
+          sessionId: session.sessionId,
+        });
         options.dispatch({ type: "SESSION_EXITING", sessionId: session.sessionId });
         try {
           await (owner.storage as StorageService).flush();
           session.exitFlushed = true;
+          recordDiagnostic({
+            level: "info",
+            area: "storage",
+            event: "storage.flush_completed",
+            moduleId: owner.moduleId,
+            sessionId: session.sessionId,
+          });
         } catch (error) {
-          await failSession(session, error);
+          await failSession(
+            session,
+            error,
+            "storage",
+            "storage.flush_failed",
+          );
         }
       } else if (name === "shim_nhgetch" && session.continuation) {
         session.continuation = null;
@@ -573,9 +780,33 @@ export function createSessionManager(
   ): Promise<void> {
     if (!isCurrentSession(owner, session)) return;
     if (!session.exitFlushed) {
+      recordDiagnostic({
+        level: "info",
+        area: "session",
+        event: "session.exiting",
+        moduleId: owner.moduleId,
+        sessionId: session.sessionId,
+      });
       options.dispatch({ type: "SESSION_EXITING", sessionId: session.sessionId });
-      await (owner.storage as StorageService).flush();
+      try {
+        await (owner.storage as StorageService).flush();
+      } catch (error) {
+        await failSession(
+          session,
+          error,
+          "storage",
+          "storage.flush_failed",
+        );
+        return;
+      }
       session.exitFlushed = true;
+      recordDiagnostic({
+        level: "info",
+        area: "storage",
+        event: "storage.flush_completed",
+        moduleId: owner.moduleId,
+        sessionId: session.sessionId,
+      });
     }
     await retireSession(owner, session, true);
   }
@@ -585,6 +816,9 @@ export function createSessionManager(
     owner: ModuleRecord,
     session: SessionRecord,
     error: unknown,
+    area: DiagnosticArea,
+    event: string,
+    detail?: DiagnosticEventInput["detail"],
   ): Promise<void> {
     if (!isCurrentSession(owner, session) || !session.continuation) return;
     const backup = session.continuation;
@@ -596,8 +830,11 @@ export function createSessionManager(
       await (owner.storage as StorageService).flush();
     } catch (restoreError) {
       error = restoreError;
+      area = "storage";
+      event = "storage.restore_failed";
+      detail = { errorName: diagnosticErrorName(restoreError) };
     }
-    await failSession(session, error);
+    await failSession(session, error, area, event, detail);
   }
 
   /** Release one session and optionally prepare the next home module. */
@@ -613,6 +850,13 @@ export function createSessionManager(
       owner.closed = true;
       delete callbackHost[session.callbackName];
       resetBridgeState();
+      recordDiagnostic({
+        level: "info",
+        area: "session",
+        event: "session.cleaned",
+        moduleId: owner.moduleId,
+        sessionId: session.sessionId,
+      });
       if (currentModule === owner) {
         currentModule = null;
         initializePromise = null;
@@ -645,15 +889,91 @@ export function createSessionManager(
   async function failSession(
     session: SessionRecord,
     error: unknown,
+    area: DiagnosticArea = "session",
+    event = "session.failed",
+    detail?: DiagnosticEventInput["detail"],
   ): Promise<void> {
     const owner = currentModule;
     if (!owner || !isCurrentSession(owner, session)) return;
+    const errorId = identifyFatal(
+      area,
+      event,
+      owner.moduleId,
+      session.sessionId,
+      error,
+      detail,
+    );
     await retireSession(owner, session, false);
     options.dispatch({
       type: "SESSION_FATAL_ERROR",
       sessionId: session.sessionId,
-      errorId: errorIdentifier(session.sessionId, error),
+      errorId,
     });
+  }
+
+  /** Convert one uncaught browser or React failure into the current fatal state. */
+  async function reportFatal(
+    area: DiagnosticArea,
+    event: string,
+    error: unknown,
+  ): Promise<void> {
+    const owner = currentModule;
+    const session = owner?.session;
+    if (owner && session && isCurrentSession(owner, session)) {
+      await failSession(session, error, area, event);
+      return;
+    }
+    if (fatalErrorId) return;
+    if (!owner) {
+      const errorId = identifyFatal(area, event, null, null, error);
+      options.dispatch({
+        type: "APP_FATAL_ERROR",
+        moduleId: null,
+        sessionId: null,
+        errorId,
+      });
+      return;
+    }
+    if (owner.closed) return;
+    const errorId = identifyFatal(
+      area,
+      event,
+      owner.moduleId,
+      null,
+      error,
+    );
+    owner.closed = true;
+    options.dispatch({
+      type: "MODULE_FATAL_ERROR",
+      moduleId: owner.moduleId,
+      errorId,
+    });
+  }
+
+  /** Discard a failed module and prepare a fresh Home module. */
+  function recoverHome(): Promise<HomePreparation> {
+    const owner = currentModule;
+    if (owner?.session && !owner.session.closed) {
+      return Promise.reject(
+        new Error("Cannot return Home while a failed session remains active"),
+      );
+    }
+    if (owner) owner.closed = true;
+    currentModule = null;
+    initializePromise = null;
+    startPromise = null;
+    homeOperationPromise = null;
+    fatalErrorId = null;
+    disposed = false;
+    const moduleId = createModuleId();
+    recordDiagnostic({
+      level: "info",
+      area: "app",
+      event: "app.return_home",
+      moduleId,
+    });
+    options.dispatch({ type: "RETURN_HOME", moduleId });
+    return prepareModule(moduleId);
   }
 
   /** Dispose the current manager without creating another module. */
@@ -664,7 +984,15 @@ export function createSessionManager(
     if (owner.storage) {
       try {
         await owner.storage.flush();
-      } catch {
+      } catch (error) {
+        recordDiagnostic({
+          level: "warning",
+          area: "storage",
+          event: "storage.teardown_flush_failed",
+          moduleId: owner.moduleId,
+          sessionId: owner.session?.sessionId ?? null,
+          detail: { errorName: diagnosticErrorName(error) },
+        });
         // Page teardown cannot present a recoverable storage workflow.
       }
     }
@@ -691,6 +1019,8 @@ export function createSessionManager(
     importSave,
     exportSave,
     cleanupSession,
+    reportFatal,
+    recoverHome,
     dispose,
     getActiveSession: () => currentModule?.session?.handle ?? null,
     getHomePreparation: () => currentModule?.preparation ?? null,
@@ -775,6 +1105,11 @@ function errorIdentifier(identity: string, error: unknown): string {
     ? error.name
     : "SessionError";
   return `${identity}:${category}`;
+}
+
+/** Return only the non-sensitive JavaScript error category. */
+function diagnosticErrorName(error: unknown): string {
+  return error instanceof Error && error.name ? error.name : "UnknownError";
 }
 
 /** Detect Emscripten's successful ExitStatus rejection. */

@@ -91,6 +91,71 @@ test("plays through startup and routes terminal UI input", async ({ page }) => {
   expect(errors).toEqual({ console: [], page: [] });
 });
 
+test("shows a fatal page and exports a private diagnostic log", async ({
+  page,
+}) => {
+  const playerName = "E2E_Private_Diagnostic";
+  const privateMessage = `${playerName} pressed Control+p near a secret door`;
+  const consoleErrors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") consoleErrors.push(message.text());
+  });
+  await startNewGame(page, playerName);
+
+  await page.evaluate((message) => {
+    globalThis.setTimeout(() => {
+      void Promise.reject(new Error(message));
+    }, 0);
+  }, privateMessage);
+
+  await expect(
+    page.getByRole("heading", { name: "BlissHack could not continue" }),
+  ).toBeVisible();
+  const errorId = await page.locator(".fatal-screen code").textContent();
+  expect(errorId).toMatch(/^BH-[A-Z0-9]{8}$/);
+  await expect(
+    page.getByRole("button", { name: "Reload Application" }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Return Home" })).toHaveCount(0);
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export Diagnostic Log" }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe("blisshack-diagnostics.json");
+  const path = await download.path();
+  expect(path).not.toBeNull();
+  const text = await readFile(path!, "utf8");
+  const diagnostic = JSON.parse(text) as {
+    schemaVersion: number;
+    buildId: string;
+    events: Array<{
+      detail?: { buildId?: string };
+      errorId: string | null;
+      event: string;
+      level: string;
+    }>;
+  };
+
+  expect(diagnostic.schemaVersion).toBe(1);
+  expect(diagnostic.buildId).toBeTruthy();
+  expect(diagnostic.events).toContainEqual(expect.objectContaining({
+    event: "app.started",
+    detail: { buildId: diagnostic.buildId },
+  }));
+  expect(diagnostic.events).toContainEqual(expect.objectContaining({
+    level: "fatal",
+    event: "browser.unhandled_rejection",
+    errorId,
+  }));
+  expect(text).not.toContain(playerName);
+  expect(text).not.toContain("Control+p");
+  expect(text).not.toContain("secret door");
+  expect(consoleErrors).toContain(
+    `[BlissHack][fatal][${errorId}] browser.unhandled_rejection`,
+  );
+  expect(consoleErrors.join("\n")).not.toContain(privateMessage);
+});
+
 test("enumerates a persisted save after returning home and refreshing", async ({
   page,
 }) => {

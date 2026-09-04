@@ -172,6 +172,23 @@
   color: #aeb6ba;
 }
 
+.home-footer button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #aeb6ba;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.home-footer button:hover,
+.home-footer button:focus-visible {
+  color: #fff;
+  outline: 2px solid #7ddc8c;
+  outline-offset: 3px;
+}
+
 .app-loading,
 .session-loading,
 .fatal-screen {
@@ -223,8 +240,15 @@
   overflow-wrap: anywhere;
 }
 
-.fatal-screen button {
+.fatal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
   margin-top: 20px;
+}
+
+.fatal-actions button {
+  margin-top: 0;
 }
 
 .save-picker-popover {
