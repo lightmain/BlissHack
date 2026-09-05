@@ -18,7 +18,7 @@ BlissHack 对 NetHack C 代码进行了少量有针对性的修改，主要用�
 
 ## 项目状态
 
-**prealpha-1 已完成。**
+**prealpha-2 已完成，prealpha-3 正在开发。**
 
 当前里程碑已经实现：
 
@@ -60,8 +60,11 @@ BlissHack 使用 NetHack 的标准键盘命令：
 
 ## 本地开发
 
-仓库中的 `frontend/public/nethack.js` 和 `nethack.wasm` 是前端使用的一对
-Emscripten 运行时产物。
+产品版本由根目录 `VERSION` 定义。前端开发和 CI 使用根目录 `.nvmrc` 指定的
+Node.js 主版本。
+
+仓库中的 `frontend/public/nethack.js`、`nethack.wasm` 和
+`nethack-runtime.json` 是前端使用的 Emscripten 运行时三件套。
 
 ```sh
 cd frontend
@@ -79,7 +82,7 @@ npm run preview
 
 重新编译 WebAssembly 内核需要 Emscripten。请按照
 [WASM 构建流程](doc/BlissHack/build-process.md)操作，并始终一起提交两个
-运行时文件。
+运行时文件和校验记录。
 
 ## 测试
 
@@ -98,6 +101,8 @@ npm run test:long
 
 - [prealpha-1 计划](doc/BlissHack/plans/prealpha-1.md)
 - [prealpha-2 计划](doc/BlissHack/plans/prealpha-2.md)
+- [prealpha-3 计划](doc/BlissHack/plans/prealpha-3.md)
+- [上游修改清单](doc/BlissHack/upstream-modifications.md)
 - [存档存储与读取方案评审](doc/BlissHack/plans/in-prealpha-2/save-format-review.md)
 - [Game Module 生命周期](doc/BlissHack/plans/in-prealpha-2/module-lifecycle.md)
 - [致命错误和诊断日志设计](doc/BlissHack/plans/in-prealpha-2/fatal-errors-and-diagnostics.md)

@@ -1,3 +1,5 @@
+import { BUILD_ID, PRODUCT_VERSION } from "../version";
+
 /** Maximum number of diagnostic events retained across page loads. */
 export const DIAGNOSTIC_EVENT_LIMIT = 500;
 /** Browser-local key for the persisted diagnostic log. */
@@ -50,6 +52,7 @@ export interface DiagnosticEventInput {
 /** Portable JSON document downloaded by the player. */
 export interface DiagnosticExport {
   schemaVersion: 1;
+  productVersion: string;
   buildId: string;
   exportedAt: string;
   browser: {
@@ -72,6 +75,7 @@ export interface DiagnosticConsole {
 
 /** Injectable dependencies for deterministic tests and browser integration. */
 export interface DiagnosticLogOptions {
+  productVersion: string;
   buildId: string;
   console?: DiagnosticConsole;
   createErrorId?: () => string;
@@ -82,6 +86,7 @@ export interface DiagnosticLogOptions {
 
 /** Public operations for recording and exporting diagnostics. */
 export interface DiagnosticLog {
+  productVersion: string;
   buildId: string;
   record(input: DiagnosticEventInput): DiagnosticEvent;
   recordFatal(
@@ -113,6 +118,11 @@ export function createDiagnosticLog(
   const now = options.now ?? (() => new Date());
   const createErrorId = options.createErrorId ?? defaultErrorId;
   const output = options.console ?? console;
+  const productVersion = normalizeToken(
+    options.productVersion,
+    64,
+    "unknown",
+  );
   const buildId = normalizeToken(options.buildId, 128, "development");
   let storage = options.storage ?? null;
   const restored = restorePersistedLog(storage);
@@ -187,6 +197,7 @@ export function createDiagnosticLog(
   function exportData(): DiagnosticExport {
     return {
       schemaVersion: 1,
+      productVersion,
       buildId,
       exportedAt: now().toISOString(),
       browser: {
@@ -197,6 +208,7 @@ export function createDiagnosticLog(
   }
 
   return {
+    productVersion,
     buildId,
     record,
     recordFatal,
@@ -213,7 +225,8 @@ export function createDiagnosticLog(
 export function getBrowserDiagnosticLog(): DiagnosticLog {
   if (browserDiagnosticLog) return browserDiagnosticLog;
   browserDiagnosticLog = createDiagnosticLog({
-    buildId: import.meta.env.VITE_BUILD_ID ?? "prealpha-2-development",
+    productVersion: PRODUCT_VERSION,
+    buildId: BUILD_ID,
     storage: browserStorage(),
     userAgent: globalThis.navigator?.userAgent ?? "unknown",
   });

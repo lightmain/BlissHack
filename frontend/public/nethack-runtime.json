@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "emscriptenVersion": "6.0.9",
+  "nodeMajor": 24,
+  "luaVersion": "5.4.8",
+  "hintsFile": "sys/unix/hints/macOS.500",
+  "buildTools": {
+    "node": "v24.19.0",
+    "make": "GNU Make 3.81",
+    "hostCompiler": "Apple clang version 21.0.0 (clang-2100.1.1.101)"
+  },
+  "files": {
+    "nethack.js": {
+      "bytes": 95047,
+      "sha256": "22a5bc7ee49b02c1bb96c17feb243f8681ee74f179a69dbe5cbb678775be910a"
+    },
+    "nethack.wasm": {
+      "bytes": 6441117,
+      "sha256": "7ff26e8d826e4439b92fe2b72f47666773aec7694ae3cff28ca629b59f9727d0"
+    }
+  }
+}

@@ -6,23 +6,40 @@
 
 ## 前置依赖
 
-- macOS（已在 macOS 26.5.1 / arm64 上测试）
-- Emscripten SDK（emsdk）
+- macOS 或 Linux
+- 根目录 `.nvmrc` 指定的 Node.js 主版本
+- 根目录 `.emscripten-version` 指定的 Emscripten SDK 完整版本
+- GNU Make、宿主 C 编译器、POSIX shell、awk、sed、curl、tar、xz 和 Python 3
+
+Node.js 和 Emscripten 的版本文件是权威来源。不得在文档或 CI 中改用
+`lts/*` 或 `latest`。
+
+### 安装 Node.js
+
+使用支持 `.nvmrc` 的版本管理器，例如：
+
+```bash
+cd /path/to/BlissHack
+nvm install
+nvm use
+node --version
+```
 
 ### 安装 Emscripten
 
 ```bash
 git clone https://github.com/emscripten-core/emsdk.git
 cd emsdk
-./emsdk install latest
-./emsdk activate latest
+EMSCRIPTEN_VERSION="$(cat /path/to/BlissHack/.emscripten-version)"
+./emsdk install "$EMSCRIPTEN_VERSION"
+./emsdk activate "$EMSCRIPTEN_VERSION"
 source ./emsdk_env.sh
 ```
 
 验证安装：
 ```bash
 emcc --version
-# 应输出类似：emcc (Emscripten gcc/clang-like replacement + linker emulating GNU ld) 3.x.x
+# 必须与 .emscripten-version 完全一致
 ```
 
 **注意：** 每次打开新终端都需要 `source emsdk_env.sh`，或者将其加入 shell profile。
@@ -30,21 +47,30 @@ emcc --version
 ## WASM 构建步骤
 
 ```bash
-cd /Users/bytedance/home/Develop/PlayGround/NetHack
-
-# 1. 运行 setup.sh 生成 Makefile
-cd sys/unix && sh setup.sh hints/macOS.500 && cd ../..
-
-# 2. 获取 Lua（如果还没有）
-make fetch-Lua
-
-# 3. 编译 WASM
-make CROSS_TO_WASM=1
+cd /path/to/BlissHack/frontend
+npm ci
+npm run build:wasm
 ```
 
-也可以用官方提供的一键脚本：
+该命令自动完成：
+
+1. 在清理或编译前检查 Node.js、Emscripten 和其他构建工具。
+   `emcc`、`emar` 和 `emranlib` 必须解析到同一个 emsdk 目录。
+2. 执行 `make spotless`。
+3. macOS 使用 `sys/unix/hints/macOS.500`，Linux 使用
+   `sys/unix/hints/linux.500`。
+4. 生成 Makefile，并在缺失时通过 `make fetch-Lua` 获取经过上游 checksum
+   校验的 Lua 5.4.8。
+5. 执行 `make CROSS_TO_WASM=1`。
+6. 在 staging 目录生成并校验完整运行时三件套。
+7. 以 `0644` 权限更新 `frontend/public` 并运行 WASM 集成测试；发布或测试
+   失败时恢复更新前的完整三件套。
+
+CI 或需要明确 hints 时使用：
+
 ```bash
-./sys/libnh/test/run.sh wasm
+cd frontend
+npm run build:wasm -- --hints sys/unix/hints/linux.500
 ```
 
 ### 构建产物
@@ -62,6 +88,19 @@ targets/wasm/
     record        记录文件
     ...
 ```
+
+统一构建命令随后更新：
+
+```text
+frontend/public/
+  nethack.js
+  nethack.wasm
+  nethack-runtime.json
+```
+
+`nethack-runtime.json` 记录 Emscripten、Node.js、Lua、hints、宿主编译器、
+Make，以及两个运行时文件的字节长度和 SHA-256。摘要只用于检查产物配对和
+意外改写，不表示存档兼容性。
 
 **关键理解：** `nethack.js` + `nethack.wasm` 是一体的。JS 文件是 WASM 的加载器和运行时，
 不能分开使用。`wasm-data/` 中的文件在编译时被 `--embed-file` 嵌入到 .wasm 二进制中，
@@ -136,9 +175,10 @@ frontend/dist/
 **关键点：**
 - `nethack.js` 和 `nethack.wasm` 放在 `public/` 目录中，Vite 会原样复制到 `dist/`，
   不对其进行打包、压缩或 tree-shaking
-- `frontend/public/nethack.js` 和 `frontend/public/nethack.wasm` 必须提交到仓库。
-  GitHub Pages 工作流不安装 Emscripten，而是发布这两个经过验证的运行时产物。
-  重新编译 WASM 后，需要同时更新并提交这两个文件。
+- `frontend/public/nethack.js`、`frontend/public/nethack.wasm` 和
+  `frontend/public/nethack-runtime.json` 必须提交到仓库。GitHub Pages
+  工作流不安装 Emscripten，而是先校验再发布这三个文件。重新编译 WASM 后，
+  必须同时更新并提交完整三件套。
 - React 代码在运行时通过 `import()` 动态加载 `nethack.js`，后者自动加载同目录下的 `nethack.wasm`
 - 最终部署只需要把 `dist/` 目录整个放到任意静态文件服务器上
 
@@ -176,8 +216,29 @@ make CROSS_TO_WASM=1     # WASM
   cd frontend && npm run dev    # Vite 开发服务器，HMR
 
 终端 2: 如果修改了 C 代码（通常不需要）
-  make CROSS_TO_WASM=1          # 重新编译 WASM
-  cp targets/wasm/nethack.* frontend/public/  # 复制到前端
+  cd frontend
+  npm run build:wasm            # 重建、复制、校验并运行 WASM 测试
 ```
 
 正常开发中只改前端代码，WASM 模块编译一次后很少需要重新编译。
+
+## 运行时校验
+
+`npm run build` 会在 TypeScript 和 Vite 构建前运行
+`frontend/scripts/verify-runtime-assets.mjs`。以下任一情况都会使生产构建
+失败：
+
+- manifest 或任一运行时文件缺失。
+- `nethack.js` 不是 Emscripten ES module。
+- `nethack.wasm` 没有合法的八字节 WASM 头。
+- 文件长度或 SHA-256 与 manifest 不一致。
+- manifest 的 Emscripten、Node.js 主版本或 Lua 版本与仓库固定值不一致。
+
+## 手动 GitHub Actions
+
+`.github/workflows/rebuild-wasm.yml` 使用固定的 `ubuntu-24.04`、Node.js 主版本
+和 Emscripten 完整版本重建正式运行时。它执行单元测试、生产构建、WASM
+集成测试和 Chromium 浏览器测试，并上传运行时三件套供审核。
+
+该 workflow 不自动提交产物。下载产物后应检查三个文件的 diff，再按
+`doc/BlissHack/upstream-modifications.md` 复核上游修改和测试。

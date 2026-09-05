@@ -1,0 +1,86 @@
+name: Rebuild BlissHack WASM
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  VITE_BUILD_ID: ${{ github.sha }}
+
+jobs:
+  rebuild-wasm:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+          registry-url: https://registry.npmjs.org
+
+      - name: Install host build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes build-essential curl python3 xz-utils
+
+      - name: Install Emscripten SDK
+        shell: bash
+        run: |
+          emscripten_version="$(tr -d '[:space:]' < .emscripten-version)"
+          git clone --depth 1 --branch "${emscripten_version}" \
+            https://github.com/emscripten-core/emsdk.git .emsdk
+          ./.emsdk/emsdk install "${emscripten_version}"
+          ./.emsdk/emsdk activate "${emscripten_version}"
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Rebuild and verify WASM runtime
+        shell: bash
+        run: |
+          source ./.emsdk/emsdk_env.sh
+          cd frontend
+          npm run build:wasm -- --hints sys/unix/hints/linux.500
+
+      - name: Run lint and unit tests
+        working-directory: frontend
+        run: |
+          npm run lint
+          npm test
+
+      - name: Build site
+        working-directory: frontend
+        run: npm run build
+
+      - name: Install Chromium
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Run browser integration tests
+        working-directory: frontend
+        run: npm run test:integration:browser
+
+      - name: Upload rebuilt runtime
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: blisshack-wasm-${{ github.sha }}
+          path: |
+            frontend/public/nethack.js
+            frontend/public/nethack.wasm
+            frontend/public/nethack-runtime.json
+          if-no-files-found: error
+
+      - name: Upload browser failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: wasm-browser-test-results
+          path: frontend/test-results/playwright
+          if-no-files-found: ignore

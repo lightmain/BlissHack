@@ -4,6 +4,7 @@ import type {
   RawSaveImportRequest,
   SaveListEntry,
 } from "../storage/storage-service";
+import { PRODUCT_VERSION } from "../version";
 import { SavePickerPopover } from "./SavePickerPopover";
 
 /** Properties for the application home screen. */
@@ -74,7 +75,7 @@ export function HomeScreen({
   return (
     <main className="home-screen" aria-labelledby="home-title">
       <header className="home-header">
-        <span className="home-version">prealpha-2</span>
+        <span className="home-version">{PRODUCT_VERSION}</span>
         <span className="home-runtime">NetHack 5.0</span>
       </header>
 
@@ -125,7 +126,7 @@ export function HomeScreen({
       </section>
 
       <footer className="home-footer">
-        <span>BlissHack prealpha-2</span>
+        <span>BlissHack {PRODUCT_VERSION}</span>
         <span>NetHack copyright 1985-2026</span>
         <button onClick={onExportDiagnostics} type="button">
           Export Diagnostic Log
