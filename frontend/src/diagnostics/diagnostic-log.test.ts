@@ -25,6 +25,7 @@ function memoryStorage(initial?: string): DiagnosticStorage & {
 function deterministicLog(storage: DiagnosticStorage | null = null) {
   let tick = 0;
   return createDiagnosticLog({
+    productVersion: "prealpha-test",
     buildId: "build-test",
     console: {
       warn: vi.fn(),
@@ -121,6 +122,7 @@ describe("diagnostic privacy and export", () => {
 
     expect(JSON.parse(log.exportJson())).toMatchObject({
       schemaVersion: 1,
+      productVersion: "prealpha-test",
       buildId: "build-test",
       browser: { userAgent: "Test Browser" },
       events: [{
@@ -137,6 +139,7 @@ describe("diagnostic privacy and export", () => {
       error: vi.fn(),
     };
     const log = createDiagnosticLog({
+      productVersion: "prealpha-test",
       buildId: "build-test",
       console: consoleTarget,
       createErrorId: () => "BH-TEST0001",
@@ -193,6 +196,7 @@ describe("diagnostic persistence fallback", () => {
       }),
     };
     const log = createDiagnosticLog({
+      productVersion: "prealpha-test",
       buildId: "build-test",
       console: consoleTarget,
       now: () => new Date(1_700_000_000_000),

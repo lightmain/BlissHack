@@ -3,8 +3,8 @@
 ## 1. 文档状态
 
 本文定义 prealpha-3 阶段一的实施边界、文件职责、执行顺序和验收方法。
-本文只完成实现规划；用户确认第 12 节中的工具版本和实施方案前，不开始修改
-版本代码、构建脚本、CI 或 WebAssembly 产物。
+用户已于 2026-09-05 确认第 12 节。实现和本地验证已经完成，改动保留为
+未提交状态供用户审核；固定 Linux workflow 的首次运行仍是提交后的发布门禁。
 
 阶段一开始前的 Git 检查点为：
 
@@ -408,3 +408,48 @@ long-test job 中执行，避免在同一个 workflow 重复长流程。
    一起提交和发布。
 6. 阶段一不修改 NetHack C/shim 行为，不提前更新 README 为“prealpha-3
    已完成”。
+
+## 13. 实施验证记录
+
+本地验证环境：
+
+```text
+macOS 26.5.1 arm64
+Node.js v24.19.0
+Emscripten 6.0.9
+GNU Make 3.81
+Apple clang 21.0.0
+Lua 5.4.8
+sys/unix/hints/macOS.500
+```
+
+已完成：
+
+- 从空 `targets/wasm` 完整重建运行时。
+- 生成并验证 `nethack.js`、`nethack.wasm` 和
+  `nethack-runtime.json`。
+- 错误 Emscripten 6.0.8 在 `make spotless` 前失败，Makefile 未改变。
+- WASM 集成测试 18 条通过。
+- 单元测试 227 条通过。
+- lint 0 warning、0 error。
+- 生产构建通过。
+- Chromium 普通浏览器测试 15 条通过。
+- Chromium 长流程测试 4 条通过。
+
+当前已提交候选运行时来自上述 macOS 环境，所以 manifest 如实记录
+`sys/unix/hints/macOS.500`。代码审核和提交后必须运行手动
+`rebuild-wasm.yml`，用 Ubuntu 24.04 产物替换候选三件套，并再次执行生产构建
+和浏览器测试，才满足第 3.3 节规定的正式二进制来源。
+
+本地 Playwright 的全部断言通过后，TRAE 执行沙箱在关闭测试进程时报告了对
+根目录 `/` 的访问限制并把命令包装层标为退出码 1。测试报告本身分别为
+`15 passed` 和 `4 passed`；该沙箱提示不来自 BlissHack 或 Playwright 测试
+失败。
+
+严格代码审查后又完成以下加固：
+
+- 验证 `emcc`、`emar` 和 `emranlib` 解析到同一个 emsdk 目录。
+- 三件套发布和后续 WASM 测试失败时恢复更新前的完整三件套。
+- 发布文件统一使用 `0644`，不继承编译产物的可执行位。
+- 使用 `lstat()` 拒绝 manifest、JS 或 WASM 符号链接。
+- 增加错误 Emscripten 版本、混用 wrapper 和符号链接的自动测试。

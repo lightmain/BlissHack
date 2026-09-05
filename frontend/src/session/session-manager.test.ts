@@ -128,6 +128,7 @@ async function isSettled(promise: Promise<unknown>): Promise<boolean> {
 function createHarness(
   modules: EmscriptenModule[],
   diagnostics = createDiagnosticLog({
+    productVersion: "prealpha-test",
     buildId: "test",
     console: { warn: vi.fn(), error: vi.fn() },
     createErrorId: () => "BH-TEST0001",

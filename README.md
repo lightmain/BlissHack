@@ -21,7 +21,7 @@ frontend. These changes are documented in
 
 ## Project Status
 
-**prealpha-1 is complete.**
+**prealpha-2 is complete and prealpha-3 is in development.**
 
 The current milestone provides:
 
@@ -67,8 +67,13 @@ complete encoding table and source references.
 
 ## Local Development
 
-The checked-in `frontend/public/nethack.js` and `nethack.wasm` files are the
-paired Emscripten runtime artifacts used by the frontend.
+The product version is defined by the root `VERSION` file. Frontend
+development and CI use the Node.js major version selected by the root
+`.nvmrc`.
+
+The checked-in `frontend/public/nethack.js`, `nethack.wasm`, and
+`nethack-runtime.json` files are the Emscripten runtime triplet used by the
+frontend.
 
 ```sh
 cd frontend
@@ -84,9 +89,9 @@ npm run build
 npm run preview
 ```
 
-Rebuilding the WebAssembly core requires Emscripten. Follow
-[the WASM build process](doc/BlissHack/build-process.md) and commit both
-runtime artifacts together.
+Rebuilding the WebAssembly core requires the pinned Emscripten version.
+Follow the [WASM build process](doc/BlissHack/build-process.md) and always
+commit both runtime files and their verification manifest together.
 
 ## Tests
 
@@ -107,6 +112,8 @@ and raw save transfer before a release.
 
 - [prealpha-1 plan](doc/BlissHack/plans/prealpha-1.md)
 - [prealpha-2 plan](doc/BlissHack/plans/prealpha-2.md)
+- [prealpha-3 plan](doc/BlissHack/plans/prealpha-3.md)
+- [Upstream modification inventory](doc/BlissHack/upstream-modifications.md)
 - [Fatal errors and diagnostic log design](doc/BlissHack/plans/in-prealpha-2/fatal-errors-and-diagnostics.md)
 - [Browser end-to-end test design](doc/BlissHack/plans/in-prealpha-2/browser-end-to-end-tests.md)
 - [WASM build process](doc/BlissHack/build-process.md)

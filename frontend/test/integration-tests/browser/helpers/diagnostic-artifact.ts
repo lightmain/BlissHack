@@ -20,6 +20,7 @@ export interface BrowserDiagnosticEvent {
 /** Diagnostic document downloaded through the real application button. */
 export interface BrowserDiagnosticExport {
   schemaVersion: number;
+  productVersion: string;
   buildId: string;
   events: BrowserDiagnosticEvent[];
 }

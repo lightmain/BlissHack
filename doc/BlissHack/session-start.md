@@ -9,9 +9,11 @@
 
 1. 完整阅读仓库根目录的 `AGENTS.md` 和 `AGENTS-cn.md`。
 2. 阅读 `README-cn.md`，确认当前产品定位、运行方式、测试入口和许可证说明。
-3. 当前版本为 prealpha-2 时，阅读
-   `doc/BlissHack/plans/prealpha-2.md` 的版本目标、范围边界、当前任务所属阶段、
-   阶段验收标准和阶段交付规则。不需要无目的地加载全文。
+3. 当前版本为 prealpha-3。阅读
+   `doc/BlissHack/plans/prealpha-3.md` 的版本目标、范围边界、当前任务所属阶段、
+   阶段验收标准和阶段交付规则；阶段一另读
+   `plans/in-prealpha-3/version-and-reproducible-build.md`。不需要无目的地加载
+   全文。
 4. 检查仓库现场：
 
    ```bash
@@ -40,8 +42,8 @@
   有测试覆盖的功能补全。
 - shim ABI 有已知限制。不得假定它能无损表达全部 `window_procs` 契约，也不得
   猜测未公开的 WASM 地址或结构布局。
-- `frontend/public/nethack.js` 和 `frontend/public/nethack.wasm` 是必须成对
-  更新的构建产物。
+- `frontend/public/nethack.js`、`frontend/public/nethack.wasm` 和
+  `frontend/public/nethack-runtime.json` 是必须一起更新的运行时三件套。
 
 ## 3. 按任务读取
 
@@ -85,8 +87,9 @@
 - `doc/BlissHack/build-process.md`
 - `sys/unix/hints/include/cross-pre2.500`
 - `frontend/scripts/verify-runtime-assets.mjs`
+- `doc/BlissHack/upstream-modifications.md`
 
-重新构建后必须验证并一起更新 `nethack.js` 与 `nethack.wasm`。
+重新构建后必须验证并一起更新运行时三件套。
 
 ### GitHub Pages 和 CI
 
