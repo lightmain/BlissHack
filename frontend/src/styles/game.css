@@ -243,6 +243,23 @@
   user-select: none;
 }
 
+.nh-map-interaction {
+  width: fit-content;
+  height: fit-content;
+}
+
+.nh-map.nh-map-tiles {
+  width: 1280px;
+  height: 336px;
+  display: block;
+  image-rendering: pixelated;
+}
+
+.nh-map-fallback {
+  width: fit-content;
+  height: fit-content;
+}
+
 .nh-map-row {
   width: 80ch;
   height: 1.15em;

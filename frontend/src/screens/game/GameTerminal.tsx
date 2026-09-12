@@ -14,17 +14,17 @@ import {
   type TextLine,
 } from "../../game-state";
 import {
-  buildMapRuns,
   mapFollowOffset,
   mapPositionFromPoint,
 } from "../../map-rendering";
+import { AsciiMapRenderer } from "../../map/AsciiMapRenderer";
 import {
   normalizePlayerNameInput,
   sendPosition,
   submitLine,
 } from "../../nethack-bridge";
 import type { InterfaceSettingsV1 } from "../../settings/profile";
-import { colorClass, textAttributeClass } from "../../text-styling";
+import { textAttributeClass } from "../../text-styling";
 import { PermanentInventoryPanel } from "../PermanentInventoryPanel";
 import { StatusArea } from "./StatusArea";
 
@@ -194,54 +194,12 @@ const MapGrid = memo(function MapGrid({
   return (
     <div className="nh-map-scroll" ref={scrollRef}>
       <div
-        className="nh-map"
-        aria-label="Dungeon map"
+        className="nh-map-interaction"
         onMouseDown={handleMouseDown}
         onContextMenu={handleContextMenu}
       >
-        {map.map((row, y) => (
-          <MapRow
-            cursorX={cursor.visible && cursor.y === y ? cursor.x : -1}
-            key={y}
-            row={row}
-            y={y}
-          />
-        ))}
+        <AsciiMapRenderer cursor={cursor} map={map} />
       </div>
-    </div>
-  );
-});
-
-/**
- * Render one memoized map row as adjacent equal-style text runs.
- * @param props - row cells, cursor column, and row coordinate.
- * @returns one fixed-width character row.
- */
-const MapRow = memo(function MapRow({
-  row,
-  cursorX,
-  y,
-}: {
-  row: MapCell[];
-  cursorX: number;
-  y: number;
-}) {
-  return (
-    <div className="nh-map-row" data-y={y}>
-      {buildMapRuns(row, cursorX).map((run) => (
-        <span
-          className={[
-            "nh-map-run",
-            colorClass(run.color),
-            run.cursor ? "nh-cursor" : "",
-            run.pet ? "nh-pet" : "",
-          ].filter(Boolean).join(" ")}
-          data-start={run.start}
-          key={run.start}
-        >
-          {run.text}
-        </span>
-      ))}
     </div>
   );
 });
