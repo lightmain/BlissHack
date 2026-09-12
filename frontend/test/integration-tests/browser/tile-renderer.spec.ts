@@ -589,7 +589,7 @@ test("keeps a manual Follow anchor after a right-click position look", async ({
 });
 
 test(
-  "[defect-probing] keeps a manual Follow anchor for an unchanged player turn",
+  "keeps a manual Follow anchor for an unchanged player turn",
   async ({ page }) => {
     await page.setViewportSize({ width: 900, height: 700 });
     await startNewGame(page, "FollowUnchangedTurn");

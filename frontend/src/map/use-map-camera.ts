@@ -138,7 +138,11 @@ export function useMapCamera({
     const viewport = scrollRef.current;
     if (!viewport) return;
     const layoutChanged = previousLayoutKey.current !== layoutKey;
-    const targetRequested = previousClipCenterRef.current !== clipCenter;
+    const previousClipCenter = previousClipCenterRef.current;
+    const targetRequested = clipCenter !== null
+      && (previousClipCenter === null
+        || previousClipCenter.x !== clipCenter.x
+        || previousClipCenter.y !== clipCenter.y);
     const followEnabled = followPlayer && !previousFollowPlayerRef.current;
     previousLayoutKey.current = layoutKey;
     previousClipCenterRef.current = clipCenter;
