@@ -27,9 +27,21 @@ describe("full backup format", () => {
     expect(json.endsWith("\n")).toBe(true);
     const document = JSON.parse(json) as {
       format: string;
+      schemaVersion: number;
+      profile: {
+        schemaVersion: number;
+        interface: Record<string, unknown>;
+      };
       saves: Array<{ fileName: string; sha256: string }>;
     };
     expect(document.format).toBe("blisshack-backup");
+    expect(document.schemaVersion).toBe(1);
+    expect(document.profile).toMatchObject({
+      schemaVersion: 2,
+      interface: {
+        mapRenderer: "tiles",
+      },
+    });
     expect(document.saves.map((save) => save.fileName)).toEqual(["0Ada", "0Bob"]);
     expect(document.saves[0].sha256).toBe(await sha256Hex(ada));
 
@@ -97,8 +109,25 @@ describe("full backup format", () => {
       .resolves.toMatchObject({ profile });
   });
 
+  it("imports a backup with a strict v1 profile as v2 with ASCII display", async () => {
+    const document = await exportedDocument();
+    document.profile.schemaVersion = 1;
+    delete document.profile.interface.mapRenderer;
+
+    await expect(parseDocument(document)).resolves.toMatchObject({
+      profile: {
+        schemaVersion: 2,
+        interface: {
+          mapRenderer: "ascii",
+        },
+      },
+    });
+  });
+
   it("rejects a schema 1 backup containing the old profile shape", async () => {
     const document = await exportedDocument();
+    document.profile.schemaVersion = 1;
+    delete document.profile.interface.mapRenderer;
     delete document.profile.interface.permanentInventoryPosition;
     delete document.profile.interface.permanentInventoryCollapsed;
     delete document.profile.nethack.permInvent;

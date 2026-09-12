@@ -15,6 +15,38 @@ import { GameScreen } from "./GameScreen";
 describe("GameScreen interface settings", () => {
   beforeEach(() => resetGameState());
 
+  it("routes a tiles profile through TileMapRenderer", () => {
+    const profile = createDefaultProfile();
+    (profile.interface as unknown as Record<string, unknown>).mapRenderer =
+      "tiles";
+
+    const html = renderToStaticMarkup(createElement(GameScreen, {
+      loadStatus: "loaded",
+      moduleId: "module-1",
+      onApplyProfile: async (candidate) => candidate,
+      profile,
+    }));
+
+    expect(html).toContain("nh-map-fallback");
+    expect(html).toContain("nh-map-ascii");
+  });
+
+  it("routes an ASCII profile directly through AsciiMapRenderer", () => {
+    const profile = createDefaultProfile();
+    (profile.interface as unknown as Record<string, unknown>).mapRenderer =
+      "ascii";
+
+    const html = renderToStaticMarkup(createElement(GameScreen, {
+      loadStatus: "loaded",
+      moduleId: "module-1",
+      onApplyProfile: async (candidate) => candidate,
+      profile,
+    }));
+
+    expect(html).toContain("nh-map-ascii");
+    expect(html).not.toContain("nh-map-fallback");
+  });
+
   it.each(["small", "medium", "large"] as const)(
     "applies the %s terminal font class",
     (terminalFontSize) => {
