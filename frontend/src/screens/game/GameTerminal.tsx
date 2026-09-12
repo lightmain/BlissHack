@@ -22,6 +22,7 @@ import { StatusArea } from "./StatusArea";
 
 interface GameTerminalProps {
   clipCenter: GameSnapshot["clipCenter"];
+  commandInput: boolean;
   cursor: GameSnapshot["cursor"];
   followPlayer: boolean;
   historyLines: InterfaceSettings["messageHistoryLines"];
@@ -43,6 +44,7 @@ interface GameTerminalProps {
 /** Render the active terminal while keeping browser overlays outside its inert tree. */
 export function GameTerminal({
   clipCenter,
+  commandInput,
   cursor,
   followPlayer,
   historyLines,
@@ -71,6 +73,7 @@ export function GameTerminal({
         <div className="nh-playfield-main">
           <MapViewport
             clipCenter={clipCenter}
+            commandInput={commandInput}
             cursor={cursor}
             followPlayer={followPlayer}
             layoutKey={layoutKey}
