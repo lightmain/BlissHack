@@ -10,6 +10,7 @@
     "prebuild": "npm run verify:tiles && node scripts/verify-runtime-assets.mjs",
     "build": "tsc -b && vite build",
     "build:wasm": "../scripts/build-wasm.sh",
+    "check:toolchain": "../scripts/build-wasm.sh --check-only",
     "test": "vitest run",
     "test:tiles": "vitest run scripts/tiles",
     "test:watch": "vitest",

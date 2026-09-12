@@ -10,6 +10,9 @@ EXPECTED_NODE_MAJOR=$(tr -d '[:space:]' < "$REPOSITORY_ROOT/.nvmrc")
 EXPECTED_EMSCRIPTEN_VERSION=$(
   tr -d '[:space:]' < "$REPOSITORY_ROOT/.emscripten-version"
 )
+CHECK_ONLY=0
+HINTS_FILE=""
+HINTS_FILE_SET=0
 
 # Print an error and stop the build.
 fail()
@@ -25,10 +28,14 @@ require_command()
         || fail "required command not found: $1"
 }
 
-# Return the first line printed by a version command.
-first_line()
+# Run one version query and reject failed or empty output.
+command_output()
 {
-    "$@" 2>&1 | sed -n '1p'
+    label=$1
+    shift
+    output=$("$@" 2>&1) || fail "could not query $label"
+    [ -n "$output" ] || fail "$label output was empty"
+    printf '%s\n' "$output"
 }
 
 # Resolve one command through symlinks for toolchain provenance checks.
@@ -43,8 +50,31 @@ print(os.path.realpath(shutil.which(sys.argv[1])))
 PY
 }
 
-case $# in
-0)
+while [ "$#" -gt 0 ]
+do
+    case "$1" in
+    --check-only)
+        [ "$CHECK_ONLY" -eq 0 ] \
+            || fail "usage: $0 [--check-only] [--hints <hints-file>]"
+        CHECK_ONLY=1
+        shift
+        ;;
+    --hints)
+        [ "$HINTS_FILE_SET" -eq 0 ] && [ "$#" -ge 2 ] \
+            || fail "usage: $0 [--check-only] [--hints <hints-file>]"
+        [ -n "$2" ] \
+            || fail "usage: $0 [--check-only] [--hints <hints-file>]"
+        HINTS_FILE=$2
+        HINTS_FILE_SET=1
+        shift 2
+        ;;
+    *)
+        fail "usage: $0 [--check-only] [--hints <hints-file>]"
+        ;;
+    esac
+done
+
+if [ -z "$HINTS_FILE" ]; then
     case $(uname -s) in
     Darwin)
         HINTS_FILE="sys/unix/hints/macOS.500"
@@ -56,15 +86,7 @@ case $# in
         fail "unsupported host; pass --hints explicitly"
         ;;
     esac
-    ;;
-2)
-    [ "$1" = "--hints" ] || fail "usage: $0 [--hints <hints-file>]"
-    HINTS_FILE=$2
-    ;;
-*)
-    fail "usage: $0 [--hints <hints-file>]"
-    ;;
-esac
+fi
 
 case "$HINTS_FILE" in
 sys/unix/hints/macOS.500|sys/unix/hints/linux.500)
@@ -73,14 +95,22 @@ sys/unix/hints/macOS.500|sys/unix/hints/linux.500)
     fail "unsupported hints file: $HINTS_FILE"
     ;;
 esac
+HINTS_PATH="$REPOSITORY_ROOT/$HINTS_FILE"
+[ -r "$HINTS_PATH" ] \
+    || fail "hints file is missing or unreadable: $HINTS_FILE"
 
-for tool in node npm emcc emar emranlib cc make sh awk sed curl tar python3
+for tool in node npm emcc emar emranlib cc make sh awk sed curl tar python3 \
+    chmod cp mktemp mv rm
 do
     require_command "$tool"
 done
 
-ACTUAL_NODE_VERSION=$(node --version)
-ACTUAL_NODE_MAJOR=$(node -p "process.versions.node.split('.')[0]")
+ACTUAL_NODE_VERSION=$(command_output "Node.js version" node --version)
+ACTUAL_NODE_MAJOR=$(
+  command_output \
+    "Node.js major version" \
+    node -p "process.versions.node.split('.')[0]"
+)
 [ "$ACTUAL_NODE_MAJOR" = "$EXPECTED_NODE_MAJOR" ] \
     || fail "Node.js version mismatch: expected major $EXPECTED_NODE_MAJOR, got $ACTUAL_NODE_VERSION"
 
@@ -93,7 +123,9 @@ do
         || fail "$wrapper is not from the same Emscripten SDK as emcc"
 done
 
-EMCC_VERSION_OUTPUT=$(emcc --version 2>&1)
+EMCC_VERSION_OUTPUT=$(
+  command_output "Emscripten version" emcc --version
+)
 ACTUAL_EMSCRIPTEN_VERSION=$(
   printf '%s\n' "$EMCC_VERSION_OUTPUT" \
     | awk '{
@@ -110,22 +142,56 @@ ACTUAL_EMSCRIPTEN_VERSION=$(
 [ "$ACTUAL_EMSCRIPTEN_VERSION" = "$EXPECTED_EMSCRIPTEN_VERSION" ] \
     || fail "Emscripten version mismatch: expected $EXPECTED_EMSCRIPTEN_VERSION, got $ACTUAL_EMSCRIPTEN_VERSION"
 
-MAKE_VERSION=$(first_line make --version)
-HOST_COMPILER=$(first_line cc --version)
+MAKE_VERSION_OUTPUT=$(command_output "Make version" make --version)
+MAKE_VERSION=$(printf '%s\n' "$MAKE_VERSION_OUTPUT" | sed -n '1p')
+HOST_COMPILER_OUTPUT=$(command_output "host compiler version" cc --version)
+HOST_COMPILER=$(printf '%s\n' "$HOST_COMPILER_OUTPUT" | sed -n '1p')
+NPM_VERSION=$(command_output "npm version" npm --version)
 LUA_VERSION=$(
   awk '/^LUA_VERSION[[:space:]]*=/{ print $3; exit }' \
     "$REPOSITORY_ROOT/sys/unix/Makefile.top"
 )
 [ -n "$LUA_VERSION" ] || fail "could not determine Lua version"
 
+if [ ! -f "$REPOSITORY_ROOT/lib/lua-$LUA_VERSION/src/lua.h" ]; then
+    if command -v shasum >/dev/null 2>&1; then
+        CHECKSUM_COMMAND=shasum
+    elif command -v sha256sum >/dev/null 2>&1; then
+        CHECKSUM_COMMAND=sha256sum
+    else
+        fail "required checksum command not found: shasum or sha256sum"
+    fi
+else
+    CHECKSUM_COMMAND="not needed; Lua source is present"
+fi
+
+STAGING_PARENT_INPUT=${TMPDIR:-/tmp}
+STAGING_PARENT=$(
+  CDPATH= cd -- "$STAGING_PARENT_INPUT" 2>/dev/null && pwd -P
+) || fail "staging directory not found: $STAGING_PARENT_INPUT"
+TILE_MANIFEST="$PUBLIC_DIR/tiles/nethack-classic.json"
+for directory in "$REPOSITORY_ROOT" "$PUBLIC_DIR" "$STAGING_PARENT"
+do
+    [ -d "$directory" ] || fail "required directory not found: $directory"
+    [ -w "$directory" ] || fail "required directory is not writable: $directory"
+    [ -x "$directory" ] || fail "required directory is not searchable: $directory"
+done
+[ -r "$TILE_MANIFEST" ] \
+    || fail "tile manifest is missing or unreadable: $TILE_MANIFEST"
+
 printf '%s\n' \
     "Node.js: $ACTUAL_NODE_VERSION" \
-    "npm: $(npm --version)" \
+    "npm: $NPM_VERSION" \
     "Emscripten: $ACTUAL_EMSCRIPTEN_VERSION" \
     "Make: $MAKE_VERSION" \
     "Host compiler: $HOST_COMPILER" \
     "Lua: $LUA_VERSION" \
-    "Hints: $HINTS_FILE"
+    "Checksum: $CHECKSUM_COMMAND" \
+    "Hints: $HINTS_FILE" \
+    "WASM target: targets/wasm" \
+    "Runtime directory: $PUBLIC_DIR"
+
+[ "$CHECK_ONLY" -eq 0 ] || exit 0
 
 cd "$REPOSITORY_ROOT"
 if [ -f Makefile ]; then
@@ -155,7 +221,7 @@ do
         || fail "empty build output: targets/wasm/$runtime_file"
 done
 
-STAGING_DIR=$(mktemp -d "${TMPDIR:-/tmp}/blisshack-runtime.XXXXXX")
+STAGING_DIR=$(mktemp -d "$STAGING_PARENT/blisshack-runtime.XXXXXX")
 PUBLISH_DIR=""
 BACKUP_DIR=""
 PUBLISH_STARTED=0

@@ -75,6 +75,7 @@ function toolchainMarkers(directory) {
  * @param {object} options - fake toolchain configuration.
  * @param {string} options.emscriptenVersion - version reported by emcc.
  * @param {string} [options.nodeVersion] - version reported by node.
+ * @param {number} [options.makeVersionExit] - exit status for make --version.
  * @param {{makeVersion: string, makeBuild: string, setup: string}} options.markers
  * invocation marker paths.
  * @returns {Promise<void>} completion after commands are ready.
@@ -84,6 +85,7 @@ async function writeBaseToolchain(
   {
     emscriptenVersion,
     nodeVersion = "24.19.0",
+    makeVersionExit = 0,
     markers,
   },
 ) {
@@ -114,7 +116,7 @@ async function writeBaseToolchain(
       directory,
       "make",
       `if [ "$1" = "--version" ]; then : > "${markers.makeVersion}"; `
-        + 'echo "GNU Make 4.4"; exit 0; fi\n'
+        + `echo "GNU Make 4.4"; exit ${makeVersionExit}; fi\n`
         + `printf '%s\\n' "$*" >> "${markers.makeBuild}"\n`
         + "exit 99",
     ),
@@ -272,6 +274,50 @@ describe("WASM toolchain preflight", () => {
     expect(result.status).toBe(0);
     expect(result.stdout).toContain(
       "Hints: sys/unix/hints/linux.500",
+    );
+    await expect(pathExists(markers.makeVersion)).resolves.toBe(true);
+    await expect(pathExists(markers.makeBuild)).resolves.toBe(false);
+    await expect(pathExists(markers.setup)).resolves.toBe(false);
+  });
+
+  it("rejects an empty explicit hints argument", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "blisshack-tools-"));
+    temporaryDirectories.push(directory);
+    const markers = toolchainMarkers(directory);
+    await writeBaseToolchain(directory, {
+      emscriptenVersion: "6.0.9",
+      markers,
+    });
+
+    const result = runPreflight(
+      [directory],
+      ["--check-only", "--hints", ""],
+    );
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "usage:",
+    );
+    await expect(pathExists(markers.makeVersion)).resolves.toBe(false);
+    await expect(pathExists(markers.makeBuild)).resolves.toBe(false);
+    await expect(pathExists(markers.setup)).resolves.toBe(false);
+  });
+
+  it("rejects a failed make version query before setup or a build", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "blisshack-tools-"));
+    temporaryDirectories.push(directory);
+    const markers = toolchainMarkers(directory);
+    await writeBaseToolchain(directory, {
+      emscriptenVersion: "6.0.9",
+      makeVersionExit: 42,
+      markers,
+    });
+
+    const result = runPreflight([directory], ["--check-only"]);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "could not query Make version",
     );
     await expect(pathExists(markers.makeVersion)).resolves.toBe(true);
     await expect(pathExists(markers.makeBuild)).resolves.toBe(false);
