@@ -121,7 +121,7 @@ test("exports, previews, imports, and restores a complete profile", async ({
   const exported = JSON.parse((await readDownload(download)).toString("utf8"));
   expect(exported).toMatchObject({
     schemaVersion: 2,
-    productVersion: "alpha-1",
+    productVersion: "alpha-1.1",
     interface: {
       mapRenderer: "tiles",
     },
