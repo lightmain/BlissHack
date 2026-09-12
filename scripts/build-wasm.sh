@@ -200,6 +200,10 @@ node frontend/scripts/generate-runtime-manifest.mjs \
     "$LUA_VERSION" \
     "$HINTS_FILE"
 node frontend/scripts/verify-runtime-assets.mjs "$STAGING_DIR"
+(
+    cd frontend
+    BLISSHACK_WASM_DIR="$STAGING_DIR" npm run test:integration:wasm
+)
 
 PUBLISH_DIR=$(mktemp -d "$PUBLIC_DIR/.runtime-publish.XXXXXX")
 BACKUP_DIR=$(mktemp -d "$PUBLIC_DIR/.runtime-backup.XXXXXX")
@@ -219,8 +223,4 @@ do
 done
 
 node frontend/scripts/verify-runtime-assets.mjs "$PUBLIC_DIR"
-(
-    cd frontend
-    npm run test:integration:wasm
-)
 PUBLISH_STARTED=0

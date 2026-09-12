@@ -2,6 +2,9 @@
 # NetHack 5.0  include/cross-post $NHDT-Date: 1597332785 2020/08/13 15:33:05 $  $NHDT-Branch: NetHack-5.0 $
 #
 # Cross-compiling -POST section
+#
+# Modified for BlissHack by lightmain, 2026-09-12:
+# compile and link the generated tile map into the WebAssembly target.
 
 ifdef CROSS_TO_MSDOS
 #
@@ -158,10 +161,10 @@ endif  # dosbox
 endif  # CROSS_TO_MSDOS
 
 ifdef CROSS_TO_WASM
-$(WASM_TARGET): pregame $(TARGET_HACKLIB) $(TARGETPFX)date.o $(HOSTOBJ) $(HOBJ) $(LUACROSSLIB) $(WASM_DATA_DIR)
+$(WASM_TARGET): pregame $(TARGET_HACKLIB) $(TARGETPFX)date.o $(HOSTOBJ) $(HOBJ) $(GENTILEOFILE) $(LUACROSSLIB) $(WASM_DATA_DIR)
 	-rm $@
 	$(TARGET_CC) $(TARGET_LFLAGS) $(TARGET_CFLAGS) -o $@ \
-		$(HOBJ) $(TARGETPFX)date.o $(TARGET_HACKLIB) $(TARGET_LIBS)
+		$(HOBJ) $(TARGETPFX)date.o $(GENTILEOFILE) $(TARGET_HACKLIB) $(TARGET_LIBS)
 
 $(WASM_DATA_DIR): $(WASM_DATA_DIR)/nhdat
 	touch $(WASM_DATA_DIR)/perm
@@ -182,6 +185,8 @@ $(TARGETPFX)ioctl.o : ../sys/share/ioctl.c $(HACK_H)
 $(TARGETPFX)unixtty.o : ../sys/share/unixtty.c $(HACK_H)
 $(TARGETPFX)winshim.o : ../win/shim/winshim.c $(HACK_H)
 $(TARGETPFX)libnhmain.o : ../sys/libnh/libnhmain.c $(HACK_H)
+$(TARGETPFX)tile.o : $(SRCDIR)/tile.c $(HACK_H)
+	$(TARGET_CC) $(TARGET_CFLAGS) -c -o $@ $(SRCDIR)/tile.c
 endif  # CROSS_TO_WASM
 
 #

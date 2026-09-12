@@ -15,13 +15,18 @@ git fetch upstream NetHack-5.0
 git diff --name-status upstream/NetHack-5.0...HEAD -- \
   include src sys/libnh sys/unix/hints win/shim
 git diff upstream/NetHack-5.0...HEAD -- \
-  sys/unix/hints/include/cross-pre2.500 win/shim/winshim.c
+  sys/libnh/libnhmain.c \
+  sys/unix/hints/include/cross-pre2.500 \
+  sys/unix/hints/include/cross-post.500 \
+  win/shim/winshim.c
 ```
 
-截至 prealpha-3 阶段一，相关 diff 只应包含：
+截至 alpha-1 阶段二，相关 diff 只应包含：
 
 ```text
+M sys/libnh/libnhmain.c
 M sys/unix/hints/include/cross-pre2.500
+M sys/unix/hints/include/cross-post.500
 M win/shim/winshim.c
 ```
 
@@ -123,6 +128,27 @@ M win/shim/winshim.c
   - `frontend/src/settings/runtime-settings-protocol.test.ts`
   - `frontend/src/game-state.test.ts`
   - `frontend/src/nethack-bridge.test.ts`
+  - `frontend/test/integration-tests/wasm-test.mjs`
+
+### 2.7 WASM 官方 tile index
+
+- **文件**：
+  - `sys/libnh/libnhmain.c`
+  - `sys/unix/hints/include/cross-pre2.500`
+  - `sys/unix/hints/include/cross-post.500`
+- **引入提交**：alpha-1 阶段二提交 `build: enable authoritative WASM tile mapping`
+- **目的**：
+  - 只在 WASM 构建中启用 `TILES_IN_GLYPHMAP`。
+  - 使用 host `tilemap` 生成 `src/tile.c`。
+  - 使用 Emscripten 编译 target `tile.o` 并链接到最终 WASM。
+  - 让 `glyph_info.gm.tileidx` 与仓库内官方 atlas 使用同一映射。
+  - 暴露 `GLYPH_INFO_SIZE`，供集成测试校验 WASM32 ABI。
+- **ABI 范围**：不改变 `glyph_info` 的 WASM32 36-byte 布局；此前保留的
+  16-bit `tileidx` 字段现在包含权威索引。
+- **行为依据**：
+  `doc/BlissHack/plans/alpha-1.md` 第 6 节。
+- **回归测试**：
+  - `frontend/scripts/build-wasm-toolchain.test.mjs`
   - `frontend/test/integration-tests/wasm-test.mjs`
 
 ## 3. 上游合并检查

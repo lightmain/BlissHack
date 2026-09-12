@@ -115,12 +115,17 @@ Make，以及两个运行时文件的字节长度和 SHA-256。摘要只用于�
 | `-DSHIM_GRAPHICS` | 使用 shim 窗口接口 |
 | `-DNOTTYGRAPHICS` | 不编译 TTY 接口 |
 | `-DLIBNH` | 编译为库模式 |
+| `-DTILES_IN_GLYPHMAP` | 让核心在 `glyph_info.gm.tileidx` 中提供官方 tile index |
 | `-DCROSSCOMPILE -DCROSS_TO_WASM` | 交叉编译到 WASM |
 | `-s ASYNCIFY` | 启用 Asyncify（允许 C 阻塞调用被 JS 异步化） |
 | `-s MODULARIZE -s EXPORT_ES6=1` | 输出 ES6 模块格式 |
 | `-s EXPORTED_FUNCTIONS` | 导出 `_main`, `_shim_graphics_set_callback` 等函数 |
 | `-s EXPORTED_RUNTIME_METHODS` | 导出 `cwrap`, `ccall`, `FS`, `IDBFS` 等运行时方法 |
 | `--embed-file wasm-data@/` | 将游戏数据嵌入 WASM 虚拟文件系统根目录 |
+
+WASM 构建还会使用 host `tilemap` 生成 `src/tile.c`，再以 Emscripten
+编译为 `targets/wasm/tile.o` 并链接进最终模块。`tile.o` 与
+`frontend/public/tiles/nethack-classic.json` 的分段顺序必须保持一致。
 
 ## WASM 产物不是"静态库"
 
