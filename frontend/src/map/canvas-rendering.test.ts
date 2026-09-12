@@ -327,9 +327,9 @@ describe("createFrameScheduler", () => {
   });
 
   it("does not cancel a frame handle after its callback has completed", () => {
-    let callback: FrameRequestCallback | null = null;
+    const callbacks: FrameRequestCallback[] = [];
     const requestFrame = vi.fn((scheduled: FrameRequestCallback) => {
-      callback = scheduled;
+      callbacks.push(scheduled);
       return 73;
     });
     const cancelFrame = vi.fn();
@@ -341,8 +341,8 @@ describe("createFrameScheduler", () => {
     );
 
     scheduler.schedule();
-    expect(callback).not.toBeNull();
-    (callback as FrameRequestCallback)(16);
+    expect(callbacks).toHaveLength(1);
+    callbacks[0](16);
     scheduler.dispose();
 
     expect(render).toHaveBeenCalledOnce();
