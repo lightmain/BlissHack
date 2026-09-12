@@ -32,6 +32,16 @@ interface CanvasPixelSummary {
   opaqueColorCount: number;
 }
 
+interface PointerPoint {
+  x: number;
+  y: number;
+}
+
+interface HorizontalScrollState {
+  left: number;
+  maxLeft: number;
+}
+
 /**
  * Count requests for each checked-in tile resource during one page lifetime.
  * @param page - Playwright page whose requests should be observed.
@@ -285,6 +295,145 @@ async function readHorizontalScrollAnchor(viewport: Locator): Promise<number> {
 }
 
 /**
+ * Read the current immutable game snapshot revision exposed by the shell.
+ * @param page - running game page.
+ * @returns numeric snapshot revision.
+ */
+async function readSnapshotRevision(page: Page): Promise<number> {
+  return Number(
+    await page.locator(".nh-shell").getAttribute("data-snapshot-revision"),
+  );
+}
+
+/**
+ * Enter NetHack's semicolon position-input flow at a published snapshot boundary.
+ * @param page - running game page at command input.
+ * @returns snapshot revision after position input is visible and command input is busy.
+ */
+async function enterPositionInput(page: Page): Promise<number> {
+  const shell = page.locator(".nh-shell");
+  await expect(shell).toHaveAttribute("data-command-input", "ready");
+  const previousRevision = await readSnapshotRevision(page);
+  await page.keyboard.press(";");
+  await expect(shell).toHaveAttribute("data-command-input", "busy");
+  await expect(page.locator(".nh-messages")).toContainText(
+    /pick .*location/i,
+  );
+  const tip = page.getByRole("dialog", { name: "Menu" }).filter({
+    hasText: "Tip: Farlooking or selecting a map location",
+  });
+  await expect(tip).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(tip).toHaveCount(0);
+  await expect(shell).toHaveAttribute("data-command-input", "busy");
+  const revision = await readSnapshotRevision(page);
+  expect(revision).toBeGreaterThan(previousRevision);
+  return revision;
+}
+
+/**
+ * Exit position input and wait for the real WASM command boundary.
+ * @param page - running game page in position input.
+ * @param previousRevision - revision observed before requesting cancellation.
+ */
+async function exitPositionInput(
+  page: Page,
+  previousRevision: number,
+): Promise<void> {
+  await page.keyboard.press("Escape");
+  await page.waitForFunction((revision) => {
+    const shell = document.querySelector<HTMLElement>(".nh-shell");
+    return shell?.dataset.commandInput === "ready"
+      && Number(shell.dataset.snapshotRevision) > revision;
+  }, previousRevision, { timeout: 10_000 });
+}
+
+/**
+ * Move the horizontal viewport to a repeatable manual location.
+ * @param viewport - map scroll container.
+ * @param location - center for drag headroom or opposite edge from current Follow.
+ * @returns resulting horizontal scroll offset and range.
+ */
+async function setManualHorizontalScroll(
+  viewport: Locator,
+  location: "center" | "opposite",
+): Promise<HorizontalScrollState> {
+  return viewport.evaluate(async (element, requestedLocation) => {
+    const maxLeft = element.scrollWidth - element.clientWidth;
+    const target = requestedLocation === "center"
+      ? maxLeft / 2
+      : element.scrollLeft < maxLeft / 2
+        ? maxLeft
+        : 0;
+    element.scrollLeft = target;
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    return { left: element.scrollLeft, maxLeft };
+  }, location);
+}
+
+/**
+ * Locate a point safely inside the visible map viewport.
+ * @param viewport - map scroll container.
+ * @returns viewport-relative center point in page coordinates.
+ */
+async function visibleMapPoint(viewport: Locator): Promise<PointerPoint> {
+  const bounds = await viewport.boundingBox();
+  expect(bounds).not.toBeNull();
+  return {
+    x: bounds!.x + bounds!.width * 0.6,
+    y: bounds!.y + bounds!.height * 0.5,
+  };
+}
+
+/**
+ * Send one right-button mouse gesture through Playwright's native input path.
+ * @param page - running game page.
+ * @param start - gesture origin in page coordinates.
+ * @param deltaX - horizontal pointer movement in CSS pixels.
+ * @param deltaY - vertical pointer movement in CSS pixels.
+ */
+async function rightMouseGesture(
+  page: Page,
+  start: PointerPoint,
+  deltaX: number,
+  deltaY = 0,
+): Promise<void> {
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down({ button: "right" });
+  await page.mouse.move(start.x + deltaX, start.y + deltaY);
+  await page.mouse.up({ button: "right" });
+}
+
+/**
+ * Record context-menu events after application handlers have run.
+ * @param map - renderer-independent map interaction surface.
+ */
+async function observeMapContextMenus(map: Locator): Promise<void> {
+  await map.evaluate((element) => {
+    element.setAttribute("data-test-context-menu-count", "0");
+    element.setAttribute("data-test-unprevented-context-menu-count", "0");
+    window.addEventListener("contextmenu", (event) => {
+      if (!(event.target instanceof Node) || !element.contains(event.target)) {
+        return;
+      }
+      const count = Number(
+        element.getAttribute("data-test-context-menu-count"),
+      );
+      element.setAttribute("data-test-context-menu-count", String(count + 1));
+      if (!event.defaultPrevented) {
+        const unprevented = Number(
+          element.getAttribute("data-test-unprevented-context-menu-count"),
+        );
+        element.setAttribute(
+          "data-test-unprevented-context-menu-count",
+          String(unprevented + 1),
+        );
+      }
+    });
+  });
+}
+
+/**
  * Read the exact persisted profile value for fallback mutation checks.
  * @param page - page at the application origin.
  * @returns serialized profile or null when defaults were never persisted.
@@ -370,6 +519,60 @@ test(
     expect(errors).toEqual({ console: [], page: [] });
   },
 );
+
+test("keeps a manual Follow anchor after a right-click position look", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 900, height: 700 });
+  await startNewGame(page, "FollowRightClick");
+
+  const viewport = page.locator(".nh-map-scroll");
+  const scroll = await setManualHorizontalScroll(viewport, "opposite");
+  expect(scroll.maxLeft).toBeGreaterThan(0);
+  const manualAnchor = await readHorizontalScrollAnchor(viewport);
+
+  await enterPositionInput(page);
+  const revisionBeforeClick = await readSnapshotRevision(page);
+  await rightMouseGesture(page, await visibleMapPoint(viewport), 0);
+  await page.waitForFunction((revision) => {
+    const shell = document.querySelector<HTMLElement>(".nh-shell");
+    return shell?.dataset.commandInput === "ready"
+      && Number(shell.dataset.snapshotRevision) > revision;
+  }, revisionBeforeClick, { timeout: 10_000 });
+
+  expect(await readHorizontalScrollAnchor(viewport)).toBeCloseTo(
+    manualAnchor,
+    2,
+  );
+});
+
+test("right-drag pans during position input without submitting it", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 900, height: 700 });
+  await startNewGame(page, "RightDragCommand");
+
+  const shell = page.locator(".nh-shell");
+  const viewport = page.locator(".nh-map-scroll");
+  const map = page.locator(".nh-map-interaction");
+  const initialScroll = await setManualHorizontalScroll(viewport, "center");
+  expect(initialScroll.maxLeft).toBeGreaterThan(80);
+  await observeMapContextMenus(map);
+  const positionRevision = await enterPositionInput(page);
+
+  await rightMouseGesture(page, await visibleMapPoint(viewport), -40);
+
+  await expect(shell).toHaveAttribute("data-command-input", "busy");
+  expect(await viewport.evaluate((element) => element.scrollLeft))
+    .toBeGreaterThan(initialScroll.left + 5);
+  expect(Number(
+    await map.getAttribute("data-test-context-menu-count"),
+  )).toBeGreaterThan(0);
+  expect(await map.getAttribute(
+    "data-test-unprevented-context-menu-count",
+  )).toBe("0");
+  await exitPositionInput(page, positionRevision);
+});
 
 test("falls back to ASCII when the tile PNG is unavailable", async ({
   page,

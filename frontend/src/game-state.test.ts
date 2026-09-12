@@ -23,6 +23,7 @@ import {
   getWindow,
   resetGameState,
   resetStatus,
+  setClipCenter,
   setCursor,
   setInputRequest,
   setMapCell,
@@ -199,6 +200,26 @@ describe("game state map and cursor", () => {
 
     expect(listener).not.toHaveBeenCalled();
     unsubscribe();
+  });
+
+  it("[defect-probing] publishes only when the clip center changes", () => {
+    setClipCenter(20, 8);
+    const initial = getSnapshot();
+    const listener = vi.fn();
+    const unsubscribe = subscribe(listener);
+
+    setClipCenter(20, 8);
+    const unchanged = getSnapshot();
+    setClipCenter(21, 9);
+    const changed = getSnapshot();
+    unsubscribe();
+
+    expect(unchanged).toBe(initial);
+    expect(unchanged.revision).toBe(initial.revision);
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(changed).not.toBe(initial);
+    expect(changed.revision).toBe(initial.revision + 1);
+    expect(changed.clipCenter).toEqual({ x: 21, y: 9 });
   });
 });
 
