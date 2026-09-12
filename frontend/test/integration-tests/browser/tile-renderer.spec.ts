@@ -6,6 +6,7 @@ import type {
 import { expect, test } from "./fixtures";
 import { captureErrors } from "./helpers/browser-errors";
 import {
+  moveToAdjacentFloor,
   openHome,
   readCursorPosition,
   startNewGame,
@@ -527,13 +528,13 @@ test("keeps a manual Follow anchor after a right-click position look", async ({
   await startNewGame(page, "FollowRightClick");
 
   const viewport = page.locator(".nh-map-scroll");
+  await enterPositionInput(page);
   const scroll = await setManualHorizontalScroll(viewport, "opposite");
   expect(scroll.maxLeft).toBeGreaterThan(0);
   const manualAnchor = await readHorizontalScrollAnchor(viewport);
 
-  await enterPositionInput(page);
   const revisionBeforeClick = await readSnapshotRevision(page);
-  await rightMouseGesture(page, await visibleMapPoint(viewport), 0);
+  await rightMouseGesture(page, await visibleMapPoint(viewport), 3);
   await page.waitForFunction((revision) => {
     const shell = document.querySelector<HTMLElement>(".nh-shell");
     return shell?.dataset.commandInput === "ready"
@@ -544,6 +545,30 @@ test("keeps a manual Follow anchor after a right-click position look", async ({
     manualAnchor,
     2,
   );
+  await page.setViewportSize({ width: 960, height: 700 });
+  const resizedManualAnchor = await viewport.evaluate((element, anchor) => {
+    const maximum = element.scrollWidth - element.clientWidth;
+    const left = Math.min(Math.max(
+      anchor * element.scrollWidth - element.clientWidth / 2,
+      0,
+    ), maximum);
+    return (left + element.clientWidth / 2) / element.scrollWidth;
+  }, manualAnchor);
+  await expect.poll(async () =>
+    readHorizontalScrollAnchor(viewport)).toBeCloseTo(resizedManualAnchor, 2);
+
+  const movedCursor = await moveToAdjacentFloor(page);
+  const expectedFollowLeft = await viewport.evaluate((element, cursorX) => {
+    const maximum = element.scrollWidth - element.clientWidth;
+    return Math.min(Math.max(
+      ((cursorX + 0.5) / 80) * element.scrollWidth
+        - element.clientWidth / 2,
+      0,
+    ), maximum);
+  }, movedCursor.x);
+  await expect.poll(async () =>
+    viewport.evaluate((element) => element.scrollLeft))
+    .toBeCloseTo(expectedFollowLeft, 0);
 });
 
 test("right-drag pans during position input without submitting it", async ({
@@ -555,16 +580,18 @@ test("right-drag pans during position input without submitting it", async ({
   const shell = page.locator(".nh-shell");
   const viewport = page.locator(".nh-map-scroll");
   const map = page.locator(".nh-map-interaction");
+  const positionRevision = await enterPositionInput(page);
   const initialScroll = await setManualHorizontalScroll(viewport, "center");
   expect(initialScroll.maxLeft).toBeGreaterThan(80);
   await observeMapContextMenus(map);
-  const positionRevision = await enterPositionInput(page);
 
   await rightMouseGesture(page, await visibleMapPoint(viewport), -40);
 
   await expect(shell).toHaveAttribute("data-command-input", "busy");
   expect(await viewport.evaluate((element) => element.scrollLeft))
     .toBeGreaterThan(initialScroll.left + 5);
+  await expect(viewport).toHaveCSS("scrollbar-width", "none");
+  await expect(map).toHaveAttribute("data-dragging", "false");
   expect(Number(
     await map.getAttribute("data-test-context-menu-count"),
   )).toBeGreaterThan(0);

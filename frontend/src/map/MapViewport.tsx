@@ -13,9 +13,11 @@ import {
   type TileRendererFallbackReason,
 } from "./TileMapRenderer";
 import { useMapCamera } from "./use-map-camera";
+import { useRightDragPan } from "./use-right-drag-pan";
 
 interface MapViewportProps {
   clipCenter: GameSnapshot["clipCenter"];
+  commandInput: boolean;
   cursor: GameSnapshot["cursor"];
   followPlayer: boolean;
   layoutKey: string;
@@ -31,6 +33,7 @@ interface MapViewportProps {
  */
 export const MapViewport = memo(function MapViewport({
   clipCenter,
+  commandInput,
   cursor,
   followPlayer,
   layoutKey,
@@ -41,23 +44,59 @@ export const MapViewport = memo(function MapViewport({
   const {
     handleScroll,
     positionViewport,
+    preserveNextFollow,
     scrollRef,
-  } = useMapCamera({ clipCenter, followPlayer, layoutKey });
+  } = useMapCamera({
+    clipCenter,
+    commandInput,
+    followPlayer,
+    layoutKey,
+  });
 
   /**
-   * Submit a primary or secondary map click while nh_poskey is pending.
+   * Submit one map position with the requested NetHack mouse modifier.
+   * @param clientX - pointer viewport x-coordinate.
+   * @param clientY - pointer viewport y-coordinate.
+   * @param modifier - NetHack primary or secondary click modifier.
+   * @param target - complete interactive map surface.
+   */
+  function submitMapPosition(
+    clientX: number,
+    clientY: number,
+    modifier: 1 | 2,
+    target: HTMLDivElement,
+  ): void {
+    if (getSnapshot().inputRequest?.kind !== "position") return;
+    const position = mapPositionFromPoint(
+      clientX,
+      clientY,
+      target.getBoundingClientRect(),
+    );
+    if (!position) return;
+    if (modifier === 2) preserveNextFollow();
+    sendPosition(position.x, position.y, modifier);
+  }
+
+  const rightDrag = useRightDragPan({
+    onRightClick: (point, target) => {
+      submitMapPosition(point.clientX, point.clientY, 2, target);
+    },
+    viewportRef: scrollRef,
+  });
+
+  /**
+   * Submit a primary map click while nh_poskey is pending.
    * @param event - delegated mouse event from the map surface.
    */
   function handleMouseDown(event: ReactMouseEvent<HTMLDivElement>): void {
-    if (getSnapshot().inputRequest?.kind !== "position") return;
-    const position = mapPositionFromPoint(
+    if (event.button !== 0) return;
+    event.preventDefault();
+    submitMapPosition(
       event.clientX,
       event.clientY,
-      event.currentTarget.getBoundingClientRect(),
+      1,
+      event.currentTarget,
     );
-    if (!position) return;
-    event.preventDefault();
-    sendPosition(position.x, position.y, event.button === 2 ? 2 : 1);
   }
 
   /**
@@ -65,7 +104,7 @@ export const MapViewport = memo(function MapViewport({
    * @param event - browser context-menu event.
    */
   function handleContextMenu(event: ReactMouseEvent<HTMLDivElement>): void {
-    if (getSnapshot().inputRequest?.kind === "position") event.preventDefault();
+    event.preventDefault();
   }
 
   return (
@@ -79,8 +118,14 @@ export const MapViewport = memo(function MapViewport({
         data-cursor-visible={cursor.visible ? "true" : "false"}
         data-cursor-x={cursor.x}
         data-cursor-y={cursor.y}
+        data-dragging={rightDrag.dragging ? "true" : "false"}
+        onLostPointerCapture={rightDrag.onLostPointerCapture}
         onMouseDown={handleMouseDown}
         onContextMenu={handleContextMenu}
+        onPointerCancel={rightDrag.onPointerCancel}
+        onPointerDown={rightDrag.onPointerDown}
+        onPointerMove={rightDrag.onPointerMove}
+        onPointerUp={rightDrag.onPointerUp}
       >
         {mapRenderer === "tiles"
           ? (

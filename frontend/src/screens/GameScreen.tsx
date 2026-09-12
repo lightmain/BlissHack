@@ -197,6 +197,7 @@ export function GameScreen({
       ) : (
         <GameTerminal
           clipCenter={snapshot.clipCenter}
+          commandInput={snapshot.commandInput}
           cursor={snapshot.cursor}
           followPlayer={settings.followPlayer}
           historyLines={settings.messageHistoryLines}

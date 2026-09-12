@@ -10,6 +10,8 @@ const basicFlowNames = [
   "exports, clears, and restores a complete BlissHack backup",
   "exports, deletes, imports, and continues identical raw save bytes",
   "blocks a second game and retries after the owning page closes",
+  "keeps a manual Follow anchor after a right-click position look",
+  "right-drag pans during position input without submitting it",
 ].join("|");
 
 export default defineConfig({
