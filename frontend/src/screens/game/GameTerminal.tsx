@@ -1,34 +1,18 @@
 import {
   memo,
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
-  type MouseEvent as ReactMouseEvent,
   type SyntheticEvent,
 } from "react";
 import {
-  getSnapshot,
   type GameSnapshot,
   type MapCell,
   type TextLine,
 } from "../../game-state";
-import {
-  mapFollowOffset,
-  mapPositionFromPoint,
-  mapScrollAnchor,
-  mapScrollOffsetForAnchor,
-} from "../../map-rendering";
-import { AsciiMapRenderer } from "../../map/AsciiMapRenderer";
-import {
-  TileMapRenderer,
-  type TileRendererFallbackReason,
-} from "../../map/TileMapRenderer";
+import { MapViewport } from "../../map/MapViewport";
+import type { TileRendererFallbackReason } from "../../map/TileMapRenderer";
 import {
   normalizePlayerNameInput,
-  sendPosition,
   submitLine,
 } from "../../nethack-bridge";
 import type { InterfaceSettings } from "../../settings/profile";
@@ -85,7 +69,7 @@ export function GameTerminal({
       <MessageArea historyLines={historyLines} messages={messages} />
       <div className={`nh-playfield nh-playfield-${permanentInventoryPosition}`}>
         <div className="nh-playfield-main">
-          <MapGrid
+          <MapViewport
             clipCenter={clipCenter}
             cursor={cursor}
             followPlayer={followPlayer}
@@ -140,156 +124,6 @@ const MessageArea = memo(function MessageArea({
           </div>
         ))}
     </section>
-  );
-});
-
-/**
- * Render the fixed NetHack character map and route mouse clicks to nh_poskey.
- * @param props - current game snapshot.
- * @returns the 80 by 21 map grid.
- */
-const MapGrid = memo(function MapGrid({
-  clipCenter,
-  cursor,
-  followPlayer,
-  layoutKey,
-  map,
-  mapRenderer,
-  onMapRendererFallback,
-}: {
-  clipCenter: GameSnapshot["clipCenter"];
-  cursor: GameSnapshot["cursor"];
-  followPlayer: boolean;
-  layoutKey: string;
-  map: MapCell[][];
-  mapRenderer: InterfaceSettings["mapRenderer"];
-  onMapRendererFallback?(reason: TileRendererFallbackReason): void;
-}) {
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const scrollAnchorRef = useRef<ReturnType<typeof mapScrollAnchor> | null>(
-    null,
-  );
-  const scrollTrackingFrameRef = useRef<number | null>(null);
-  const suppressScrollTrackingRef = useRef(false);
-  const previousLayoutKey = useRef(layoutKey);
-
-  /** Remember the logical map position at the viewport center. */
-  const rememberScrollAnchor = useCallback((): void => {
-    const viewport = scrollRef.current;
-    if (!viewport) return;
-    scrollAnchorRef.current = mapScrollAnchor(viewport);
-  }, []);
-
-  /** Center the player or restore the last normalized manual position. */
-  const positionViewport = useCallback((): void => {
-    const viewport = scrollRef.current;
-    if (!viewport) return;
-    const offset = followPlayer && clipCenter
-      ? mapFollowOffset(clipCenter.x, clipCenter.y, viewport)
-      : scrollAnchorRef.current
-        ? mapScrollOffsetForAnchor(scrollAnchorRef.current, viewport)
-        : null;
-    if (!offset) {
-      rememberScrollAnchor();
-      return;
-    }
-    const preservesManualAnchor = !followPlayer
-      && scrollAnchorRef.current !== null;
-    suppressScrollTrackingRef.current = preservesManualAnchor;
-    if (scrollTrackingFrameRef.current !== null) {
-      window.cancelAnimationFrame(scrollTrackingFrameRef.current);
-    }
-    viewport.scrollLeft = offset.left;
-    viewport.scrollTop = offset.top;
-    if (!preservesManualAnchor) rememberScrollAnchor();
-    scrollTrackingFrameRef.current = window.requestAnimationFrame(() => {
-      suppressScrollTrackingRef.current = false;
-      scrollTrackingFrameRef.current = null;
-    });
-  }, [clipCenter, followPlayer, rememberScrollAnchor]);
-
-  useEffect(() => () => {
-    if (scrollTrackingFrameRef.current !== null) {
-      window.cancelAnimationFrame(scrollTrackingFrameRef.current);
-    }
-  }, []);
-
-  /** Record user-driven scrolling while ignoring renderer restoration events. */
-  const handleScroll = useCallback((): void => {
-    if (!suppressScrollTrackingRef.current) rememberScrollAnchor();
-  }, [rememberScrollAnchor]);
-
-  useLayoutEffect(() => {
-    const viewport = scrollRef.current;
-    if (!viewport) return;
-    const layoutChanged = previousLayoutKey.current !== layoutKey;
-    previousLayoutKey.current = layoutKey;
-    if (followPlayer || layoutChanged || !scrollAnchorRef.current) {
-      positionViewport();
-    }
-  }, [followPlayer, layoutKey, positionViewport]);
-
-  useEffect(() => {
-    const viewport = scrollRef.current;
-    if (!viewport || !followPlayer || !clipCenter) return;
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(positionViewport);
-    observer.observe(viewport);
-    const content = viewport.firstElementChild;
-    if (content) observer.observe(content);
-    return () => observer.disconnect();
-  }, [clipCenter, followPlayer, positionViewport]);
-
-  /**
-   * Submit a primary or secondary map click while nh_poskey is pending.
-   * @param event - delegated mouse event from a map cell.
-   */
-  function handleMouseDown(event: ReactMouseEvent<HTMLDivElement>): void {
-    if (getSnapshot().inputRequest?.kind !== "position") return;
-    const position = mapPositionFromPoint(
-      event.clientX,
-      event.clientY,
-      event.currentTarget.getBoundingClientRect(),
-    );
-    if (!position) return;
-    event.preventDefault();
-    sendPosition(position.x, position.y, event.button === 2 ? 2 : 1);
-  }
-
-  /**
-   * Suppress the browser context menu while NetHack is accepting map clicks.
-   * @param event - browser context-menu event.
-   */
-  function handleContextMenu(event: ReactMouseEvent<HTMLDivElement>): void {
-    if (getSnapshot().inputRequest?.kind === "position") event.preventDefault();
-  }
-
-  return (
-    <div
-      className="nh-map-scroll"
-      onScroll={handleScroll}
-      ref={scrollRef}
-    >
-      <div
-        className="nh-map-interaction"
-        data-cursor-visible={cursor.visible ? "true" : "false"}
-        data-cursor-x={cursor.x}
-        data-cursor-y={cursor.y}
-        onMouseDown={handleMouseDown}
-        onContextMenu={handleContextMenu}
-      >
-        {mapRenderer === "tiles"
-          ? (
-            <TileMapRenderer
-              cursor={cursor}
-              map={map}
-              onFallback={onMapRendererFallback}
-              onReady={positionViewport}
-            />
-          )
-          : <AsciiMapRenderer cursor={cursor} map={map} />}
-      </div>
-    </div>
   );
 });
 
