@@ -79,6 +79,22 @@ describe("loadTileAtlas", () => {
     );
   });
 
+  it.each(["/BlissHack", "/BlissHack/"])(
+    "normalizes custom base URL %s",
+    async (baseUrl) => {
+      const dependencies = loaders();
+
+      await loadTileAtlas({ baseUrl, ...dependencies });
+
+      expect(dependencies.fetchManifest).toHaveBeenCalledWith(
+        "/BlissHack/tiles/nethack-classic.json",
+      );
+      expect(dependencies.loadImage).toHaveBeenCalledWith(
+        "/BlissHack/tiles/nethack-classic.png",
+      );
+    },
+  );
+
   it.each([
     {
       name: "tile count",
@@ -126,6 +142,42 @@ describe("loadTileAtlas", () => {
 
     expect(fetchManifest).toHaveBeenCalledTimes(2);
     expect(loadImage).toHaveBeenCalledTimes(2);
+  });
+
+  it("allows a failed manifest fetch to be retried", async () => {
+    const fetchManifest = vi.fn()
+      .mockRejectedValueOnce(new Error("manifest unavailable"))
+      .mockResolvedValueOnce(manifest());
+    const loadImage = vi.fn(async () => image());
+    const dependencies = { fetchManifest, loadImage };
+
+    await expect(loadTileAtlas(dependencies)).rejects.toThrow(
+      "manifest unavailable",
+    );
+    await expect(loadTileAtlas(dependencies)).resolves.toMatchObject({
+      manifest: {
+        atlas: {
+          tileCount: 2307,
+        },
+      },
+    });
+
+    expect(fetchManifest).toHaveBeenCalledTimes(2);
+    expect(loadImage).toHaveBeenCalledOnce();
+  });
+
+  it("reuses a successful atlas across different injected loaders", async () => {
+    const firstDependencies = loaders();
+    const laterDependencies = loaders();
+
+    const first = await loadTileAtlas(firstDependencies);
+    const later = await loadTileAtlas(laterDependencies);
+
+    expect(later).toBe(first);
+    expect(firstDependencies.fetchManifest).toHaveBeenCalledOnce();
+    expect(firstDependencies.loadImage).toHaveBeenCalledOnce();
+    expect(laterDependencies.fetchManifest).not.toHaveBeenCalled();
+    expect(laterDependencies.loadImage).not.toHaveBeenCalled();
   });
 
   it("loads the assets again after the test cache is reset", async () => {
