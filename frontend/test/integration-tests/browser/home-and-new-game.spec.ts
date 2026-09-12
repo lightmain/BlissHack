@@ -15,9 +15,9 @@ test("starts no NetHack session before the player begins a game", async ({
 }) => {
   const errors = captureErrors(page);
   await openHome(page, "initial-lifecycle");
-  await expect(page.locator(".home-version")).toHaveText("alpha-1");
+  await expect(page.locator(".home-version")).toHaveText("alpha-1.1");
   await expect(page.locator(".home-footer")).toContainText(
-    "BlissHack alpha-1",
+    "BlissHack alpha-1.1",
   );
   await expect(page.locator(".nh-shell")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Settings" })).toBeEnabled();
