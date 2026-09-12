@@ -8,16 +8,18 @@ import {
   startNewGame,
   startNewGameFromHome,
 } from "./helpers/game-flow";
+import { readExpectedProductVersion } from "./helpers/product-version";
 import { openSavePicker } from "./helpers/save-flow";
 
 test("starts no NetHack session before the player begins a game", async ({
   page,
 }) => {
   const errors = captureErrors(page);
+  const expectedProductVersion = await readExpectedProductVersion();
   await openHome(page, "initial-lifecycle");
-  await expect(page.locator(".home-version")).toHaveText("alpha-1.1");
+  await expect(page.locator(".home-version")).toHaveText(expectedProductVersion);
   await expect(page.locator(".home-footer")).toContainText(
-    "BlissHack alpha-1.1",
+    `BlissHack ${expectedProductVersion}`,
   );
   await expect(page.locator(".nh-shell")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Settings" })).toBeEnabled();

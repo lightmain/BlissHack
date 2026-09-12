@@ -1,10 +1,9 @@
 import { expect, type Page } from "@playwright/test";
-
-/** Stable player position read from the rendered NetHack cursor. */
-export interface CursorPosition {
-  x: number;
-  y: number;
-}
+import {
+  readCursorPosition,
+  readShellRevision,
+  type CursorPosition,
+} from "./map-viewport-state";
 
 /**
  * Open a fresh application page and verify the prepared Home screen.
@@ -148,22 +147,6 @@ export async function continueSavedGame(
   }).click();
 }
 
-/** Read the current player position from renderer-independent map metadata. */
-export async function readCursorPosition(
-  page: Page,
-): Promise<CursorPosition> {
-  const map = page.locator(".nh-map-interaction");
-  await expect(map).toHaveAttribute("data-cursor-visible", "true");
-  const [x, y] = await Promise.all([
-    map.getAttribute("data-cursor-x"),
-    map.getAttribute("data-cursor-y"),
-  ]);
-  return {
-    x: Number(x),
-    y: Number(y),
-  };
-}
-
 /**
  * Move to an adjacent floor square without depending on dungeon randomness.
  * @param page - running NetHack page.
@@ -181,10 +164,7 @@ export async function moveToAdjacentFloor(
   ];
 
   for (const direction of directions) {
-    const shell = page.locator(".nh-shell");
-    const revision = Number(
-      await shell.getAttribute("data-snapshot-revision"),
-    );
+    const revision = await readShellRevision(page);
     await page.keyboard.press(direction);
     await page.waitForFunction((previousRevision) => {
       const game = document.querySelector<HTMLElement>(".nh-shell");

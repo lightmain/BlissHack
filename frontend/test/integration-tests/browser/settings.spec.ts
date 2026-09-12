@@ -1,6 +1,7 @@
 import { expect, test } from "./fixtures";
 import { captureErrors } from "./helpers/browser-errors";
 import { openHome } from "./helpers/game-flow";
+import { readExpectedProductVersion } from "./helpers/product-version";
 import { openSavePicker, readDownload } from "./helpers/save-flow";
 
 test("edits, persists, and cancels Home Settings without replacing the module", async ({
@@ -111,6 +112,7 @@ test("exports, previews, imports, and restores a complete profile", async ({
   page,
 }) => {
   const errors = captureErrors(page);
+  const expectedProductVersion = await readExpectedProductVersion();
   await openHome(page, "settings-transfer");
   await page.getByRole("button", { name: "Settings" }).click();
 
@@ -121,7 +123,7 @@ test("exports, previews, imports, and restores a complete profile", async ({
   const exported = JSON.parse((await readDownload(download)).toString("utf8"));
   expect(exported).toMatchObject({
     schemaVersion: 2,
-    productVersion: "alpha-1.1",
+    productVersion: expectedProductVersion,
     interface: {
       mapRenderer: "tiles",
     },
