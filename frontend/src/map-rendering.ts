@@ -125,22 +125,16 @@ export function mapScrollAnchor(
   dimensions: ScrollPositionDimensions,
 ): MapScrollAnchor {
   return {
-    x: dimensions.scrollWidth > 0
-      ? clamp(
-        (dimensions.scrollLeft + dimensions.clientWidth / 2)
-          / dimensions.scrollWidth,
-        0,
-        1,
-      )
-      : 0,
-    y: dimensions.scrollHeight > 0
-      ? clamp(
-        (dimensions.scrollTop + dimensions.clientHeight / 2)
-          / dimensions.scrollHeight,
-        0,
-        1,
-      )
-      : 0,
+    x: normalizedVisibleCenter(
+      dimensions.scrollLeft,
+      dimensions.scrollWidth,
+      dimensions.clientWidth,
+    ),
+    y: normalizedVisibleCenter(
+      dimensions.scrollTop,
+      dimensions.scrollHeight,
+      dimensions.clientHeight,
+    ),
   };
 }
 
@@ -178,6 +172,28 @@ export function mapScrollOffsetForAnchor(
 function glyphCharacter(value: number): string {
   if (value < 0x20 || value > 0x10ffff) return " ";
   return String.fromCodePoint(value);
+}
+
+/**
+ * Locate the center of the viewport portion which intersects map content.
+ * @param scrollOffset - current scroll offset on one axis.
+ * @param scrollSize - complete content size on one axis.
+ * @param clientSize - viewport size on one axis.
+ * @returns normalized content coordinate between zero and one.
+ */
+function normalizedVisibleCenter(
+  scrollOffset: number,
+  scrollSize: number,
+  clientSize: number,
+): number {
+  if (scrollSize <= 0) return 0;
+  const visibleStart = clamp(scrollOffset, 0, scrollSize);
+  const visibleEnd = clamp(
+    visibleStart + Math.max(0, clientSize),
+    visibleStart,
+    scrollSize,
+  );
+  return (visibleStart + visibleEnd) / (2 * scrollSize);
 }
 
 function clamp(value: number, minimum: number, maximum: number): number {
