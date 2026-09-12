@@ -390,6 +390,38 @@ async function rightMouseGesture(
 }
 
 /**
+ * Start one captured secondary-button gesture and return its browser pointer ID.
+ * @param page - running game page.
+ * @param map - renderer-independent map interaction surface.
+ * @param start - gesture origin in page coordinates.
+ * @returns pointer ID captured by the map.
+ */
+async function startCapturedRightGesture(
+  page: Page,
+  map: Locator,
+  start: PointerPoint,
+): Promise<number> {
+  await map.evaluate((element) => {
+    element.removeAttribute("data-test-pointer-id");
+    element.addEventListener("pointerdown", (event) => {
+      element.setAttribute(
+        "data-test-pointer-id",
+        String((event as PointerEvent).pointerId),
+      );
+    }, { once: true });
+  });
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down({ button: "right" });
+  const pointerId = Number(await map.getAttribute("data-test-pointer-id"));
+  expect(pointerId).toBeGreaterThan(0);
+  expect(await map.evaluate(
+    (element, id) => element.hasPointerCapture(id),
+    pointerId,
+  )).toBe(true);
+  return pointerId;
+}
+
+/**
  * Record context-menu events after application handlers have run.
  * @param map - renderer-independent map interaction surface.
  */
@@ -556,6 +588,53 @@ test("keeps a manual Follow anchor after a right-click position look", async ({
     .toBeCloseTo(expectedFollowLeft, 0);
 });
 
+test(
+  "[defect-probing] keeps a manual Follow anchor for an unchanged player turn",
+  async ({ page }) => {
+    await page.setViewportSize({ width: 900, height: 700 });
+    await startNewGame(page, "FollowUnchangedTurn");
+
+    const shell = page.locator(".nh-shell");
+    const viewport = page.locator(".nh-map-scroll");
+    const cursor = await readCursorPosition(page);
+    const scroll = await setManualHorizontalScroll(viewport, "opposite");
+    expect(scroll.maxLeft).toBeGreaterThan(0);
+    const manualAnchor = await readMapScrollAnchor(viewport);
+    const revision = await readShellRevision(page);
+
+    await page.keyboard.press(".");
+    await page.waitForFunction((previousRevision) => {
+      const game = document.querySelector<HTMLElement>(".nh-shell");
+      return game?.dataset.commandInput === "ready"
+        && Number(game.dataset.snapshotRevision) > previousRevision;
+    }, revision, { timeout: 10_000 });
+
+    await expect.poll(async () => readCursorPosition(page)).toEqual(cursor);
+    expect(await readMapScrollAnchor(viewport)).toBeCloseTo(manualAnchor, 2);
+    await expect(shell).toHaveAttribute("data-command-input", "ready");
+  },
+);
+
+test("keeps a manual camera when Follow is disabled and the player moves", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 900, height: 700 });
+  await startNewGame(page, "FollowDisabledMove");
+  await disablePlayerFollowing(page);
+
+  const viewport = page.locator(".nh-map-scroll");
+  const initialCursor = await readCursorPosition(page);
+  const scroll = await setManualHorizontalScroll(viewport, "opposite");
+  expect(scroll.maxLeft).toBeGreaterThan(0);
+  const manualAnchor = await readMapScrollAnchor(viewport);
+
+  const movedCursor = await moveToAdjacentFloor(page);
+
+  expect(movedCursor).not.toEqual(initialCursor);
+  await expect.poll(async () =>
+    readMapScrollAnchor(viewport)).toBeCloseTo(manualAnchor, 2);
+});
+
 test("right-drag pans during position input without submitting it", async ({
   page,
 }) => {
@@ -584,6 +663,57 @@ test("right-drag pans during position input without submitting it", async ({
     "data-test-unprevented-context-menu-count",
   )).toBe("0");
   await exitPositionInput(page, positionRevision);
+});
+
+test("cleans up cancelled and lost-capture right drags", async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 700 });
+  await startNewGame(page, "RightDragInterruptions");
+
+  const shell = page.locator(".nh-shell");
+  const viewport = page.locator(".nh-map-scroll");
+  const map = page.locator(".nh-map-interaction");
+  const positionRevision = await enterPositionInput(page);
+  const initialScroll = await setManualHorizontalScroll(viewport, "center");
+  expect(initialScroll.maxLeft).toBeGreaterThan(80);
+
+  const firstStart = await visibleMapPoint(viewport);
+  const cancelledPointer = await startCapturedRightGesture(
+    page,
+    map,
+    firstStart,
+  );
+  await page.mouse.move(firstStart.x - 20, firstStart.y);
+  await expect(map).toHaveAttribute("data-dragging", "true");
+  await map.dispatchEvent("pointercancel", {
+    button: 2,
+    buttons: 0,
+    clientX: firstStart.x - 20,
+    clientY: firstStart.y,
+    pointerId: cancelledPointer,
+  });
+  await expect(map).toHaveAttribute("data-dragging", "false");
+  await page.mouse.up({ button: "right" });
+  await expect(shell).toHaveAttribute("data-command-input", "busy");
+
+  const secondStart = await visibleMapPoint(viewport);
+  const lostPointer = await startCapturedRightGesture(page, map, secondStart);
+  await page.mouse.move(secondStart.x - 20, secondStart.y);
+  await expect(map).toHaveAttribute("data-dragging", "true");
+  await map.dispatchEvent("lostpointercapture", {
+    pointerId: lostPointer,
+  });
+  await expect(map).toHaveAttribute("data-dragging", "false");
+  await page.mouse.up({ button: "right" });
+  await expect(shell).toHaveAttribute("data-command-input", "busy");
+
+  const revisionBeforeClick = await readShellRevision(page);
+  await rightMouseGesture(page, await visibleMapPoint(viewport), 3);
+  await page.waitForFunction((revision) => {
+    const game = document.querySelector<HTMLElement>(".nh-shell");
+    return game?.dataset.commandInput === "ready"
+      && Number(game.dataset.snapshotRevision) > revision;
+  }, revisionBeforeClick, { timeout: 10_000 });
+  expect(await readShellRevision(page)).toBeGreaterThan(positionRevision);
 });
 
 test("falls back to ASCII when the tile PNG is unavailable", async ({
