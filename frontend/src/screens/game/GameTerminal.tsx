@@ -169,6 +169,8 @@ const MapGrid = memo(function MapGrid({
   const scrollAnchorRef = useRef<ReturnType<typeof mapScrollAnchor> | null>(
     null,
   );
+  const scrollTrackingFrameRef = useRef<number | null>(null);
+  const suppressScrollTrackingRef = useRef(false);
   const previousLayoutKey = useRef(layoutKey);
 
   /** Remember the logical map position at the viewport center. */
@@ -191,10 +193,31 @@ const MapGrid = memo(function MapGrid({
       rememberScrollAnchor();
       return;
     }
+    const preservesManualAnchor = !followPlayer
+      && scrollAnchorRef.current !== null;
+    suppressScrollTrackingRef.current = preservesManualAnchor;
+    if (scrollTrackingFrameRef.current !== null) {
+      window.cancelAnimationFrame(scrollTrackingFrameRef.current);
+    }
     viewport.scrollLeft = offset.left;
     viewport.scrollTop = offset.top;
-    rememberScrollAnchor();
+    if (!preservesManualAnchor) rememberScrollAnchor();
+    scrollTrackingFrameRef.current = window.requestAnimationFrame(() => {
+      suppressScrollTrackingRef.current = false;
+      scrollTrackingFrameRef.current = null;
+    });
   }, [clipCenter, followPlayer, rememberScrollAnchor]);
+
+  useEffect(() => () => {
+    if (scrollTrackingFrameRef.current !== null) {
+      window.cancelAnimationFrame(scrollTrackingFrameRef.current);
+    }
+  }, []);
+
+  /** Record user-driven scrolling while ignoring renderer restoration events. */
+  const handleScroll = useCallback((): void => {
+    if (!suppressScrollTrackingRef.current) rememberScrollAnchor();
+  }, [rememberScrollAnchor]);
 
   useLayoutEffect(() => {
     const viewport = scrollRef.current;
@@ -244,7 +267,7 @@ const MapGrid = memo(function MapGrid({
   return (
     <div
       className="nh-map-scroll"
-      onScroll={rememberScrollAnchor}
+      onScroll={handleScroll}
       ref={scrollRef}
     >
       <div
