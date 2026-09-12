@@ -1,14 +1,14 @@
 import { createContext, useContext } from "react";
-import type { BlissHackProfileV1 } from "./profile";
+import type { BlissHackProfile } from "./profile";
 import type { ProfileLoadStatus } from "./profile-store";
 
 export interface ProfileContextValue {
-  profile: BlissHackProfileV1;
+  profile: BlissHackProfile;
   loadStatus: ProfileLoadStatus;
-  clearProfile(): BlissHackProfileV1;
-  reloadProfile(): BlissHackProfileV1;
-  resetProfile(): BlissHackProfileV1;
-  replaceProfile(profile: BlissHackProfileV1): BlissHackProfileV1;
+  clearProfile(): BlissHackProfile;
+  reloadProfile(): BlissHackProfile;
+  resetProfile(): BlissHackProfile;
+  replaceProfile(profile: BlissHackProfile): BlissHackProfile;
 }
 
 export const ProfileContext = createContext<ProfileContextValue | null>(null);

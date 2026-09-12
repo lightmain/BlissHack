@@ -148,15 +148,19 @@ export async function continueSavedGame(
   }).click();
 }
 
-/** Read the current player position from the rendered map cursor. */
+/** Read the current player position from renderer-independent map metadata. */
 export async function readCursorPosition(
   page: Page,
 ): Promise<CursorPosition> {
-  const cursor = page.locator(".nh-cursor");
-  await expect(cursor).toBeVisible();
+  const map = page.locator(".nh-map-interaction");
+  await expect(map).toHaveAttribute("data-cursor-visible", "true");
+  const [x, y] = await Promise.all([
+    map.getAttribute("data-cursor-x"),
+    map.getAttribute("data-cursor-y"),
+  ]);
   return {
-    x: Number(await cursor.getAttribute("data-start")),
-    y: Number(await cursor.locator("..").getAttribute("data-y")),
+    x: Number(x),
+    y: Number(y),
   };
 }
 
@@ -168,25 +172,29 @@ export async function readCursorPosition(
 export async function moveToAdjacentFloor(
   page: Page,
 ): Promise<CursorPosition> {
-  const cursor = page.locator(".nh-cursor");
   const { x: startX, y: startY } = await readCursorPosition(page);
-  const rows = await page.locator(".nh-map-row").allTextContents();
   const directions = [
-    { dx: -1, dy: 0, key: "ArrowLeft" },
-    { dx: 1, dy: 0, key: "ArrowRight" },
-    { dx: 0, dy: -1, key: "ArrowUp" },
-    { dx: 0, dy: 1, key: "ArrowDown" },
+    "ArrowLeft",
+    "ArrowRight",
+    "ArrowUp",
+    "ArrowDown",
   ];
-  const direction = directions.find(
-    ({ dx, dy }) => rows[startY + dy]?.[startX + dx] === ".",
-  );
 
-  expect(direction, "the initial room should have an adjacent floor").toBeTruthy();
-  await page.keyboard.press(direction!.key);
-  await expect.poll(async () => {
-    const x = await cursor.getAttribute("data-start");
-    const y = await cursor.locator("..").getAttribute("data-y");
-    return `${x}:${y}`;
-  }).not.toBe(`${startX}:${startY}`);
-  return readCursorPosition(page);
+  for (const direction of directions) {
+    const shell = page.locator(".nh-shell");
+    const revision = Number(
+      await shell.getAttribute("data-snapshot-revision"),
+    );
+    await page.keyboard.press(direction);
+    await page.waitForFunction((previousRevision) => {
+      const game = document.querySelector<HTMLElement>(".nh-shell");
+      return game !== null
+        && Number(game.dataset.snapshotRevision) > previousRevision
+        && game.dataset.commandInput === "ready";
+    }, revision, { timeout: 10_000 });
+    const position = await readCursorPosition(page);
+    if (position.x !== startX || position.y !== startY) return position;
+  }
+
+  throw new Error("The initial room has no traversable adjacent square");
 }

@@ -9,7 +9,7 @@ import type {
 } from "../diagnostics/diagnostic-log";
 import type { EmscriptenModule } from "../nethack-bridge";
 import type {
-  BlissHackProfileV1,
+  BlissHackProfile,
   NetHackSettingsV1,
 } from "../settings/profile";
 import type { LocalDataStore } from "../storage/local-data";
@@ -95,7 +95,7 @@ export interface SessionManager {
   ) => Promise<RawSaveExport>;
   exportFullBackup: (
     moduleId: string,
-    profile: BlissHackProfileV1,
+    profile: BlissHackProfile,
   ) => Promise<FullBackupExport>;
   previewFullBackup: (
     moduleId: string,
@@ -154,7 +154,7 @@ export interface SessionManagerOptions {
     settings: NetHackSettingsV1,
   ) => void;
   gameLock?: GameLock;
-  loadProfile?: () => BlissHackProfileV1;
+  loadProfile?: () => BlissHackProfile;
   setRestoreRequired?: (
     module: EmscriptenModule,
     required: boolean,

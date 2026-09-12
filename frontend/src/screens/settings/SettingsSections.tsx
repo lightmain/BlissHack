@@ -2,8 +2,8 @@ import type { ChangeEvent, RefObject } from "react";
 import { Download, RotateCcw, Upload } from "lucide-react";
 import {
   PICKUP_CLASS_SYMBOLS,
-  type BlissHackProfileV1,
-  type InterfaceSettingsV1,
+  type BlissHackProfile,
+  type InterfaceSettings,
   type NetHackSettingsV1,
   type NumberPadMode,
   type PickupClassSymbol,
@@ -11,8 +11,8 @@ import {
 import { SegmentedField, ToggleField } from "./SettingsControls";
 
 interface SettingsSectionProps {
-  draft: BlissHackProfileV1;
-  onInterfaceChange(patch: Partial<InterfaceSettingsV1>): void;
+  draft: BlissHackProfile;
+  onInterfaceChange(patch: Partial<InterfaceSettings>): void;
   onNetHackChange(patch: Partial<NetHackSettingsV1>): void;
 }
 
@@ -61,6 +61,18 @@ export function InterfaceSettingsSection({
         <h2 id="interface-title">Interface</h2>
       </header>
       <div className="settings-fields">
+        <SegmentedField
+          label="Map display"
+          name="map-renderer"
+          onChange={(mapRenderer) => {
+            onInterfaceChange({ mapRenderer });
+          }}
+          options={[
+            { value: "tiles", label: "Tiles" },
+            { value: "ascii", label: "ASCII" },
+          ]}
+          value={draft.interface.mapRenderer}
+        />
         <SegmentedField
           label="Terminal font size"
           name="terminal-font-size"

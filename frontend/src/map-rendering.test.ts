@@ -4,6 +4,8 @@ import {
   buildMapRuns,
   mapFollowOffset,
   mapPositionFromPoint,
+  mapScrollAnchor,
+  mapScrollOffsetForAnchor,
 } from "./map-rendering";
 
 /**
@@ -105,6 +107,34 @@ describe("map row rendering", () => {
       scrollHeight: 420,
       clientWidth: 900,
       clientHeight: 500,
+    })).toEqual({ left: 0, top: 0 });
+  });
+
+  it("preserves the same normalized center across renderer sizes", () => {
+    const anchor = mapScrollAnchor({
+      scrollWidth: 800,
+      scrollHeight: 420,
+      clientWidth: 400,
+      clientHeight: 210,
+      scrollLeft: 200,
+      scrollTop: 105,
+    });
+
+    expect(anchor).toEqual({ x: 0.5, y: 0.5 });
+    expect(mapScrollOffsetForAnchor(anchor, {
+      scrollWidth: 1280,
+      scrollHeight: 336,
+      clientWidth: 400,
+      clientHeight: 210,
+    })).toEqual({ left: 440, top: 63 });
+  });
+
+  it("clamps restored scroll anchors when the resized map fits", () => {
+    expect(mapScrollOffsetForAnchor({ x: 1, y: 1 }, {
+      scrollWidth: 300,
+      scrollHeight: 180,
+      clientWidth: 400,
+      clientHeight: 210,
     })).toEqual({ left: 0, top: 0 });
   });
 });

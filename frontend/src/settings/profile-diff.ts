@@ -1,5 +1,5 @@
 import type {
-  BlissHackProfileV1,
+  BlissHackProfile,
   PickupTypesV1,
 } from "./profile";
 
@@ -13,7 +13,7 @@ export interface ProfileDifference {
 interface FieldDefinition {
   path: string;
   label: string;
-  value(profile: BlissHackProfileV1): unknown;
+  value(profile: BlissHackProfile): unknown;
   format(value: unknown): string;
 }
 
@@ -21,6 +21,12 @@ const BOOLEAN = (value: unknown) => value ? "On" : "Off";
 const TEXT = (value: unknown) => String(value);
 
 const PROFILE_FIELDS: readonly FieldDefinition[] = [
+  {
+    path: "interface.mapRenderer",
+    label: "Map display",
+    value: (profile) => profile.interface.mapRenderer,
+    format: (value) => value === "tiles" ? "Tiles" : "ASCII",
+  },
   {
     path: "interface.terminalFontSize",
     label: "Terminal font size",
@@ -115,8 +121,8 @@ const PROFILE_FIELDS: readonly FieldDefinition[] = [
 
 /** Compare every V1 setting in stable UI order. */
 export function diffProfiles(
-  current: BlissHackProfileV1,
-  incoming: BlissHackProfileV1,
+  current: BlissHackProfile,
+  incoming: BlissHackProfile,
 ): ProfileDifference[] {
   return PROFILE_FIELDS.flatMap((field) => {
     const currentValue = field.value(current);

@@ -11,8 +11,8 @@ import {
   createDefaultProfile,
   parseProfileImport,
   validateProfile,
-  type BlissHackProfileV1,
-  type InterfaceSettingsV1,
+  type BlissHackProfile,
+  type InterfaceSettings,
   type NetHackSettingsV1,
 } from "../settings/profile";
 import { diffProfiles } from "../settings/profile-diff";
@@ -46,13 +46,13 @@ interface SettingsScreenProps {
   loadStatus: ProfileLoadStatus;
   moduleId: string;
   onApply(
-    profile: BlissHackProfileV1,
-    baseProfile: BlissHackProfileV1,
-  ): Promise<BlissHackProfileV1>;
+    profile: BlissHackProfile,
+    baseProfile: BlissHackProfile,
+  ): Promise<BlissHackProfile>;
   onBack(): void;
   onClearLocalData?: () => Promise<void>;
   onExportFullBackup?: () => Promise<FullBackupExport>;
-  onExportProfile?: () => Promise<BlissHackProfileV1>;
+  onExportProfile?: () => Promise<BlissHackProfile>;
   onImportFullBackup?: (
     preview: BackupImportPreview,
     overwriteFileNames: ReadonlySet<string>,
@@ -61,7 +61,7 @@ interface SettingsScreenProps {
   onPreviewFullBackup?: (
     bytes: Uint8Array,
   ) => Promise<BackupImportPreview>;
-  profile: BlissHackProfileV1;
+  profile: BlissHackProfile;
   saveCount?: number;
   storageAvailable?: boolean;
 }
@@ -172,7 +172,7 @@ export function SettingsScreen({
 
   /** Save one complete candidate and retain the draft if persistence fails. */
   async function commit(
-    candidate: BlissHackProfileV1,
+    candidate: BlissHackProfile,
     message: string,
     errorSource: SettingsErrorSource,
   ): Promise<boolean> {
@@ -464,8 +464,8 @@ export function SettingsScreen({
 }
 
 function updateInterface(
-  setDraft: React.Dispatch<React.SetStateAction<BlissHackProfileV1>>,
-  patch: Partial<InterfaceSettingsV1>,
+  setDraft: React.Dispatch<React.SetStateAction<BlissHackProfile>>,
+  patch: Partial<InterfaceSettings>,
 ): void {
   setDraft((current) => ({
     ...current,
@@ -474,7 +474,7 @@ function updateInterface(
 }
 
 function updateNetHack(
-  setDraft: React.Dispatch<React.SetStateAction<BlissHackProfileV1>>,
+  setDraft: React.Dispatch<React.SetStateAction<BlissHackProfile>>,
   patch: Partial<NetHackSettingsV1>,
 ): void {
   setDraft((current) => ({

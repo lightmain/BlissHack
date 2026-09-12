@@ -35,7 +35,13 @@ test("exports, clears, and restores a complete BlissHack backup", async ({
   const backup = JSON.parse(backupBytes.toString("utf8")) as {
     format: string;
     schemaVersion: number;
-    profile: { interface: { terminalFontSize: string } };
+    profile: {
+      schemaVersion: number;
+      interface: {
+        mapRenderer: string;
+        terminalFontSize: string;
+      };
+    };
     saves: Array<{
       fileName: string;
       byteLength: number;
@@ -46,7 +52,13 @@ test("exports, clears, and restores a complete BlissHack backup", async ({
   expect(backup).toMatchObject({
     format: "blisshack-backup",
     schemaVersion: 1,
-    profile: { interface: { terminalFontSize: "large" } },
+    profile: {
+      schemaVersion: 2,
+      interface: {
+        mapRenderer: "tiles",
+        terminalFontSize: "large",
+      },
+    },
   });
   expect(backup.saves).toHaveLength(1);
   expect(backup.saves[0].fileName).toBe(`0${name}`);
@@ -60,6 +72,9 @@ test("exports, clears, and restores a complete BlissHack backup", async ({
     if (!raw) return 0;
     return (JSON.parse(raw) as { events?: unknown[] }).events?.length ?? 0;
   });
+  await page.evaluate(() => {
+    localStorage.setItem("blisshack.profile.v1", "legacy-profile-marker");
+  });
   await page.getByRole("button", { name: "Clear Local Data" }).click();
   const clear = page.getByRole("alertdialog", { name: "Clear local data" });
   await expect(clear.getByRole("textbox")).toBeFocused();
@@ -69,6 +84,8 @@ test("exports, clears, and restores a complete BlissHack backup", async ({
   await expect(page.getByRole("button", { name: "New Game" })).toBeVisible();
   expect(await page.evaluate(() =>
     localStorage.getItem("blisshack.profile.v1"))).toBeNull();
+  expect(await page.evaluate(() =>
+    localStorage.getItem("blisshack.profile.v2"))).toBeNull();
 
   const emptyPicker = await openSavePicker(page);
   await expect(emptyPicker.getByText("No saved games")).toBeVisible();

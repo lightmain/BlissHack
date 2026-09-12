@@ -18,6 +18,7 @@ test("edits, persists, and cancels Home Settings without replacing the module", 
   await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
   await expect(page.getByRole("radio", { name: "Medium" })).toBeChecked();
   await expect(page.getByRole("radio", { name: "5 lines" })).toBeChecked();
+  await expect(page.getByRole("radio", { name: "Tiles" })).toBeChecked();
   await expect(page.getByRole("combobox", { name: "Contents" })).toBeDisabled();
   await expect(page.getByRole("radio", { name: "Right" })).toBeDisabled();
   await expect(
@@ -26,6 +27,7 @@ test("edits, persists, and cancels Home Settings without replacing the module", 
 
   await page.getByRole("radio", { name: "Large" }).check();
   await page.getByRole("radio", { name: "3 lines" }).check();
+  await page.getByRole("radio", { name: "ASCII" }).check();
   await page.getByRole("checkbox", {
     name: "Follow player on the map",
   }).uncheck();
@@ -51,11 +53,13 @@ test("edits, persists, and cancels Home Settings without replacing the module", 
   await expect(sameModulePicker).toHaveAttribute("data-module-id", moduleId!);
   await page.keyboard.press("Escape");
   const persisted = await page.evaluate(() =>
-    JSON.parse(localStorage.getItem("blisshack.profile.v1") ?? "null"));
+    JSON.parse(localStorage.getItem("blisshack.profile.v2") ?? "null"));
   expect(persisted).toMatchObject({
+    schemaVersion: 2,
     interface: {
       terminalFontSize: "large",
       messageHistoryLines: 3,
+      mapRenderer: "ascii",
       followPlayer: false,
       permanentInventoryPosition: "below",
       permanentInventoryCollapsed: true,
@@ -76,6 +80,7 @@ test("edits, persists, and cancels Home Settings without replacing the module", 
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Settings" }).click();
   await expect(page.getByRole("radio", { name: "Large" })).toBeChecked();
+  await expect(page.getByRole("radio", { name: "ASCII" })).toBeChecked();
   await page.getByRole("radio", { name: "Small" }).check();
   await page.getByRole("button", { name: "Back to Home" }).click();
   const discard = page.getByRole("alertdialog", { name: "Unsaved settings" });
@@ -115,8 +120,11 @@ test("exports, previews, imports, and restores a complete profile", async ({
   expect(download.suggestedFilename()).toBe("blisshack-profile.bhprofile");
   const exported = JSON.parse((await readDownload(download)).toString("utf8"));
   expect(exported).toMatchObject({
-    schemaVersion: 1,
-    productVersion: "prealpha-4",
+    schemaVersion: 2,
+    productVersion: "alpha-1",
+    interface: {
+      mapRenderer: "tiles",
+    },
   });
 
   exported.interface.terminalFontSize = "large";
@@ -169,16 +177,19 @@ test("exports, previews, imports, and restores a complete profile", async ({
   await restore.getByRole("button", { name: "Restore" }).click();
   await expect(page.getByText("Defaults restored", { exact: true })).toBeVisible();
   await expect(page.getByRole("radio", { name: "Medium" })).toBeChecked();
+  await expect(page.getByRole("radio", { name: "Tiles" })).toBeChecked();
   await expect(page.getByRole("checkbox", {
     name: "Automatic pickup",
   })).toBeChecked();
 
   const restored = await page.evaluate(() =>
-    JSON.parse(localStorage.getItem("blisshack.profile.v1") ?? "null"));
+    JSON.parse(localStorage.getItem("blisshack.profile.v2") ?? "null"));
   expect(restored).toMatchObject({
+    schemaVersion: 2,
     interface: {
       terminalFontSize: "medium",
       messageHistoryLines: 5,
+      mapRenderer: "tiles",
       followPlayer: true,
     },
     nethack: {

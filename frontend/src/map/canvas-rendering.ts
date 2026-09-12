@@ -27,6 +27,14 @@ export interface FrameScheduler {
   dispose(): void;
 }
 
+/** Tile index received from the core cannot address the active atlas. */
+export class InvalidTileIndexError extends Error {
+  constructor(tileIndex: number) {
+    super(`Tile index ${tileIndex} is outside the active atlas`);
+    this.name = "InvalidTileIndexError";
+  }
+}
+
 /**
  * Locate a tile inside the atlas, falling back to unexplored for bad indices.
  * @param tileIndex - authoritative tile index from glyph_info.
@@ -92,6 +100,7 @@ export function drawTileMap({
   cursor,
 }: DrawTileMapOptions): void {
   const { width, height } = atlas.manifest.tile;
+  assertMapTileIndices(map, atlas.manifest);
   const columnCount = map.reduce(
     (maximum, row) => Math.max(maximum, row.length),
     0,
@@ -127,6 +136,33 @@ export function drawTileMap({
     context.lineWidth = 1;
     context.strokeRect(cursor.x * width, cursor.y * height, width, height);
     context.restore();
+  }
+}
+
+/**
+ * Reject a map whose core tile indices do not address the active atlas.
+ * @param map - immutable map state.
+ * @param manifest - active atlas metadata.
+ */
+function assertMapTileIndices(
+  map: readonly (readonly MapCell[])[],
+  manifest: TileManifest,
+): void {
+  for (const row of map) {
+    for (const cell of row) {
+      for (const glyph of [cell.background, cell.foreground]) {
+        if (
+          glyph
+          && (
+            !Number.isInteger(glyph.tileIndex)
+            || glyph.tileIndex < 0
+            || glyph.tileIndex >= manifest.atlas.tileCount
+          )
+        ) {
+          throw new InvalidTileIndexError(glyph.tileIndex);
+        }
+      }
+    }
   }
 }
 
