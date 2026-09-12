@@ -93,6 +93,8 @@ manifest 至少记录：
 
 atlas 和 manifest 作为一组受校验的生成产物提交。普通 `npm run build` 只验证
 它们与源文件匹配，不应静默重写工作树。开发者通过显式命令重新生成。
+pet/pile decal 的透明区域使用官方 renderer 同样的规则：以 decal delimiter
+左上角颜色作为透明色，不对普通 tiles 做颜色猜测或黑色抠除。
 
 ### 3.3 核心映射
 

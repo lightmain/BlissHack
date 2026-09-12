@@ -214,7 +214,7 @@ describe("tile asset generation", () => {
           source: "decals.txt",
           firstTile: 5,
           tileCount: 3,
-          transform: "identity",
+        transform: "transparent-background",
         },
       ],
       specialTiles: {
@@ -273,7 +273,7 @@ describe("tile asset generation", () => {
       columns: 40,
       rows: 58,
       tileCount: 2307,
-      sha256: "c85bfd20d4681147be79927db18bf1ada23d7e2ed400373a43773f10e4f414bb",
+      sha256: "bd41a419de9df7cc9b6533438087b4aabf7a087fad3726e5f615dbe9f2f83de6",
     });
     expect(manifest.segments).toEqual([
       {
@@ -309,7 +309,7 @@ describe("tile asset generation", () => {
         source: "decals.txt",
         firstTile: 2304,
         tileCount: 3,
-        transform: "identity",
+        transform: "transparent-background",
       },
     ]);
     expect(manifest.specialTiles).toMatchObject({
@@ -325,6 +325,8 @@ describe("tile asset generation", () => {
       tilePixel(png, 1515, 7, 7, 40), // giant ant statue
       tilePixel(png, 2305, 12, 0, 40), // pet mark
       tilePixel(png, 2306, 2, 0, 40), // pile mark
+      tilePixel(png, 2305, 0, 0, 40), // pet mark background
+      tilePixel(png, 2306, 0, 0, 40), // pile mark background
     ]).toEqual([
       [145, 71, 0, 255],
       [255, 108, 0, 255],
@@ -332,6 +334,8 @@ describe("tile asset generation", () => {
       [149, 149, 149, 255],
       [255, 0, 0, 255],
       [255, 255, 255, 255],
+      [71, 108, 108, 0],
+      [71, 108, 108, 0],
     ]);
   });
 });

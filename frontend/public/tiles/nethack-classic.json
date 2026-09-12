@@ -9,7 +9,7 @@
     "columns": 40,
     "rows": 58,
     "tileCount": 2307,
-    "sha256": "c85bfd20d4681147be79927db18bf1ada23d7e2ed400373a43773f10e4f414bb"
+    "sha256": "bd41a419de9df7cc9b6533438087b4aabf7a087fad3726e5f615dbe9f2f83de6"
   },
   "sources": [
     {
@@ -71,7 +71,7 @@
       "source": "decals.txt",
       "firstTile": 2304,
       "tileCount": 3,
-      "transform": "identity"
+      "transform": "transparent-background"
     }
   ],
   "specialTiles": {

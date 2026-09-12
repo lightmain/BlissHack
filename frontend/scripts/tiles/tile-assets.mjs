@@ -215,7 +215,7 @@ function createLayout(sources, columns) {
     ["objects", "objects.txt", "identity"],
     ["other", "other.txt", "identity"],
     ["statues", "monsters.txt", "grayscale"],
-    ["decals", "decals.txt", "identity"],
+    ["decals", "decals.txt", "transparent-background"],
   ];
   const tiles = [];
   const segments = [];
@@ -232,6 +232,9 @@ function createLayout(sources, columns) {
       tiles.push({
         ...tile,
         paletteColors: sources[source].parsed.paletteColors,
+        transparentColor: transform === "transparent-background"
+          ? sourceTiles[0].rgba.subarray(0, 4)
+          : null,
         transform,
       });
     }
@@ -282,12 +285,33 @@ function renderAtlas(layout, columns) {
         ) * 4;
         const color = tile.transform === "grayscale"
           ? grayscaleColor(tile, sourcePixel)
-          : tile.rgba.subarray(sourcePixel * 4, sourcePixel * 4 + 4);
+          : tile.transform === "transparent-background"
+            ? transparentBackgroundColor(tile, sourcePixel)
+            : tile.rgba.subarray(sourcePixel * 4, sourcePixel * 4 + 4);
         png.data.set(color, destinationPixel);
       }
     }
   });
   return png;
+}
+
+/**
+ * Make pixels matching NetHack's decal delimiter background transparent.
+ * @param {object} tile - Parsed decal tile.
+ * @param {number} pixelIndex - Pixel offset within the tile.
+ * @returns {Uint8Array | number[]} RGBA color with official transparency.
+ */
+function transparentBackgroundColor(tile, pixelIndex) {
+  const color = tile.rgba.subarray(pixelIndex * 4, pixelIndex * 4 + 4);
+  const background = tile.transparentColor;
+  if (
+    color[0] === background[0]
+    && color[1] === background[1]
+    && color[2] === background[2]
+  ) {
+    return [color[0], color[1], color[2], 0];
+  }
+  return color;
 }
 
 /**
