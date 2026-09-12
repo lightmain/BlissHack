@@ -5,10 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "prebuild": "node scripts/verify-runtime-assets.mjs",
+    "generate:tiles": "node scripts/generate-tile-assets.mjs",
+    "verify:tiles": "node scripts/verify-tile-assets.mjs",
+    "prebuild": "npm run verify:tiles && node scripts/verify-runtime-assets.mjs",
     "build": "tsc -b && vite build",
     "build:wasm": "../scripts/build-wasm.sh",
     "test": "vitest run",
+    "test:tiles": "vitest run scripts/tiles",
     "test:watch": "vitest",
     "test:integration": "npm run test:integration:wasm && npm run test:integration:browser",
     "test:integration:wasm": "node test/integration-tests/wasm-test.mjs",
@@ -27,10 +30,12 @@
   "devDependencies": {
     "@playwright/test": "^1.62.1",
     "@types/node": "^24.13.3",
+    "@types/pngjs": "^6.0.5",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.1.0",
     "oxlint": "^1.79.0",
+    "pngjs": "^7.0.0",
     "typescript": "~6.0.2",
     "vite": "^8.2.2",
     "vitest": "^4.1.11"
