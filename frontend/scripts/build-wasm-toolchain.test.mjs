@@ -1,6 +1,7 @@
 import {
   access,
   chmod,
+  readFile,
   mkdtemp,
   rm,
   writeFile,
@@ -16,7 +17,31 @@ const repositoryRoot = resolve(
   "../..",
 );
 const buildScript = join(repositoryRoot, "scripts/build-wasm.sh");
+const crossPre2 = join(
+  repositoryRoot,
+  "sys/unix/hints/include/cross-pre2.500",
+);
+const crossPost = join(
+  repositoryRoot,
+  "sys/unix/hints/include/cross-post.500",
+);
 const temporaryDirectories = [];
+
+/**
+ * Extract one top-level make conditional section using its labelled endif.
+ * @param {string} source - complete make fragment.
+ * @param {string} condition - make variable used by the conditional.
+ * @returns {string} conditional section including its delimiters.
+ */
+function makeConditionalSection(source, condition) {
+  const startMarker = `ifdef ${condition}`;
+  const endMarker = `endif  # ${condition}`;
+  const start = source.indexOf(startMarker);
+  const end = source.indexOf(endMarker, start);
+  expect(start).toBeGreaterThanOrEqual(0);
+  expect(end).toBeGreaterThan(start);
+  return source.slice(start, end + endMarker.length);
+}
 
 /**
  * Write one executable used to isolate toolchain preflight behavior.
@@ -134,5 +159,47 @@ describe("WASM toolchain preflight", () => {
       "emranlib is not from the same Emscripten SDK as emcc",
     );
     await expect(pathExists(marker)).resolves.toBe(false);
+  });
+});
+
+describe("WASM tile mapping build wiring", () => {
+  it("enables glyph tile mapping and target tile.o in CROSS_TO_WASM only", async () => {
+    const source = await readFile(crossPre2, "utf8");
+    const wasmSection = makeConditionalSection(source, "CROSS_TO_WASM");
+
+    expect(wasmSection).toMatch(
+      /^WASM_CFLAGS \+= -DTILES_IN_GLYPHMAP$/m,
+    );
+    expect(wasmSection).toMatch(
+      /^override GENTILEOFILE = \$\(TARGETPFX\)tile\.o$/m,
+    );
+  });
+
+  it("compiles the generated tile source with the target compiler", async () => {
+    const source = await readFile(crossPost, "utf8");
+    const wasmSection = makeConditionalSection(source, "CROSS_TO_WASM");
+
+    expect(wasmSection).toMatch(
+      /^\$\(TARGETPFX\)tile\.o\s*:\s*\$\(SRCDIR\)\/tile\.c(?:\s+\$\(HACK_H\))?$/m,
+    );
+    expect(wasmSection).toMatch(
+      /^\s*\$\(TARGET_CC\) \$\(TARGET_CFLAGS\) -c -o \$@ \$\(SRCDIR\)\/tile\.c$/m,
+    );
+  });
+
+  it("makes the WASM target depend on and link target tile.o", async () => {
+    const source = await readFile(crossPost, "utf8");
+    const wasmSection = makeConditionalSection(source, "CROSS_TO_WASM");
+    const targetRule = wasmSection.slice(
+      wasmSection.indexOf("$(WASM_TARGET):"),
+      wasmSection.indexOf("\n\n", wasmSection.indexOf("$(WASM_TARGET):")),
+    );
+
+    expect(targetRule).toMatch(
+      /^\$\(WASM_TARGET\):.*\$\(GENTILEOFILE\)/m,
+    );
+    expect(targetRule).toMatch(
+      /^\s*\$\(HOBJ\).*\$\(GENTILEOFILE\).*\$\(TARGET_HACKLIB\)/m,
+    );
   });
 });
