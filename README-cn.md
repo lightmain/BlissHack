@@ -111,6 +111,7 @@ npm run test:long
 - [prealpha-2 计划](doc/BlissHack/plans/prealpha-2.md)
 - [prealpha-3 计划](doc/BlissHack/plans/prealpha-3.md)
 - [prealpha-4 代码重构计划](doc/BlissHack/plans/prealpha-4.md)
+- [alpha-1 Tileset 引入计划](doc/BlissHack/plans/alpha-1.md)
 - [prealpha-3 发布验收](doc/BlissHack/plans/in-prealpha-3/release-acceptance.md)
 - [上游修改清单](doc/BlissHack/upstream-modifications.md)
 - [存档存储与读取方案评审](doc/BlissHack/plans/in-prealpha-2/save-format-review.md)

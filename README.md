@@ -121,6 +121,7 @@ repeatedly checks session lifecycle, save restoration, and raw save transfer.
 - [prealpha-2 plan](doc/BlissHack/plans/prealpha-2.md)
 - [prealpha-3 plan](doc/BlissHack/plans/prealpha-3.md)
 - [prealpha-4 refactoring plan](doc/BlissHack/plans/prealpha-4.md)
+- [alpha-1 tileset plan](doc/BlissHack/plans/alpha-1.md)
 - [Upstream modification inventory](doc/BlissHack/upstream-modifications.md)
 - [Fatal errors and diagnostic log design](doc/BlissHack/plans/in-prealpha-2/fatal-errors-and-diagnostics.md)
 - [Browser end-to-end test design](doc/BlissHack/plans/in-prealpha-2/browser-end-to-end-tests.md)
