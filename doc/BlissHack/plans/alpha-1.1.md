@@ -423,3 +423,23 @@ alpha-1.1 只有同时满足以下条件才算完成：
 10. 单元、WASM、三浏览器、性能和长流程测试全部通过。
 11. 人工地图交互和数据兼容验收通过。
 12. 合入部署分支并完成线上 smoke test。
+
+## 16. 实施状态
+
+截至 2026-09-13，`alpha-1.1` 分支的六个开发阶段和自动验收已经完成，尚未
+合入或 push：
+
+| 阶段 | 主要提交 |
+| --- | --- |
+| 计划与版本 | `9486665a8 docs: plan alpha-1.1 map interaction and infrastructure`、`9509cd5a5 chore: start alpha-1.1 development` |
+| 行为基线 | `5c80b2d05 test: define alpha-1.1 map viewport contracts` |
+| Viewport/camera | `c69287eca refactor: extract map viewport camera` |
+| 右键拖动与 Follow | `fddbab969 feat: add right-drag map panning` |
+| 兼容契约 | `9a382f4cc test: define frontend compatibility contracts`、`21daaa688 refactor: stabilize frontend compatibility contracts` |
+| WASM 工具链 | `fc2cce479 test: define WASM toolchain preflight contracts`、`754eebfe9 build: add deterministic WASM toolchain checks` |
+| 最终覆盖与修正 | `3a73f2eee test: complete alpha-1.1 interaction coverage`、`34eeb6954 fix: preserve camera for unchanged follow targets`、`108c57f87 build: rebuild alpha-1.1 WASM runtime` |
+
+自动门禁结果和人工检查步骤记录在
+`doc/BlissHack/plans/in-alpha-1.1/release-acceptance.md`。当前完成定义中的
+第 1 至 10 项已经由实现、测试和文档覆盖；第 11 项等待用户人工验收，第 12 项
+在验收通过后执行。

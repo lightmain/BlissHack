@@ -21,18 +21,22 @@ frontend. These changes are documented in
 
 ## Project Status
 
-**The alpha-1 tileset implementation is complete and awaiting manual
-acceptance.**
+**The alpha-1.1 implementation is complete and awaiting manual acceptance.**
 
-The `alpha-1` branch now includes the official NetHack 5.0 16x16 tiles, a
-Canvas 2D map, immediate ASCII/Tiles switching, and profile schema v2. This
-branch has not been merged into the deployment branch, so the live site
-remains on prealpha-4.
+The `alpha-1.1` branch includes alpha-1's official NetHack 5.0 16x16 tiles and
+Canvas 2D map, together with improved map camera, right-drag, Follow player,
+profile migration, and WASM toolchain boundaries. This branch has not been
+merged into the deployment branch, so the live site remains on prealpha-4.
 
 The current milestone provides:
 
 - An 80x21 Canvas map using the official tiles by default, with the ASCII
   renderer retained.
+- Hidden native map scrollbars without removing scrolling; right-drag pans the
+  viewport while a short right-click retains existing map-position input.
+- Manual browsing while Follow is enabled; right-click inspection and
+  same-coordinate turns preserve the camera, while valid Follow target
+  coordinate changes recenter it.
 - Authoritative WASM `tileIndex` values and layered background, foreground,
   pet/pile marker, and cursor rendering.
 - Automatic ASCII fallback for atlas or Canvas failures without changing the
@@ -102,8 +106,10 @@ npm run preview
 
 Rebuilding the WebAssembly core requires the pinned Emscripten version.
 Follow the [WASM build process](doc/BlissHack/build-process.md) and always
-commit the complete runtime triplet together. Regenerate tiles explicitly with
-`npm run generate:tiles`; `npm run verify:tiles` checks the committed assets.
+commit the complete runtime triplet together. `npm run check:toolchain`
+validates the pinned environment without cleaning or compiling. Regenerate
+tiles explicitly with `npm run generate:tiles`; `npm run verify:tiles` checks
+the committed assets.
 
 ## Tests
 
@@ -131,9 +137,11 @@ transfer.
 - [prealpha-3 plan](doc/BlissHack/plans/prealpha-3.md)
 - [prealpha-4 refactoring plan](doc/BlissHack/plans/prealpha-4.md)
 - [alpha-1 tileset plan](doc/BlissHack/plans/alpha-1.md)
+- [alpha-1.1 map interaction and infrastructure plan](doc/BlissHack/plans/alpha-1.1.md)
 - [alpha-1 rendering architecture](doc/BlissHack/plans/in-alpha-1/rendering-architecture.md)
 - [alpha-1 profile v2](doc/BlissHack/plans/in-alpha-1/profile-v2.md)
 - [alpha-1 release acceptance](doc/BlissHack/plans/in-alpha-1/release-acceptance.md)
+- [alpha-1.1 release acceptance](doc/BlissHack/plans/in-alpha-1.1/release-acceptance.md)
 - [Upstream modification inventory](doc/BlissHack/upstream-modifications.md)
 - [Fatal errors and diagnostic log design](doc/BlissHack/plans/in-prealpha-2/fatal-errors-and-diagnostics.md)
 - [Browser end-to-end test design](doc/BlissHack/plans/in-prealpha-2/browser-end-to-end-tests.md)
