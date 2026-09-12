@@ -83,8 +83,27 @@ test("plays through startup and routes terminal UI input", async ({ page }) => {
   const map = page.getByRole("img", { name: "Dungeon map" });
   await expect(map).toBeVisible();
   await expect(map).toHaveClass(/nh-map-tiles/);
-  await expect(map).toHaveAttribute("width", "1280");
-  await expect(map).toHaveAttribute("height", "336");
+  const mapDimensions = await map.evaluate((element) => {
+    if (!(element instanceof HTMLCanvasElement)) {
+      throw new Error("Tile map is not a canvas");
+    }
+    const bounds = element.getBoundingClientRect();
+    return {
+      backingHeight: element.height,
+      backingWidth: element.width,
+      cssHeight: bounds.height,
+      cssWidth: bounds.width,
+      devicePixelRatio: window.devicePixelRatio,
+    };
+  });
+  expect(mapDimensions.cssWidth).toBe(1280);
+  expect(mapDimensions.cssHeight).toBe(336);
+  expect(mapDimensions.backingWidth).toBe(
+    Math.round(mapDimensions.cssWidth * mapDimensions.devicePixelRatio),
+  );
+  expect(mapDimensions.backingHeight).toBe(
+    Math.round(mapDimensions.cssHeight * mapDimensions.devicePixelRatio),
+  );
 
   const fill = page.locator(".nh-hp-fill");
   await expect(fill).toHaveClass(/nh-hp-full/);
