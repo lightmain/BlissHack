@@ -85,9 +85,10 @@ manifest 至少记录：
 
 - 格子宽度和高度。
 - atlas 行列数及 tile 总数。
-- monsters、objects、other、decals 的连续区间。
+- monsters、objects、other、monsters 的 grayscale statues 副本、decals
+  这五个连续区间。
 - blank、unexplored、pet mark 和 pile mark 等特殊 tile 索引。
-- 四个输入文件的 SHA-256。
+- 四个 tile 输入文件及权威 `tilemap.c` 的 SHA-256。
 - 生成器版本或格式版本。
 
 atlas 和 manifest 作为一组受校验的生成产物提交。普通 `npm run build` 只验证
@@ -212,7 +213,8 @@ interface.mapRenderer = "tiles" | "ascii"
 2. 生成器严格解析 palette、tile 注释和 16×16 像素块，拒绝未知字符、
    行列尺寸错误和 tile 数量不一致。
 3. 使用成熟 PNG 编码库写入 RGBA PNG，不手写 PNG 压缩格式。
-4. 按官方 tilemap 使用的文件顺序合并资源。
+4. 按官方 tilemap 顺序合并 monsters、objects、other、grayscale statues 和
+   decals 五段资源。
 5. manifest 记录资源分段、特殊 tile 和输入 checksum。
 6. 将验证接入 `prebuild` 和 CI；验证不得修改文件。
 

@@ -1,12 +1,14 @@
 import { createHash } from "node:crypto";
 import {
+  lstat,
+  mkdtemp,
   mkdir,
   readFile,
   rename,
   rm,
   writeFile,
 } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { PNG } from "pngjs";
 import { parseTileText } from "./tile-text.mjs";
 
@@ -14,6 +16,7 @@ const TILE_WIDTH = 16;
 const TILE_HEIGHT = 16;
 const ATLAS_FILENAME = "nethack-classic.png";
 const MANIFEST_FILENAME = "nethack-classic.json";
+const MAPPING_SOURCE_FILE = "tilemap.c";
 const SOURCE_FILES = [
   "monsters.txt",
   "objects.txt",
@@ -37,31 +40,26 @@ const GRAY_MAPPINGS = [
 export async function generateTileAssets(options) {
   const columns = options.columns ?? 40;
   assertColumns(columns);
+  await recoverInterruptedPublication(options.outputDirectory);
   const sources = await loadSources(options.inputDirectory);
-  const layout = createLayout(sources, columns);
-  const png = renderAtlas(layout, columns);
-  const pngBytes = PNG.sync.write(png, {
-    bitDepth: 8,
-    colorType: 6,
-    deflateLevel: 9,
-    deflateStrategy: 3,
-    inputColorType: 6,
-  });
-  const manifest = createManifest(sources, layout, columns, pngBytes);
-  const manifestBytes = Buffer.from(
-    `${JSON.stringify(manifest, null, 2)}\n`,
-    "utf8",
-  );
+  const assets = buildTileAssets(sources, columns);
 
-  await mkdir(options.outputDirectory, { recursive: true });
-  await writePairAtomically(options.outputDirectory, pngBytes, manifestBytes);
-  return manifest;
+  await publishAssetDirectory(
+    options.outputDirectory,
+    assets.pngBytes,
+    assets.manifestBytes,
+  );
+  return assets.manifest;
 }
 
 /**
  * Verify checked assets against source checksums and decoded PNG dimensions.
  * This function is deliberately read-only.
- * @param {{ inputDirectory: string, outputDirectory: string }} options - Paths.
+ * @param {{
+ *   inputDirectory: string,
+ *   outputDirectory: string,
+ *   columns?: number
+ * }} options - Paths and optional required atlas width.
  * @returns {Promise<object>} validated manifest.
  */
 export async function verifyTileAssets(options) {
@@ -81,7 +79,10 @@ export async function verifyTileAssets(options) {
   }
   assertManifestShape(manifest);
 
-  const expectedSources = sourceMetadata(sources);
+  const columns = options.columns ?? manifest.atlas.columns;
+  assertColumns(columns);
+  const expected = buildTileAssets(sources, columns);
+  const expectedSources = expected.manifest.sources;
   for (const expected of expectedSources) {
     const recorded = manifest.sources.find(
       (source) => source.file === expected.file,
@@ -93,26 +94,28 @@ export async function verifyTileAssets(options) {
       throw new Error(`${expected.file} tile count mismatch`);
     }
   }
+  if (
+    manifest.mappingSource?.file !== expected.manifest.mappingSource.file
+    || manifest.mappingSource.sha256 !== expected.manifest.mappingSource.sha256
+  ) {
+    throw new Error(`${MAPPING_SOURCE_FILE} SHA-256 mismatch`);
+  }
 
-  const expectedLayout = createLayout(sources, manifest.atlas.columns);
-  if (manifest.atlas.tileCount !== expectedLayout.tiles.length) {
+  if (manifest.atlas.tileCount !== expected.manifest.atlas.tileCount) {
     throw new Error("Manifest tile count does not match source layout");
   }
-  const expectedRows = Math.ceil(
-    expectedLayout.tiles.length / manifest.atlas.columns,
-  );
-  if (manifest.atlas.rows !== expectedRows) {
+  if (manifest.atlas.rows !== expected.manifest.atlas.rows) {
     throw new Error("Manifest row count does not match tile count");
   }
   if (
     JSON.stringify(manifest.segments)
-      !== JSON.stringify(expectedLayout.segments)
+      !== JSON.stringify(expected.manifest.segments)
   ) {
     throw new Error("Manifest segments do not match source layout");
   }
   if (
     JSON.stringify(manifest.specialTiles)
-      !== JSON.stringify(expectedLayout.specialTiles)
+      !== JSON.stringify(expected.manifest.specialTiles)
   ) {
     throw new Error("Manifest special tiles do not match source layout");
   }
@@ -133,7 +136,46 @@ export async function verifyTileAssets(options) {
   ) {
     throw new Error("Tile atlas dimensions do not match manifest");
   }
+  if (!manifestBytes.equals(expected.manifestBytes)) {
+    throw new Error(
+      "Tile manifest does not match canonical source-generated output",
+    );
+  }
+  if (!pngBytes.equals(expected.pngBytes)) {
+    throw new Error("Tile atlas SHA-256 mismatch from canonical output");
+  }
   return manifest;
+}
+
+/**
+ * Build the canonical asset bytes without touching the filesystem.
+ * @param {Record<string, object>} sources - Parsed sources by filename.
+ * @param {number} columns - Atlas columns.
+ * @returns {{
+ *   manifest: object,
+ *   manifestBytes: Buffer,
+ *   pngBytes: Buffer
+ * }} canonical generated assets.
+ */
+function buildTileAssets(sources, columns) {
+  const layout = createLayout(sources, columns);
+  const png = renderAtlas(layout, columns);
+  const pngBytes = PNG.sync.write(png, {
+    bitDepth: 8,
+    colorType: 6,
+    deflateLevel: 9,
+    deflateStrategy: 3,
+    inputColorType: 6,
+  });
+  const manifest = createManifest(sources, layout, columns, pngBytes);
+  return {
+    manifest,
+    manifestBytes: Buffer.from(
+      `${JSON.stringify(manifest, null, 2)}\n`,
+      "utf8",
+    ),
+    pngBytes,
+  };
 }
 
 /**
@@ -142,15 +184,21 @@ export async function verifyTileAssets(options) {
  * @returns {Promise<Record<string, object>>} parsed source records.
  */
 async function loadSources(inputDirectory) {
-  const entries = await Promise.all(SOURCE_FILES.map(async (file) => {
-    const bytes = await readFile(join(inputDirectory, file));
-    const source = bytes.toString("utf8");
-    return [file, {
-      bytes,
-      parsed: parseTileText(source, { sourceName: file }),
-    }];
-  }));
-  return Object.fromEntries(entries);
+  const [entries, mappingBytes] = await Promise.all([
+    Promise.all(SOURCE_FILES.map(async (file) => {
+      const bytes = await readFile(join(inputDirectory, file));
+      const source = bytes.toString("utf8");
+      return [file, {
+        bytes,
+        parsed: parseTileText(source, { sourceName: file }),
+      }];
+    })),
+    readFile(join(inputDirectory, MAPPING_SOURCE_FILE)),
+  ]);
+  return {
+    ...Object.fromEntries(entries),
+    [MAPPING_SOURCE_FILE]: { bytes: mappingBytes },
+  };
 }
 
 /**
@@ -278,6 +326,10 @@ function createManifest(sources, layout, columns, pngBytes) {
       sha256: sha256(pngBytes),
     },
     sources: sourceMetadata(sources),
+    mappingSource: {
+      file: MAPPING_SOURCE_FILE,
+      sha256: sha256(sources[MAPPING_SOURCE_FILE].bytes),
+    },
     segments: layout.segments,
     specialTiles: layout.specialTiles,
   };
@@ -311,30 +363,112 @@ function findNamedTile(tiles, name) {
 }
 
 /**
- * Write both assets without exposing a half-updated pair.
+ * Publish both assets as one directory without exposing a mixed file pair.
  * @param {string} outputDirectory - Destination directory.
  * @param {Buffer} pngBytes - Encoded atlas.
  * @param {Buffer} manifestBytes - Encoded manifest.
- * @returns {Promise<void>} completion after both renames.
+ * @returns {Promise<void>} completion after publication and cleanup.
  */
-async function writePairAtomically(outputDirectory, pngBytes, manifestBytes) {
-  const suffix = `.tmp-${process.pid}`;
-  const pngPath = join(outputDirectory, ATLAS_FILENAME);
-  const manifestPath = join(outputDirectory, MANIFEST_FILENAME);
-  const temporaryPng = `${pngPath}${suffix}`;
-  const temporaryManifest = `${manifestPath}${suffix}`;
+async function publishAssetDirectory(
+  outputDirectory,
+  pngBytes,
+  manifestBytes,
+) {
+  const parentDirectory = dirname(outputDirectory);
+  const outputName = basename(outputDirectory);
+  await mkdir(parentDirectory, { recursive: true });
+  const backupDirectory = assetBackupPath(outputDirectory);
+  await recoverInterruptedPublication(outputDirectory);
+  const stagingDirectory = await mkdtemp(
+    join(parentDirectory, `.${outputName}.staging-`),
+  );
+  let previousMoved = false;
+  let published = false;
   try {
     await Promise.all([
-      writeFile(temporaryPng, pngBytes),
-      writeFile(temporaryManifest, manifestBytes),
+      writeFile(join(stagingDirectory, ATLAS_FILENAME), pngBytes),
+      writeFile(join(stagingDirectory, MANIFEST_FILENAME), manifestBytes),
     ]);
-    await rename(temporaryPng, pngPath);
-    await rename(temporaryManifest, manifestPath);
+    try {
+      await rename(outputDirectory, backupDirectory);
+      previousMoved = true;
+    } catch (error) {
+      if (error?.code !== "ENOENT") {
+        throw error;
+      }
+    }
+    await rename(stagingDirectory, outputDirectory);
+    published = true;
+    if (previousMoved) {
+      await rm(backupDirectory, { recursive: true, force: true });
+      previousMoved = false;
+    }
+  } catch (error) {
+    if (previousMoved && !published) {
+      try {
+        await rename(backupDirectory, outputDirectory);
+        previousMoved = false;
+      } catch (rollbackError) {
+        throw new AggregateError(
+          [error, rollbackError],
+          "Tile asset publication and rollback both failed",
+        );
+      }
+    }
+    throw error;
   } finally {
     await Promise.all([
-      rm(temporaryPng, { force: true }),
-      rm(temporaryManifest, { force: true }),
+      rm(stagingDirectory, { recursive: true, force: true }),
+      published || !previousMoved
+        ? rm(backupDirectory, { recursive: true, force: true })
+        : Promise.resolve(),
     ]);
+  }
+}
+
+/**
+ * Restore or clean the deterministic backup left by an interrupted publish.
+ * @param {string} outputDirectory - Destination directory.
+ * @returns {Promise<void>} completion after recovery.
+ */
+async function recoverInterruptedPublication(outputDirectory) {
+  const backupDirectory = assetBackupPath(outputDirectory);
+  const [outputExists, backupExists] = await Promise.all([
+    pathExists(outputDirectory),
+    pathExists(backupDirectory),
+  ]);
+  if (!backupExists) return;
+  if (outputExists) {
+    await rm(backupDirectory, { recursive: true, force: true });
+    return;
+  }
+  await rename(backupDirectory, outputDirectory);
+}
+
+/**
+ * Return the deterministic backup path for one generated asset directory.
+ * @param {string} outputDirectory - Destination directory.
+ * @returns {string} sibling backup path.
+ */
+function assetBackupPath(outputDirectory) {
+  return join(
+    dirname(outputDirectory),
+    `.${basename(outputDirectory)}.previous`,
+  );
+}
+
+/**
+ * Return whether a filesystem path currently exists.
+ * @param {string} path - Path to inspect.
+ * @returns {Promise<boolean>} whether the path exists.
+ */
+async function pathExists(path) {
+  try {
+    await lstat(path);
+    return true;
+  } catch (error) {
+    if (error?.code === "ENOENT") return false;
+    throw error;
   }
 }
 
@@ -363,6 +497,7 @@ function assertManifestShape(manifest) {
     || manifest.tile?.height !== TILE_HEIGHT
     || manifest.atlas?.file !== ATLAS_FILENAME
     || !Array.isArray(manifest.sources)
+    || manifest.mappingSource?.file !== MAPPING_SOURCE_FILE
     || !Array.isArray(manifest.segments)
     || !manifest.specialTiles
   ) {

@@ -7,7 +7,11 @@ const repositoryRoot = resolve(frontendRoot, "..");
 const inputDirectory = resolve(repositoryRoot, "win/share");
 const outputDirectory = resolve(frontendRoot, "public/tiles");
 
-const manifest = await verifyTileAssets({ inputDirectory, outputDirectory });
+const manifest = await verifyTileAssets({
+  inputDirectory,
+  outputDirectory,
+  columns: 40,
+});
 console.log(
   `Verified ${manifest.atlas.tileCount} tiles and source checksums.`,
 );

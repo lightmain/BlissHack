@@ -33,6 +33,10 @@
       "sha256": "9a8f7ce8fc2373345e7ea5b49adac4b0f45659d7aba4dfdd44c54c806fe4414d"
     }
   ],
+  "mappingSource": {
+    "file": "tilemap.c",
+    "sha256": "2d863e08da72c0a6f41109b20d420eb45db64eb7ad838a0947badf72b8b8b8d4"
+  },
   "segments": [
     {
       "id": "monsters",

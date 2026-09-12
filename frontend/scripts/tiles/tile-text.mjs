@@ -27,6 +27,7 @@ export function parseTileText(source, options = {}) {
 
   while (lineIndex < lines.length) {
     const line = lines[lineIndex].trim();
+    assertValidReservedHeader(line, sourceName, lineIndex + 1);
     if (line === "" || (line.startsWith("#") && !isTileHeader(line))) {
       lineIndex += 1;
       continue;
@@ -69,7 +70,7 @@ export function parseTileText(source, options = {}) {
   }
 
   while (lineIndex < lines.length) {
-    lineIndex = skipIgnoredLines(lines, lineIndex);
+    lineIndex = skipIgnoredLines(lines, lineIndex, sourceName);
     if (lineIndex >= lines.length) break;
 
     const header = parseTileHeader(lines[lineIndex].trim());
@@ -85,7 +86,7 @@ export function parseTileText(source, options = {}) {
       );
     }
     lineIndex += 1;
-    lineIndex = skipIgnoredLines(lines, lineIndex);
+    lineIndex = skipIgnoredLines(lines, lineIndex, sourceName);
     if (lines[lineIndex]?.trim() !== "{") {
       throw tileError(sourceName, lineIndex + 1, `tile ${header.index} missing '{'`);
     }
@@ -168,15 +169,30 @@ function parseTileHeader(line) {
 }
 
 /**
+ * Reject malformed comments which use a reserved tile header prefix.
+ * @param {string} line - Trimmed source line.
+ * @param {string} sourceName - Source label.
+ * @param {number} lineNumber - One-based source line.
+ * @returns {void}
+ */
+function assertValidReservedHeader(line, sourceName, lineNumber) {
+  if (/^#\s+(?:tile|placeholder)\b/.test(line) && !isTileHeader(line)) {
+    throw tileError(sourceName, lineNumber, "invalid tile header");
+  }
+}
+
+/**
  * Skip blank lines and comments which are not tile headers.
  * @param {string[]} lines - Source lines.
  * @param {number} start - First line to inspect.
+ * @param {string} sourceName - Source label.
  * @returns {number} next meaningful line index.
  */
-function skipIgnoredLines(lines, start) {
+function skipIgnoredLines(lines, start, sourceName) {
   let index = start;
   while (index < lines.length) {
     const line = lines[index].trim();
+    assertValidReservedHeader(line, sourceName, index + 1);
     if (line === "" || (line.startsWith("#") && !isTileHeader(line))) {
       index += 1;
     } else {
