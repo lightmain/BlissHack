@@ -1,6 +1,8 @@
 import {
   memo,
+  useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -16,14 +18,20 @@ import {
 import {
   mapFollowOffset,
   mapPositionFromPoint,
+  mapScrollAnchor,
+  mapScrollOffsetForAnchor,
 } from "../../map-rendering";
 import { AsciiMapRenderer } from "../../map/AsciiMapRenderer";
+import {
+  TileMapRenderer,
+  type TileRendererFallbackReason,
+} from "../../map/TileMapRenderer";
 import {
   normalizePlayerNameInput,
   sendPosition,
   submitLine,
 } from "../../nethack-bridge";
-import type { InterfaceSettingsV1 } from "../../settings/profile";
+import type { InterfaceSettings } from "../../settings/profile";
 import { textAttributeClass } from "../../text-styling";
 import { PermanentInventoryPanel } from "../PermanentInventoryPanel";
 import { StatusArea } from "./StatusArea";
@@ -32,17 +40,19 @@ interface GameTerminalProps {
   clipCenter: GameSnapshot["clipCenter"];
   cursor: GameSnapshot["cursor"];
   followPlayer: boolean;
-  historyLines: InterfaceSettingsV1["messageHistoryLines"];
+  historyLines: InterfaceSettings["messageHistoryLines"];
   inert: boolean;
   inputRequest: GameSnapshot["inputRequest"];
   layoutKey: string;
   map: MapCell[][];
+  mapRenderer: InterfaceSettings["mapRenderer"];
   messages: TextLine[];
   onInventoryCollapsedChange(collapsed: boolean): void;
+  onMapRendererFallback?(reason: TileRendererFallbackReason): void;
   permanentInventory: GameSnapshot["permanentInventory"];
   permanentInventoryCollapsed: boolean;
   permanentInventoryEnabled: boolean;
-  permanentInventoryPosition: InterfaceSettingsV1["permanentInventoryPosition"];
+  permanentInventoryPosition: InterfaceSettings["permanentInventoryPosition"];
   status: GameSnapshot["status"];
 }
 
@@ -56,8 +66,10 @@ export function GameTerminal({
   inputRequest,
   layoutKey,
   map,
+  mapRenderer,
   messages,
   onInventoryCollapsedChange,
+  onMapRendererFallback,
   permanentInventory,
   permanentInventoryCollapsed,
   permanentInventoryEnabled,
@@ -79,6 +91,8 @@ export function GameTerminal({
             followPlayer={followPlayer}
             layoutKey={layoutKey}
             map={map}
+            mapRenderer={mapRenderer}
+            onMapRendererFallback={onMapRendererFallback}
           />
           <StatusArea status={status} />
           <InputArea request={inputRequest} />
@@ -105,7 +119,7 @@ const MessageArea = memo(function MessageArea({
   historyLines,
   messages: allMessages,
 }: {
-  historyLines: InterfaceSettingsV1["messageHistoryLines"];
+  historyLines: InterfaceSettings["messageHistoryLines"];
   messages: TextLine[];
 }) {
   const messages = allMessages.slice(-historyLines);
@@ -140,32 +154,68 @@ const MapGrid = memo(function MapGrid({
   followPlayer,
   layoutKey,
   map,
+  mapRenderer,
+  onMapRendererFallback,
 }: {
   clipCenter: GameSnapshot["clipCenter"];
   cursor: GameSnapshot["cursor"];
   followPlayer: boolean;
   layoutKey: string;
   map: MapCell[][];
+  mapRenderer: InterfaceSettings["mapRenderer"];
+  onMapRendererFallback?(reason: TileRendererFallbackReason): void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const scrollAnchorRef = useRef<ReturnType<typeof mapScrollAnchor> | null>(
+    null,
+  );
+  const previousLayoutKey = useRef(layoutKey);
+
+  /** Remember the logical map position at the viewport center. */
+  const rememberScrollAnchor = useCallback((): void => {
+    const viewport = scrollRef.current;
+    if (!viewport) return;
+    scrollAnchorRef.current = mapScrollAnchor(viewport);
+  }, []);
+
+  /** Center the player or restore the last normalized manual position. */
+  const positionViewport = useCallback((): void => {
+    const viewport = scrollRef.current;
+    if (!viewport) return;
+    const offset = followPlayer && clipCenter
+      ? mapFollowOffset(clipCenter.x, clipCenter.y, viewport)
+      : scrollAnchorRef.current
+        ? mapScrollOffsetForAnchor(scrollAnchorRef.current, viewport)
+        : null;
+    if (!offset) {
+      rememberScrollAnchor();
+      return;
+    }
+    viewport.scrollLeft = offset.left;
+    viewport.scrollTop = offset.top;
+    rememberScrollAnchor();
+  }, [clipCenter, followPlayer, rememberScrollAnchor]);
+
+  useLayoutEffect(() => {
+    const viewport = scrollRef.current;
+    if (!viewport) return;
+    const layoutChanged = previousLayoutKey.current !== layoutKey;
+    previousLayoutKey.current = layoutKey;
+    if (followPlayer || layoutChanged || !scrollAnchorRef.current) {
+      positionViewport();
+    }
+  }, [followPlayer, layoutKey, positionViewport]);
 
   useEffect(() => {
     const viewport = scrollRef.current;
     if (!viewport || !followPlayer || !clipCenter) return;
-
-    function centerPlayer(): void {
-      if (!viewport || !clipCenter) return;
-      const offset = mapFollowOffset(clipCenter.x, clipCenter.y, viewport);
-      viewport.scrollLeft = offset.left;
-      viewport.scrollTop = offset.top;
-    }
-
-    centerPlayer();
     if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(centerPlayer);
+    const observer = new ResizeObserver(positionViewport);
     observer.observe(viewport);
+    const content = viewport.firstElementChild;
+    if (content) observer.observe(content);
     return () => observer.disconnect();
-  }, [clipCenter, followPlayer, layoutKey]);
+  }, [clipCenter, followPlayer, positionViewport]);
 
   /**
    * Submit a primary or secondary map click while nh_poskey is pending.
@@ -192,13 +242,29 @@ const MapGrid = memo(function MapGrid({
   }
 
   return (
-    <div className="nh-map-scroll" ref={scrollRef}>
+    <div
+      className="nh-map-scroll"
+      onScroll={rememberScrollAnchor}
+      ref={scrollRef}
+    >
       <div
         className="nh-map-interaction"
+        data-cursor-visible={cursor.visible ? "true" : "false"}
+        data-cursor-x={cursor.x}
+        data-cursor-y={cursor.y}
         onMouseDown={handleMouseDown}
         onContextMenu={handleContextMenu}
       >
-        <AsciiMapRenderer cursor={cursor} map={map} />
+        {mapRenderer === "tiles"
+          ? (
+            <TileMapRenderer
+              cursor={cursor}
+              map={map}
+              onFallback={onMapRendererFallback}
+              onReady={positionViewport}
+            />
+          )
+          : <AsciiMapRenderer cursor={cursor} map={map} />}
       </div>
     </div>
   );

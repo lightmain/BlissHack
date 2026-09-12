@@ -190,14 +190,14 @@ test("does not overwrite a profile changed by another idle page", async ({
   )).toBeVisible();
   await expect(page.getByRole("radio", { name: "Small" })).toBeChecked();
   expect(await page.evaluate(() => {
-    const raw = localStorage.getItem("blisshack.profile.v1");
+    const raw = localStorage.getItem("blisshack.profile.v2");
     return raw ? JSON.parse(raw).interface.terminalFontSize : null;
   })).toBe("large");
 
   await page.getByRole("button", { name: "Apply" }).click();
   await expect(page.getByRole("button", { name: "New Game" })).toBeVisible();
   expect(await page.evaluate(() => {
-    const raw = localStorage.getItem("blisshack.profile.v1");
+    const raw = localStorage.getItem("blisshack.profile.v2");
     return raw ? JSON.parse(raw).interface.terminalFontSize : null;
   })).toBe("small");
 });
@@ -225,7 +225,7 @@ test("keeps the Settings draft baseline after exporting a newer profile", async 
     "Settings changed in another page. Review your changes and try again.",
   )).toBeVisible();
   expect(await page.evaluate(() => {
-    const raw = localStorage.getItem("blisshack.profile.v1");
+    const raw = localStorage.getItem("blisshack.profile.v2");
     return raw ? JSON.parse(raw).interface.terminalFontSize : null;
   })).toBe("large");
 });
@@ -275,7 +275,7 @@ test("advances the Settings baseline when an external profile matches the draft"
   await page.getByRole("button", { name: "Apply" }).click();
   await expect(page.getByRole("button", { name: "New Game" })).toBeVisible();
   expect(await page.evaluate(() => {
-    const raw = localStorage.getItem("blisshack.profile.v1");
+    const raw = localStorage.getItem("blisshack.profile.v2");
     return raw ? JSON.parse(raw).interface.terminalFontSize : null;
   })).toBe("small");
 });
@@ -304,7 +304,7 @@ test("advances the Settings baseline after a draft manually matches an external 
   await page.getByRole("button", { name: "Apply" }).click();
   await expect(page.getByRole("button", { name: "New Game" })).toBeVisible();
   expect(await page.evaluate(() => {
-    const raw = localStorage.getItem("blisshack.profile.v1");
+    const raw = localStorage.getItem("blisshack.profile.v2");
     return raw ? JSON.parse(raw).interface.terminalFontSize : null;
   })).toBe("small");
 });

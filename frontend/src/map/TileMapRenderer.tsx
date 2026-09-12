@@ -23,6 +23,13 @@ import {
 
 const FALLBACK_TILE_SIZE = 16;
 
+export type TileRendererFallbackReason = "assets" | "canvas";
+
+interface TileMapRendererProps extends MapRendererProps {
+  onFallback?(reason: TileRendererFallbackReason): void;
+  onReady?(): void;
+}
+
 /**
  * Render the map into a pixel-aligned Canvas with an ASCII loading fallback.
  * @param props - current map and cursor state.
@@ -31,17 +38,26 @@ const FALLBACK_TILE_SIZE = 16;
 export const TileMapRenderer = memo(function TileMapRenderer({
   cursor,
   map,
-}: MapRendererProps) {
+  onFallback,
+  onReady,
+}: TileMapRendererProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const callbacksRef = useRef({ onFallback, onReady });
   const schedulerRef = useRef<FrameScheduler | null>(null);
   const latestState = useRef({ cursor, map });
+  const hasPaintedRef = useRef(false);
   const [atlas, setAtlas] = useState<TileAtlas | null>(null);
   const [atlasFailed, setAtlasFailed] = useState(false);
   const [hasPainted, setHasPainted] = useState(false);
 
   useLayoutEffect(() => {
+    callbacksRef.current = { onFallback, onReady };
     latestState.current = { cursor, map };
-  }, [cursor, map]);
+  }, [cursor, map, onFallback, onReady]);
+
+  useLayoutEffect(() => {
+    if (hasPainted) callbacksRef.current.onReady?.();
+  }, [hasPainted]);
 
   useEffect(() => {
     let active = true;
@@ -50,7 +66,10 @@ export const TileMapRenderer = memo(function TileMapRenderer({
         if (active) setAtlas(loadedAtlas);
       },
       () => {
-        if (active) setAtlasFailed(true);
+        if (active) {
+          setAtlasFailed(true);
+          callbacksRef.current.onFallback?.("assets");
+        }
       },
     );
     return () => {
@@ -75,15 +94,24 @@ export const TileMapRenderer = memo(function TileMapRenderer({
       );
       if (!context) {
         setAtlasFailed(true);
+        callbacksRef.current.onFallback?.("canvas");
         return;
       }
-      drawTileMap({
-        context,
-        atlas,
-        map: latestState.current.map,
-        cursor: latestState.current.cursor,
-      });
-      setHasPainted(true);
+      try {
+        drawTileMap({
+          context,
+          atlas,
+          map: latestState.current.map,
+          cursor: latestState.current.cursor,
+        });
+        if (!hasPaintedRef.current) {
+          hasPaintedRef.current = true;
+          setHasPainted(true);
+        }
+      } catch {
+        setAtlasFailed(true);
+        callbacksRef.current.onFallback?.("canvas");
+      }
     }
 
     const scheduler = createFrameScheduler(

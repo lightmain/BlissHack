@@ -1,15 +1,15 @@
 import type { RefObject } from "react";
 import type {
-  BlissHackProfileExportV1,
-  BlissHackProfileV1,
+  BlissHackProfileExport,
+  BlissHackProfile,
 } from "../../settings/profile";
 import type { ProfileDifference } from "../../settings/profile-diff";
 import { SettingsModal } from "./SettingsModal";
 
 export interface ImportPreview {
   differences: ProfileDifference[];
-  document: BlissHackProfileExportV1;
-  profile: BlissHackProfileV1;
+  document: BlissHackProfileExport;
+  profile: BlissHackProfile;
 }
 
 interface ConfirmationDialogProps {

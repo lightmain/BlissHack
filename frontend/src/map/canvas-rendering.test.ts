@@ -203,28 +203,18 @@ describe("drawTileMap", () => {
     ]);
   });
 
-  it("draws the fallback tile when a glyph tile index is invalid", () => {
+  it("rejects the frame when a glyph tile index is invalid", () => {
     const tileAtlas = atlas();
     const { context, drawImage } = drawingContext();
 
-    drawTileMap({
+    expect(() => drawTileMap({
       context,
       atlas: tileAtlas,
       map: [[cell(null), cell(glyph(2307))]],
       cursor: { x: 1, y: 0, visible: false },
-    });
+    })).toThrow(/tile index 2307/i);
 
-    expect(drawImage).toHaveBeenCalledWith(
-      tileAtlas.image,
-      464,
-      576,
-      16,
-      16,
-      16,
-      0,
-      16,
-      16,
-    );
+    expect(drawImage).not.toHaveBeenCalled();
   });
 
   it("draws the cursor last without changing the map data", () => {

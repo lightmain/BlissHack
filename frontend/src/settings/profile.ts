@@ -1,7 +1,12 @@
 /** Current browser and export schema version for BlissHack settings. */
-export const PROFILE_SCHEMA_VERSION = 1;
+export const PROFILE_SCHEMA_VERSION = 2;
+/** Previous profile schema accepted for migration. */
+export const LEGACY_PROFILE_SCHEMA_VERSION = 1;
 /** Maximum accepted size of an imported profile document. */
 export const PROFILE_IMPORT_MAX_BYTES = 1024 * 1024;
+
+export const MAP_RENDERERS = ["tiles", "ascii"] as const;
+export type MapRenderer = (typeof MAP_RENDERERS)[number];
 
 export const TERMINAL_FONT_SIZES = ["small", "medium", "large"] as const;
 export type TerminalFontSize = (typeof TERMINAL_FONT_SIZES)[number];
@@ -50,6 +55,12 @@ export interface InterfaceSettingsV1 {
   permanentInventoryCollapsed: boolean;
 }
 
+export interface InterfaceSettingsV2 extends InterfaceSettingsV1 {
+  mapRenderer: MapRenderer;
+}
+
+export type InterfaceSettings = InterfaceSettingsV2;
+
 export type PickupTypesV1 =
   | { mode: "all" }
   | { mode: "selected"; classes: PickupClassSymbol[] };
@@ -73,10 +84,20 @@ export interface BlissHackProfileV1 {
   nethack: NetHackSettingsV1;
 }
 
-export interface BlissHackProfileExportV1 extends BlissHackProfileV1 {
+export interface BlissHackProfileV2 {
+  schemaVersion: 2;
+  interface: InterfaceSettingsV2;
+  nethack: NetHackSettingsV1;
+}
+
+export type BlissHackProfile = BlissHackProfileV2;
+
+export interface BlissHackProfileExportV2 extends BlissHackProfileV2 {
   productVersion: string;
   exportedAt: string;
 }
+
+export type BlissHackProfileExport = BlissHackProfileExportV2;
 
 export type ProfileFormatErrorCode =
   | "invalid-json"
@@ -97,10 +118,11 @@ export class ProfileFormatError extends Error {
 }
 
 /** Return a fresh profile so callers cannot mutate shared defaults. */
-export function createDefaultProfile(): BlissHackProfileV1 {
+export function createDefaultProfile(): BlissHackProfile {
   return {
     schemaVersion: PROFILE_SCHEMA_VERSION,
     interface: {
+      mapRenderer: "tiles",
       terminalFontSize: "medium",
       messageHistoryLines: 5,
       followPlayer: true,
@@ -123,32 +145,35 @@ export function createDefaultProfile(): BlissHackProfileV1 {
 }
 
 /**
- * Validate and normalize an unknown profile into a detached V1 value.
+ * Validate and normalize an unknown profile into a detached current value.
  * Unknown and missing properties are rejected at every object level.
  */
-export function validateProfile(value: unknown): BlissHackProfileV1 {
+export function validateProfile(value: unknown): BlissHackProfile {
   const profile = requireRecord(value, "profile");
   assertExactKeys(profile, ["schemaVersion", "interface", "nethack"], "profile");
-  assertSchemaVersion(profile.schemaVersion);
+  const schemaVersion = profileSchemaVersion(profile.schemaVersion);
+  const interfaceSettings = schemaVersion === LEGACY_PROFILE_SCHEMA_VERSION
+    ? migrateInterfaceSettingsV1(profile.interface)
+    : validateInterfaceSettings(profile.interface);
 
   return {
     schemaVersion: PROFILE_SCHEMA_VERSION,
-    interface: validateInterfaceSettings(profile.interface),
+    interface: interfaceSettings,
     nethack: validateNetHackSettings(profile.nethack),
   };
 }
 
 /** Parse one persisted JSON string using the strict profile schema. */
-export function parseStoredProfile(json: string): BlissHackProfileV1 {
+export function parseStoredProfile(json: string): BlissHackProfile {
   return validateProfile(parseJson(json));
 }
 
 /** Create a detached, strictly validated export document. */
 export function createProfileExport(
-  profile: BlissHackProfileV1,
+  profile: BlissHackProfile,
   productVersion: string,
   exportedAt: Date = new Date(),
-): BlissHackProfileExportV1 {
+): BlissHackProfileExport {
   const normalized = validateProfile(profile);
   assertProductVersion(productVersion);
   if (Number.isNaN(exportedAt.getTime())) {
@@ -165,7 +190,7 @@ export function createProfileExport(
 
 /** Serialize an export with deterministic indentation and LF termination. */
 export function serializeProfileExport(
-  profile: BlissHackProfileV1,
+  profile: BlissHackProfile,
   productVersion: string,
   exportedAt: Date = new Date(),
 ): string {
@@ -179,7 +204,7 @@ export function serializeProfileExport(
 /** Decode and validate an imported UTF-8 profile document. */
 export function parseProfileImport(
   bytes: Uint8Array,
-): BlissHackProfileExportV1 {
+): BlissHackProfileExport {
   if (bytes.byteLength > PROFILE_IMPORT_MAX_BYTES) {
     throw new ProfileFormatError(
       "file-too-large",
@@ -226,7 +251,6 @@ export function parseProfileImport(
     ],
     "profile export",
   );
-  assertSchemaVersion(document.schemaVersion);
   assertProductVersion(document.productVersion);
   assertIsoTimestamp(document.exportedAt);
 
@@ -247,11 +271,12 @@ export function parseProfileImport(
 /** Validate and normalize the interface section independently. */
 export function validateInterfaceSettings(
   value: unknown,
-): InterfaceSettingsV1 {
+): InterfaceSettings {
   const settings = requireRecord(value, "interface");
   assertExactKeys(
     settings,
     [
+      "mapRenderer",
       "terminalFontSize",
       "messageHistoryLines",
       "followPlayer",
@@ -260,6 +285,9 @@ export function validateInterfaceSettings(
     ],
     "interface",
   );
+  if (!isOneOf(settings.mapRenderer, MAP_RENDERERS)) {
+    throw invalidProfile("interface.mapRenderer is invalid");
+  }
   if (!isOneOf(settings.terminalFontSize, TERMINAL_FONT_SIZES)) {
     throw invalidProfile("interface.terminalFontSize is invalid");
   }
@@ -279,12 +307,37 @@ export function validateInterfaceSettings(
   );
 
   return {
+    mapRenderer: settings.mapRenderer,
     terminalFontSize: settings.terminalFontSize,
     messageHistoryLines: settings.messageHistoryLines,
     followPlayer: settings.followPlayer,
     permanentInventoryPosition: settings.permanentInventoryPosition,
     permanentInventoryCollapsed: settings.permanentInventoryCollapsed,
   };
+}
+
+/**
+ * Validate the strict v1 interface and add its compatibility renderer.
+ * @param value - persisted or imported v1 interface.
+ * @returns migrated v2 interface settings.
+ */
+function migrateInterfaceSettingsV1(value: unknown): InterfaceSettings {
+  const settings = requireRecord(value, "interface");
+  assertExactKeys(
+    settings,
+    [
+      "terminalFontSize",
+      "messageHistoryLines",
+      "followPlayer",
+      "permanentInventoryPosition",
+      "permanentInventoryCollapsed",
+    ],
+    "interface",
+  );
+  return validateInterfaceSettings({
+    ...settings,
+    mapRenderer: "ascii",
+  });
 }
 
 /** Validate and normalize the NetHack section independently. */
@@ -380,13 +433,17 @@ function parseJson(json: string): unknown {
   }
 }
 
-function assertSchemaVersion(value: unknown): asserts value is 1 {
-  if (value !== PROFILE_SCHEMA_VERSION) {
+function profileSchemaVersion(value: unknown): 1 | 2 {
+  if (
+    value !== LEGACY_PROFILE_SCHEMA_VERSION
+    && value !== PROFILE_SCHEMA_VERSION
+  ) {
     throw new ProfileFormatError(
       "unsupported-schema",
       "Profile schema version is not supported",
     );
   }
+  return value;
 }
 
 function assertProductVersion(value: unknown): asserts value is string {

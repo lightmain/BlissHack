@@ -3,11 +3,13 @@ import {
   parseStoredProfile,
   ProfileFormatError,
   validateProfile,
-  type BlissHackProfileV1,
+  type BlissHackProfile,
 } from "./profile";
 
 /** The only browser-local key used for persisted BlissHack settings. */
-export const PROFILE_STORAGE_KEY = "blisshack.profile.v1";
+export const PROFILE_STORAGE_KEY = "blisshack.profile.v2";
+/** Previous profile key retained for in-memory migration and explicit cleanup. */
+export const LEGACY_PROFILE_STORAGE_KEY = "blisshack.profile.v1";
 
 /** Minimum localStorage contract used by the profile store. */
 export interface ProfileStorage {
@@ -24,25 +26,25 @@ export type ProfileLoadStatus =
   | "unavailable";
 
 export interface ProfileLoadResult {
-  profile: BlissHackProfileV1;
+  profile: BlissHackProfile;
   status: ProfileLoadStatus;
 }
 
 export interface ProfileStore {
   load(): ProfileLoadResult;
-  replace(profile: BlissHackProfileV1): BlissHackProfileV1;
-  clear(): BlissHackProfileV1;
+  replace(profile: BlissHackProfile): BlissHackProfile;
+  clear(): BlissHackProfile;
 }
 
 /** A Settings draft was based on a profile replaced by another page. */
 export class ProfileStaleError extends Error {
-  readonly latestProfile: BlissHackProfileV1 | null;
+  readonly latestProfile: BlissHackProfile | null;
 
   /**
    * Create a stale-draft error with the latest persisted profile when known.
    * @param latestProfile - authoritative profile observed under the save lock.
    */
-  constructor(latestProfile: BlissHackProfileV1 | null = null) {
+  constructor(latestProfile: BlissHackProfile | null = null) {
     super("The saved profile changed after Settings was opened");
     this.name = "ProfileStaleError";
     this.latestProfile = latestProfile;
@@ -65,6 +67,7 @@ export function createProfileStore(
       let raw: string | null;
       try {
         raw = storage.getItem(PROFILE_STORAGE_KEY);
+        if (raw === null) raw = storage.getItem(LEGACY_PROFILE_STORAGE_KEY);
       } catch {
         return defaultResult("unavailable");
       }
@@ -87,7 +90,7 @@ export function createProfileStore(
       }
     },
 
-    replace(profile: BlissHackProfileV1): BlissHackProfileV1 {
+    replace(profile: BlissHackProfile): BlissHackProfile {
       const normalized = validateProfile(profile);
       const serialized = JSON.stringify(normalized);
       if (!storage) {
@@ -98,11 +101,12 @@ export function createProfileStore(
     },
 
     /** Remove the persisted profile and return detached defaults. */
-    clear(): BlissHackProfileV1 {
+    clear(): BlissHackProfile {
       if (!storage?.removeItem) {
         throw new Error("Profile storage cannot be cleared");
       }
       storage.removeItem(PROFILE_STORAGE_KEY);
+      storage.removeItem(LEGACY_PROFILE_STORAGE_KEY);
       return createDefaultProfile();
     },
   };

@@ -14,7 +14,7 @@ import {
 import { keyboardEventToNetHackKey } from "../keyboard";
 import {
   validateProfile,
-  type BlissHackProfileV1,
+  type BlissHackProfile,
 } from "../settings/profile";
 import type { ProfileLoadStatus } from "../settings/profile-store";
 import {
@@ -23,6 +23,7 @@ import {
   requestSaveAndExit,
   sendKey,
 } from "../nethack-bridge";
+import type { TileRendererFallbackReason } from "../map/TileMapRenderer";
 import { SettingsScreen } from "./SettingsScreen";
 import { GameModalRenderer } from "./game/GameModals";
 import { GameTerminal } from "./game/GameTerminal";
@@ -31,8 +32,9 @@ import { PauseOverlay } from "./game/PauseOverlay";
 interface GameScreenProps {
   loadStatus: ProfileLoadStatus;
   moduleId: string;
-  onApplyProfile(profile: BlissHackProfileV1): Promise<BlissHackProfileV1>;
-  profile: BlissHackProfileV1;
+  onMapRendererFallback?(reason: TileRendererFallbackReason): void;
+  onApplyProfile(profile: BlissHackProfile): Promise<BlissHackProfile>;
+  profile: BlissHackProfile;
 }
 
 /**
@@ -43,6 +45,7 @@ interface GameScreenProps {
 export function GameScreen({
   loadStatus,
   moduleId,
+  onMapRendererFallback,
   onApplyProfile,
   profile,
 }: GameScreenProps) {
@@ -129,8 +132,8 @@ export function GameScreen({
 
   /** Persist game settings, queue the dynamic subset, and advance one safe boundary. */
   async function applyGameProfile(
-    candidate: BlissHackProfileV1,
-  ): Promise<BlissHackProfileV1> {
+    candidate: BlissHackProfile,
+  ): Promise<BlissHackProfile> {
     const saved = await onApplyProfile(candidate);
     queueRuntimeSettings(saved.nethack);
     sendKey(27);
@@ -175,6 +178,7 @@ export function GameScreen({
       className={`nh-shell nh-font-${settings.terminalFontSize}`}
       data-command-input={snapshot.commandInput ? "ready" : "busy"}
       data-number-pad={snapshot.numberPad ? "on" : "off"}
+      data-snapshot-revision={snapshot.revision}
       data-settings-status={snapshot.runtimeSettingsStatus}
       aria-label="BlissHack"
       onMouseDownCapture={handleGameMouseDown}
@@ -198,10 +202,16 @@ export function GameScreen({
           historyLines={settings.messageHistoryLines}
           inert={snapshot.modal !== null || pauseView !== null}
           inputRequest={snapshot.inputRequest}
-          layoutKey={`${settings.terminalFontSize}:${settings.messageHistoryLines}`}
+          layoutKey={[
+            settings.terminalFontSize,
+            settings.messageHistoryLines,
+            settings.mapRenderer,
+          ].join(":")}
           map={snapshot.map}
+          mapRenderer={settings.mapRenderer}
           messages={snapshot.messages}
           onInventoryCollapsedChange={setInventoryCollapsed}
+          onMapRendererFallback={onMapRendererFallback}
           permanentInventory={snapshot.permanentInventory}
           permanentInventoryCollapsed={settings.permanentInventoryCollapsed}
           permanentInventoryEnabled={gameProfile.nethack.permInvent}
@@ -246,9 +256,9 @@ export function GameScreen({
  * @returns a complete profile suitable for the shared Settings form.
  */
 function profileWithRuntimeSettings(
-  profile: BlissHackProfileV1,
+  profile: BlissHackProfile,
   runtimeSettings: GameSnapshot["runtimeSettings"],
-): BlissHackProfileV1 {
+): BlissHackProfile {
   if (!runtimeSettings) return validateProfile(profile);
   return validateProfile({
     ...profile,

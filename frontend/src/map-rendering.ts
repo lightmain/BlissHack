@@ -23,6 +23,16 @@ interface ScrollDimensions {
   clientHeight: number;
 }
 
+interface ScrollPositionDimensions extends ScrollDimensions {
+  scrollLeft: number;
+  scrollTop: number;
+}
+
+export interface MapScrollAnchor {
+  x: number;
+  y: number;
+}
+
 /**
  * Collapse one map row into adjacent text runs with equal visible styles.
  * @param row - map cells in column order.
@@ -103,6 +113,60 @@ export function mapFollowOffset(
   return {
     left: clamp(cellCenterX - dimensions.clientWidth / 2, 0, maxLeft),
     top: clamp(cellCenterY - dimensions.clientHeight / 2, 0, maxTop),
+  };
+}
+
+/**
+ * Capture the map position at the center of a scroll viewport.
+ * @param dimensions - rendered map, viewport, and scroll position.
+ * @returns normalized center coordinates.
+ */
+export function mapScrollAnchor(
+  dimensions: ScrollPositionDimensions,
+): MapScrollAnchor {
+  return {
+    x: dimensions.scrollWidth > 0
+      ? clamp(
+        (dimensions.scrollLeft + dimensions.clientWidth / 2)
+          / dimensions.scrollWidth,
+        0,
+        1,
+      )
+      : 0,
+    y: dimensions.scrollHeight > 0
+      ? clamp(
+        (dimensions.scrollTop + dimensions.clientHeight / 2)
+          / dimensions.scrollHeight,
+        0,
+        1,
+      )
+      : 0,
+  };
+}
+
+/**
+ * Restore a normalized map center into a resized scroll viewport.
+ * @param anchor - normalized map center.
+ * @param dimensions - new map and viewport dimensions.
+ * @returns clamped target scroll offsets.
+ */
+export function mapScrollOffsetForAnchor(
+  anchor: MapScrollAnchor,
+  dimensions: ScrollDimensions,
+): { left: number; top: number } {
+  const maxLeft = Math.max(0, dimensions.scrollWidth - dimensions.clientWidth);
+  const maxTop = Math.max(0, dimensions.scrollHeight - dimensions.clientHeight);
+  return {
+    left: clamp(
+      anchor.x * dimensions.scrollWidth - dimensions.clientWidth / 2,
+      0,
+      maxLeft,
+    ),
+    top: clamp(
+      anchor.y * dimensions.scrollHeight - dimensions.clientHeight / 2,
+      0,
+      maxTop,
+    ),
   };
 }
 

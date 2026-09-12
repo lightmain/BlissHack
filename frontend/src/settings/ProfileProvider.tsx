@@ -6,7 +6,7 @@ import {
 } from "react";
 import {
   createDefaultProfile,
-  type BlissHackProfileV1,
+  type BlissHackProfile,
 } from "./profile";
 import {
   browserProfileStorage,
@@ -35,7 +35,7 @@ export function ProfileProvider({
   ));
   const [state, setState] = useState(() => store.load());
 
-  const replaceProfile = useCallback((profile: BlissHackProfileV1) => {
+  const replaceProfile = useCallback((profile: BlissHackProfile) => {
     const saved = store.replace(profile);
     setState({ profile: saved, status: "loaded" });
     return saved;

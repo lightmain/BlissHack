@@ -15,9 +15,9 @@ test("starts no NetHack session before the player begins a game", async ({
 }) => {
   const errors = captureErrors(page);
   await openHome(page, "initial-lifecycle");
-  await expect(page.locator(".home-version")).toHaveText("prealpha-4");
+  await expect(page.locator(".home-version")).toHaveText("alpha-1");
   await expect(page.locator(".home-footer")).toContainText(
-    "BlissHack prealpha-4",
+    "BlissHack alpha-1",
   );
   await expect(page.locator(".nh-shell")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Settings" })).toBeEnabled();
@@ -80,12 +80,11 @@ test("plays through startup and routes terminal UI input", async ({ page }) => {
   );
 
   await expect(page.getByLabel(/E2E_Ada the .+, 100% HP/)).toBeVisible();
-  await expect(page.locator(".nh-map-row")).toHaveCount(21);
-  expect(
-    await page.locator(".nh-map-row").evaluateAll(
-      (rows) => rows.every((row) => row.textContent?.length === 80),
-    ),
-  ).toBe(true);
+  const map = page.getByRole("img", { name: "Dungeon map" });
+  await expect(map).toBeVisible();
+  await expect(map).toHaveClass(/nh-map-tiles/);
+  await expect(map).toHaveAttribute("width", "1280");
+  await expect(map).toHaveAttribute("height", "336");
 
   const fill = page.locator(".nh-hp-fill");
   await expect(fill).toHaveClass(/nh-hp-full/);
