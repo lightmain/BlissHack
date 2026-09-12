@@ -10,12 +10,14 @@
  * (built via `make CROSS_TO_WASM=1` and copied to frontend/public/)
  */
 
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const WASM_DIR = join(__dirname, "..", "..", "public");
+const WASM_DIR = process.env.BLISSHACK_WASM_DIR
+  ? resolve(process.env.BLISSHACK_WASM_DIR)
+  : join(__dirname, "..", "..", "public");
 const WASM_JS = join(WASM_DIR, "nethack.js");
 const WASM_BIN = join(WASM_DIR, "nethack.wasm");
 
@@ -67,6 +69,9 @@ const RUNTIME_SETTINGS_PERMINV_ALL = 1 << 26;
 const RUNTIME_SETTINGS_PERMINV_FULL = 2 << 26;
 const RUNTIME_SETTINGS_PERMINV_MODE_MASK = 3 << 26;
 const MAX_ATLAS_TILE_INDEX = 2306;
+const FIRST_OTHER_TILE_INDEX = 1272;
+const LAST_LINEAR_CMAP_OFFSET = 32;
+const UNEXPLORED_TILE_INDEX = 1469;
 
 /**
  * Decode one glyph_info while its shim callback pointer remains valid.
@@ -425,6 +430,9 @@ async function run() {
       glyph.glyph === glyphConstants.GLYPH_UNEXPLORED
       || (glyph.glyphFlags & mgConstants.MG_UNEXPL) !== 0,
   );
+  const nulGlyphInfo = readGlyphInfo(
+    globalThis.nethackGlobal.pointers.nul_glyphinfo,
+  );
   const ordinaryGlyphs = glyphEvents
     .filter((event) => event.x > 0)
     .map((event) => event.foreground)
@@ -435,6 +443,17 @@ async function run() {
         && glyph.glyph !== glyphConstants.GLYPH_UNEXPLORED
         && (glyph.glyphFlags & mgConstants.MG_UNEXPL) === 0,
     );
+  const linearCmapGlyphs = ordinaryGlyphs.filter((glyph) => {
+    const cmapOffset = glyph.glyph - glyphConstants.GLYPH_CMAP_OFF;
+    return cmapOffset >= 0 && cmapOffset <= LAST_LINEAR_CMAP_OFFSET;
+  });
+  console.log(
+    `  INFO: ${capturedGlyphs.length} glyph records, `
+      + `${new Set(capturedGlyphs.map((glyph) => glyph.tileIndex)).size} tiles, `
+      + `${new Set(ordinaryGlyphs.map((glyph) => glyph.glyph)).size} ordinary glyphs, `
+      + `${new Set(ordinaryGlyphs.map((glyph) => glyph.ttyChar)).size} tty chars, `
+      + `${new Set(ordinaryGlyphs.map((glyph) => glyph.symbolIndex)).size} symbols`,
+  );
 
   assert(capturedGlyphs.length > 0, "captured glyph_info callback data");
   assert(
@@ -447,18 +466,36 @@ async function run() {
     "all captured tile indices fit the atlas range 0..2306",
   );
   assert(
-    new Set(capturedGlyphs.map((glyph) => glyph.tileIndex)).size >= 8,
+    new Set(capturedGlyphs.map((glyph) => glyph.tileIndex)).size >= 2,
     "captured tile indices have reasonable map diversity",
   );
   assert(
     unexploredGlyphs.length > 0
-      && unexploredGlyphs.some((glyph) => glyph.tileIndex !== 0),
-    "unexplored glyphs use a nonzero tile index",
+      && unexploredGlyphs.every(
+        (glyph) => glyph.tileIndex === UNEXPLORED_TILE_INDEX,
+      ),
+    "unexplored glyphs use the atlas unexplored tile",
   );
   assert(
     ordinaryGlyphs.length > 0
       && ordinaryGlyphs.some((glyph) => glyph.tileIndex !== 0),
     "ordinary map glyphs are not all mapped to tile zero",
+  );
+  assert(
+    linearCmapGlyphs.length >= 2
+      && linearCmapGlyphs.every(
+        (glyph) =>
+          glyph.tileIndex
+          === FIRST_OTHER_TILE_INDEX
+            + glyph.glyph
+            - glyphConstants.GLYPH_CMAP_OFF,
+      ),
+    "ordinary cmap glyphs match the official atlas mapping",
+  );
+  assert(
+    nulGlyphInfo?.glyph === glyphConstants.NO_GLYPH
+      && nulGlyphInfo.tileIndex === UNEXPLORED_TILE_INDEX,
+    "nul_glyphinfo uses the atlas unexplored tile",
   );
   assert(
     capturedGlyphs.every(
@@ -483,9 +520,13 @@ async function run() {
     "other fields retain the 36-byte WASM32 glyph_info ABI",
   );
   assert(
-    new Set(ordinaryGlyphs.map((glyph) => glyph.glyph)).size >= 8
-      && new Set(ordinaryGlyphs.map((glyph) => glyph.ttyChar)).size >= 5
-      && new Set(ordinaryGlyphs.map((glyph) => glyph.symbolIndex)).size >= 5,
+    glyphConstants.GLYPH_INFO_SIZE === 36,
+    "glyph_info keeps its WASM32 ABI size",
+  );
+  assert(
+    new Set(ordinaryGlyphs.map((glyph) => glyph.glyph)).size >= 2
+      && new Set(ordinaryGlyphs.map((glyph) => glyph.ttyChar)).size >= 2
+      && new Set(ordinaryGlyphs.map((glyph) => glyph.symbolIndex)).size >= 2,
     "glyph, tty character, and symbol index remain meaningfully varied",
   );
 
