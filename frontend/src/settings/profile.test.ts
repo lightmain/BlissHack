@@ -3,6 +3,7 @@ import {
   createDefaultProfile,
   createProfileExport,
   MESSAGE_HISTORY_LINES,
+  migrateProfileDocument,
   NUMBER_PAD_MODES,
   parseProfileImport,
   parseStoredProfile,
@@ -49,6 +50,61 @@ function expectProfileError(
   throw new Error(`Expected ProfileFormatError with code ${code}`);
 }
 
+describe("profile document migration", () => {
+  it("strictly migrates schema v1 to current v2 with ASCII display", () => {
+    const legacy = createLegacyProfile();
+    const expected = createDefaultProfile();
+    expected.interface.mapRenderer = "ascii";
+
+    expect(migrateProfileDocument(legacy)).toEqual(expected);
+
+    (legacy.interface as Record<string, unknown>).mapRenderer = "tiles";
+    expectProfileError(
+      () => migrateProfileDocument(legacy),
+      "invalid-profile",
+    );
+  });
+
+  it("strictly validates schema v2 and returns a detached value", () => {
+    const current = createDefaultProfile();
+    const migrated = migrateProfileDocument(current);
+
+    expect(migrated).toEqual(current);
+    expect(migrated).not.toBe(current);
+    expect(migrated.interface).not.toBe(current.interface);
+    expect(migrated.nethack).not.toBe(current.nethack);
+    expect(migrated.nethack.pickupTypes)
+      .not.toBe(current.nethack.pickupTypes);
+
+    (current.interface as unknown as Record<string, unknown>).legacy = true;
+    expectProfileError(
+      () => migrateProfileDocument(current),
+      "invalid-profile",
+    );
+  });
+
+  it("rejects unknown versions before reading migration fields", () => {
+    let migrationFieldReads = 0;
+    const unknownVersion = {
+      schemaVersion: 3,
+      get interface(): unknown {
+        migrationFieldReads += 1;
+        return {};
+      },
+      get nethack(): unknown {
+        migrationFieldReads += 1;
+        return {};
+      },
+    };
+
+    expectProfileError(
+      () => migrateProfileDocument(unknownVersion),
+      "unsupported-schema",
+    );
+    expect(migrationFieldReads).toBe(0);
+  });
+});
+
 describe("profile defaults and validation", () => {
   it("returns the reviewed defaults as independent objects", () => {
     const first = createDefaultProfile();
@@ -92,23 +148,6 @@ describe("profile defaults and validation", () => {
       });
     },
   );
-
-  it("migrates a strict v1 profile to v2 with ASCII display", () => {
-    const legacy = createLegacyProfile();
-
-    expect(validateProfile(legacy)).toMatchObject({
-      schemaVersion: 2,
-      interface: {
-        mapRenderer: "ascii",
-      },
-    });
-    expect(parseStoredProfile(JSON.stringify(legacy))).toMatchObject({
-      schemaVersion: 2,
-      interface: {
-        mapRenderer: "ascii",
-      },
-    });
-  });
 
   it.each(TERMINAL_FONT_SIZES)(
     "accepts terminal font size %s",

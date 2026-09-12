@@ -8,10 +8,15 @@ import { captureErrors } from "./helpers/browser-errors";
 import {
   moveToAdjacentFloor,
   openHome,
-  readCursorPosition,
   startNewGame,
   startNewGameFromHome,
 } from "./helpers/game-flow";
+import {
+  readCursorPosition,
+  readMapRenderer,
+  readMapScrollAnchor,
+  readShellRevision,
+} from "./helpers/map-viewport-state";
 
 const DIAGNOSTIC_STORAGE_KEY = "blisshack.diagnostics.v1";
 const PROFILE_STORAGE_KEY = "blisshack.profile.v2";
@@ -286,27 +291,6 @@ async function disablePlayerFollowing(page: Page): Promise<void> {
 }
 
 /**
- * Read the normalized horizontal center of the visible map viewport.
- * @param viewport - map scroll container.
- * @returns center position as a fraction of the rendered map width.
- */
-async function readHorizontalScrollAnchor(viewport: Locator): Promise<number> {
-  return viewport.evaluate((element) =>
-    (element.scrollLeft + element.clientWidth / 2) / element.scrollWidth);
-}
-
-/**
- * Read the current immutable game snapshot revision exposed by the shell.
- * @param page - running game page.
- * @returns numeric snapshot revision.
- */
-async function readSnapshotRevision(page: Page): Promise<number> {
-  return Number(
-    await page.locator(".nh-shell").getAttribute("data-snapshot-revision"),
-  );
-}
-
-/**
  * Enter NetHack's semicolon position-input flow at a published snapshot boundary.
  * @param page - running game page at command input.
  * @returns snapshot revision after position input is visible and command input is busy.
@@ -314,7 +298,7 @@ async function readSnapshotRevision(page: Page): Promise<number> {
 async function enterPositionInput(page: Page): Promise<number> {
   const shell = page.locator(".nh-shell");
   await expect(shell).toHaveAttribute("data-command-input", "ready");
-  const previousRevision = await readSnapshotRevision(page);
+  const previousRevision = await readShellRevision(page);
   await page.keyboard.press(";");
   await expect(shell).toHaveAttribute("data-command-input", "busy");
   await expect(page.locator(".nh-messages")).toContainText(
@@ -327,7 +311,7 @@ async function enterPositionInput(page: Page): Promise<number> {
   await page.keyboard.press("Escape");
   await expect(tip).toHaveCount(0);
   await expect(shell).toHaveAttribute("data-command-input", "busy");
-  const revision = await readSnapshotRevision(page);
+  const revision = await readShellRevision(page);
   expect(revision).toBeGreaterThan(previousRevision);
   return revision;
 }
@@ -467,6 +451,7 @@ test(
 
     const canvas = page.locator("canvas.nh-map-tiles");
     await expect(canvas).toBeVisible();
+    expect(await readMapRenderer(page)).toBe("tiles");
     const pixels = await readCanvasPixels(canvas);
     expect(pixels.nonTransparentPixels).toBeGreaterThan(0);
     expect(pixels.opaqueColorCount).toBeGreaterThan(1);
@@ -492,10 +477,10 @@ test(
     });
     expect(await viewport.evaluate((element) => element.scrollLeft))
       .toBeGreaterThan(0);
-    const manualAnchor = await readHorizontalScrollAnchor(viewport);
+    const manualAnchor = await readMapScrollAnchor(viewport);
 
     await switchMapRenderer(page, "ASCII");
-    await expect(page.locator(".nh-map-ascii")).toBeVisible();
+    await expect.poll(async () => readMapRenderer(page)).toBe("ascii");
     await expect.poll(async () => readCursorPosition(page)).toEqual(
       initialCursor,
     );
@@ -504,7 +489,7 @@ test(
     await switchMapRenderer(page, "Tiles");
     await expect(canvas).toBeVisible();
     await expect.poll(async () =>
-      readHorizontalScrollAnchor(viewport)).toBeCloseTo(manualAnchor, 2);
+      readMapScrollAnchor(viewport)).toBeCloseTo(manualAnchor, 2);
     await expect.poll(async () => readCursorPosition(page)).toEqual(
       initialCursor,
     );
@@ -531,9 +516,9 @@ test("keeps a manual Follow anchor after a right-click position look", async ({
   await enterPositionInput(page);
   const scroll = await setManualHorizontalScroll(viewport, "opposite");
   expect(scroll.maxLeft).toBeGreaterThan(0);
-  const manualAnchor = await readHorizontalScrollAnchor(viewport);
+  const manualAnchor = await readMapScrollAnchor(viewport);
 
-  const revisionBeforeClick = await readSnapshotRevision(page);
+  const revisionBeforeClick = await readShellRevision(page);
   await rightMouseGesture(page, await visibleMapPoint(viewport), 3);
   await page.waitForFunction((revision) => {
     const shell = document.querySelector<HTMLElement>(".nh-shell");
@@ -541,7 +526,7 @@ test("keeps a manual Follow anchor after a right-click position look", async ({
       && Number(shell.dataset.snapshotRevision) > revision;
   }, revisionBeforeClick, { timeout: 10_000 });
 
-  expect(await readHorizontalScrollAnchor(viewport)).toBeCloseTo(
+  expect(await readMapScrollAnchor(viewport)).toBeCloseTo(
     manualAnchor,
     2,
   );
@@ -555,7 +540,7 @@ test("keeps a manual Follow anchor after a right-click position look", async ({
     return (left + element.clientWidth / 2) / element.scrollWidth;
   }, manualAnchor);
   await expect.poll(async () =>
-    readHorizontalScrollAnchor(viewport)).toBeCloseTo(resizedManualAnchor, 2);
+    readMapScrollAnchor(viewport)).toBeCloseTo(resizedManualAnchor, 2);
 
   const movedCursor = await moveToAdjacentFloor(page);
   const expectedFollowLeft = await viewport.evaluate((element, cursorX) => {
@@ -614,7 +599,7 @@ test("falls back to ASCII when the tile PNG is unavailable", async ({
 
   await startNewGameFromHome(page, "TileAssetsFallback");
   await expectDiagnosticEvent(page, "map.tiles_assets_fallback");
-  await expect(page.locator(".nh-map-ascii")).toBeVisible();
+  await expect.poll(async () => readMapRenderer(page)).toBe("ascii");
   await expect(page.locator("canvas.nh-map-tiles")).toHaveCount(0);
   expect(blockedPngRequests).toBe(1);
   expect(await readStoredProfile(page)).toBe(storedProfile);
@@ -635,7 +620,7 @@ test("falls back to ASCII when a 2D Canvas context is unavailable", async ({
 
   await startNewGameFromHome(page, "TileCanvasFallback");
   await expectDiagnosticEvent(page, "map.tiles_canvas_fallback");
-  await expect(page.locator(".nh-map-ascii")).toBeVisible();
+  await expect.poll(async () => readMapRenderer(page)).toBe("ascii");
   await expect(page.locator("canvas.nh-map-tiles")).toHaveCount(0);
   expect(await readStoredProfile(page)).toBe(storedProfile);
   await expectTilesPreference(page);
