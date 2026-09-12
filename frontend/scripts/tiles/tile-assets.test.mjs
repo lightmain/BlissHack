@@ -4,6 +4,7 @@ import {
   mkdir,
   readFile,
   readdir,
+  rename,
   rm,
   stat,
   writeFile,
@@ -11,6 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { PNG } from "pngjs";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   generateTileAssets,
@@ -26,11 +28,16 @@ const repositoryRoot = resolve(
   "../../..",
 );
 const officialSourceDirectory = join(repositoryRoot, "win/share");
+const fixtureTilemap = "/* fixture tilemap authority */\n";
 const temporaryDirectories = [];
 
 /**
  * Create four small source files and an empty output directory.
- * @returns {Promise<{ inputDirectory: string, outputDirectory: string }>}
+ * @returns {Promise<{
+ *   root: string,
+ *   inputDirectory: string,
+ *   outputDirectory: string
+ * }>}
  * temporary fixture paths.
  */
 async function assetFixture() {
@@ -78,8 +85,9 @@ async function assetFixture() {
       ]),
       "utf8",
     ),
+    writeFile(join(inputDirectory, "tilemap.c"), fixtureTilemap, "utf8"),
   ]);
-  return { inputDirectory, outputDirectory };
+  return { root, inputDirectory, outputDirectory };
 }
 
 /**
@@ -108,6 +116,22 @@ async function assetSnapshot(directory) {
       mtimeNs: metadata.mtimeNs,
     }];
   })));
+}
+
+/**
+ * Read one atlas pixel from a tile-local coordinate.
+ * @param {PNG} png - Decoded atlas.
+ * @param {number} tileIndex - Zero-based atlas tile index.
+ * @param {number} tileX - Horizontal pixel inside the tile.
+ * @param {number} tileY - Vertical pixel inside the tile.
+ * @param {number} columns - Atlas column count.
+ * @returns {number[]} RGBA values.
+ */
+function tilePixel(png, tileIndex, tileX, tileY, columns) {
+  const x = (tileIndex % columns) * 16 + tileX;
+  const y = Math.floor(tileIndex / columns) * 16 + tileY;
+  const offset = (y * png.width + x) * 4;
+  return [...png.data.subarray(offset, offset + 4)];
 }
 
 afterEach(async () => {
@@ -152,6 +176,10 @@ describe("tile asset generation", () => {
         { file: "other.txt", tileCount: 2 },
         { file: "decals.txt", tileCount: 3 },
       ],
+      mappingSource: {
+        file: "tilemap.c",
+        sha256: createHash("sha256").update(fixtureTilemap).digest("hex"),
+      },
       segments: [
         {
           id: "monsters",
@@ -210,6 +238,10 @@ describe("tile asset generation", () => {
       columns: 40,
     });
     const manifest = await readManifest(outputDirectory);
+    const pngBytes = await readFile(
+      join(outputDirectory, "nethack-classic.png"),
+    );
+    const png = PNG.sync.read(pngBytes);
 
     expect(manifest.sources).toEqual([
       {
@@ -233,10 +265,15 @@ describe("tile asset generation", () => {
         sha256: "9a8f7ce8fc2373345e7ea5b49adac4b0f45659d7aba4dfdd44c54c806fe4414d",
       },
     ]);
+    expect(manifest.mappingSource).toEqual({
+      file: "tilemap.c",
+      sha256: "2d863e08da72c0a6f41109b20d420eb45db64eb7ad838a0947badf72b8b8b8d4",
+    });
     expect(manifest.atlas).toMatchObject({
       columns: 40,
       rows: 58,
       tileCount: 2307,
+      sha256: "c85bfd20d4681147be79927db18bf1ada23d7e2ed400373a43773f10e4f414bb",
     });
     expect(manifest.segments).toEqual([
       {
@@ -281,6 +318,21 @@ describe("tile asset generation", () => {
       petMark: 2305,
       pileMark: 2306,
     });
+    expect([
+      tilePixel(png, 0, 7, 7, 40), // giant ant
+      tilePixel(png, 789, 3, 1, 40), // strange object
+      tilePixel(png, 1272, 0, 0, 40), // stone
+      tilePixel(png, 1515, 7, 7, 40), // giant ant statue
+      tilePixel(png, 2305, 12, 0, 40), // pet mark
+      tilePixel(png, 2306, 2, 0, 40), // pile mark
+    ]).toEqual([
+      [145, 71, 0, 255],
+      [255, 108, 0, 255],
+      [108, 145, 182, 255],
+      [149, 149, 149, 255],
+      [255, 0, 0, 255],
+      [255, 255, 255, 255],
+    ]);
   });
 });
 
@@ -297,6 +349,39 @@ describe("tile asset verification", () => {
     expect(await assetSnapshot(fixture.outputDirectory)).toEqual(before);
   });
 
+  it("recovers an interrupted directory publication before regenerating", async () => {
+    const fixture = await assetFixture();
+    await generateTileAssets({ ...fixture, columns: 2 });
+    const backupDirectory = join(fixture.root, ".output.previous");
+    await rename(fixture.outputDirectory, backupDirectory);
+
+    await generateTileAssets({ ...fixture, columns: 2 });
+
+    await expect(verifyTileAssets(fixture)).resolves.toMatchObject({
+      formatVersion: 1,
+    });
+    expect(await readdir(fixture.root)).not.toContain(".output.previous");
+  });
+
+  it("restores an interrupted publication before parsing new input", async () => {
+    const fixture = await assetFixture();
+    await generateTileAssets({ ...fixture, columns: 2 });
+    const before = await assetSnapshot(fixture.outputDirectory);
+    const backupDirectory = join(fixture.root, ".output.previous");
+    await rename(fixture.outputDirectory, backupDirectory);
+    await writeFile(
+      join(fixture.inputDirectory, "monsters.txt"),
+      "# invalid replacement input\n",
+    );
+
+    await expect(
+      generateTileAssets({ ...fixture, columns: 2 }),
+    ).rejects.toThrow();
+
+    expect(await assetSnapshot(fixture.outputDirectory)).toEqual(before);
+    expect(await readdir(fixture.root)).not.toContain(".output.previous");
+  });
+
   it("rejects stale source files and corrupted generated files", async () => {
     const stale = await assetFixture();
     await generateTileAssets({ ...stale, columns: 2 });
@@ -305,6 +390,16 @@ describe("tile asset verification", () => {
     await writeFile(objectPath, objectText.replace("(0, 255, 0)", "(0, 254, 0)"));
     await expect(verifyTileAssets(stale)).rejects.toThrow(
       /objects\.txt.*SHA-256 mismatch/i,
+    );
+
+    const staleMapping = await assetFixture();
+    await generateTileAssets({ ...staleMapping, columns: 2 });
+    await writeFile(
+      join(staleMapping.inputDirectory, "tilemap.c"),
+      `${fixtureTilemap}/* changed mapping */\n`,
+    );
+    await expect(verifyTileAssets(staleMapping)).rejects.toThrow(
+      /tilemap\.c.*SHA-256 mismatch/i,
     );
 
     const corruptPng = await assetFixture();
@@ -328,6 +423,37 @@ describe("tile asset verification", () => {
     await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
     await expect(verifyTileAssets(corruptManifest)).rejects.toThrow(
       /manifest.*tile count|tile count.*manifest/i,
+    );
+  });
+
+  it("rejects an atlas whose self-reported checksum was also changed", async () => {
+    const fixture = await assetFixture();
+    await generateTileAssets({ ...fixture, columns: 2 });
+    const pngPath = join(fixture.outputDirectory, "nethack-classic.png");
+    const manifestPath = join(
+      fixture.outputDirectory,
+      "nethack-classic.json",
+    );
+    const png = PNG.sync.read(await readFile(pngPath));
+    png.data[0] ^= 0xff;
+    const tamperedBytes = PNG.sync.write(png, {
+      bitDepth: 8,
+      colorType: 6,
+      deflateLevel: 9,
+      deflateStrategy: 3,
+      inputColorType: 6,
+    });
+    const manifest = await readManifest(fixture.outputDirectory);
+    manifest.atlas.sha256 = createHash("sha256")
+      .update(tamperedBytes)
+      .digest("hex");
+    await Promise.all([
+      writeFile(pngPath, tamperedBytes),
+      writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`),
+    ]);
+
+    await expect(verifyTileAssets(fixture)).rejects.toThrow(
+      /canonical|source-generated|does not match/i,
     );
   });
 });

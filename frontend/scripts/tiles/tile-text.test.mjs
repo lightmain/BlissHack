@@ -104,4 +104,17 @@ describe("parseTileText", () => {
 
     expect(parseError(unsupported)).toMatch(/invalid palette entry/i);
   });
+
+  it.each([
+    ["# tile malformed"],
+    ["# placeholder 1 missing-parentheses"],
+  ])("rejects malformed reserved headers: %s", (header) => {
+    const malformed = `${createTileText([{
+      index: 0,
+      name: "valid tile",
+      rows: solidTileRows("."),
+    }])}\n${header}\n`;
+
+    expect(parseError(malformed)).toMatch(/invalid tile header/i);
+  });
 });
