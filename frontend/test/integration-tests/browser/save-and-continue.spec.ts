@@ -3,10 +3,10 @@ import { captureErrors } from "./helpers/browser-errors";
 import {
   continueSavedGame,
   moveToAdjacentFloor,
-  readCursorPosition,
   saveAndReturnHome,
   startNewGame,
 } from "./helpers/game-flow";
+import { readCursorPosition } from "./helpers/map-viewport-state";
 
 test("enumerates a persisted save after returning home and refreshing", async ({
   page,
