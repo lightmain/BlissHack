@@ -10,7 +10,11 @@ export interface CursorPosition {
   y: number;
 }
 
-export type ActiveMapRenderer = "ascii" | "tiles";
+export type ActiveMapRenderer =
+  | "ascii"
+  | "tiles"
+  | "tiles-fallback"
+  | "tiles-loading";
 
 /**
  * Read the current immutable game snapshot revision exposed by the shell.
@@ -51,10 +55,18 @@ export async function readCursorPosition(
 export async function readMapRenderer(
   page: Page,
 ): Promise<ActiveMapRenderer> {
-  const map = page.locator(".nh-map-interaction");
-  if (await map.locator("canvas.nh-map-tiles").isVisible()) return "tiles";
-  if (await map.locator(".nh-map-ascii").isVisible()) return "ascii";
-  throw new Error("No visible map renderer");
+  const state = await page.locator(
+    ".nh-map-interaction [data-map-renderer-state]:visible",
+  ).getAttribute("data-map-renderer-state");
+  if (
+    state === "ascii"
+    || state === "tiles"
+    || state === "tiles-fallback"
+    || state === "tiles-loading"
+  ) {
+    return state;
+  }
+  throw new Error(`Invalid visible map renderer state: ${state ?? "none"}`);
 }
 
 /**
