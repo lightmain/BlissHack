@@ -26,7 +26,9 @@ interface StoredDiagnosticEvent {
 }
 
 interface CanvasPixelSummary {
+  distinctNearbyTileCount: number;
   nonTransparentPixels: number;
+  nonTransparentNearbyTileCount: number;
   opaqueColorCount: number;
 }
 
@@ -117,8 +119,48 @@ async function readCanvasPixels(
           + `${pixels[offset + 3]}`,
       );
     }
+    const tileWidth = element.width / 80;
+    const tileHeight = element.height / 21;
+    const parent = element.closest<HTMLElement>(".nh-map-interaction");
+    const cursorX = Number(parent?.dataset.cursorX);
+    const cursorY = Number(parent?.dataset.cursorY);
+    const nearbyTiles = new Set<string>();
+    let nonTransparentNearbyTileCount = 0;
+    for (
+      let y = Math.max(0, cursorY - 2);
+      y <= Math.min(20, cursorY + 2);
+      y += 1
+    ) {
+      for (
+        let x = Math.max(1, cursorX - 2);
+        x <= Math.min(79, cursorX + 2);
+        x += 1
+      ) {
+        const tilePixels = context.getImageData(
+          Math.round(x * tileWidth),
+          Math.round(y * tileHeight),
+          Math.round(tileWidth),
+          Math.round(tileHeight),
+        ).data;
+        let hash = 2166136261;
+        let tileOpaquePixels = 0;
+        for (let offset = 0; offset < tilePixels.length; offset += 4) {
+          if (tilePixels[offset + 3] > 0) tileOpaquePixels += 1;
+          hash = Math.imul(hash ^ tilePixels[offset], 16777619);
+          hash = Math.imul(hash ^ tilePixels[offset + 1], 16777619);
+          hash = Math.imul(hash ^ tilePixels[offset + 2], 16777619);
+          hash = Math.imul(hash ^ tilePixels[offset + 3], 16777619);
+        }
+        if (tileOpaquePixels > 0) {
+          nonTransparentNearbyTileCount += 1;
+          nearbyTiles.add(`${tileOpaquePixels}:${hash >>> 0}`);
+        }
+      }
+    }
     return {
+      distinctNearbyTileCount: nearbyTiles.size,
       nonTransparentPixels,
+      nonTransparentNearbyTileCount,
       opaqueColorCount: colors.size,
     };
   });
@@ -138,16 +180,52 @@ async function attachViewportEvidence(
   height: number,
 ): Promise<void> {
   await page.setViewportSize({ width, height });
-  const map = page.locator(".nh-map-scroll");
+  const viewport = page.locator(".nh-map-scroll");
+  const canvas = page.locator("canvas.nh-map-tiles");
   const status = page.getByRole("region", { name: "Character status" });
-  await expect(page.locator("canvas.nh-map-tiles")).toBeVisible();
-  const [mapBox, statusBox] = await Promise.all([
-    map.boundingBox(),
+  await expect(canvas).toBeVisible();
+  const [viewportBox, canvasBox, statusBox, dimensions] = await Promise.all([
+    viewport.boundingBox(),
+    canvas.boundingBox(),
     status.boundingBox(),
+    canvas.evaluate((element) => {
+      if (!(element instanceof HTMLCanvasElement)) {
+        throw new Error("Tile map is not a canvas");
+      }
+      const bounds = element.getBoundingClientRect();
+      const viewport = element.closest<HTMLElement>(".nh-map-scroll");
+      return {
+        backingHeight: element.height,
+        backingWidth: element.width,
+        cssHeight: bounds.height,
+        cssWidth: bounds.width,
+        devicePixelRatio: window.devicePixelRatio,
+        imageRendering: getComputedStyle(element).imageRendering,
+        scrollHeight: viewport?.scrollHeight ?? 0,
+        scrollWidth: viewport?.scrollWidth ?? 0,
+      };
+    }),
   ]);
-  expect(mapBox).not.toBeNull();
+  expect(viewportBox).not.toBeNull();
+  expect(canvasBox).not.toBeNull();
   expect(statusBox).not.toBeNull();
-  expect(mapBox!.y + mapBox!.height).toBeLessThanOrEqual(statusBox!.y + 0.5);
+  expect(canvasBox).toMatchObject({ width: 1280, height: 336 });
+  expect(dimensions).toMatchObject({
+    cssHeight: 336,
+    cssWidth: 1280,
+    scrollHeight: 336,
+    scrollWidth: 1280,
+  });
+  expect(dimensions.backingWidth).toBe(
+    Math.round(dimensions.cssWidth * dimensions.devicePixelRatio),
+  );
+  expect(dimensions.backingHeight).toBe(
+    Math.round(dimensions.cssHeight * dimensions.devicePixelRatio),
+  );
+  expect(dimensions.imageRendering).toMatch(/pixelated|crisp-edges/);
+  expect(viewportBox!.width).toBeLessThanOrEqual(width);
+  expect(viewportBox!.y + viewportBox!.height)
+    .toBeLessThanOrEqual(statusBox!.y + 0.5);
   await testInfo.attach(`tiles-${width}x${height}.png`, {
     body: await page.screenshot({ animations: "disabled" }),
     contentType: "image/png",
@@ -242,6 +320,8 @@ test(
     const pixels = await readCanvasPixels(canvas);
     expect(pixels.nonTransparentPixels).toBeGreaterThan(0);
     expect(pixels.opaqueColorCount).toBeGreaterThan(1);
+    expect(pixels.nonTransparentNearbyTileCount).toBeGreaterThanOrEqual(4);
+    expect(pixels.distinctNearbyTileCount).toBeGreaterThanOrEqual(2);
     expect(assetRequests).toEqual({ manifest: 1, png: 1 });
 
     const initialCursor = await readCursorPosition(page);

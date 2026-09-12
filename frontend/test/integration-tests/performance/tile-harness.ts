@@ -103,17 +103,38 @@ function percentile(values: readonly number[], fraction: number): number {
 }
 
 /**
+ * Execute the same resize and full draw sequence used by TileMapRenderer.
+ * @param atlas - decoded checked-in classic atlas.
+ * @param map - deterministic complete map.
+ * @param cursor - visible cursor included in the frame.
+ * @returns configured context used for the completed frame.
+ */
+function renderTileFrame(
+  atlas: TileAtlas,
+  map: readonly (readonly MapCell[])[],
+  cursor: GameSnapshot["cursor"],
+): CanvasRenderingContext2D {
+  const context = resizeCanvasBackingStore(
+    canvas,
+    COLNO * atlas.manifest.tile.width,
+    ROWNO * atlas.manifest.tile.height,
+    1,
+  );
+  if (!context) throw new Error("Tile performance 2D context is unavailable");
+  drawTileMap({ context, atlas, map, cursor });
+  return context;
+}
+
+/**
  * Measure repeated full-map paints through the production draw function.
  * @param atlas - decoded checked-in classic atlas.
  * @param map - deterministic complete map.
- * @param context - configured destination context.
  * @param roundCount - number of measured full redraws.
  * @returns timing distribution and rendered dimensions.
  */
 function measureTileMap(
   atlas: TileAtlas,
   map: readonly (readonly MapCell[])[],
-  context: CanvasRenderingContext2D,
   roundCount: number,
 ): TilePerformanceResult {
   if (!Number.isInteger(roundCount) || roundCount <= 0) {
@@ -125,14 +146,14 @@ function measureTileMap(
     visible: true,
   };
   for (let round = 0; round < WARMUP_ROUNDS; round += 1) {
-    drawTileMap({ context, atlas, map, cursor });
+    renderTileFrame(atlas, map, cursor);
   }
 
   const durations: number[] = [];
   const totalStarted = performance.now();
   for (let round = 0; round < roundCount; round += 1) {
     const started = performance.now();
-    drawTileMap({ context, atlas, map, cursor });
+    const context = renderTileFrame(atlas, map, cursor);
     context.getImageData(0, 0, 1, 1);
     durations.push(performance.now() - started);
   }
@@ -156,17 +177,9 @@ function measureTileMap(
  */
 async function initializeTileHarness(): Promise<void> {
   const atlas = await loadTileAtlas();
-  const context = resizeCanvasBackingStore(
-    canvas,
-    COLNO * atlas.manifest.tile.width,
-    ROWNO * atlas.manifest.tile.height,
-    1,
-  );
-  if (!context) throw new Error("Tile performance 2D context is unavailable");
   const map = createPerformanceMap();
   window.tilePerformanceHarness = {
-    measure: (roundCount) =>
-      measureTileMap(atlas, map, context, roundCount),
+    measure: (roundCount) => measureTileMap(atlas, map, roundCount),
   };
   document.documentElement.dataset.tilePerformanceReady = "true";
 }
