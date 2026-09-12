@@ -434,3 +434,21 @@ alpha-1 只有同时满足以下条件才算完成：
 9. Canvas 像素检查证明地图真实绘制且代表性 tile 不混淆。
 10. 所有 C、构建、profile、架构和许可证文档已更新。
 11. 线上部署成功，并完成一次 Tiles 与 ASCII 的生产环境 smoke test。
+
+## 14. 实施状态
+
+截至 2026-09-12，`alpha-1` 分支的五个开发阶段和自动验收已经完成，尚未合入
+部署分支：
+
+| 阶段 | 主要提交 |
+| --- | --- |
+| 资源生成 | `97f96b573 build: generate verified classic tile atlas` |
+| WASM 映射 | `3a5de7acc build: enable authoritative WASM tile mapping` |
+| Canvas 原型 | `0f17f0882 feat: add Canvas tile renderer prototype` |
+| 产品接入 | `1cb81df81 feat: add map renderer profile setting` |
+| 完成验收 | `a56555129 test: cover alpha-1 tile renderer workflows` 及后续修正 |
+
+最终自动门禁结果和人工检查步骤记录在
+`doc/BlissHack/plans/in-alpha-1/release-acceptance.md`。当前完成定义中的
+第 1 至 10 项已经由实现、自动测试和文档覆盖；第 11 项必须等待用户人工验收、
+合入部署分支并完成线上 smoke test。

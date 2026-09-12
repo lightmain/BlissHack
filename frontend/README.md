@@ -12,6 +12,12 @@ React and TypeScript frontend for the NetHack WebAssembly build.
 - `src/nethack-bridge.ts` is the stable shim callback facade.
 - `src/bridge/` contains Emscripten loading, WASM decoding, save validation,
   and the single input controller.
+- `src/map/` contains the retained ASCII renderer, Canvas tile renderer,
+  atlas loader, and renderer-independent draw primitives.
+- `src/map-rendering.ts` owns shared pointer-coordinate, follow, and scroll
+  anchor calculations.
+- `src/settings/profile.ts` owns strict profile v2 validation and v1 migration;
+  `interface.mapRenderer` selects `tiles` or `ascii`.
 - `src/screens/settings/` and `src/screens/game/` contain screen-owned
   presentation components.
 - `src/styles/` contains page-scoped global styles loaded through `src/App.css`.
@@ -20,6 +26,16 @@ The checked-in `public/nethack.js`, `public/nethack.wasm`, and
 `public/nethack-runtime.json` files form one verified runtime triplet. Follow
 the repository [WASM build process](../doc/BlissHack/build-process.md) before
 changing them.
+
+The checked-in `public/tiles/nethack-classic.png` and
+`public/tiles/nethack-classic.json` are generated together from NetHack's
+official `win/share` tile sources. Regenerate them explicitly and verify them
+without rewriting the worktree:
+
+```sh
+npm run generate:tiles
+npm run verify:tiles
+```
 
 ## Development
 

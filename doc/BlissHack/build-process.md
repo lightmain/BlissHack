@@ -127,6 +127,35 @@ WASM 构建还会使用 host `tilemap` 生成 `src/tile.c`，再以 Emscripten
 编译为 `targets/wasm/tile.o` 并链接进最终模块。`tile.o` 与
 `frontend/public/tiles/nethack-classic.json` 的分段顺序必须保持一致。
 
+## 官方 Tiles 生成与校验
+
+浏览器不在运行时解析 NetHack 的文本 tile 文件。开发者显式执行：
+
+```bash
+cd frontend
+npm run generate:tiles
+npm run verify:tiles
+```
+
+生成器读取 `win/share/monsters.txt`、`objects.txt`、`other.txt`、
+`decals.txt` 和权威映射 `tilemap.c`，输出：
+
+```text
+frontend/public/tiles/
+  nethack-classic.png
+  nethack-classic.json
+```
+
+当前 atlas 包含 2307 个 16×16 tile，按 40 列、58 行排列，PNG 尺寸为
+640×928。manifest 记录输入 SHA-256、分段范围和 blank、unexplored、pet、
+pile 特殊索引。pet/pile decal 仅把官方 delimiter 左上角背景色转为透明，
+普通 tile 不执行颜色猜测或黑色抠除。
+
+`npm run build` 的 `prebuild` 会执行 `verify:tiles`，只校验现有产物而不重写
+工作树。修改任一输入、生成器或 `tilemap.c` 后，必须重新生成并同时提交 PNG
+和 JSON；WASM tile 映射也发生变化时，还必须重新运行 `npm run build:wasm`
+并提交运行时三件套。
+
 ## WASM 产物不是"静态库"
 
 传统的 C 静态库（`.a` 文件）是链接时使用的中间产物。WASM 的产物是**最终可执行模块**，
@@ -153,11 +182,13 @@ frontend/
   public/
     nethack.js        ← 从 src/targets/ 复制过来的 Emscripten 产物
     nethack.wasm      ← 同上
+    tiles/            ← 官方 classic atlas 与 manifest
   src/
     main.tsx              React 入口
     App.tsx               应用状态与页面组合
     nethack-bridge.ts     稳定 shim callback façade
     bridge/               module loader、WASM 解码、输入控制和存档校验
+    map/                  ASCII/Canvas renderer、atlas loader 和绘制逻辑
     session/              module/session 生命周期与 Home 数据操作
     screens/game/         游戏终端、状态栏、modal 和暂停组件
     screens/settings/     Settings 字段、数据操作和 modal 组件
