@@ -18,15 +18,19 @@ BlissHack 对 NetHack C 代码进行了少量有针对性的修改，主要用�
 
 ## 项目状态
 
-**alpha-1 Tileset 实现已完成，正在等待人工验收。**
+**alpha-1.1 实现已完成，正在等待人工验收。**
 
-`alpha-1` 分支已经接入 NetHack 5.0 官方经典 16×16 tiles、Canvas 2D 地图、
-ASCII/Tiles 即时切换和 profile schema v2。该分支尚未合入部署分支，在线站点
-仍是 prealpha-4。
+`alpha-1.1` 分支包含 alpha-1 的官方经典 16×16 tiles 和 Canvas 2D 地图，并
+完善了地图 camera、右键拖动、Follow player、profile 迁移和 WASM 工具链。
+该分支尚未合入部署分支，在线站点仍是 prealpha-4。
 
 当前里程碑已经实现：
 
 - 默认使用官方 tiles 的 80×21 Canvas 地图，并长期保留 ASCII renderer。
+- 地图隐藏原生 scrollbar 但保留滚动能力；右键拖动平移，右键短按保留原有
+  格子操作。
+- Follow 开启时允许手动浏览；右键查看和同坐标回合不会抢回视角，有效 Follow
+  target 的坐标变化后重新居中。
 - WASM 提供权威 `tileIndex`；Canvas 绘制背景、前景、宠物/物品堆标记和光标。
 - atlas 或 Canvas 失败时自动回退 ASCII，不修改玩家保存的显示偏好。
 - Settings 可即时切换 Tiles/ASCII；旧 profile v1 迁移后保持 ASCII。
@@ -90,8 +94,9 @@ npm run preview
 
 重新编译 WebAssembly 内核需要 Emscripten。请按照
 [WASM 构建流程](doc/BlissHack/build-process.md)操作，并始终一起提交运行时
-三件套。Tiles 资源使用 `npm run generate:tiles` 显式生成，并由
-`npm run verify:tiles` 校验。
+三件套。`npm run check:toolchain` 可以在不清理或编译的情况下检查固定工具链。
+Tiles 资源使用 `npm run generate:tiles` 显式生成，并由 `npm run verify:tiles`
+校验。
 
 ## 测试
 
@@ -117,9 +122,11 @@ Tiles/ASCII、存档和恢复流程。跨浏览器基础组覆盖 Firefox 和 We
 - [prealpha-3 计划](doc/BlissHack/plans/prealpha-3.md)
 - [prealpha-4 代码重构计划](doc/BlissHack/plans/prealpha-4.md)
 - [alpha-1 Tileset 引入计划](doc/BlissHack/plans/alpha-1.md)
+- [alpha-1.1 地图交互与基建计划](doc/BlissHack/plans/alpha-1.1.md)
 - [alpha-1 渲染架构](doc/BlissHack/plans/in-alpha-1/rendering-architecture.md)
 - [alpha-1 profile v2](doc/BlissHack/plans/in-alpha-1/profile-v2.md)
 - [alpha-1 发布验收](doc/BlissHack/plans/in-alpha-1/release-acceptance.md)
+- [alpha-1.1 发布验收](doc/BlissHack/plans/in-alpha-1.1/release-acceptance.md)
 - [prealpha-3 发布验收](doc/BlissHack/plans/in-prealpha-3/release-acceptance.md)
 - [上游修改清单](doc/BlissHack/upstream-modifications.md)
 - [存档存储与读取方案评审](doc/BlissHack/plans/in-prealpha-2/save-format-review.md)

@@ -44,6 +44,33 @@ emcc --version
 
 **注意：** 每次打开新终端都需要 `source emsdk_env.sh`，或者将其加入 shell profile。
 
+## 工具链预检
+
+在清理或编译前可以单独运行只读预检：
+
+```bash
+cd /path/to/BlissHack/frontend
+npm run check:toolchain
+```
+
+CI 或需要明确目标平台时使用：
+
+```bash
+npm run check:toolchain -- --hints sys/unix/hints/linux.500
+```
+
+该命令与 `build:wasm` 共用 `scripts/build-wasm.sh` 中的同一段预检，验证：
+
+- Node.js 主版本和 Emscripten 完整版本与仓库版本文件一致。
+- `emcc`、`emar` 和 `emranlib` 来自同一个 Emscripten SDK 目录。
+- host compiler、Make、Python、shell、下载、归档和文件操作命令存在。
+- 首次获取 Lua 时存在 `shasum` 或 `sha256sum`。
+- hints、官方 tile manifest、仓库、runtime 目录和 staging 父目录可用。
+- WASM 目标固定为 `targets/wasm`，runtime 固定发布到 `frontend/public`。
+
+`check:toolchain` 不运行 setup、`make spotless`、编译或 runtime 发布。完整
+`build:wasm` 会再次执行相同预检，不能通过跳过独立命令绕过检查。
+
 ## WASM 构建步骤
 
 ```bash
@@ -54,7 +81,7 @@ npm run build:wasm
 
 该命令自动完成：
 
-1. 在清理或编译前检查 Node.js、Emscripten 和其他构建工具。
+1. 在清理或编译前执行与 `check:toolchain` 相同的预检。
    `emcc`、`emar` 和 `emranlib` 必须解析到同一个 emsdk 目录。
 2. 执行 `make spotless`。
 3. macOS 使用 `sys/unix/hints/macOS.500`，Linux 使用
@@ -180,8 +207,9 @@ Lua 库一起链接成最终的 `nethack.js` + `nethack.wasm`。我们只需要�
 ```
 frontend/
   public/
-    nethack.js        ← 从 src/targets/ 复制过来的 Emscripten 产物
+    nethack.js        ← 从 targets/wasm/ 复制过来的 Emscripten 产物
     nethack.wasm      ← 同上
+    nethack-runtime.json ← 运行时版本、工具链和文件摘要
     tiles/            ← 官方 classic atlas 与 manifest
   src/
     main.tsx              React 入口
@@ -209,6 +237,8 @@ frontend/dist/
     index-[hash].css      样式
   nethack.js              原样复制（不经过 Vite 打包）
   nethack.wasm            原样复制
+  nethack-runtime.json    原样复制的 runtime manifest
+  tiles/                  原样复制的 atlas 与 manifest
 ```
 
 **关键点：**
@@ -276,8 +306,9 @@ make CROSS_TO_WASM=1     # WASM
 ## 手动 GitHub Actions
 
 `.github/workflows/rebuild-wasm.yml` 使用固定的 `ubuntu-24.04`、Node.js 主版本
-和 Emscripten 完整版本重建正式运行时。它执行单元测试、生产构建、WASM
-集成测试和 Chromium 浏览器测试，并上传运行时三件套供审核。
+和 Emscripten 完整版本重建正式运行时。安装依赖后先调用
+`npm run check:toolchain`，完整构建再复用同一预检。随后执行单元测试、生产
+构建、WASM 集成测试和 Chromium 浏览器测试，并上传运行时三件套供审核。
 
 该 workflow 不自动提交产物。下载产物后应检查三个文件的 diff，再按
 `doc/BlissHack/upstream-modifications.md` 复核上游修改和测试。

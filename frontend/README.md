@@ -12,11 +12,12 @@ React and TypeScript frontend for the NetHack WebAssembly build.
 - `src/nethack-bridge.ts` is the stable shim callback facade.
 - `src/bridge/` contains Emscripten loading, WASM decoding, save validation,
   and the single input controller.
-- `src/map/` contains the retained ASCII renderer, Canvas tile renderer,
-  atlas loader, and renderer-independent draw primitives.
-- `src/map-rendering.ts` owns shared pointer-coordinate, follow, and scroll
-  anchor calculations.
-- `src/settings/profile.ts` owns strict profile v2 validation and v1 migration;
+- `src/map/` contains the shared `MapViewport`, camera and right-drag hooks,
+  retained ASCII renderer, Canvas tile renderer, atlas loader, and
+  renderer-independent draw primitives.
+- `src/map-rendering.ts` owns pure pointer-coordinate, follow-offset, and
+  normalized scroll-anchor calculations.
+- `src/settings/profile.ts` owns the explicit strict v1-to-v2 migration chain;
   `interface.mapRenderer` selects `tiles` or `ascii`.
 - `src/screens/settings/` and `src/screens/game/` contain screen-owned
   presentation components.
@@ -56,6 +57,12 @@ npm run test:integration
 npm run test:integration:compat
 npm run test:performance
 npm run test:long
+```
+
+Check the pinned Node.js and Emscripten environment without building:
+
+```sh
+npm run check:toolchain
 ```
 
 Install the browser binaries once before running Playwright:

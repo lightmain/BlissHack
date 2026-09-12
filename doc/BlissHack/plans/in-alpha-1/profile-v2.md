@@ -35,6 +35,18 @@ blisshack.profile.v1
 改变原有玩家界面。读取本身不静默写回；玩家下次 Apply、Import 或 Restore
 Defaults 时才写入 v2。
 
+`migrateProfileDocument()` 是 profile 文档的统一入口。它先只读取并验证
+`schemaVersion`，再通过显式 migrator registry 分派：
+
+```text
+v1 -> 严格验证 v1 -> 增加 mapRenderer: "ascii" -> v2
+v2 -> 严格验证 v2 -> 返回 detached 当前对象
+```
+
+未知 schema 在读取其他字段前拒绝。`validateProfile()` 保留为稳定 façade，
+storage、profile import 和 backup restore 因此继续共享同一套严格验证与迁移
+语义。当前没有 schema v3，也没有反射式通用迁移框架。
+
 Clear Local Data 同时删除 v2 和 v1 key，且不影响无关 localStorage 数据。
 
 ## 3. 导入导出
@@ -70,6 +82,8 @@ Tiles 资源或 Canvas 失败只触发当前 session 的显示回退，不写入
 - 默认 profile 是 v2 + Tiles。
 - v1 存储、profile 导入和 backup 导入迁移为 v2 + ASCII。
 - v2 round-trip 保留 renderer。
+- v2 验证结果不复用输入的嵌套对象。
+- 未知 schema 在访问 interface 或 nethack 字段前失败。
 - v2 key 优先于遗留 v1 key。
 - profile 导出、跨页面冲突检测和 Clear Local Data 使用 v2 key。
 - backup 外层 schema 保持 v1。
