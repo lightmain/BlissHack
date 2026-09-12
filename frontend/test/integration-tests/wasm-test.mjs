@@ -54,7 +54,9 @@ const inputStates = [];
 const runtimeSettingsSnapshots = [];
 const runtimeSettingsResults = [];
 const permanentInventoryUpdates = [];
+const glyphEvents = [];
 let queuedRuntimeSettings = 0;
+let activeModule = null;
 
 const RUNTIME_SETTINGS_VERSION = 2 << 28;
 const RUNTIME_SETTINGS_PENDING = 1 << 0;
@@ -64,6 +66,28 @@ const RUNTIME_SETTINGS_PERM_INVENT = 1 << 25;
 const RUNTIME_SETTINGS_PERMINV_ALL = 1 << 26;
 const RUNTIME_SETTINGS_PERMINV_FULL = 2 << 26;
 const RUNTIME_SETTINGS_PERMINV_MODE_MASK = 3 << 26;
+const MAX_ATLAS_TILE_INDEX = 2306;
+
+/**
+ * Decode one glyph_info while its shim callback pointer remains valid.
+ * @param {number} ptr - WASM32 pointer to a 36-byte glyph_info.
+ * @returns {object|null} copied glyph fields, or null for a null pointer.
+ */
+function readGlyphInfo(ptr) {
+  if (!activeModule || ptr === 0) return null;
+  return {
+    glyph: Number(activeModule.getValue(ptr, "i32")),
+    ttyChar: Number(activeModule.getValue(ptr + 4, "i32")),
+    frameColor: Number(activeModule.getValue(ptr + 8, "i32")) >>> 0,
+    glyphFlags: Number(activeModule.getValue(ptr + 12, "i32")) >>> 0,
+    color: Number(activeModule.getValue(ptr + 16, "i32")),
+    symbolIndex: Number(activeModule.getValue(ptr + 20, "i32")),
+    customColor: Number(activeModule.getValue(ptr + 24, "i32")) >>> 0,
+    color256: Number(activeModule.getValue(ptr + 28, "i16")) & 0xffff,
+    tileIndex: Number(activeModule.getValue(ptr + 30, "i16")),
+    unicodePointer: Number(activeModule.getValue(ptr + 32, "*")) >>> 0,
+  };
+}
 
 /**
  * Wait until the core reaches another keyboard-facing callback.
@@ -175,6 +199,15 @@ async function blissCallback(name, ...args) {
         pendingInput = resolve;
       });
 
+    case "shim_print_glyph":
+      glyphEvents.push({
+        x: Number(args[1]),
+        y: Number(args[2]),
+        foreground: readGlyphInfo(Number(args[3])),
+        background: readGlyphInfo(Number(args[4])),
+      });
+      return undefined;
+
     case "shim_start_menu":
       if ((args[1] & 1) !== 0) {
         permanentInventoryUpdates.push({ kind: "start", windowId: args[0] });
@@ -253,6 +286,7 @@ async function run() {
     print: () => {},
     printErr: () => {},
   });
+  activeModule = module;
   assert(typeof module.ccall === "function", "module.ccall exists");
   assert(typeof module.FS === "object", "module.FS exists");
 
@@ -329,6 +363,7 @@ async function run() {
   inputStates.length = 0;
   runtimeSettingsSnapshots.length = 0;
   runtimeSettingsResults.length = 0;
+  glyphEvents.length = 0;
   queuedRuntimeSettings = 0;
 
   const gamePromise = module.ccall("main", "number", [], [], { async: true });
@@ -373,6 +408,85 @@ async function run() {
       && permanentInventoryUpdates.some((event) => event.kind === "item")
       && permanentInventoryUpdates.some((event) => event.kind === "commit"),
     "perm_invent creates, populates, and commits a persistent inventory menu",
+  );
+
+  // --- glyph_info ABI and tile mapping ---
+  console.log("\n--- glyph_info ABI and tile mapping ---");
+  const foregroundGlyphs = glyphEvents
+    .map((event) => event.foreground)
+    .filter((glyph) => glyph !== null);
+  const capturedGlyphs = glyphEvents.flatMap((event) =>
+    [event.foreground, event.background].filter((glyph) => glyph !== null)
+  );
+  const glyphConstants = globalThis.nethackGlobal.constants.GLYPH;
+  const mgConstants = globalThis.nethackGlobal.constants.MG;
+  const unexploredGlyphs = foregroundGlyphs.filter(
+    (glyph) =>
+      glyph.glyph === glyphConstants.GLYPH_UNEXPLORED
+      || (glyph.glyphFlags & mgConstants.MG_UNEXPL) !== 0,
+  );
+  const ordinaryGlyphs = glyphEvents
+    .filter((event) => event.x > 0)
+    .map((event) => event.foreground)
+    .filter(
+      (glyph) =>
+        glyph !== null
+        && glyph.glyph >= 0
+        && glyph.glyph !== glyphConstants.GLYPH_UNEXPLORED
+        && (glyph.glyphFlags & mgConstants.MG_UNEXPL) === 0,
+    );
+
+  assert(capturedGlyphs.length > 0, "captured glyph_info callback data");
+  assert(
+    capturedGlyphs.every(
+      (glyph) =>
+        Number.isInteger(glyph.tileIndex)
+        && glyph.tileIndex >= 0
+        && glyph.tileIndex <= MAX_ATLAS_TILE_INDEX,
+    ),
+    "all captured tile indices fit the atlas range 0..2306",
+  );
+  assert(
+    new Set(capturedGlyphs.map((glyph) => glyph.tileIndex)).size >= 8,
+    "captured tile indices have reasonable map diversity",
+  );
+  assert(
+    unexploredGlyphs.length > 0
+      && unexploredGlyphs.some((glyph) => glyph.tileIndex !== 0),
+    "unexplored glyphs use a nonzero tile index",
+  );
+  assert(
+    ordinaryGlyphs.length > 0
+      && ordinaryGlyphs.some((glyph) => glyph.tileIndex !== 0),
+    "ordinary map glyphs are not all mapped to tile zero",
+  );
+  assert(
+    capturedGlyphs.every(
+      (glyph) =>
+        Number.isInteger(glyph.glyph)
+        && (
+          glyph.glyph === glyphConstants.NO_GLYPH
+          || (glyph.glyph >= 0 && glyph.glyph < glyphConstants.MAX_GLYPH)
+        )
+        && Number.isInteger(glyph.ttyChar)
+        && Number.isInteger(glyph.frameColor)
+        && Number.isInteger(glyph.glyphFlags)
+        && Number.isInteger(glyph.color)
+        && Number.isInteger(glyph.symbolIndex)
+        && Number.isInteger(glyph.customColor)
+        && Number.isInteger(glyph.color256)
+        && Number.isInteger(glyph.unicodePointer)
+        && glyph.color256 >= 0
+        && glyph.color256 <= 0xffff
+        && glyph.unicodePointer % 4 === 0,
+    ),
+    "other fields retain the 36-byte WASM32 glyph_info ABI",
+  );
+  assert(
+    new Set(ordinaryGlyphs.map((glyph) => glyph.glyph)).size >= 8
+      && new Set(ordinaryGlyphs.map((glyph) => glyph.ttyChar)).size >= 5
+      && new Set(ordinaryGlyphs.map((glyph) => glyph.symbolIndex)).size >= 5,
+    "glyph, tty character, and symbol index remain meaningfully varied",
   );
 
   // --- Input handling ---
