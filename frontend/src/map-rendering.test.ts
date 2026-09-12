@@ -129,6 +129,17 @@ describe("map row rendering", () => {
     })).toEqual({ left: 440, top: 63 });
   });
 
+  it("[defect-probing] anchors fully visible map content at its center", () => {
+    expect(mapScrollAnchor({
+      scrollWidth: 300,
+      scrollHeight: 180,
+      clientWidth: 400,
+      clientHeight: 210,
+      scrollLeft: 0,
+      scrollTop: 0,
+    })).toEqual({ x: 0.5, y: 0.5 });
+  });
+
   it("clamps restored scroll anchors when the resized map fits", () => {
     expect(mapScrollOffsetForAnchor({ x: 1, y: 1 }, {
       scrollWidth: 300,

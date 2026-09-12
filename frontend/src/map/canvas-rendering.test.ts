@@ -154,6 +154,31 @@ describe("resizeCanvasBackingStore", () => {
     expect(context.setTransform).toHaveBeenCalledWith(2, 0, 0, 2, 0, 0);
     expect(context.imageSmoothingEnabled).toBe(false);
   });
+
+  it.each([Number.NaN, Number.POSITIVE_INFINITY, -1])(
+    "uses DPR 1 for invalid device pixel ratio %s",
+    (devicePixelRatio) => {
+      const context = {
+        imageSmoothingEnabled: true,
+        setTransform: vi.fn(),
+      };
+      const canvas = {
+        width: 0,
+        height: 0,
+        style: {
+          width: "",
+          height: "",
+        },
+        getContext: vi.fn(() => context),
+      } as unknown as HTMLCanvasElement;
+
+      resizeCanvasBackingStore(canvas, 640, 336, devicePixelRatio);
+
+      expect(canvas.width).toBe(640);
+      expect(canvas.height).toBe(336);
+      expect(context.setTransform).toHaveBeenCalledWith(1, 0, 0, 1, 0, 0);
+    },
+  );
 });
 
 describe("drawTileMap", () => {
@@ -213,6 +238,23 @@ describe("drawTileMap", () => {
       map: [[cell(null), cell(glyph(2307))]],
       cursor: { x: 1, y: 0, visible: false },
     })).toThrow(/tile index 2307/i);
+
+    expect(drawImage).not.toHaveBeenCalled();
+  });
+
+  it("rejects an invalid background before drawing any tiles", () => {
+    const tileAtlas = atlas();
+    const { context, drawImage } = drawingContext();
+
+    expect(() => drawTileMap({
+      context,
+      atlas: tileAtlas,
+      map: [[
+        cell(glyph(40)),
+        cell(glyph(41), glyph(-1)),
+      ]],
+      cursor: { x: 1, y: 0, visible: false },
+    })).toThrow(/tile index -1/i);
 
     expect(drawImage).not.toHaveBeenCalled();
   });
@@ -282,5 +324,28 @@ describe("createFrameScheduler", () => {
     expect(cancelFrame).toHaveBeenCalledWith(73);
     expect(requestFrame).toHaveBeenCalledOnce();
     expect(render).not.toHaveBeenCalled();
+  });
+
+  it("does not cancel a frame handle after its callback has completed", () => {
+    let callback: FrameRequestCallback | null = null;
+    const requestFrame = vi.fn((scheduled: FrameRequestCallback) => {
+      callback = scheduled;
+      return 73;
+    });
+    const cancelFrame = vi.fn();
+    const render = vi.fn();
+    const scheduler = createFrameScheduler(
+      render,
+      requestFrame,
+      cancelFrame,
+    );
+
+    scheduler.schedule();
+    expect(callback).not.toBeNull();
+    (callback as FrameRequestCallback)(16);
+    scheduler.dispose();
+
+    expect(render).toHaveBeenCalledOnce();
+    expect(cancelFrame).not.toHaveBeenCalled();
   });
 });
