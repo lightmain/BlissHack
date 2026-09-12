@@ -21,16 +21,23 @@ frontend. These changes are documented in
 
 ## Project Status
 
-**prealpha-4 refactoring is complete.**
+**The alpha-1 tileset implementation is complete and awaiting manual
+acceptance.**
 
-prealpha-4 is a smaller, refactoring-only milestone. It adds no player-facing
-features. Large frontend files are now split by responsibility, public facades
-remain stable, and future changes require less unrelated context.
+The `alpha-1` branch now includes the official NetHack 5.0 16x16 tiles, a
+Canvas 2D map, immediate ASCII/Tiles switching, and profile schema v2. This
+branch has not been merged into the deployment branch, so the live site
+remains on prealpha-4.
 
 The current milestone provides:
 
-- A playable 80x21 character map with NetHack colors, cursor, pets, and
-  background glyphs.
+- An 80x21 Canvas map using the official tiles by default, with the ASCII
+  renderer retained.
+- Authoritative WASM `tileIndex` values and layered background, foreground,
+  pet/pile marker, and cursor rendering.
+- Automatic ASCII fallback for atlas or Canvas failures without changing the
+  saved display preference.
+- Immediate Tiles/ASCII switching in Settings and v1-to-v2 profile migration.
 - Message history, text windows, menus, prompts, extended commands, and
   position input.
 - Character naming followed by the original role, race, gender, and alignment
@@ -39,10 +46,10 @@ The current milestone provides:
   name and title.
 - Accurate ASCII, Control, Alt/Meta, direction, and numeric keypad input.
 - Browser-local save and restore through Emscripten IDBFS.
-- Unit, WASM integration, and Chromium browser integration tests.
+- Unit, WASM, Chromium, Firefox, WebKit, performance, and long-flow tests.
 - Automated deployment to GitHub Pages.
 
-This is still a pre-alpha release. Save compatibility, UI details, and
+This is still an early alpha release. Save compatibility, UI details, and
 window-port coverage may change before a stable release.
 
 ## Play Online
@@ -77,7 +84,7 @@ development and CI use the Node.js major version selected by the root
 
 The checked-in `frontend/public/nethack.js`, `nethack.wasm`, and
 `nethack-runtime.json` files are the Emscripten runtime triplet used by the
-frontend.
+frontend. Generated official tile assets live under `frontend/public/tiles/`.
 
 ```sh
 cd frontend
@@ -95,7 +102,8 @@ npm run preview
 
 Rebuilding the WebAssembly core requires the pinned Emscripten version.
 Follow the [WASM build process](doc/BlissHack/build-process.md) and always
-commit both runtime files and their verification manifest together.
+commit the complete runtime triplet together. Regenerate tiles explicitly with
+`npm run generate:tiles`; `npm run verify:tiles` checks the committed assets.
 
 ## Tests
 
@@ -112,8 +120,9 @@ npm run test:long
 The integration command exercises the real WASM callback chain and a production
 browser build, including startup, keyboard input, status rendering, save, and
 restore. The compatibility suite covers critical Firefox and WebKit flows, the
-performance suite checks permanent-inventory rendering, and the long suite
-repeatedly checks session lifecycle, save restoration, and raw save transfer.
+performance suite checks Canvas map and permanent-inventory rendering, and the
+long suite repeatedly checks session lifecycle, save restoration, and raw save
+transfer.
 
 ## Repository Guide
 
@@ -122,6 +131,9 @@ repeatedly checks session lifecycle, save restoration, and raw save transfer.
 - [prealpha-3 plan](doc/BlissHack/plans/prealpha-3.md)
 - [prealpha-4 refactoring plan](doc/BlissHack/plans/prealpha-4.md)
 - [alpha-1 tileset plan](doc/BlissHack/plans/alpha-1.md)
+- [alpha-1 rendering architecture](doc/BlissHack/plans/in-alpha-1/rendering-architecture.md)
+- [alpha-1 profile v2](doc/BlissHack/plans/in-alpha-1/profile-v2.md)
+- [alpha-1 release acceptance](doc/BlissHack/plans/in-alpha-1/release-acceptance.md)
 - [Upstream modification inventory](doc/BlissHack/upstream-modifications.md)
 - [Fatal errors and diagnostic log design](doc/BlissHack/plans/in-prealpha-2/fatal-errors-and-diagnostics.md)
 - [Browser end-to-end test design](doc/BlissHack/plans/in-prealpha-2/browser-end-to-end-tests.md)
