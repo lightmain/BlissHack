@@ -9,6 +9,10 @@ export interface MapRendererProps {
   map: readonly (readonly MapCell[])[];
 }
 
+interface AsciiMapRendererProps extends MapRendererProps {
+  rendererState?: "ascii" | "tiles-fallback" | "tiles-loading";
+}
+
 /**
  * Render the NetHack map as fixed-width text.
  * @param props - current map and cursor state.
@@ -17,11 +21,13 @@ export interface MapRendererProps {
 export const AsciiMapRenderer = memo(function AsciiMapRenderer({
   cursor,
   map,
-}: MapRendererProps) {
+  rendererState = "ascii",
+}: AsciiMapRendererProps) {
   return (
     <div
       aria-label="Dungeon map"
       className="nh-map nh-map-ascii"
+      data-map-renderer-state={rendererState}
     >
       {map.map((row, y) => (
         <AsciiMapRow

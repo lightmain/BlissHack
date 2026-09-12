@@ -599,7 +599,7 @@ test("falls back to ASCII when the tile PNG is unavailable", async ({
 
   await startNewGameFromHome(page, "TileAssetsFallback");
   await expectDiagnosticEvent(page, "map.tiles_assets_fallback");
-  await expect.poll(async () => readMapRenderer(page)).toBe("ascii");
+  await expect.poll(async () => readMapRenderer(page)).toBe("tiles-fallback");
   await expect(page.locator("canvas.nh-map-tiles")).toHaveCount(0);
   expect(blockedPngRequests).toBe(1);
   expect(await readStoredProfile(page)).toBe(storedProfile);
@@ -620,7 +620,7 @@ test("falls back to ASCII when a 2D Canvas context is unavailable", async ({
 
   await startNewGameFromHome(page, "TileCanvasFallback");
   await expectDiagnosticEvent(page, "map.tiles_canvas_fallback");
-  await expect.poll(async () => readMapRenderer(page)).toBe("ascii");
+  await expect.poll(async () => readMapRenderer(page)).toBe("tiles-fallback");
   await expect(page.locator("canvas.nh-map-tiles")).toHaveCount(0);
   expect(await readStoredProfile(page)).toBe(storedProfile);
   await expectTilesPreference(page);

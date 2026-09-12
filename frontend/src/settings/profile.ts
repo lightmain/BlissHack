@@ -117,6 +117,22 @@ export class ProfileFormatError extends Error {
   }
 }
 
+type SupportedProfileSchemaVersion =
+  | typeof LEGACY_PROFILE_SCHEMA_VERSION
+  | typeof PROFILE_SCHEMA_VERSION;
+
+type ProfileDocumentMigrator = (
+  profile: Record<string, unknown>,
+) => BlissHackProfile;
+
+const PROFILE_DOCUMENT_MIGRATORS: Record<
+  SupportedProfileSchemaVersion,
+  ProfileDocumentMigrator
+> = {
+  [LEGACY_PROFILE_SCHEMA_VERSION]: migrateProfileV1Document,
+  [PROFILE_SCHEMA_VERSION]: validateProfileV2Document,
+};
+
 /** Return a fresh profile so callers cannot mutate shared defaults. */
 export function createDefaultProfile(): BlissHackProfile {
   return {
@@ -145,20 +161,43 @@ export function createDefaultProfile(): BlissHackProfile {
 }
 
 /**
+ * Migrate one strictly validated profile document to the current schema.
+ * @param value - unknown persisted, imported, or embedded profile value.
+ * @returns detached profile using the current schema.
+ */
+export function migrateProfileDocument(value: unknown): BlissHackProfile {
+  const profile = requireRecord(value, "profile");
+  assertExactKeys(profile, ["schemaVersion", "interface", "nethack"], "profile");
+  const schemaVersion = profileSchemaVersion(profile.schemaVersion);
+  return PROFILE_DOCUMENT_MIGRATORS[schemaVersion](profile);
+}
+
+/**
  * Validate and normalize an unknown profile into a detached current value.
  * Unknown and missing properties are rejected at every object level.
  */
 export function validateProfile(value: unknown): BlissHackProfile {
-  const profile = requireRecord(value, "profile");
-  assertExactKeys(profile, ["schemaVersion", "interface", "nethack"], "profile");
-  const schemaVersion = profileSchemaVersion(profile.schemaVersion);
-  const interfaceSettings = schemaVersion === LEGACY_PROFILE_SCHEMA_VERSION
-    ? migrateInterfaceSettingsV1(profile.interface)
-    : validateInterfaceSettings(profile.interface);
+  return migrateProfileDocument(value);
+}
 
+/** Migrate a strict schema v1 document to the current profile. */
+function migrateProfileV1Document(
+  profile: Record<string, unknown>,
+): BlissHackProfile {
   return {
     schemaVersion: PROFILE_SCHEMA_VERSION,
-    interface: interfaceSettings,
+    interface: migrateInterfaceSettingsV1(profile.interface),
+    nethack: validateNetHackSettings(profile.nethack),
+  };
+}
+
+/** Validate a strict current-schema document and detach nested values. */
+function validateProfileV2Document(
+  profile: Record<string, unknown>,
+): BlissHackProfile {
+  return {
+    schemaVersion: PROFILE_SCHEMA_VERSION,
+    interface: validateInterfaceSettings(profile.interface),
     nethack: validateNetHackSettings(profile.nethack),
   };
 }
@@ -433,7 +472,7 @@ function parseJson(json: string): unknown {
   }
 }
 
-function profileSchemaVersion(value: unknown): 1 | 2 {
+function profileSchemaVersion(value: unknown): SupportedProfileSchemaVersion {
   if (
     value !== LEGACY_PROFILE_SCHEMA_VERSION
     && value !== PROFILE_SCHEMA_VERSION

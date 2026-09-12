@@ -137,7 +137,11 @@ export const TileMapRenderer = memo(function TileMapRenderer({
   if (!atlas || atlasFailed) {
     return (
       <div className="nh-map-fallback">
-        <AsciiMapRenderer cursor={cursor} map={map} />
+        <AsciiMapRenderer
+          cursor={cursor}
+          map={map}
+          rendererState={atlasFailed ? "tiles-fallback" : "tiles-loading"}
+        />
       </div>
     );
   }
@@ -147,6 +151,7 @@ export const TileMapRenderer = memo(function TileMapRenderer({
       <canvas
         aria-label="Dungeon map"
         className="nh-map nh-map-tiles"
+        data-map-renderer-state="tiles"
         height={ROWNO * FALLBACK_TILE_SIZE}
         hidden={!hasPainted}
         ref={canvasRef}
@@ -155,7 +160,11 @@ export const TileMapRenderer = memo(function TileMapRenderer({
       />
       {!hasPainted && (
         <div className="nh-map-fallback">
-          <AsciiMapRenderer cursor={cursor} map={map} />
+          <AsciiMapRenderer
+            cursor={cursor}
+            map={map}
+            rendererState="tiles-loading"
+          />
         </div>
       )}
     </>
