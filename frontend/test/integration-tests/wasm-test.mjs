@@ -12,7 +12,7 @@
 
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const WASM_DIR = process.env.BLISSHACK_WASM_DIR
@@ -20,6 +20,15 @@ const WASM_DIR = process.env.BLISSHACK_WASM_DIR
   : join(__dirname, "..", "..", "public");
 const WASM_JS = join(WASM_DIR, "nethack.js");
 const WASM_BIN = join(WASM_DIR, "nethack.wasm");
+const WINSHIM_SOURCE = join(
+  __dirname,
+  "..",
+  "..",
+  "..",
+  "win",
+  "shim",
+  "winshim.c",
+);
 
 /* ------------------------------------------------------------------ */
 /*  Test harness                                                       */
@@ -36,6 +45,28 @@ function assert(condition, message) {
     failed++;
     console.error(`  FAIL: ${message}`);
   }
+}
+
+/**
+ * Return the brace-delimited C block which starts at or after a marker.
+ * @param {string} source - complete C source.
+ * @param {RegExp} marker - expression ending before the block's opening brace.
+ * @returns {string|null} the complete block, or null when it cannot be found.
+ */
+function cBlockAfter(source, marker) {
+  const match = marker.exec(source);
+  if (!match) return null;
+  const start = source.indexOf("{", match.index + match[0].length);
+  if (start < 0) return null;
+
+  let depth = 0;
+  for (let index = start; index < source.length; index += 1) {
+    if (source[index] === "{") depth += 1;
+    if (source[index] !== "}") continue;
+    depth -= 1;
+    if (depth === 0) return source.slice(start, index + 1);
+  }
+  return null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -57,6 +88,7 @@ const runtimeSettingsSnapshots = [];
 const runtimeSettingsResults = [];
 const permanentInventoryUpdates = [];
 const glyphEvents = [];
+const statusFieldMetadataEvents = [];
 let queuedRuntimeSettings = 0;
 let activeModule = null;
 
@@ -213,6 +245,15 @@ async function blissCallback(name, ...args) {
       });
       return undefined;
 
+    case "shim_status_enablefield":
+      statusFieldMetadataEvents.push({
+        field: Number(args[0]),
+        name: activeModule.UTF8ToString(Number(args[1])),
+        format: activeModule.UTF8ToString(Number(args[2])),
+        enabled: Boolean(args[3]),
+      });
+      return undefined;
+
     case "shim_start_menu":
       if ((args[1] & 1) !== 0) {
         permanentInventoryUpdates.push({ kind: "start", windowId: args[0] });
@@ -272,10 +313,36 @@ async function run() {
   console.log("--- Pre-checks ---");
   assert(existsSync(WASM_JS), "nethack.js exists");
   assert(existsSync(WASM_BIN), "nethack.wasm exists");
-  if (!existsSync(WASM_JS) || !existsSync(WASM_BIN)) {
+  assert(existsSync(WINSHIM_SOURCE), "winshim.c exists");
+  if (
+    !existsSync(WASM_JS)
+    || !existsSync(WASM_BIN)
+    || !existsSync(WINSHIM_SOURCE)
+  ) {
     console.error("\nMissing WASM files. Build with `make CROSS_TO_WASM=1` first.");
     process.exit(1);
   }
+  const winshimSource = readFileSync(WINSHIM_SOURCE, "utf8");
+  const statusWrapper = cBlockAfter(
+    winshimSource,
+    /\bshim_status_enablefield\s*\([^;{}]*\)\s*/,
+  );
+  const shimProcs = cBlockAfter(
+    winshimSource,
+    /\bstruct\s+window_procs\s+shim_procs\s*=\s*/,
+  );
+  assert(
+    statusWrapper !== null
+      && /\bgenl_status_enablefield\s*\(/.test(statusWrapper),
+    "shim_status_enablefield preserves genl status bookkeeping",
+  );
+  assert(
+    shimProcs !== null
+      && /\bgenl_status_finish\s*,\s*shim_status_enablefield\s*,/.test(
+        shimProcs,
+      ),
+    "shim_procs registers the status metadata wrapper",
+  );
 
   // --- Module loading ---
   console.log("\n--- Module loading ---");
@@ -369,6 +436,7 @@ async function run() {
   runtimeSettingsSnapshots.length = 0;
   runtimeSettingsResults.length = 0;
   glyphEvents.length = 0;
+  statusFieldMetadataEvents.length = 0;
   queuedRuntimeSettings = 0;
 
   const gamePromise = module.ccall("main", "number", [], [], { async: true });
@@ -390,6 +458,20 @@ async function run() {
     "received shim_player_selection_or_tty"
   );
   assert(receivedEventNames.has("shim_print_glyph"), "received shim_print_glyph (map render)");
+  assert(
+    receivedEventNames.has("shim_status_enablefield"),
+    "received shim_status_enablefield metadata callback",
+  );
+  assert(
+    statusFieldMetadataEvents.some(
+      (event) =>
+        event.field === 18
+        && event.name === "hitpoints"
+        && event.format === " HP:%s"
+        && event.enabled,
+    ),
+    "received enabled hitpoints field metadata from the core",
+  );
   assert(receivedEventNames.has("shim_status_update"), "received shim_status_update");
   assert(
     receivedEvents.indexOf("shim_askname")
