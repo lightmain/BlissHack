@@ -21,6 +21,7 @@ import {
 import type { InterfaceSettings } from "../../settings/profile";
 import { textAttributeClass } from "../../text-styling";
 import { PermanentInventoryPanel } from "../PermanentInventoryPanel";
+import { GameHudLayout } from "./GameHudLayout";
 import { StatusArea } from "./StatusArea";
 
 interface GameTerminalProps {
@@ -73,15 +74,27 @@ export function GameTerminal({
   permanentInventoryPosition,
   status,
 }: GameTerminalProps) {
+  const inventory = permanentInventoryEnabled && permanentInventory
+    ? (
+      <PermanentInventoryPanel
+        collapsed={permanentInventoryCollapsed}
+        inventory={permanentInventory}
+        onCollapsedChange={onInventoryCollapsedChange}
+        position={permanentInventoryPosition}
+      />
+    )
+    : null;
+
   return (
     <section
       aria-label="NetHack terminal"
       className="nh-terminal"
       inert={inert}
     >
-      <MessageArea historyLines={historyLines} messages={messages} />
-      <div className={`nh-playfield nh-playfield-${permanentInventoryPosition}`}>
-        <div className="nh-playfield-main">
+      <GameHudLayout
+        inventory={inventory}
+        inventoryCollapsed={permanentInventoryCollapsed}
+        map={(
           <MapViewport
             clipCenter={clipCenter}
             commandInput={commandInput}
@@ -96,18 +109,22 @@ export function GameTerminal({
             onMapRendererFallback={onMapRendererFallback}
             onPrimaryClick={onPrimaryClick}
           />
-          <StatusArea status={status} />
-          <InputArea request={inputRequest} />
-        </div>
-        {permanentInventoryEnabled && permanentInventory && (
-          <PermanentInventoryPanel
-            collapsed={permanentInventoryCollapsed}
-            inventory={permanentInventory}
-            onCollapsedChange={onInventoryCollapsedChange}
-            position={permanentInventoryPosition}
-          />
         )}
-      </div>
+        messages={(
+          <MessageArea historyLines={historyLines} messages={messages} />
+        )}
+        position={permanentInventoryPosition}
+        status={(
+          <div
+            className="nh-hud-status-region"
+            data-hud-region="status"
+            data-overflow-owner="status"
+          >
+            <StatusArea status={status} />
+            <InputArea request={inputRequest} />
+          </div>
+        )}
+      />
     </section>
   );
 }
@@ -130,6 +147,8 @@ const MessageArea = memo(function MessageArea({
       className={`nh-messages nh-messages-${historyLines}`}
       aria-live="polite"
       aria-label="Messages"
+      data-hud-region="messages"
+      data-overflow-owner="messages"
     >
       {messages.length === 0
         ? <div className="nh-message">&nbsp;</div>

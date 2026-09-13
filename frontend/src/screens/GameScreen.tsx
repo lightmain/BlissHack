@@ -301,13 +301,6 @@ export function GameScreen({
       aria-label="BlissHack"
       onMouseDownCapture={handleGameMouseDown}
     >
-      <header className="nh-header">
-        <strong>BlissHack</strong>
-        <span className={`nh-runtime nh-runtime-${snapshot.phase}`}>
-          {runtimeLabel(snapshot)}
-        </span>
-      </header>
-
       {snapshot.phase === "error" ? (
         <section className="nh-fatal" role="alert">
           {snapshot.error}
@@ -414,19 +407,6 @@ function profileWithRuntimeSettings(
       ...runtimeSettings,
     },
   });
-}
-
-/**
- * Convert a runtime phase into a compact status label.
- * @param snapshot - current game snapshot.
- * @returns user-facing runtime state.
- */
-function runtimeLabel(snapshot: GameSnapshot): string {
-  if (snapshot.phase === "loading") return "Loading";
-  if (snapshot.phase === "running") return "Running";
-  if (snapshot.phase === "exited") return snapshot.exitReason || "Exited";
-  if (snapshot.phase === "error") return "Error";
-  return "Idle";
 }
 
 export default GameScreen;

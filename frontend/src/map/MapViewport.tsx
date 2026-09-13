@@ -149,6 +149,8 @@ export const MapViewport = memo(function MapViewport({
   return (
     <div
       className="nh-map-scroll"
+      data-hud-region="map"
+      data-overflow-owner="map"
       onScroll={handleScroll}
       ref={scrollRef}
     >
