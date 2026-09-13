@@ -52,6 +52,18 @@ interface MockModuleHarness {
   writeString: (ptr: number, value: string) => void;
 }
 
+interface ExpectedStatusFieldMetadata {
+  name: string;
+  format: string;
+  enabled: boolean;
+}
+
+function statusMetadata(): Record<number, ExpectedStatusFieldMetadata> {
+  return (getSnapshot() as ReturnType<typeof getSnapshot> & {
+    statusMetadata: Record<number, ExpectedStatusFieldMetadata>;
+  }).statusMetadata;
+}
+
 /**
  * Create an in-memory Emscripten module with the APIs used by the bridge.
  * @returns a module and direct helpers for arranging WASM fixtures.
@@ -476,6 +488,41 @@ describe("map and status decoding", () => {
 
     expect(getSnapshot().map[0][0].foreground).toBeNull();
     expect(getSnapshot().cursor).toEqual({ x: 79, y: 20, visible: true });
+  });
+
+  it("decodes status field name, format, and dynamic enablement", async () => {
+    harness.writeString(0x2500, "hitpoints");
+    harness.writeString(0x2600, " HP:%s");
+    const statusBefore = getSnapshot().status;
+
+    await shimCallback(
+      "shim_status_enablefield",
+      18,
+      0x2500,
+      0x2600,
+      1,
+    );
+
+    expect(statusMetadata()[18]).toEqual({
+      name: "hitpoints",
+      format: " HP:%s",
+      enabled: true,
+    });
+    expect(getSnapshot().status).toBe(statusBefore);
+
+    await shimCallback(
+      "shim_status_enablefield",
+      18,
+      0x2500,
+      0x2600,
+      0,
+    );
+
+    expect(statusMetadata()[18]).toEqual({
+      name: "hitpoints",
+      format: " HP:%s",
+      enabled: false,
+    });
   });
 
   it("dereferences normal and condition status values and commits on BL_FLUSH", async () => {
