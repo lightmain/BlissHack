@@ -18,11 +18,12 @@ BlissHack 对 NetHack C 代码进行了少量有针对性的修改，主要用�
 
 ## 项目状态
 
-**alpha-1.1 实现已完成，正在等待人工验收。**
+**alpha-1.1 已完成人工验收并合入部署分支。**
 
-`alpha-1.1` 分支包含 alpha-1 的官方经典 16×16 tiles 和 Canvas 2D 地图，并
+alpha-1.1 包含官方经典 16×16 tiles 和 Canvas 2D 地图，并
 完善了地图 camera、右键拖动、Follow player、profile 迁移和 WASM 工具链。
-该分支尚未合入部署分支，在线站点仍是 prealpha-4。
+GitHub Pages 反映最近一次完成的部署，实际线上版本以页面显示为准。后续
+alpha-2.0 将专注于全屏 HUD、图形化状态和核心驱动的鼠标交互。
 
 当前里程碑已经实现：
 
@@ -123,6 +124,7 @@ Tiles/ASCII、存档和恢复流程。跨浏览器基础组覆盖 Firefox 和 We
 - [prealpha-4 代码重构计划](doc/BlissHack/plans/prealpha-4.md)
 - [alpha-1 Tileset 引入计划](doc/BlissHack/plans/alpha-1.md)
 - [alpha-1.1 地图交互与基建计划](doc/BlissHack/plans/alpha-1.1.md)
+- [alpha-2.0 交互式 HUD 计划](doc/BlissHack/plans/alpha-2.0.md)
 - [alpha-1 渲染架构](doc/BlissHack/plans/in-alpha-1/rendering-architecture.md)
 - [alpha-1 profile v2](doc/BlissHack/plans/in-alpha-1/profile-v2.md)
 - [alpha-1 发布验收](doc/BlissHack/plans/in-alpha-1/release-acceptance.md)

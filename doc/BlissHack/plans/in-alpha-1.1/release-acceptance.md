@@ -1,8 +1,8 @@
 # alpha-1.1 发布验收
 
-本文记录 alpha-1.1 地图交互与定向基建工作的自动验收结果和待人工检查项目。
-自动测试通过不代表已经发布；当前 `alpha-1.1` 分支尚未合入或 push，在线站点
-仍是 prealpha-4。
+本文记录 alpha-1.1 地图交互与定向基建工作的自动与人工验收结果。人工验收于
+2026-09-14 通过，随后以 `eec1a4b41` 合入 `BlissHack`。当前尚未 push，在线
+站点仍是 prealpha-4；部署后的生产 smoke test 仍需执行。
 
 ## 1. 测试环境
 
@@ -72,7 +72,9 @@ Canvas 性能 harness 的 30 轮全图绘制结果：
 覆盖审计额外发现并修复了“同坐标的新 `clipCenter` 对象错误拉回 camera”的
 问题。
 
-## 5. 待人工验收
+## 5. 人工验收
+
+以下项目已由用户于 2026-09-14 完成并确认通过。
 
 ### 5.1 地图与滚动
 
@@ -119,6 +121,6 @@ Canvas 性能 harness 的 30 轮全图绘制结果：
 
 ## 6. 当前结论
 
-自动验收已通过。alpha-1.1 当前停在人工验收门槛；人工检查通过前不合入部署
-分支、不 push。合入后还需在 GitHub Pages 上重复一次 Tiles/ASCII、右键
-click/drag、Follow 和 Continue 的生产 smoke test。
+自动与人工验收均已通过。alpha-1.1 已通过 merge commit `eec1a4b41` 合入部署
+分支，但尚未 push。push 并完成 GitHub Pages 部署后，还需在线重复一次
+Tiles/ASCII、右键 click/drag、Follow 和 Continue 的生产 smoke test。
