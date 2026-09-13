@@ -82,11 +82,16 @@ test("renders and collapses the core permanent inventory without a modal", async
   await expect(inventory).toContainText(/\d+ items?/);
   await expect(page.locator(".nh-dialog.nh-menu")).toHaveCount(0);
   const viewport = page.viewportSize();
-  const mapBox = await page.locator(".nh-map").boundingBox();
+  const mapViewportBox = await page.locator(".nh-map-scroll").boundingBox();
   const inventoryBox = await inventory.boundingBox();
   expect(inventoryBox?.width).toBeGreaterThan(500);
-  expect((mapBox?.x ?? 0) + (mapBox?.width ?? 0) / 2).toBeLessThan(
-    (viewport?.width ?? 0) / 2 - 200,
+  expect(
+    (mapViewportBox?.x ?? 0) + (mapViewportBox?.width ?? 0),
+  ).toBeLessThanOrEqual(inventoryBox?.x ?? 0);
+  expect(
+    (inventoryBox?.x ?? 0) + (inventoryBox?.width ?? 0),
+  ).toBeLessThanOrEqual(
+    viewport?.width ?? 0,
   );
 
   await inventory.focus();

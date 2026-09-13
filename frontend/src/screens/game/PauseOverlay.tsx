@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { Play, Save, Settings } from "lucide-react";
+import { PRODUCT_VERSION } from "../../version";
 
 interface PauseOverlayProps {
   onResume(): void;
@@ -40,7 +41,7 @@ export function PauseOverlay({
         role="dialog"
       >
         <header>
-          <span>BlissHack</span>
+          <span>BlissHack {PRODUCT_VERSION}</span>
           <h1>Paused</h1>
         </header>
         <div className="nh-pause-actions">

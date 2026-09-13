@@ -61,6 +61,8 @@ export function PermanentInventoryPanel({
       aria-label="Inventory"
       className={`permanent-inventory permanent-inventory-${position}${collapsed ? " permanent-inventory-collapsed" : ""}`}
       data-browser-keyboard
+      data-hud-region="inventory"
+      data-overflow-owner="inventory"
       data-position={position}
       onFocus={handleFocus}
       onMouseDown={handleMouseDown}

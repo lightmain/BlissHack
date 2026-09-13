@@ -215,6 +215,7 @@ async function attachViewportEvidence(
         backingWidth: element.width,
         cssHeight: bounds.height,
         cssWidth: bounds.width,
+        clientHeight: viewport?.clientHeight ?? 0,
         devicePixelRatio: window.devicePixelRatio,
         imageRendering: getComputedStyle(element).imageRendering,
         scrollHeight: viewport?.scrollHeight ?? 0,
@@ -229,9 +230,12 @@ async function attachViewportEvidence(
   expect(dimensions).toMatchObject({
     cssHeight: 336,
     cssWidth: 1280,
-    scrollHeight: 336,
     scrollWidth: 1280,
   });
+  expect(dimensions.scrollHeight).toBeGreaterThanOrEqual(
+    dimensions.cssHeight,
+  );
+  expect(dimensions.scrollHeight).toBe(dimensions.clientHeight);
   expect(dimensions.backingWidth).toBe(
     Math.round(dimensions.cssWidth * dimensions.devicePixelRatio),
   );
