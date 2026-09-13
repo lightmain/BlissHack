@@ -12,6 +12,13 @@ React and TypeScript frontend for the NetHack WebAssembly build.
 - `src/nethack-bridge.ts` is the stable shim callback facade.
 - `src/bridge/` contains Emscripten loading, WASM decoding, save validation,
   and the single input controller.
+- `src/map/` contains the shared `MapViewport`, camera and right-drag hooks,
+  retained ASCII renderer, Canvas tile renderer, atlas loader, and
+  renderer-independent draw primitives.
+- `src/map-rendering.ts` owns pure pointer-coordinate, follow-offset, and
+  normalized scroll-anchor calculations.
+- `src/settings/profile.ts` owns the explicit strict v1-to-v2 migration chain;
+  `interface.mapRenderer` selects `tiles` or `ascii`.
 - `src/screens/settings/` and `src/screens/game/` contain screen-owned
   presentation components.
 - `src/styles/` contains page-scoped global styles loaded through `src/App.css`.
@@ -20,6 +27,16 @@ The checked-in `public/nethack.js`, `public/nethack.wasm`, and
 `public/nethack-runtime.json` files form one verified runtime triplet. Follow
 the repository [WASM build process](../doc/BlissHack/build-process.md) before
 changing them.
+
+The checked-in `public/tiles/nethack-classic.png` and
+`public/tiles/nethack-classic.json` are generated together from NetHack's
+official `win/share` tile sources. Regenerate them explicitly and verify them
+without rewriting the worktree:
+
+```sh
+npm run generate:tiles
+npm run verify:tiles
+```
 
 ## Development
 
@@ -40,6 +57,12 @@ npm run test:integration
 npm run test:integration:compat
 npm run test:performance
 npm run test:long
+```
+
+Check the pinned Node.js and Emscripten environment without building:
+
+```sh
+npm run check:toolchain
 ```
 
 Install the browser binaries once before running Playwright:

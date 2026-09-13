@@ -33,6 +33,9 @@
 > 11. `shim_nhbell` 总会转发回调，但 `flags.silent` 没有暴露给
 >     JavaScript。官方契约要求窗口端口在静音时不响铃，当前纯 TypeScript
 >     消费者无法可靠判断这一状态。
+> 12. 当前 WASM 构建启用 `TILES_IN_GLYPHMAP` 并链接生成的 `tile.o`。
+>     `glyph_info.gm.tileidx`（偏移 `+30` 的 16-bit 字段）因此包含与
+>     `frontend/public/tiles/nethack-classic.png` 一致的官方 tile index。
 >
 > 以上结论由当前源码和 Emscripten WASM32 record layout 验证；实现应优先遵循
 > `winshim.c` 的实际格式串，而不是仅依据 C 函数原型。

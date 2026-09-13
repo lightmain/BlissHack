@@ -3,6 +3,8 @@
 #
 # Cross-compiling -PRE section 2
 #
+# Modified for BlissHack by lightmain, 2026-09-12:
+# enable authoritative glyph-to-tile mapping in the WebAssembly build.
 
 ifdef BUILD_TARGET_LUA
 #===============-=================================================
@@ -365,6 +367,7 @@ endif
 override TARGET_CC = emcc
 override TARGET_CXX = emcc
 override TARGET_AR = emar
+override GENTILEOFILE = $(TARGETPFX)tile.o
 WASM_CFLAGS = -Wall -Wextra -Wno-missing-field-initializers
 WASM_CFLAGS += -Wimplicit -Wreturn-type -Wunused -Wformat -Wswitch
 WASM_CFLAGS += -Wshadow
@@ -383,6 +386,7 @@ WASM_CFLAGS += -DDEFAULT_WINDOW_SYS=\"shim\" \
 WASM_CFLAGS += -DNOMAIL
 WASM_CFLAGS += $(LUAINCL)
 WASM_CFLAGS += -DNOTTYGRAPHICS -DSHIM_GRAPHICS -DLIBNH
+WASM_CFLAGS += -DTILES_IN_GLYPHMAP
 WASM_CFLAGS += -DCROSSCOMPILE
 WASM_TARGET_CFLAGS = -DCROSSCOMPILE_TARGET -DCROSS_TO_WASM
 # For src Makefile

@@ -35,7 +35,7 @@ import {
   GameLockRequestError,
 } from "./concurrency/game-lock";
 import { GameLockConflictDialog } from "./screens/GameLockConflictDialog";
-import type { BlissHackProfileV1 } from "./settings/profile";
+import type { BlissHackProfile } from "./settings/profile";
 import { ProfileStaleError } from "./settings/profile-store";
 
 interface PendingLockRetry {
@@ -297,9 +297,9 @@ function App({
 
   /** Save a profile under the shared lock or the active session lease. */
   function applyProfile(
-    candidate: BlissHackProfileV1,
+    candidate: BlissHackProfile,
     baseProfile = profile,
-  ): Promise<BlissHackProfileV1> {
+  ): Promise<BlissHackProfile> {
     return runWithLockRetry(() =>
       sessionManager.runProfileOperation("profile-save", async () => {
         if (!sessionManager.getActiveSession()) {
@@ -313,7 +313,7 @@ function App({
   }
 
   /** Reload the authoritative profile under the shared export lock. */
-  function exportProfile(): Promise<BlissHackProfileV1> {
+  function exportProfile(): Promise<BlissHackProfile> {
     return runWithLockRetry(() =>
       sessionManager.runProfileOperation("profile-export", async () =>
         reloadProfile()));
@@ -327,6 +327,18 @@ function App({
       event: result === "error"
         ? "storage.persistence_failed"
         : `storage.persistence_${result}`,
+      moduleId: state.moduleId,
+    });
+  }, [diagnostics, state.moduleId]);
+
+  /** Record a non-fatal tile renderer fallback without gameplay content. */
+  const recordMapRendererFallback = useCallback((
+    reason: "assets" | "canvas",
+  ) => {
+    diagnostics.record({
+      level: "warning",
+      area: "browser",
+      event: `map.tiles_${reason}_fallback`,
       moduleId: state.moduleId,
     });
   }, [diagnostics, state.moduleId]);
@@ -437,6 +449,7 @@ function App({
     <GameScreen
         loadStatus={loadStatus}
         moduleId={state.moduleId}
+        onMapRendererFallback={recordMapRendererFallback}
         onApplyProfile={applyProfile}
         profile={profile}
     />,

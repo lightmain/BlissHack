@@ -23,6 +23,16 @@ interface ScrollDimensions {
   clientHeight: number;
 }
 
+interface ScrollPositionDimensions extends ScrollDimensions {
+  scrollLeft: number;
+  scrollTop: number;
+}
+
+export interface MapScrollAnchor {
+  x: number;
+  y: number;
+}
+
 /**
  * Collapse one map row into adjacent text runs with equal visible styles.
  * @param row - map cells in column order.
@@ -107,6 +117,54 @@ export function mapFollowOffset(
 }
 
 /**
+ * Capture the map position at the center of a scroll viewport.
+ * @param dimensions - rendered map, viewport, and scroll position.
+ * @returns normalized center coordinates.
+ */
+export function mapScrollAnchor(
+  dimensions: ScrollPositionDimensions,
+): MapScrollAnchor {
+  return {
+    x: normalizedVisibleCenter(
+      dimensions.scrollLeft,
+      dimensions.scrollWidth,
+      dimensions.clientWidth,
+    ),
+    y: normalizedVisibleCenter(
+      dimensions.scrollTop,
+      dimensions.scrollHeight,
+      dimensions.clientHeight,
+    ),
+  };
+}
+
+/**
+ * Restore a normalized map center into a resized scroll viewport.
+ * @param anchor - normalized map center.
+ * @param dimensions - new map and viewport dimensions.
+ * @returns clamped target scroll offsets.
+ */
+export function mapScrollOffsetForAnchor(
+  anchor: MapScrollAnchor,
+  dimensions: ScrollDimensions,
+): { left: number; top: number } {
+  const maxLeft = Math.max(0, dimensions.scrollWidth - dimensions.clientWidth);
+  const maxTop = Math.max(0, dimensions.scrollHeight - dimensions.clientHeight);
+  return {
+    left: clamp(
+      anchor.x * dimensions.scrollWidth - dimensions.clientWidth / 2,
+      0,
+      maxLeft,
+    ),
+    top: clamp(
+      anchor.y * dimensions.scrollHeight - dimensions.clientHeight / 2,
+      0,
+      maxTop,
+    ),
+  };
+}
+
+/**
  * Convert a tty character code into one visible map character.
  * @param value - glyph_info.ttychar.
  * @returns one display character.
@@ -114,6 +172,28 @@ export function mapFollowOffset(
 function glyphCharacter(value: number): string {
   if (value < 0x20 || value > 0x10ffff) return " ";
   return String.fromCodePoint(value);
+}
+
+/**
+ * Locate the center of the viewport portion which intersects map content.
+ * @param scrollOffset - current scroll offset on one axis.
+ * @param scrollSize - complete content size on one axis.
+ * @param clientSize - viewport size on one axis.
+ * @returns normalized content coordinate between zero and one.
+ */
+function normalizedVisibleCenter(
+  scrollOffset: number,
+  scrollSize: number,
+  clientSize: number,
+): number {
+  if (scrollSize <= 0) return 0;
+  const visibleStart = clamp(scrollOffset, 0, scrollSize);
+  const visibleEnd = clamp(
+    visibleStart + Math.max(0, clientSize),
+    visibleStart,
+    scrollSize,
+  );
+  return (visibleStart + visibleEnd) / (2 * scrollSize);
 }
 
 function clamp(value: number, minimum: number, maximum: number): number {

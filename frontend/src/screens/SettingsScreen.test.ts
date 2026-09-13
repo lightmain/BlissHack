@@ -31,6 +31,14 @@ function labelMarkup(html: string, text: string): string {
   return match ?? "";
 }
 
+function fieldsetMarkup(html: string, legend: string): string {
+  const match = [...html.matchAll(/<fieldset\b[^>]*>[\s\S]*?<\/fieldset>/gi)]
+    .map((entry) => entry[0])
+    .find((fieldset) => fieldset.includes(`<legend>${legend}</legend>`));
+  expect(match, `missing ${legend} fieldset`).toBeDefined();
+  return match ?? "";
+}
+
 describe("SettingsScreen", () => {
   it("renders all reviewed fields and keeps the prepared module identity", () => {
     const html = renderSettings();
@@ -41,6 +49,7 @@ describe("SettingsScreen", () => {
     expect(html).toMatch(/<h2[^>]*>NetHack<\/h2>/);
     expect(html).toMatch(/<h2[^>]*>Profile<\/h2>/);
     expect(html).toMatch(/<h2[^>]*>Data<\/h2>/);
+    expect(html).toContain("Map display");
     expect(html).toContain("Terminal font size");
     expect(html).toContain("Message history");
     expect(html).toContain("Follow player on the map");
@@ -69,7 +78,16 @@ describe("SettingsScreen", () => {
 
   it("starts clean with the reviewed defaults selected", () => {
     const html = renderSettings();
+    const mapDisplay = fieldsetMarkup(html, "Map display");
 
+    expect(mapDisplay).toContain(">Tiles</span>");
+    expect(mapDisplay).toContain(">ASCII</span>");
+    expect(mapDisplay).toMatch(
+      /<input(?=[^>]*checked="")(?=[^>]*value="tiles")[^>]*>/,
+    );
+    expect(mapDisplay).toMatch(
+      /<input(?![^>]*checked="")(?=[^>]*value="ascii")[^>]*>/,
+    );
     expect(html).toMatch(/<input(?=[^>]*checked="")(?=[^>]*value="medium")[^>]*>/);
     expect(html).toMatch(/<input(?=[^>]*checked="")(?=[^>]*value="5")[^>]*>/);
     expect(html).toContain("<option value=\"0\" selected=\"\">");

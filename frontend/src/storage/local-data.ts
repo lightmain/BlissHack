@@ -1,8 +1,12 @@
 import { DIAGNOSTIC_STORAGE_KEY } from "../diagnostics/diagnostic-log";
-import { PROFILE_STORAGE_KEY } from "../settings/profile-store";
+import {
+  LEGACY_PROFILE_STORAGE_KEY,
+  PROFILE_STORAGE_KEY,
+} from "../settings/profile-store";
 
 const MANAGED_LOCAL_STORAGE_KEYS = [
   PROFILE_STORAGE_KEY,
+  LEGACY_PROFILE_STORAGE_KEY,
   DIAGNOSTIC_STORAGE_KEY,
 ] as const;
 

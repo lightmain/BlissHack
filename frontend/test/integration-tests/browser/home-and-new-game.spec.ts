@@ -8,16 +8,18 @@ import {
   startNewGame,
   startNewGameFromHome,
 } from "./helpers/game-flow";
+import { readExpectedProductVersion } from "./helpers/product-version";
 import { openSavePicker } from "./helpers/save-flow";
 
 test("starts no NetHack session before the player begins a game", async ({
   page,
 }) => {
   const errors = captureErrors(page);
+  const expectedProductVersion = await readExpectedProductVersion();
   await openHome(page, "initial-lifecycle");
-  await expect(page.locator(".home-version")).toHaveText("prealpha-4");
+  await expect(page.locator(".home-version")).toHaveText(expectedProductVersion);
   await expect(page.locator(".home-footer")).toContainText(
-    "BlissHack prealpha-4",
+    `BlissHack ${expectedProductVersion}`,
   );
   await expect(page.locator(".nh-shell")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Settings" })).toBeEnabled();
@@ -80,12 +82,30 @@ test("plays through startup and routes terminal UI input", async ({ page }) => {
   );
 
   await expect(page.getByLabel(/E2E_Ada the .+, 100% HP/)).toBeVisible();
-  await expect(page.locator(".nh-map-row")).toHaveCount(21);
-  expect(
-    await page.locator(".nh-map-row").evaluateAll(
-      (rows) => rows.every((row) => row.textContent?.length === 80),
-    ),
-  ).toBe(true);
+  const map = page.getByRole("img", { name: "Dungeon map" });
+  await expect(map).toBeVisible();
+  await expect(map).toHaveClass(/nh-map-tiles/);
+  const mapDimensions = await map.evaluate((element) => {
+    if (!(element instanceof HTMLCanvasElement)) {
+      throw new Error("Tile map is not a canvas");
+    }
+    const bounds = element.getBoundingClientRect();
+    return {
+      backingHeight: element.height,
+      backingWidth: element.width,
+      cssHeight: bounds.height,
+      cssWidth: bounds.width,
+      devicePixelRatio: window.devicePixelRatio,
+    };
+  });
+  expect(mapDimensions.cssWidth).toBe(1280);
+  expect(mapDimensions.cssHeight).toBe(336);
+  expect(mapDimensions.backingWidth).toBe(
+    Math.round(mapDimensions.cssWidth * mapDimensions.devicePixelRatio),
+  );
+  expect(mapDimensions.backingHeight).toBe(
+    Math.round(mapDimensions.cssHeight * mapDimensions.devicePixelRatio),
+  );
 
   const fill = page.locator(".nh-hp-fill");
   await expect(fill).toHaveClass(/nh-hp-full/);

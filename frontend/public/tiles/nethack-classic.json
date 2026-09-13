@@ -1,0 +1,83 @@
+{
+  "formatVersion": 1,
+  "tile": {
+    "width": 16,
+    "height": 16
+  },
+  "atlas": {
+    "file": "nethack-classic.png",
+    "columns": 40,
+    "rows": 58,
+    "tileCount": 2307,
+    "sha256": "bd41a419de9df7cc9b6533438087b4aabf7a087fad3726e5f615dbe9f2f83de6"
+  },
+  "sources": [
+    {
+      "file": "monsters.txt",
+      "tileCount": 789,
+      "sha256": "ad05fc41ec59f87c03a5e2112f57637147637e15f08e2936cbe9cdbc051f2f67"
+    },
+    {
+      "file": "objects.txt",
+      "tileCount": 483,
+      "sha256": "47474ef6bef1bcd654a240e28be671671b74a6067459cf1af74cefbd64f467b4"
+    },
+    {
+      "file": "other.txt",
+      "tileCount": 243,
+      "sha256": "87f8642529ab6f3f145851cfe937e18194515acef54cafc96182f80cf3d79a1c"
+    },
+    {
+      "file": "decals.txt",
+      "tileCount": 3,
+      "sha256": "9a8f7ce8fc2373345e7ea5b49adac4b0f45659d7aba4dfdd44c54c806fe4414d"
+    }
+  ],
+  "mappingSource": {
+    "file": "tilemap.c",
+    "sha256": "2d863e08da72c0a6f41109b20d420eb45db64eb7ad838a0947badf72b8b8b8d4"
+  },
+  "segments": [
+    {
+      "id": "monsters",
+      "source": "monsters.txt",
+      "firstTile": 0,
+      "tileCount": 789,
+      "transform": "identity"
+    },
+    {
+      "id": "objects",
+      "source": "objects.txt",
+      "firstTile": 789,
+      "tileCount": 483,
+      "transform": "identity"
+    },
+    {
+      "id": "other",
+      "source": "other.txt",
+      "firstTile": 1272,
+      "tileCount": 243,
+      "transform": "identity"
+    },
+    {
+      "id": "statues",
+      "source": "monsters.txt",
+      "firstTile": 1515,
+      "tileCount": 789,
+      "transform": "grayscale"
+    },
+    {
+      "id": "decals",
+      "source": "decals.txt",
+      "firstTile": 2304,
+      "tileCount": 3,
+      "transform": "transparent-background"
+    }
+  ],
+  "specialTiles": {
+    "blank": 1470,
+    "unexplored": 1469,
+    "petMark": 2305,
+    "pileMark": 2306
+  }
+}

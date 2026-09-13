@@ -1,54 +1,50 @@
 import {
   memo,
-  useEffect,
-  useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
-  type MouseEvent as ReactMouseEvent,
   type SyntheticEvent,
 } from "react";
 import {
-  getSnapshot,
   type GameSnapshot,
   type MapCell,
   type TextLine,
 } from "../../game-state";
-import {
-  buildMapRuns,
-  mapFollowOffset,
-  mapPositionFromPoint,
-} from "../../map-rendering";
+import { MapViewport } from "../../map/MapViewport";
+import type { TileRendererFallbackReason } from "../../map/TileMapRenderer";
 import {
   normalizePlayerNameInput,
-  sendPosition,
   submitLine,
 } from "../../nethack-bridge";
-import type { InterfaceSettingsV1 } from "../../settings/profile";
-import { colorClass, textAttributeClass } from "../../text-styling";
+import type { InterfaceSettings } from "../../settings/profile";
+import { textAttributeClass } from "../../text-styling";
 import { PermanentInventoryPanel } from "../PermanentInventoryPanel";
 import { StatusArea } from "./StatusArea";
 
 interface GameTerminalProps {
   clipCenter: GameSnapshot["clipCenter"];
+  commandInput: boolean;
   cursor: GameSnapshot["cursor"];
   followPlayer: boolean;
-  historyLines: InterfaceSettingsV1["messageHistoryLines"];
+  historyLines: InterfaceSettings["messageHistoryLines"];
   inert: boolean;
   inputRequest: GameSnapshot["inputRequest"];
   layoutKey: string;
   map: MapCell[][];
+  mapRenderer: InterfaceSettings["mapRenderer"];
   messages: TextLine[];
   onInventoryCollapsedChange(collapsed: boolean): void;
+  onMapRendererFallback?(reason: TileRendererFallbackReason): void;
   permanentInventory: GameSnapshot["permanentInventory"];
   permanentInventoryCollapsed: boolean;
   permanentInventoryEnabled: boolean;
-  permanentInventoryPosition: InterfaceSettingsV1["permanentInventoryPosition"];
+  permanentInventoryPosition: InterfaceSettings["permanentInventoryPosition"];
   status: GameSnapshot["status"];
 }
 
 /** Render the active terminal while keeping browser overlays outside its inert tree. */
 export function GameTerminal({
   clipCenter,
+  commandInput,
   cursor,
   followPlayer,
   historyLines,
@@ -56,8 +52,10 @@ export function GameTerminal({
   inputRequest,
   layoutKey,
   map,
+  mapRenderer,
   messages,
   onInventoryCollapsedChange,
+  onMapRendererFallback,
   permanentInventory,
   permanentInventoryCollapsed,
   permanentInventoryEnabled,
@@ -73,12 +71,15 @@ export function GameTerminal({
       <MessageArea historyLines={historyLines} messages={messages} />
       <div className={`nh-playfield nh-playfield-${permanentInventoryPosition}`}>
         <div className="nh-playfield-main">
-          <MapGrid
+          <MapViewport
             clipCenter={clipCenter}
+            commandInput={commandInput}
             cursor={cursor}
             followPlayer={followPlayer}
             layoutKey={layoutKey}
             map={map}
+            mapRenderer={mapRenderer}
+            onMapRendererFallback={onMapRendererFallback}
           />
           <StatusArea status={status} />
           <InputArea request={inputRequest} />
@@ -105,7 +106,7 @@ const MessageArea = memo(function MessageArea({
   historyLines,
   messages: allMessages,
 }: {
-  historyLines: InterfaceSettingsV1["messageHistoryLines"];
+  historyLines: InterfaceSettings["messageHistoryLines"];
   messages: TextLine[];
 }) {
   const messages = allMessages.slice(-historyLines);
@@ -126,123 +127,6 @@ const MessageArea = memo(function MessageArea({
           </div>
         ))}
     </section>
-  );
-});
-
-/**
- * Render the fixed NetHack character map and route mouse clicks to nh_poskey.
- * @param props - current game snapshot.
- * @returns the 80 by 21 map grid.
- */
-const MapGrid = memo(function MapGrid({
-  clipCenter,
-  cursor,
-  followPlayer,
-  layoutKey,
-  map,
-}: {
-  clipCenter: GameSnapshot["clipCenter"];
-  cursor: GameSnapshot["cursor"];
-  followPlayer: boolean;
-  layoutKey: string;
-  map: MapCell[][];
-}) {
-  const scrollRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const viewport = scrollRef.current;
-    if (!viewport || !followPlayer || !clipCenter) return;
-
-    function centerPlayer(): void {
-      if (!viewport || !clipCenter) return;
-      const offset = mapFollowOffset(clipCenter.x, clipCenter.y, viewport);
-      viewport.scrollLeft = offset.left;
-      viewport.scrollTop = offset.top;
-    }
-
-    centerPlayer();
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(centerPlayer);
-    observer.observe(viewport);
-    return () => observer.disconnect();
-  }, [clipCenter, followPlayer, layoutKey]);
-
-  /**
-   * Submit a primary or secondary map click while nh_poskey is pending.
-   * @param event - delegated mouse event from a map cell.
-   */
-  function handleMouseDown(event: ReactMouseEvent<HTMLDivElement>): void {
-    if (getSnapshot().inputRequest?.kind !== "position") return;
-    const position = mapPositionFromPoint(
-      event.clientX,
-      event.clientY,
-      event.currentTarget.getBoundingClientRect(),
-    );
-    if (!position) return;
-    event.preventDefault();
-    sendPosition(position.x, position.y, event.button === 2 ? 2 : 1);
-  }
-
-  /**
-   * Suppress the browser context menu while NetHack is accepting map clicks.
-   * @param event - browser context-menu event.
-   */
-  function handleContextMenu(event: ReactMouseEvent<HTMLDivElement>): void {
-    if (getSnapshot().inputRequest?.kind === "position") event.preventDefault();
-  }
-
-  return (
-    <div className="nh-map-scroll" ref={scrollRef}>
-      <div
-        className="nh-map"
-        aria-label="Dungeon map"
-        onMouseDown={handleMouseDown}
-        onContextMenu={handleContextMenu}
-      >
-        {map.map((row, y) => (
-          <MapRow
-            cursorX={cursor.visible && cursor.y === y ? cursor.x : -1}
-            key={y}
-            row={row}
-            y={y}
-          />
-        ))}
-      </div>
-    </div>
-  );
-});
-
-/**
- * Render one memoized map row as adjacent equal-style text runs.
- * @param props - row cells, cursor column, and row coordinate.
- * @returns one fixed-width character row.
- */
-const MapRow = memo(function MapRow({
-  row,
-  cursorX,
-  y,
-}: {
-  row: MapCell[];
-  cursorX: number;
-  y: number;
-}) {
-  return (
-    <div className="nh-map-row" data-y={y}>
-      {buildMapRuns(row, cursorX).map((run) => (
-        <span
-          className={[
-            "nh-map-run",
-            colorClass(run.color),
-            run.cursor ? "nh-cursor" : "",
-            run.pet ? "nh-pet" : "",
-          ].filter(Boolean).join(" ")}
-          data-start={run.start}
-          key={run.start}
-        >
-          {run.text}
-        </span>
-      ))}
-    </div>
   );
 });
 

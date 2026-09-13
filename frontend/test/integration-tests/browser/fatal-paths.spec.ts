@@ -5,12 +5,14 @@ import {
   startNewGame,
   startNewGameFromHome,
 } from "./helpers/game-flow";
+import { readExpectedProductVersion } from "./helpers/product-version";
 
 test("shows a fatal page and exports a private diagnostic log", async ({
   page,
 }) => {
   const playerName = "E2E_Private_Diagnostic";
   const privateMessage = `${playerName} pressed Control+p near a secret door`;
+  const expectedProductVersion = await readExpectedProductVersion();
   const consoleErrors: string[] = [];
   page.on("console", (message) => {
     if (message.type() === "error") consoleErrors.push(message.text());
@@ -35,7 +37,7 @@ test("shows a fatal page and exports a private diagnostic log", async ({
 
   const { diagnostic, text } = await exportDiagnosticLog(page);
   expect(diagnostic.schemaVersion).toBe(1);
-  expect(diagnostic.productVersion).toBe("prealpha-4");
+  expect(diagnostic.productVersion).toBe(expectedProductVersion);
   expect(diagnostic.buildId).toBeTruthy();
   expect(diagnostic.events).toContainEqual(expect.objectContaining({
     event: "app.started",
