@@ -130,6 +130,7 @@ export type InputRequest =
 /** Immutable top-level snapshot consumed by React. */
 export interface GameSnapshot {
   revision: number;
+  mapRevision: number;
   phase: "idle" | "loading" | "running" | "exited" | "error";
   error: string | null;
   exitReason: string;
@@ -183,6 +184,7 @@ function createBlankMap(): MapCell[][] {
 function createInitialSnapshot(): GameSnapshot {
   return {
     revision: 0,
+    mapRevision: 0,
     phase: "idle",
     error: null,
     exitReason: "",
@@ -315,7 +317,10 @@ export function clearWindow(winid: number): void {
   window.menuPrompt = "";
   if (window.type === NHW_MAP) {
     pendingMapRows.clear();
-    publish({ map: createBlankMap() });
+    publish({
+      map: createBlankMap(),
+      mapRevision: snapshot.mapRevision + 1,
+    });
   } else if (window.type === NHW_MESSAGE) {
     publish({ messages: [] });
   }
@@ -448,7 +453,7 @@ export function flushDisplay(): void {
   const map = snapshot.map.slice();
   for (const [y, row] of pendingMapRows) map[y] = row;
   pendingMapRows.clear();
-  publish({ map });
+  publish({ map, mapRevision: snapshot.mapRevision + 1 });
 }
 
 /**

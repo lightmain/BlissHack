@@ -87,6 +87,7 @@ const YES_RESPONSE = "y".charCodeAt(0);
 let pendingAction: PendingAction | null = null;
 const queuedKeys: number[] = [];
 let typeaheadEnabled = false;
+let actionIntentActive = false;
 let saveExitAutomation: "confirm" | "display" | null = null;
 let knownSaveNames: string[] = [];
 let pendingRuntimeSettings: RuntimeNetHackSettings | null = null;
@@ -110,6 +111,7 @@ export function normalizePlayerNameInput(value: string): string {
 /** Resolve the active keyboard-facing callback with one NetHack byte. */
 export function sendKey(value: number): void {
   if (!Number.isInteger(value) || value <= 0 || value > 0xff) return;
+  if (actionIntentActive) return;
   const pending = pendingAction;
   if (!pending) {
     if (typeaheadEnabled && queuedKeys.length < KEY_QUEUE_LIMIT) {
@@ -172,7 +174,7 @@ export function sendPosition(x: number, y: number, modifier: 1 | 2): void {
   pending.module.setValue(pending.positionPointers.y, y, "i16");
   pending.module.setValue(pending.positionPointers.modifier, modifier, "i32");
   pendingAction = null;
-  typeaheadEnabled = true;
+  typeaheadEnabled = !actionIntentActive;
   setCommandInput(false);
   setInputRequest(null);
   pending.resolve(0);
@@ -277,12 +279,23 @@ export function isWaitingForInput(): boolean {
   return pendingAction !== null;
 }
 
+/**
+ * Freeze user typeahead while a multi-step UI action owns core input.
+ * @param active - whether an action intent currently owns the input sequence.
+ */
+export function setActionIntentActive(active: boolean): void {
+  actionIntentActive = active;
+  queuedKeys.length = 0;
+  typeaheadEnabled = false;
+}
+
 /** Reset the singleton controller for a fresh module session. */
 export function resetInputController(): void {
   pendingAction = null;
   pendingRuntimeSettings = null;
   queuedKeys.length = 0;
   typeaheadEnabled = false;
+  actionIntentActive = false;
   saveExitAutomation = null;
   knownSaveNames = [];
 }

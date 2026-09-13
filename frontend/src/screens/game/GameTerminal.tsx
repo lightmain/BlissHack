@@ -9,7 +9,10 @@ import {
   type MapCell,
   type TextLine,
 } from "../../game-state";
-import { MapViewport } from "../../map/MapViewport";
+import {
+  MapViewport,
+  type MapInteractionOrigin,
+} from "../../map/MapViewport";
 import type { TileRendererFallbackReason } from "../../map/TileMapRenderer";
 import {
   normalizePlayerNameInput,
@@ -32,8 +35,12 @@ interface GameTerminalProps {
   map: MapCell[][];
   mapRenderer: InterfaceSettings["mapRenderer"];
   messages: TextLine[];
+  onContextClick(origin: MapInteractionOrigin): boolean;
+  onHoverLeave?(): void;
+  onHoverTarget?(origin: MapInteractionOrigin): void;
   onInventoryCollapsedChange(collapsed: boolean): void;
   onMapRendererFallback?(reason: TileRendererFallbackReason): void;
+  onPrimaryClick(origin: MapInteractionOrigin): void;
   permanentInventory: GameSnapshot["permanentInventory"];
   permanentInventoryCollapsed: boolean;
   permanentInventoryEnabled: boolean;
@@ -54,8 +61,12 @@ export function GameTerminal({
   map,
   mapRenderer,
   messages,
+  onContextClick,
+  onHoverLeave,
+  onHoverTarget,
   onInventoryCollapsedChange,
   onMapRendererFallback,
+  onPrimaryClick,
   permanentInventory,
   permanentInventoryCollapsed,
   permanentInventoryEnabled,
@@ -79,7 +90,11 @@ export function GameTerminal({
             layoutKey={layoutKey}
             map={map}
             mapRenderer={mapRenderer}
+            onContextClick={onContextClick}
+            onHoverLeave={onHoverLeave}
+            onHoverTarget={onHoverTarget}
             onMapRendererFallback={onMapRendererFallback}
+            onPrimaryClick={onPrimaryClick}
           />
           <StatusArea status={status} />
           <InputArea request={inputRequest} />
