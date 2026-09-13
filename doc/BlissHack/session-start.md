@@ -9,12 +9,14 @@
 
 1. 完整阅读仓库根目录的 `AGENTS.md` 和 `AGENTS-cn.md`。
 2. 阅读 `README-cn.md`，确认当前产品定位、运行方式、测试入口和许可证说明。
-3. 当前已部署版本为 prealpha-4；`alpha-1.1` 分支的 Tileset、地图交互和定向
-   基建实现已完成，正在等待人工验收，尚未合入部署分支。维护当前架构时阅读
+3. `BlissHack` 已包含完成人工验收的 alpha-1.1 Tileset、地图交互和定向基建；
+   GitHub Pages 可能在部署期间短暂落后，应以页面版本为准。alpha-2.0 当前只有
+   交互式 HUD 计划，尚未开始开发。维护当前架构时阅读
    `doc/BlissHack/plans/prealpha-4.md`；进行 tileset、Canvas 地图、
    `TILES_IN_GLYPHMAP` 或 profile v2 工作时完整阅读
    `doc/BlissHack/plans/alpha-1.md`、`doc/BlissHack/plans/alpha-1.1.md` 及
-   `plans/in-alpha-1/` 下的对应文档。
+   `plans/in-alpha-1/` 下的对应文档；进行 HUD、悬停、右键菜单、状态栏或永久
+   背包操作时同时阅读 `doc/BlissHack/plans/alpha-2.0.md`。
    涉及现有功能契约时再读取对应的 prealpha-2 或 prealpha-3 设计文档，不需要
    无目的地加载全文。
 4. 检查仓库现场：

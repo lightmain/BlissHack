@@ -21,12 +21,15 @@ frontend. These changes are documented in
 
 ## Project Status
 
-**The alpha-1.1 implementation is complete and awaiting manual acceptance.**
+**Alpha-1.1 has passed manual acceptance and is merged into the deployment
+branch.**
 
-The `alpha-1.1` branch includes alpha-1's official NetHack 5.0 16x16 tiles and
+Alpha-1.1 includes the official NetHack 5.0 16x16 tiles and
 Canvas 2D map, together with improved map camera, right-drag, Follow player,
-profile migration, and WASM toolchain boundaries. This branch has not been
-merged into the deployment branch, so the live site remains on prealpha-4.
+profile migration, and WASM toolchain boundaries. GitHub Pages reflects the
+most recently completed deployment; use the version displayed by the site as
+the authority. Alpha-2.0 will focus on a fullscreen HUD, graphical status
+display, and core-driven mouse interactions.
 
 The current milestone provides:
 
@@ -138,6 +141,7 @@ transfer.
 - [prealpha-4 refactoring plan](doc/BlissHack/plans/prealpha-4.md)
 - [alpha-1 tileset plan](doc/BlissHack/plans/alpha-1.md)
 - [alpha-1.1 map interaction and infrastructure plan](doc/BlissHack/plans/alpha-1.1.md)
+- [alpha-2.0 interactive HUD plan](doc/BlissHack/plans/alpha-2.0.md)
 - [alpha-1 rendering architecture](doc/BlissHack/plans/in-alpha-1/rendering-architecture.md)
 - [alpha-1 profile v2](doc/BlissHack/plans/in-alpha-1/profile-v2.md)
 - [alpha-1 release acceptance](doc/BlissHack/plans/in-alpha-1/release-acceptance.md)
