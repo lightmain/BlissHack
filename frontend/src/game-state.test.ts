@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import * as gameState from "./game-state";
 import {
   ATR_NOHISTORY,
   COLNO,
@@ -35,6 +36,25 @@ import {
   showText,
   subscribe,
 } from "./game-state";
+
+interface ExpectedStatusFieldMetadata {
+  name: string;
+  format: string;
+  enabled: boolean;
+}
+
+const expectedGameState = gameState as typeof gameState & {
+  setStatusFieldMetadata: (
+    field: number,
+    metadata: ExpectedStatusFieldMetadata,
+  ) => void;
+};
+
+function statusMetadata(): Record<number, ExpectedStatusFieldMetadata> {
+  return (getSnapshot() as ReturnType<typeof getSnapshot> & {
+    statusMetadata: Record<number, ExpectedStatusFieldMetadata>;
+  }).statusMetadata;
+}
 
 beforeEach(() => {
   resetGameState();
@@ -363,6 +383,74 @@ describe("game state status and runtime flags", () => {
 
     resetStatus();
     expect(getSnapshot().status).toEqual({});
+  });
+
+  it("publishes immutable field metadata and tracks dynamic enablement", () => {
+    const initialSnapshot = getSnapshot();
+
+    expectedGameState.setStatusFieldMetadata(8, {
+      name: "score",
+      format: " S:%s",
+      enabled: true,
+    });
+    const enabledSnapshot = getSnapshot();
+    const enabledMetadata = statusMetadata();
+
+    expect(
+      (initialSnapshot as typeof initialSnapshot & {
+        statusMetadata: Record<number, ExpectedStatusFieldMetadata>;
+      }).statusMetadata,
+    ).toEqual({});
+    expect(enabledMetadata[8]).toEqual({
+      name: "score",
+      format: " S:%s",
+      enabled: true,
+    });
+
+    expectedGameState.setStatusFieldMetadata(8, {
+      name: "score",
+      format: " S:%s",
+      enabled: false,
+    });
+
+    expect(getSnapshot()).not.toBe(enabledSnapshot);
+    expect(statusMetadata()).not.toBe(enabledMetadata);
+    expect(enabledMetadata[8]?.enabled).toBe(true);
+    expect(statusMetadata()[8]?.enabled).toBe(false);
+  });
+
+  it("leaves input state and prior snapshots unchanged when status is flushed", () => {
+    setInputRequest({
+      kind: "yn",
+      query: "Really?",
+      choices: "yn",
+      defaultCode: 110,
+    });
+    const before = getSnapshot();
+    const inputRequest = before.inputRequest;
+    const value = {
+      text: "Ada the Tourist",
+      change: 1,
+      percent: 80,
+      color: 4,
+      attributes: 1,
+      conditionColors: [],
+    };
+
+    setStatusValue(0, value);
+    flushStatus();
+
+    expect(value).toEqual({
+      text: "Ada the Tourist",
+      change: 1,
+      percent: 80,
+      color: 4,
+      attributes: 1,
+      conditionColors: [],
+    });
+    expect(before.status).toEqual({});
+    expect(before.inputRequest).toBe(inputRequest);
+    expect(getSnapshot().inputRequest).toBe(inputRequest);
   });
 
   it("tracks phase and number-pad mode", () => {
