@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as nethackBridge from "./nethack-bridge";
 import {
   ATR_NOHISTORY,
   BL_CONDITION,
@@ -571,13 +572,14 @@ describe("key, position, and prompt input", () => {
     await expect(direction).resolves.toBe("h".charCodeAt(0));
   });
 
-  it("buffers a short burst typed before the core requests its next keys", async () => {
+  it("buffers at most two keys typed before the core requests them", async () => {
     const first = shimCallback("shim_nhgetch");
     sendKey("l".charCodeAt(0));
     await expect(first).resolves.toBe("l".charCodeAt(0));
 
     sendKey("h".charCodeAt(0));
     sendKey("j".charCodeAt(0));
+    sendKey("k".charCodeAt(0));
 
     await expect(shimCallback("shim_nhgetch")).resolves.toBe(
       "h".charCodeAt(0),
@@ -585,6 +587,10 @@ describe("key, position, and prompt input", () => {
     await expect(shimCallback("shim_nhgetch")).resolves.toBe(
       "j".charCodeAt(0),
     );
+    const afterQueue = shimCallback("shim_nhgetch");
+    await expectPending(afterQueue);
+    sendKey("l".charCodeAt(0));
+    await expect(afterQueue).resolves.toBe("l".charCodeAt(0));
   });
 
   it("does not queue keys before the core has accepted its first game input", async () => {
@@ -595,6 +601,52 @@ describe("key, position, and prompt input", () => {
     sendKey("y".charCodeAt(0));
 
     await expect(requested).resolves.toBe("y".charCodeAt(0));
+  });
+
+  it("clears and freezes typeahead during an action intent until a new command boundary", async () => {
+    const setActionIntentActive = (
+      nethackBridge as typeof nethackBridge & {
+        setActionIntentActive?: (active: boolean) => void;
+      }
+    ).setActionIntentActive;
+    expect(setActionIntentActive).toBeTypeOf("function");
+    if (!setActionIntentActive) return;
+
+    const initialCommand = shimCallback(
+      "shim_nh_poskey",
+      0x300,
+      0x302,
+      0x304,
+      1,
+    );
+    sendKey("h".charCodeAt(0));
+    await expect(initialCommand).resolves.toBe("h".charCodeAt(0));
+
+    sendKey("j".charCodeAt(0));
+    setActionIntentActive(true);
+    sendKey("k".charCodeAt(0));
+    setActionIntentActive(false);
+    sendKey("l".charCodeAt(0));
+
+    const nextCommand = shimCallback(
+      "shim_nh_poskey",
+      0x300,
+      0x302,
+      0x304,
+      1,
+    );
+    await expectPending(nextCommand);
+    sendKey("y".charCodeAt(0));
+    await expect(nextCommand).resolves.toBe("y".charCodeAt(0));
+
+    sendKey("u".charCodeAt(0));
+    await expect(shimCallback(
+      "shim_nh_poskey",
+      0x300,
+      0x302,
+      0x304,
+      1,
+    )).resolves.toBe("u".charCodeAt(0));
   });
 
   it.each([

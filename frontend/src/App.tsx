@@ -449,6 +449,7 @@ function App({
     <GameScreen
         loadStatus={loadStatus}
         moduleId={state.moduleId}
+        sessionId={state.sessionId}
         onMapRendererFallback={recordMapRendererFallback}
         onApplyProfile={applyProfile}
         profile={profile}

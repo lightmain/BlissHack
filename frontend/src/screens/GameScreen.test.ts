@@ -23,6 +23,7 @@ describe("GameScreen interface settings", () => {
     const html = renderToStaticMarkup(createElement(GameScreen, {
       loadStatus: "loaded",
       moduleId: "module-1",
+      sessionId: "session-1",
       onApplyProfile: async (candidate) => candidate,
       profile,
     }));
@@ -39,6 +40,7 @@ describe("GameScreen interface settings", () => {
     const html = renderToStaticMarkup(createElement(GameScreen, {
       loadStatus: "loaded",
       moduleId: "module-1",
+      sessionId: "session-1",
       onApplyProfile: async (candidate) => candidate,
       profile,
     }));
@@ -56,6 +58,7 @@ describe("GameScreen interface settings", () => {
       const html = renderToStaticMarkup(createElement(GameScreen, {
         loadStatus: "loaded",
         moduleId: "module-1",
+        sessionId: "session-1",
         onApplyProfile: async (candidate) => candidate,
         profile,
       }));
@@ -78,6 +81,7 @@ describe("GameScreen interface settings", () => {
       const html = renderToStaticMarkup(createElement(GameScreen, {
         loadStatus: "loaded",
         moduleId: "module-1",
+        sessionId: "session-1",
         onApplyProfile: async (candidate) => candidate,
         profile,
       }));
@@ -99,6 +103,7 @@ describe("GameScreen interface settings", () => {
     const html = renderToStaticMarkup(createElement(GameScreen, {
       loadStatus: "loaded",
       moduleId: "module-1",
+      sessionId: "session-1",
       onApplyProfile: async (candidate) => candidate,
       profile: createDefaultProfile(),
     }));

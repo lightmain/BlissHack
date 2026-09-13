@@ -1,11 +1,11 @@
-import { memo, type MouseEvent as ReactMouseEvent } from "react";
 import {
-  getSnapshot,
-  type GameSnapshot,
-  type MapCell,
-} from "../game-state";
+  memo,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
+import type { GameSnapshot, MapCell } from "../game-state";
+import type { InteractionOrigin } from "../game-actions/interaction-origin";
 import { mapPositionFromPoint } from "../map-rendering";
-import { sendPosition } from "../nethack-bridge";
 import type { InterfaceSettings } from "../settings/profile";
 import { AsciiMapRenderer } from "./AsciiMapRenderer";
 import {
@@ -23,8 +23,17 @@ interface MapViewportProps {
   layoutKey: string;
   map: MapCell[][];
   mapRenderer: InterfaceSettings["mapRenderer"];
+  onContextClick(origin: MapInteractionOrigin): boolean;
+  onHoverLeave?(): void;
+  onHoverTarget?(origin: MapInteractionOrigin): void;
   onMapRendererFallback?(reason: TileRendererFallbackReason): void;
+  onPrimaryClick(origin: MapInteractionOrigin): void;
 }
+
+export type MapInteractionOrigin = Extract<
+  InteractionOrigin,
+  { kind: "map" }
+>;
 
 /**
  * Render one map renderer inside the shared scrolling and input viewport.
@@ -39,7 +48,11 @@ export const MapViewport = memo(function MapViewport({
   layoutKey,
   map,
   mapRenderer,
+  onContextClick,
+  onHoverLeave,
+  onHoverTarget,
   onMapRendererFallback,
+  onPrimaryClick,
 }: MapViewportProps) {
   const {
     handleScroll,
@@ -54,32 +67,38 @@ export const MapViewport = memo(function MapViewport({
   });
 
   /**
-   * Submit one map position with the requested NetHack mouse modifier.
+   * Resolve one browser point into a stable map interaction origin.
    * @param clientX - pointer viewport x-coordinate.
    * @param clientY - pointer viewport y-coordinate.
-   * @param modifier - NetHack primary or secondary click modifier.
    * @param target - complete interactive map surface.
+   * @returns a serializable interaction origin, or null outside the map.
    */
-  function submitMapPosition(
+  function mapOrigin(
     clientX: number,
     clientY: number,
-    modifier: 1 | 2,
     target: HTMLDivElement,
-  ): void {
-    if (getSnapshot().inputRequest?.kind !== "position") return;
+  ): MapInteractionOrigin | null {
     const position = mapPositionFromPoint(
       clientX,
       clientY,
       target.getBoundingClientRect(),
     );
-    if (!position) return;
-    if (modifier === 2) preserveNextFollow();
-    sendPosition(position.x, position.y, modifier);
+    return position
+      ? {
+        kind: "map",
+        clientX,
+        clientY,
+        mapX: position.x,
+        mapY: position.y,
+      }
+      : null;
   }
 
   const rightDrag = useRightDragPan({
     onRightClick: (point, target) => {
-      submitMapPosition(point.clientX, point.clientY, 2, target);
+      const origin = mapOrigin(point.clientX, point.clientY, target);
+      if (!origin) return;
+      if (onContextClick(origin)) preserveNextFollow();
     },
     viewportRef: scrollRef,
   });
@@ -91,12 +110,32 @@ export const MapViewport = memo(function MapViewport({
   function handleMouseDown(event: ReactMouseEvent<HTMLDivElement>): void {
     if (event.button !== 0) return;
     event.preventDefault();
-    submitMapPosition(
+    const origin = mapOrigin(
       event.clientX,
       event.clientY,
-      1,
       event.currentTarget,
     );
+    if (origin) onPrimaryClick(origin);
+  }
+
+  /**
+   * Publish a hover target while allowing the right-drag owner to pan.
+   * @param event - delegated pointer movement from the map surface.
+   */
+  function handlePointerMove(
+    event: ReactPointerEvent<HTMLDivElement>,
+  ): void {
+    rightDrag.onPointerMove(event);
+    if ((event.buttons & 2) !== 0 || rightDrag.dragging) {
+      onHoverLeave?.();
+      return;
+    }
+    const origin = mapOrigin(
+      event.clientX,
+      event.clientY,
+      event.currentTarget,
+    );
+    if (origin) onHoverTarget?.(origin);
   }
 
   /**
@@ -122,9 +161,10 @@ export const MapViewport = memo(function MapViewport({
         onLostPointerCapture={rightDrag.onLostPointerCapture}
         onMouseDown={handleMouseDown}
         onContextMenu={handleContextMenu}
+        onPointerLeave={onHoverLeave}
         onPointerCancel={rightDrag.onPointerCancel}
         onPointerDown={rightDrag.onPointerDown}
-        onPointerMove={rightDrag.onPointerMove}
+        onPointerMove={handlePointerMove}
         onPointerUp={rightDrag.onPointerUp}
       >
         {mapRenderer === "tiles"

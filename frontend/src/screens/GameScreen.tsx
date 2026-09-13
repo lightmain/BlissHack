@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -8,9 +9,18 @@ import {
 } from "react";
 import {
   getSnapshot,
+  getWindow,
   subscribe,
   type GameSnapshot,
 } from "../game-state";
+import {
+  createGameActionController,
+  type ActionControllerInput,
+} from "../game-actions/game-action-controller";
+import {
+  resolveMapPrimaryInteraction,
+  resolveMapSecondaryInteraction,
+} from "../game-actions/interaction-origin";
 import { keyboardEventToNetHackKey } from "../keyboard";
 import {
   validateProfile,
@@ -22,8 +32,12 @@ import {
   queueRuntimeSettings,
   requestSaveAndExit,
   sendKey,
+  sendPosition,
+  setActionIntentActive,
+  submitMenuSelection,
 } from "../nethack-bridge";
 import type { TileRendererFallbackReason } from "../map/TileMapRenderer";
+import type { MapInteractionOrigin } from "../map/MapViewport";
 import { SettingsScreen } from "./SettingsScreen";
 import { GameModalRenderer } from "./game/GameModals";
 import { GameTerminal } from "./game/GameTerminal";
@@ -32,6 +46,7 @@ import { PauseOverlay } from "./game/PauseOverlay";
 interface GameScreenProps {
   loadStatus: ProfileLoadStatus;
   moduleId: string;
+  sessionId: string;
   onMapRendererFallback?(reason: TileRendererFallbackReason): void;
   onApplyProfile(profile: BlissHackProfile): Promise<BlissHackProfile>;
   profile: BlissHackProfile;
@@ -45,11 +60,13 @@ interface GameScreenProps {
 export function GameScreen({
   loadStatus,
   moduleId,
+  sessionId,
   onMapRendererFallback,
   onApplyProfile,
   profile,
 }: GameScreenProps) {
   const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  const snapshotRef = useRef(snapshot);
   const [pauseView, setPauseView] = useState<"pause" | "settings" | null>(null);
   const previousRuntimeSettings = useRef<string | null>(null);
   const settings = profile.interface;
@@ -57,6 +74,45 @@ export function GameScreen({
     () => profileWithRuntimeSettings(profile, snapshot.runtimeSettings),
     [profile, snapshot.runtimeSettings],
   );
+  const actionController = useMemo(
+    () => createGameActionController({
+      scope: { moduleId, sessionId },
+      /**
+       * Start only the map command supported by the current stage.
+       * Later phases add safe-boundary inventory and inspect commands.
+       */
+      startCommand(intent): void {
+        if (intent.kind !== "map-context") {
+          throw new Error(`Unsupported action intent: ${intent.kind}`);
+        }
+        sendPosition(intent.origin.mapX, intent.origin.mapY, 2);
+      },
+      submitMenuSelection,
+      releaseInputToUi: () => {
+        // Unexpected input remains published in the normal game snapshot.
+      },
+      setActionIntentActive,
+    }),
+    [moduleId, sessionId],
+  );
+
+  useEffect(() => {
+    snapshotRef.current = snapshot;
+  }, [snapshot]);
+
+  useEffect(() => () => actionController.dispose(), [actionController]);
+
+  useEffect(() => {
+    actionController.observe({
+      moduleId,
+      sessionId,
+      snapshotRevision: snapshot.revision,
+      inventoryRevision: snapshot.permanentInventory?.revision ?? null,
+      mapRevision: snapshot.mapRevision,
+      input: actionInputFromSnapshot(snapshot),
+      fatal: snapshot.phase === "error",
+    });
+  }, [actionController, moduleId, sessionId, snapshot]);
 
   useEffect(() => {
     const current = snapshot.runtimeSettings;
@@ -99,6 +155,10 @@ export function GameScreen({
       if (snapshot.modal?.kind === "menu" || snapshot.modal?.kind === "extcmd") {
         return;
       }
+      if (actionController.getState().intent !== null) {
+        event.preventDefault();
+        return;
+      }
       const value = keyboardEventToNetHackKey(event, {
         numberPad: snapshot.numberPad,
       });
@@ -124,6 +184,7 @@ export function GameScreen({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [
     pauseView,
+    actionController,
     snapshot.commandInput,
     snapshot.inputRequest,
     snapshot.modal,
@@ -173,6 +234,63 @@ export function GameScreen({
     }
   }
 
+  /**
+   * Submit a high-level map click only while the core exposes nh_poskey.
+   * @param origin - serializable pointer and map coordinates.
+   * @param modifier - primary or secondary NetHack click modifier.
+   */
+  const handlePrimaryClick = useCallback((
+    origin: MapInteractionOrigin,
+  ): void => {
+    const current = snapshotRef.current;
+    const resolution = resolveMapPrimaryInteraction({
+      commandInput: current.commandInput,
+      inputRequest: current.inputRequest,
+      moduleId,
+      sessionId,
+      snapshotRevision: current.revision,
+      origin,
+    });
+    if (resolution) {
+      sendPosition(resolution.x, resolution.y, resolution.modifier);
+    }
+  }, [moduleId, sessionId]);
+
+  /**
+   * Route a secondary click through explicit-position priority and the intent owner.
+   * @param origin - serializable pointer and map coordinates.
+   * @returns whether the click was accepted as core input.
+   */
+  const handleContextClick = useCallback((
+    origin: MapInteractionOrigin,
+  ): boolean => {
+    const current = snapshotRef.current;
+    const resolution = resolveMapSecondaryInteraction({
+      completion: "click",
+      commandInput: current.commandInput,
+      inputRequest: current.inputRequest,
+      moduleId,
+      sessionId,
+      snapshotRevision: current.revision,
+      origin,
+    });
+    if (!resolution) return false;
+    if (resolution.kind === "position") {
+      sendPosition(resolution.x, resolution.y, resolution.modifier);
+      return true;
+    }
+    if (!actionController.request(resolution.intent)) return false;
+    actionController.observe({
+      moduleId,
+      sessionId,
+      snapshotRevision: current.revision,
+      inventoryRevision: current.permanentInventory?.revision ?? null,
+      mapRevision: current.mapRevision,
+      input: { kind: "command" },
+    });
+    return true;
+  }, [actionController, moduleId, sessionId]);
+
   return (
     <main
       className={`nh-shell nh-font-${settings.terminalFontSize}`}
@@ -211,8 +329,10 @@ export function GameScreen({
           map={snapshot.map}
           mapRenderer={settings.mapRenderer}
           messages={snapshot.messages}
+          onContextClick={handleContextClick}
           onInventoryCollapsedChange={setInventoryCollapsed}
           onMapRendererFallback={onMapRendererFallback}
+          onPrimaryClick={handlePrimaryClick}
           permanentInventory={snapshot.permanentInventory}
           permanentInventoryCollapsed={settings.permanentInventoryCollapsed}
           permanentInventoryEnabled={gameProfile.nethack.permInvent}
@@ -248,6 +368,32 @@ export function GameScreen({
       )}
     </main>
   );
+}
+
+/**
+ * Convert the current game snapshot into the controller's narrow input view.
+ * @param snapshot - authoritative bridge snapshot.
+ * @returns the current input boundary without WASM pointer details.
+ */
+function actionInputFromSnapshot(
+  snapshot: GameSnapshot,
+): ActionControllerInput | null {
+  if (snapshot.commandInput) return { kind: "command" };
+  if (snapshot.modal?.kind === "menu") {
+    const window = getWindow(snapshot.modal.windowId);
+    return {
+      kind: "menu",
+      items: window?.menuItems ?? [],
+      windowId: snapshot.modal.windowId,
+      how: snapshot.modal.how,
+    };
+  }
+  if (snapshot.modal?.kind === "extcmd") return { kind: "extcmd" };
+  if (snapshot.modal !== null) return { kind: "display" };
+  const request = snapshot.inputRequest;
+  if (request === null) return null;
+  if (request.kind === "message") return { kind: "display" };
+  return request;
 }
 
 /**
