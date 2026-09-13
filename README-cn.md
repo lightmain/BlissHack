@@ -18,24 +18,31 @@ BlissHack 对 NetHack C 代码进行了少量有针对性的修改，主要用�
 
 ## 项目状态
 
-**prealpha-4 代码重构已完成。**
+**alpha-1.1 实现已完成，正在等待人工验收。**
 
-prealpha-4 是一个范围较小的纯代码重构版本，不增加玩家功能。前端大文件现已
-按职责拆分，公开 façade 保持稳定，并降低了后续开发和 Agent 修改所需的无关
-上下文。
+`alpha-1.1` 分支包含 alpha-1 的官方经典 16×16 tiles 和 Canvas 2D 地图，并
+完善了地图 camera、右键拖动、Follow player、profile 迁移和 WASM 工具链。
+该分支尚未合入部署分支，在线站点仍是 prealpha-4。
 
 当前里程碑已经实现：
 
-- 可游玩的 80x21 字符地图，包括 NetHack 颜色、光标、宠物和背景 glyph。
+- 默认使用官方 tiles 的 80×21 Canvas 地图，并长期保留 ASCII renderer。
+- 地图隐藏原生 scrollbar 但保留滚动能力；右键拖动平移，右键短按保留原有
+  格子操作。
+- Follow 开启时允许手动浏览；右键查看和同坐标回合不会抢回视角，有效 Follow
+  target 的坐标变化后重新居中。
+- WASM 提供权威 `tileIndex`；Canvas 绘制背景、前景、宠物/物品堆标记和光标。
+- atlas 或 Canvas 失败时自动回退 ASCII，不修改玩家保存的显示偏好。
+- Settings 可即时切换 Tiles/ASCII；旧 profile v1 迁移后保持 ASCII。
 - 消息历史、文本窗口、菜单、提示、扩展命令和位置输入。
 - 先输入角色名字，再进入原版职业、种族、性别和阵营选择流程。
 - 多行状态栏，以及位于角色名字和称号背景上的彩色生命值条。
 - 准确的 ASCII、Ctrl、Alt/Meta、方向键和数字小键盘输入。
 - 通过 Emscripten IDBFS 在浏览器本地保存和恢复游戏。
-- 单元测试、WASM 集成测试和 Chromium 浏览器集成测试。
+- 单元、WASM、Chromium、Firefox、WebKit、性能和长流程测试。
 - GitHub Pages 自动部署。
 
-这仍然是 pre-alpha 版本。在稳定版本之前，存档兼容性、界面细节和窗口端口覆盖
+这仍然是早期 alpha 版本。在稳定版本之前，存档兼容性、界面细节和窗口端口覆盖
 范围都可能发生变化。
 
 ## 在线游玩
@@ -68,7 +75,8 @@ BlissHack 使用 NetHack 的标准键盘命令：
 Node.js 主版本。
 
 仓库中的 `frontend/public/nethack.js`、`nethack.wasm` 和
-`nethack-runtime.json` 是前端使用的 Emscripten 运行时三件套。
+`nethack-runtime.json` 是前端使用的 Emscripten 运行时三件套。官方 tiles
+生成产物位于 `frontend/public/tiles/`。
 
 ```sh
 cd frontend
@@ -85,8 +93,10 @@ npm run preview
 ```
 
 重新编译 WebAssembly 内核需要 Emscripten。请按照
-[WASM 构建流程](doc/BlissHack/build-process.md)操作，并始终一起提交两个
-运行时文件和校验记录。
+[WASM 构建流程](doc/BlissHack/build-process.md)操作，并始终一起提交运行时
+三件套。`npm run check:toolchain` 可以在不清理或编译的情况下检查固定工具链。
+Tiles 资源使用 `npm run generate:tiles` 显式生成，并由 `npm run verify:tiles`
+校验。
 
 ## 测试
 
@@ -101,9 +111,9 @@ npm run test:long
 ```
 
 集成测试会运行真实 WASM 回调链和生产浏览器构建，覆盖启动、键盘输入、状态栏、
-存档和恢复流程。跨浏览器基础组覆盖 Firefox 和 WebKit 的发布关键路径，性能
-测试记录永久背包在不同条目数量下的更新和滚动表现。长流程测试用于发布前重复
-验证游戏会话、继续保存和存档传输。
+Tiles/ASCII、存档和恢复流程。跨浏览器基础组覆盖 Firefox 和 WebKit 的发布
+关键路径，性能测试记录 Canvas 全图绘制与永久背包表现。长流程测试用于发布前
+重复验证游戏会话、继续保存和存档传输。
 
 ## 仓库文档
 
@@ -112,6 +122,11 @@ npm run test:long
 - [prealpha-3 计划](doc/BlissHack/plans/prealpha-3.md)
 - [prealpha-4 代码重构计划](doc/BlissHack/plans/prealpha-4.md)
 - [alpha-1 Tileset 引入计划](doc/BlissHack/plans/alpha-1.md)
+- [alpha-1.1 地图交互与基建计划](doc/BlissHack/plans/alpha-1.1.md)
+- [alpha-1 渲染架构](doc/BlissHack/plans/in-alpha-1/rendering-architecture.md)
+- [alpha-1 profile v2](doc/BlissHack/plans/in-alpha-1/profile-v2.md)
+- [alpha-1 发布验收](doc/BlissHack/plans/in-alpha-1/release-acceptance.md)
+- [alpha-1.1 发布验收](doc/BlissHack/plans/in-alpha-1.1/release-acceptance.md)
 - [prealpha-3 发布验收](doc/BlissHack/plans/in-prealpha-3/release-acceptance.md)
 - [上游修改清单](doc/BlissHack/upstream-modifications.md)
 - [存档存储与读取方案评审](doc/BlissHack/plans/in-prealpha-2/save-format-review.md)

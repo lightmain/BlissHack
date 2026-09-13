@@ -3,12 +3,15 @@ import { defineConfig, devices } from "@playwright/test";
 const deploymentBasePath = "/BlissHack/";
 const previewOrigin = "http://127.0.0.1:4176";
 const basicFlowNames = [
+  "renders default Tiles pixels and switches renderers without restarting",
   "plays through startup and routes terminal UI input",
   "enumerates a persisted save after returning home and refreshing",
   "exports, previews, imports, and restores a complete profile",
   "exports, clears, and restores a complete BlissHack backup",
   "exports, deletes, imports, and continues identical raw save bytes",
   "blocks a second game and retries after the owning page closes",
+  "keeps a manual Follow anchor after a right-click position look",
+  "right-drag pans during position input without submitting it",
 ].join("|");
 
 export default defineConfig({

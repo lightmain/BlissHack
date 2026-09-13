@@ -4,7 +4,7 @@ import type {
   BackupImportPreview,
   BackupImportSummary,
 } from "../../backup/backup-operations";
-import type { BlissHackProfileV1 } from "../../settings/profile";
+import type { BlissHackProfile } from "../../settings/profile";
 import { diffProfiles } from "../../settings/profile-diff";
 import type { FullBackupImportResult } from "../../session/session-manager";
 import { SettingsModal } from "./SettingsModal";
@@ -25,7 +25,7 @@ interface BackupPreviewDialogProps {
   overwrites: ReadonlySet<string>;
   pending: boolean;
   preview: BackupImportPreview;
-  profile: BlissHackProfileV1;
+  profile: BlissHackProfile;
   returnFocusRef: RefObject<HTMLElement | null>;
 }
 
@@ -130,7 +130,7 @@ interface BackupImportResultsDialogProps {
   completed: CompletedImport;
   onApplyProfile(): void;
   onClose(): void;
-  profile: BlissHackProfileV1;
+  profile: BlissHackProfile;
   returnFocusRef: RefObject<HTMLElement | null>;
 }
 

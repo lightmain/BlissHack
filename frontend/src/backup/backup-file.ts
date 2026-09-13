@@ -1,6 +1,6 @@
 import {
   validateProfile,
-  type BlissHackProfileV1,
+  type BlissHackProfile,
 } from "../settings/profile";
 
 /** Current full-backup container schema. */
@@ -25,7 +25,7 @@ export interface BlissHackBackupV1 {
   productVersion: string;
   buildId: string;
   exportedAt: string;
-  profile: BlissHackProfileV1;
+  profile: BlissHackProfile;
   saves: BackupSaveV1[];
 }
 
@@ -38,7 +38,7 @@ export interface ParsedBackupV1 {
   productVersion: string;
   buildId: string;
   exportedAt: string;
-  profile: BlissHackProfileV1;
+  profile: BlissHackProfile;
   saves: BackupSaveBytes[];
 }
 
@@ -70,7 +70,7 @@ export class BackupFormatError extends Error {
  * @returns UTF-8 JSON text with stable save ordering.
  */
 export async function serializeBackup(
-  profile: BlissHackProfileV1,
+  profile: BlissHackProfile,
   saves: BackupSaveBytes[],
   productVersion: string,
   buildId: string,
@@ -179,7 +179,7 @@ export async function parseBackupImport(
   assertMetadataToken(document.buildId, 128, "buildId");
   assertIsoTimestamp(document.exportedAt);
 
-  let profile: BlissHackProfileV1;
+  let profile: BlissHackProfile;
   try {
     profile = validateProfile(document.profile);
   } catch {

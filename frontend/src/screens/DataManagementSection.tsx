@@ -16,7 +16,7 @@ import {
   type PersistenceAdapter,
   type PersistenceStatus,
 } from "../storage/persistence";
-import type { BlissHackProfileV1 } from "../settings/profile";
+import type { BlissHackProfile } from "../settings/profile";
 import type {
   FullBackupExport,
   FullBackupImportResult,
@@ -34,7 +34,7 @@ import {
 interface DataManagementSectionProps {
   dirty: boolean;
   getDiagnosticCount(): number;
-  onApplyProfile(profile: BlissHackProfileV1): Promise<BlissHackProfileV1>;
+  onApplyProfile(profile: BlissHackProfile): Promise<BlissHackProfile>;
   onClearLocalData(): Promise<void>;
   onExportFullBackup(): Promise<FullBackupExport>;
   onImportFullBackup(
@@ -44,7 +44,7 @@ interface DataManagementSectionProps {
   onPersistenceResult?(result: string): void;
   onPreviewFullBackup(bytes: Uint8Array): Promise<BackupImportPreview>;
   persistenceAdapter?: PersistenceAdapter;
-  profile: BlissHackProfileV1;
+  profile: BlissHackProfile;
   profilePresent: boolean;
   saveCount: number;
   storageAvailable: boolean;

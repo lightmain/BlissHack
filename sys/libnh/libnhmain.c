@@ -5,6 +5,9 @@
 
 /* main.c - Unix NetHack */
 
+/* Modified for BlissHack by lightmain, 2026-09-12:
+ * expose glyph_info ABI metadata to the WebAssembly client. */
+
 #include "hack.h"
 #include "dlb.h"
 
@@ -1100,6 +1103,7 @@ void js_constants_init() {
     SET_CONSTANT("GLYPH", GLYPH_INVISIBLE);
     SET_CONSTANT("GLYPH", GLYPH_UNEXPLORED);
     SET_CONSTANT("GLYPH", GLYPH_NOTHING);
+    set_const("GLYPH", "GLYPH_INFO_SIZE", (int) sizeof(glyph_info));
 
     // colors
     SET_CONSTANT("COLORS", CLR_BLACK);
@@ -1232,6 +1236,7 @@ void js_constants_init() {
     SET_CONSTANT("MG", MG_MALE);
     SET_CONSTANT("MG", MG_FEMALE);
 
+    SET_POINTER(nul_glyphinfo);
     SET_POINTER(extcmdlist);
     SET_POINTER(conditions);
     SET_POINTER(condtests);

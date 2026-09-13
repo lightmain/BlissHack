@@ -3,6 +3,7 @@ import {
   createDefaultProfile,
   createProfileExport,
   MESSAGE_HISTORY_LINES,
+  migrateProfileDocument,
   NUMBER_PAD_MODES,
   parseProfileImport,
   parseStoredProfile,
@@ -15,6 +16,25 @@ import {
 } from "./profile";
 
 const encoder = new TextEncoder();
+
+function setMapRenderer(
+  profile: ReturnType<typeof createDefaultProfile>,
+  mapRenderer: "tiles" | "ascii",
+): void {
+  (profile.interface as unknown as Record<string, unknown>).mapRenderer =
+    mapRenderer;
+}
+
+function createLegacyProfile(): Record<string, unknown> {
+  const profile = createDefaultProfile() as unknown as {
+    schemaVersion: number;
+    interface: Record<string, unknown>;
+    nethack: Record<string, unknown>;
+  };
+  profile.schemaVersion = 1;
+  delete profile.interface.mapRenderer;
+  return profile as unknown as Record<string, unknown>;
+}
 
 function expectProfileError(
   action: () => unknown,
@@ -30,14 +50,70 @@ function expectProfileError(
   throw new Error(`Expected ProfileFormatError with code ${code}`);
 }
 
+describe("profile document migration", () => {
+  it("strictly migrates schema v1 to current v2 with ASCII display", () => {
+    const legacy = createLegacyProfile();
+    const expected = createDefaultProfile();
+    expected.interface.mapRenderer = "ascii";
+
+    expect(migrateProfileDocument(legacy)).toEqual(expected);
+
+    (legacy.interface as Record<string, unknown>).mapRenderer = "tiles";
+    expectProfileError(
+      () => migrateProfileDocument(legacy),
+      "invalid-profile",
+    );
+  });
+
+  it("strictly validates schema v2 and returns a detached value", () => {
+    const current = createDefaultProfile();
+    const migrated = migrateProfileDocument(current);
+
+    expect(migrated).toEqual(current);
+    expect(migrated).not.toBe(current);
+    expect(migrated.interface).not.toBe(current.interface);
+    expect(migrated.nethack).not.toBe(current.nethack);
+    expect(migrated.nethack.pickupTypes)
+      .not.toBe(current.nethack.pickupTypes);
+
+    (current.interface as unknown as Record<string, unknown>).legacy = true;
+    expectProfileError(
+      () => migrateProfileDocument(current),
+      "invalid-profile",
+    );
+  });
+
+  it("rejects unknown versions before reading migration fields", () => {
+    let migrationFieldReads = 0;
+    const unknownVersion = {
+      schemaVersion: 3,
+      get interface(): unknown {
+        migrationFieldReads += 1;
+        return {};
+      },
+      get nethack(): unknown {
+        migrationFieldReads += 1;
+        return {};
+      },
+    };
+
+    expectProfileError(
+      () => migrateProfileDocument(unknownVersion),
+      "unsupported-schema",
+    );
+    expect(migrationFieldReads).toBe(0);
+  });
+});
+
 describe("profile defaults and validation", () => {
   it("returns the reviewed defaults as independent objects", () => {
     const first = createDefaultProfile();
     const second = createDefaultProfile();
 
     expect(first).toEqual({
-      schemaVersion: 1,
+      schemaVersion: 2,
       interface: {
+        mapRenderer: "tiles",
         terminalFontSize: "medium",
         messageHistoryLines: 5,
         followPlayer: true,
@@ -60,6 +136,18 @@ describe("profile defaults and validation", () => {
     first.interface.terminalFontSize = "large";
     expect(second.interface.terminalFontSize).toBe("medium");
   });
+
+  it.each(["tiles", "ascii"] as const)(
+    "accepts map renderer %s in a strict v2 profile",
+    (mapRenderer) => {
+      const profile = createDefaultProfile();
+      setMapRenderer(profile, mapRenderer);
+
+      expect(validateProfile(profile).interface).toMatchObject({
+        mapRenderer,
+      });
+    },
+  );
 
   it.each(TERMINAL_FONT_SIZES)(
     "accepts terminal font size %s",
@@ -141,6 +229,9 @@ describe("profile defaults and validation", () => {
     ["missing field", (profile: Record<string, unknown>) => {
       delete (profile.interface as Record<string, unknown>).followPlayer;
     }],
+    ["missing map renderer", (profile: Record<string, unknown>) => {
+      delete (profile.interface as Record<string, unknown>).mapRenderer;
+    }],
     ["unknown field", (profile: Record<string, unknown>) => {
       (profile.nethack as Record<string, unknown>).unknown = true;
     }],
@@ -149,6 +240,9 @@ describe("profile defaults and validation", () => {
     }],
     ["invalid font enum", (profile: Record<string, unknown>) => {
       (profile.interface as Record<string, unknown>).terminalFontSize = "huge";
+    }],
+    ["invalid map renderer", (profile: Record<string, unknown>) => {
+      (profile.interface as Record<string, unknown>).mapRenderer = "unicode";
     }],
     ["invalid number_pad mode", (profile: Record<string, unknown>) => {
       (profile.nethack as Record<string, unknown>).numberPad = 5;
@@ -197,12 +291,12 @@ describe("profile defaults and validation", () => {
     expectProfileError(() => parseStoredProfile("{bad"), "invalid-json");
     expectProfileError(() => parseStoredProfile(JSON.stringify({
       ...createDefaultProfile(),
-      schemaVersion: 2,
+      schemaVersion: 3,
     })), "unsupported-schema");
   });
 
   it("strictly rejects the pre-permanent-inventory schema 1 shape", () => {
-    const oldProfile = createDefaultProfile() as unknown as {
+    const oldProfile = createLegacyProfile() as unknown as {
       interface: Record<string, unknown>;
       nethack: Record<string, unknown>;
     };
@@ -235,12 +329,36 @@ describe("profile import and export", () => {
 
     expect(json.endsWith("\n")).toBe(true);
     expect(json).not.toContain("\r");
+    expect(JSON.parse(json)).toMatchObject({
+      schemaVersion: 2,
+      interface: {
+        mapRenderer: "tiles",
+      },
+    });
     expect(parseProfileImport(encoder.encode(json))).toEqual({
-      schemaVersion: 1,
+      schemaVersion: 2,
       productVersion: "prealpha-3",
       exportedAt: "2026-09-06T12:34:56.789Z",
       interface: profile.interface,
       nethack: profile.nethack,
+    });
+  });
+
+  it("imports a strict v1 export as an in-memory v2 ASCII profile", () => {
+    const document = {
+      ...createLegacyProfile(),
+      productVersion: "prealpha-3",
+      exportedAt: "2026-09-06T12:34:56.789Z",
+    };
+
+    expect(parseProfileImport(
+      encoder.encode(JSON.stringify(document)),
+    )).toMatchObject({
+      schemaVersion: 2,
+      productVersion: "prealpha-3",
+      interface: {
+        mapRenderer: "ascii",
+      },
     });
   });
 
@@ -268,9 +386,12 @@ describe("profile import and export", () => {
       "prealpha-3",
       new Date("2026-09-06T12:34:56.789Z"),
     ) as unknown as {
+      schemaVersion: number;
       interface: Record<string, unknown>;
       nethack: Record<string, unknown>;
     };
+    document.schemaVersion = 1;
+    delete document.interface.mapRenderer;
     delete document.interface.permanentInventoryPosition;
     delete document.interface.permanentInventoryCollapsed;
     delete document.nethack.permInvent;

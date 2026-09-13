@@ -9,11 +9,14 @@
 
 1. 完整阅读仓库根目录的 `AGENTS.md` 和 `AGENTS-cn.md`。
 2. 阅读 `README-cn.md`，确认当前产品定位、运行方式、测试入口和许可证说明。
-3. 当前已部署版本为 prealpha-4，下一计划版本为 alpha-1。维护当前架构时阅读
-   `doc/BlissHack/plans/prealpha-4.md`；进行 tileset、Canvas 地图或
-   `TILES_IN_GLYPHMAP` 工作时完整阅读
-   `doc/BlissHack/plans/alpha-1.md`。涉及现有功能契约时再读取对应的
-   prealpha-2 或 prealpha-3 设计文档，不需要无目的地加载全文。
+3. 当前已部署版本为 prealpha-4；`alpha-1.1` 分支的 Tileset、地图交互和定向
+   基建实现已完成，正在等待人工验收，尚未合入部署分支。维护当前架构时阅读
+   `doc/BlissHack/plans/prealpha-4.md`；进行 tileset、Canvas 地图、
+   `TILES_IN_GLYPHMAP` 或 profile v2 工作时完整阅读
+   `doc/BlissHack/plans/alpha-1.md`、`doc/BlissHack/plans/alpha-1.1.md` 及
+   `plans/in-alpha-1/` 下的对应文档。
+   涉及现有功能契约时再读取对应的 prealpha-2 或 prealpha-3 设计文档，不需要
+   无目的地加载全文。
 4. 检查仓库现场：
 
    ```bash
@@ -33,6 +36,13 @@
   Emscripten Asyncify 和 `frontend/src/nethack-bridge.ts` façade 与 React
   通信；module、ABI 解码和输入状态实现在 `frontend/src/bridge/`。
 - `frontend/src/app/app-state.ts` 是顶层应用生命周期的唯一状态机。
+- `frontend/src/map/` 同时保留 ASCII renderer 和 Canvas tile renderer；
+  `MapCell` 与核心提供的 `tileIndex` 是两条渲染路径的共同输入。
+- `frontend/src/map/MapViewport.tsx` 是地图 scroll container、camera 和
+  pointer 生命周期的唯一 owner；右键短按保留原有地图位置输入，达到
+  5 CSS px 后切换为 viewport drag。
+- 当前个人配置是严格 profile schema v2，持久 key 为
+  `blisshack.profile.v2`；仅在没有 v2 时读取 v1，并迁移为 ASCII 显示。
 - `frontend/src/session/session-manager.ts` 是稳定 façade；
   `session-lifecycle.ts` 管理唯一活动 WASM session、module、callback 和清理，
   `home-operations.ts` 管理 Home 数据操作，两者共享一个显式 context。
@@ -92,6 +102,9 @@
 - `sys/unix/hints/include/cross-pre2.500`
 - `frontend/scripts/verify-runtime-assets.mjs`
 - `doc/BlissHack/upstream-modifications.md`
+
+先运行 `cd frontend && npm run check:toolchain`，确认固定 Node、Emscripten、
+同源 wrappers、hints 和目标路径；该命令只预检，不清理或编译。
 
 重新构建后必须验证并一起更新运行时三件套。
 

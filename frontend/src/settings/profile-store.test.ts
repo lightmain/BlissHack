@@ -7,11 +7,14 @@ import {
   type ProfileStorage,
 } from "./profile-store";
 
-function memoryStorage(initial?: string): ProfileStorage & {
+const LEGACY_PROFILE_STORAGE_KEY = "blisshack.profile.v1";
+
+function memoryStorage(
+  initial: Readonly<Record<string, string>> = {},
+): ProfileStorage & {
   values: Map<string, string>;
 } {
-  const values = new Map<string, string>();
-  if (initial !== undefined) values.set(PROFILE_STORAGE_KEY, initial);
+  const values = new Map(Object.entries(initial));
   return {
     values,
     getItem: vi.fn((key: string) => values.get(key) ?? null),
@@ -25,6 +28,10 @@ function memoryStorage(initial?: string): ProfileStorage & {
 }
 
 describe("profile store loading", () => {
+  it("uses the v2 profile key", () => {
+    expect(PROFILE_STORAGE_KEY).toBe("blisshack.profile.v2");
+  });
+
   it("returns fresh defaults without writing when the key is missing", () => {
     const storage = memoryStorage();
     const store = createProfileStore(storage);
@@ -41,7 +48,9 @@ describe("profile store loading", () => {
   it("loads and detaches a valid persisted profile", () => {
     const persisted = createDefaultProfile();
     persisted.interface.terminalFontSize = "large";
-    const storage = memoryStorage(JSON.stringify(persisted));
+    const storage = memoryStorage({
+      [PROFILE_STORAGE_KEY]: JSON.stringify(persisted),
+    });
     const store = createProfileStore(storage);
 
     const first = store.load();
@@ -52,12 +61,70 @@ describe("profile store loading", () => {
     expect(second.profile.interface.terminalFontSize).toBe("large");
   });
 
-  it("falls back without overwriting malformed or unsupported data", () => {
-    const malformed = memoryStorage("{bad");
-    const unsupported = memoryStorage(JSON.stringify({
-      ...createDefaultProfile(),
+  it("prefers the v2 key when both profile versions are present", () => {
+    const current = createDefaultProfile() as unknown as {
+      schemaVersion: number;
+      interface: Record<string, unknown>;
+    };
+    current.schemaVersion = 2;
+    current.interface.mapRenderer = "tiles";
+    current.interface.terminalFontSize = "large";
+    const legacy = createDefaultProfile() as unknown as {
+      schemaVersion: number;
+      interface: Record<string, unknown>;
+    };
+    legacy.schemaVersion = 1;
+    delete legacy.interface.mapRenderer;
+    legacy.interface.terminalFontSize = "small";
+    const storage = memoryStorage({
+      "blisshack.profile.v2": JSON.stringify(current),
+      [LEGACY_PROFILE_STORAGE_KEY]: JSON.stringify(legacy),
+    });
+
+    const result = createProfileStore(storage).load();
+
+    expect(result.status).toBe("loaded");
+    expect(result.profile).toMatchObject({
       schemaVersion: 2,
-    }));
+      interface: {
+        mapRenderer: "tiles",
+        terminalFontSize: "large",
+      },
+    });
+  });
+
+  it("loads and migrates the v1 fallback as a v2 ASCII profile", () => {
+    const legacy = createDefaultProfile() as unknown as {
+      schemaVersion: number;
+      interface: Record<string, unknown>;
+    };
+    legacy.schemaVersion = 1;
+    delete legacy.interface.mapRenderer;
+    const storage = memoryStorage({
+      [LEGACY_PROFILE_STORAGE_KEY]: JSON.stringify(legacy),
+    });
+
+    expect(createProfileStore(storage).load()).toMatchObject({
+      status: "loaded",
+      profile: {
+        schemaVersion: 2,
+        interface: {
+          mapRenderer: "ascii",
+        },
+      },
+    });
+  });
+
+  it("falls back without overwriting malformed or unsupported data", () => {
+    const malformed = memoryStorage({
+      [PROFILE_STORAGE_KEY]: "{bad",
+    });
+    const unsupported = memoryStorage({
+      [PROFILE_STORAGE_KEY]: JSON.stringify({
+        ...createDefaultProfile(),
+        schemaVersion: 3,
+      }),
+    });
 
     expect(createProfileStore(malformed).load().status).toBe("invalid");
     expect(createProfileStore(unsupported).load().status)
@@ -81,13 +148,17 @@ describe("profile store loading", () => {
 });
 
 describe("profile store replacement", () => {
-  it("clears only the profile key and returns fresh defaults", () => {
-    const storage = memoryStorage(JSON.stringify(createDefaultProfile()));
+  it("clears both profile keys and returns fresh defaults", () => {
+    const storage = memoryStorage({
+      "blisshack.profile.v2": JSON.stringify(createDefaultProfile()),
+      [LEGACY_PROFILE_STORAGE_KEY]: JSON.stringify(createDefaultProfile()),
+    });
     storage.values.set("unrelated", "keep");
     const store = createProfileStore(storage);
 
     expect(store.clear()).toEqual(createDefaultProfile());
-    expect(storage.values.has(PROFILE_STORAGE_KEY)).toBe(false);
+    expect(storage.values.has("blisshack.profile.v2")).toBe(false);
+    expect(storage.values.has(LEGACY_PROFILE_STORAGE_KEY)).toBe(false);
     expect(storage.values.get("unrelated")).toBe("keep");
   });
 

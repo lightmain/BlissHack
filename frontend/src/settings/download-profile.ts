@@ -1,8 +1,8 @@
-import { serializeProfileExport, type BlissHackProfileV1 } from "./profile";
+import { serializeProfileExport, type BlissHackProfile } from "./profile";
 
 /** Download one validated profile as a portable .bhprofile document. */
 export function downloadProfile(
-  profile: BlissHackProfileV1,
+  profile: BlissHackProfile,
   productVersion: string,
 ): void {
   const blob = new Blob([serializeProfileExport(profile, productVersion)], {

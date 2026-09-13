@@ -12,7 +12,7 @@ import {
   type BackupImportSummary,
 } from "../backup/backup-operations";
 import { BUILD_ID, PRODUCT_VERSION } from "../version";
-import type { BlissHackProfileV1 } from "../settings/profile";
+import type { BlissHackProfile } from "../settings/profile";
 import type { LocalDataStore } from "../storage/local-data";
 import type {
   RawSaveImportRequest,
@@ -354,7 +354,7 @@ export function createHomeOperations(
   /** Build one complete backup from a fresh formal-save enumeration. */
   function exportFullBackup(
     moduleId: string,
-    profile: BlissHackProfileV1,
+    profile: BlissHackProfile,
   ): Promise<FullBackupExport> {
     return runProtectedHomeOperation("full-backup-export", moduleId, async () => {
       const owner = currentHomeOwner(moduleId, "backup export");

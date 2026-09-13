@@ -10,7 +10,7 @@ import {
   type SaveValidation,
   type StorageService,
 } from "../storage/storage-service";
-import type { BlissHackProfileV1 } from "../settings/profile";
+import type { BlissHackProfile } from "../settings/profile";
 
 export type BackupImportClassification =
   | "importable"
@@ -86,7 +86,7 @@ export class BackupPreviewStaleError extends Error {
  */
 export async function exportFullBackup(
   storage: StorageService,
-  profile: BlissHackProfileV1,
+  profile: BlissHackProfile,
   productVersion: string,
   buildId: string,
 ): Promise<string> {

@@ -10,6 +10,22 @@ describe("profile differences", () => {
     )).toEqual([]);
   });
 
+  it("reports the Map display renderer with user-facing labels", () => {
+    const current = createDefaultProfile();
+    const incoming = createDefaultProfile();
+    (current.interface as unknown as Record<string, unknown>).mapRenderer =
+      "tiles";
+    (incoming.interface as unknown as Record<string, unknown>).mapRenderer =
+      "ascii";
+
+    expect(diffProfiles(current, incoming)).toContainEqual({
+      path: "interface.mapRenderer",
+      label: "Map display",
+      current: "Tiles",
+      incoming: "ASCII",
+    });
+  });
+
   it("reports changed fields in stable Settings order", () => {
     const current = createDefaultProfile();
     const incoming = createDefaultProfile();

@@ -85,13 +85,16 @@ manifest 至少记录：
 
 - 格子宽度和高度。
 - atlas 行列数及 tile 总数。
-- monsters、objects、other、decals 的连续区间。
+- monsters、objects、other、monsters 的 grayscale statues 副本、decals
+  这五个连续区间。
 - blank、unexplored、pet mark 和 pile mark 等特殊 tile 索引。
-- 四个输入文件的 SHA-256。
+- 四个 tile 输入文件及权威 `tilemap.c` 的 SHA-256。
 - 生成器版本或格式版本。
 
 atlas 和 manifest 作为一组受校验的生成产物提交。普通 `npm run build` 只验证
 它们与源文件匹配，不应静默重写工作树。开发者通过显式命令重新生成。
+pet/pile decal 的透明区域使用官方 renderer 同样的规则：以 decal delimiter
+左上角颜色作为透明色，不对普通 tiles 做颜色猜测或黑色抠除。
 
 ### 3.3 核心映射
 
@@ -212,7 +215,8 @@ interface.mapRenderer = "tiles" | "ascii"
 2. 生成器严格解析 palette、tile 注释和 16×16 像素块，拒绝未知字符、
    行列尺寸错误和 tile 数量不一致。
 3. 使用成熟 PNG 编码库写入 RGBA PNG，不手写 PNG 压缩格式。
-4. 按官方 tilemap 使用的文件顺序合并资源。
+4. 按官方 tilemap 顺序合并 monsters、objects、other、grayscale statues 和
+   decals 五段资源。
 5. manifest 记录资源分段、特殊 tile 和输入 checksum。
 6. 将验证接入 `prebuild` 和 CI；验证不得修改文件。
 
@@ -430,3 +434,21 @@ alpha-1 只有同时满足以下条件才算完成：
 9. Canvas 像素检查证明地图真实绘制且代表性 tile 不混淆。
 10. 所有 C、构建、profile、架构和许可证文档已更新。
 11. 线上部署成功，并完成一次 Tiles 与 ASCII 的生产环境 smoke test。
+
+## 14. 实施状态
+
+截至 2026-09-12，`alpha-1` 分支的五个开发阶段和自动验收已经完成，尚未合入
+部署分支：
+
+| 阶段 | 主要提交 |
+| --- | --- |
+| 资源生成 | `97f96b573 build: generate verified classic tile atlas` |
+| WASM 映射 | `3a5de7acc build: enable authoritative WASM tile mapping` |
+| Canvas 原型 | `0f17f0882 feat: add Canvas tile renderer prototype` |
+| 产品接入 | `1cb81df81 feat: add map renderer profile setting` |
+| 完成验收 | `a56555129 test: cover alpha-1 tile renderer workflows` 及后续修正 |
+
+最终自动门禁结果和人工检查步骤记录在
+`doc/BlissHack/plans/in-alpha-1/release-acceptance.md`。当前完成定义中的
+第 1 至 10 项已经由实现、自动测试和文档覆盖；第 11 项必须等待用户人工验收、
+合入部署分支并完成线上 smoke test。
