@@ -1,10 +1,13 @@
 /* NetHack 5.0 winshim.c    $NHDT-Date: 1781973099 2026/06/20 16:31:39 $  $NHDT-Branch: NetHack-5.0 $:$NHDT-Revision: 1.34 $ */
 /* Copyright (c) Adam Powers, 2020                                */
 /* NetHack may be freely redistributed.  See license for details. */
-/* Modified for BlissHack by lightmain, 2026-09-02, 2026-09-06, and 2026-09-07:
+/* Modified for BlissHack by lightmain, 2026-09-02, 2026-09-06, 2026-09-07,
+ * and 2026-09-14:
  * preserve character selection quit semantics, expose narrow browser save
  * helpers, and synchronize a fixed set of in-game options at command
- * boundaries, including the permanent inventory capability and settings. */
+ * boundaries, including the permanent inventory capability and settings;
+ * forward status field metadata while preserving generic bookkeeping, and
+ * provide authoritative resource percentages to the graphical status HUD. */
 
 /* not an actual windowing port, but a fake win port for libnethack */
 
@@ -501,15 +504,133 @@ VDECLCB(shim_preference_update, (const char *pref), "vp", P2V pref)
 DECLCB(char *,shim_getmsghistory, (boolean init), "sb", A2P init)
 VDECLCB(shim_putmsghistory, (const char *msg, boolean restoring_msghist), "vsb", P2V msg, A2P restoring_msghist)
 VDECLCB(shim_status_init, (void), "v")
-VDECLCB(shim_status_enablefield,
-    (int fieldidx, const char *nm, const char *fmt, boolean enable),
-    "vippb",
-    A2P fieldidx, P2V nm, P2V fmt, A2P enable)
-/* XXX: the second argument to shim_status_update is sometimes an integer and sometimes a pointer */
-VDECLCB(shim_status_update,
-    (int fldidx, genericptr_t ptr, int chg, int percent, int color, unsigned long *colormasks),
-    "vipiiip",
-    A2P fldidx, P2V ptr, A2P chg, A2P percent, A2P color, P2V colormasks)
+static boolean shim_xp_status_enabled = FALSE;
+static boolean shim_xp_status_available = FALSE;
+static boolean shim_xp_status_sent = FALSE;
+static char shim_xp_status_value[MAXVALWIDTH];
+static int shim_xp_status_color = NO_COLOR;
+
+void shim_status_enablefield(int fieldidx, const char *nm, const char *fmt,
+                             boolean enable);
+
+/* Preserve genl status state and expose the same metadata through the shim. */
+void
+shim_status_enablefield(
+    int fieldidx,
+    const char *nm,
+    const char *fmt,
+    boolean enable)
+{
+    genl_status_enablefield(fieldidx, nm, fmt, enable);
+    if (fieldidx == BL_XP) {
+        if (!enable || !shim_xp_status_enabled)
+            shim_xp_status_available = FALSE;
+        shim_xp_status_enabled = enable;
+        shim_xp_status_sent = FALSE;
+    }
+#ifdef __EMSCRIPTEN__
+    {
+        void *args[] = { &fieldidx, (void *) nm, (void *) fmt, &enable };
+
+        if (shim_callback_name)
+            local_callback(shim_callback_name, "shim_status_enablefield",
+                           NULL, "vippb", args);
+    }
+#else
+    if (shim_graphics_callback)
+        shim_graphics_callback("shim_status_enablefield", NULL, "vippb",
+                               fieldidx, nm, fmt, enable);
+#endif
+}
+/* Return authoritative progress, or -1 when maximum-level XP has no range. */
+static int
+shim_status_percent(int fldidx, int percent)
+{
+    long current, maximum, start;
+
+    switch (fldidx) {
+    case BL_HP:
+        current = Upolyd ? u.mh : u.uhp;
+        maximum = Upolyd ? u.mhmax : u.uhpmax;
+        break;
+    case BL_ENE:
+        current = u.uen;
+        maximum = u.uenmax;
+        break;
+    case BL_XP:
+        if (u.ulevel >= MAXULEV)
+            return -1;
+        start = newuexp(u.ulevel - 1);
+        current = u.uexp - start;
+        maximum = newuexp(u.ulevel) - start;
+        if (current == maximum - 1L)
+            return 100;
+        break;
+    default:
+        return percent;
+    }
+    if (maximum <= 0L)
+        return 0;
+    percent = (int) ((100L * current) / maximum);
+    if (percent == 0 && current > 0L)
+        percent = 1;
+    return percent;
+}
+
+/* Invoke the external status callback with the established shim ABI. */
+static void
+shim_forward_status_update(
+    int fldidx,
+    genericptr_t ptr,
+    int chg,
+    int percent,
+    int color,
+    unsigned long *colormasks)
+{
+#ifdef __EMSCRIPTEN__
+    void *args[] = { &fldidx, ptr, &chg, &percent, &color, colormasks };
+
+    if (shim_callback_name)
+        local_callback(shim_callback_name, "shim_status_update",
+                       NULL, "vipiiip", args);
+#else
+    if (shim_graphics_callback)
+        shim_graphics_callback("shim_status_update", NULL, "vipiiip",
+                               fldidx, ptr, chg, percent, color, colormasks);
+#endif
+}
+
+void shim_status_update(int fldidx, genericptr_t ptr, int chg, int percent,
+                        int color, unsigned long *colormasks);
+
+/* Forward status values after filling resource percentages omitted by botl. */
+void
+shim_status_update(
+    int fldidx,
+    genericptr_t ptr,
+    int chg,
+    int percent,
+    int color,
+    unsigned long *colormasks)
+{
+    if (fldidx == BL_XP && ptr && shim_xp_status_enabled) {
+        Snprintf(shim_xp_status_value, sizeof shim_xp_status_value, "%s",
+                 (const char *) ptr);
+        shim_xp_status_color = color;
+        shim_xp_status_available = shim_xp_status_sent = TRUE;
+    } else if (fldidx == BL_RESET || fldidx == BL_FLUSH) {
+        if (shim_xp_status_enabled && shim_xp_status_available
+            && !shim_xp_status_sent) {
+            shim_forward_status_update(
+                BL_XP, (genericptr_t) shim_xp_status_value, 0,
+                shim_status_percent(BL_XP, 0), shim_xp_status_color,
+                (unsigned long *) 0);
+        }
+        shim_xp_status_sent = FALSE;
+    }
+    percent = shim_status_percent(fldidx, percent);
+    shim_forward_status_update(fldidx, ptr, chg, percent, color, colormasks);
+}
 #ifdef __EMSCRIPTEN__
 /* XXX: calling repopulate_perminvent() from shim_update_inventory() causes reentrancy that breaks emscripten Asyncify */
 /* this should be fine since according to windows.doc, the only purpose of shim_update_inventory() is to call repopulate_perminvent() */
@@ -592,7 +713,7 @@ struct window_procs shim_procs = {
     shim_preference_update,
     shim_getmsghistory, shim_putmsghistory,
     shim_status_init,
-    genl_status_finish, genl_status_enablefield,
+    genl_status_finish, shim_status_enablefield,
 #ifdef STATUS_HILITES
     shim_status_update,
 #else

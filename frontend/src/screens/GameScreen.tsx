@@ -152,6 +152,13 @@ export function GameScreen({
       ) {
         return;
       }
+      if (
+        event.key === "Tab"
+        && event.target instanceof Element
+        && event.target.closest("[data-browser-tab-navigation]")
+      ) {
+        return;
+      }
       if (snapshot.modal?.kind === "menu" || snapshot.modal?.kind === "extcmd") {
         return;
       }
@@ -331,6 +338,7 @@ export function GameScreen({
           permanentInventoryEnabled={gameProfile.nethack.permInvent}
           permanentInventoryPosition={settings.permanentInventoryPosition}
           status={snapshot.status}
+          statusMetadata={snapshot.statusMetadata}
         />
       )}
 

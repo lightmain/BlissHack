@@ -59,6 +59,7 @@ import {
   addDecodedMenuItem,
   asNumber,
   asString,
+  enableDecodedStatusField,
   printGlyph,
   readStringPointer,
   safeCallbackResult,
@@ -308,6 +309,7 @@ async function dispatchShimCallback(
       resetStatus();
       return undefined;
     case "shim_status_enablefield":
+      enableDecodedStatusField(module, args);
       return undefined;
     case "shim_status_update":
       updateDecodedStatus(module, args);

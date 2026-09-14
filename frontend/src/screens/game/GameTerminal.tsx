@@ -1,5 +1,6 @@
 import {
   memo,
+  useMemo,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
   type SyntheticEvent,
@@ -19,6 +20,7 @@ import {
   submitLine,
 } from "../../nethack-bridge";
 import type { InterfaceSettings } from "../../settings/profile";
+import { buildStatusMetrics } from "../../status-metrics";
 import { textAttributeClass } from "../../text-styling";
 import { PermanentInventoryPanel } from "../PermanentInventoryPanel";
 import { GameHudLayout } from "./GameHudLayout";
@@ -47,6 +49,7 @@ interface GameTerminalProps {
   permanentInventoryEnabled: boolean;
   permanentInventoryPosition: InterfaceSettings["permanentInventoryPosition"];
   status: GameSnapshot["status"];
+  statusMetadata: GameSnapshot["statusMetadata"];
 }
 
 /** Render the active terminal while keeping browser overlays outside its inert tree. */
@@ -73,7 +76,12 @@ export function GameTerminal({
   permanentInventoryEnabled,
   permanentInventoryPosition,
   status,
+  statusMetadata,
 }: GameTerminalProps) {
+  const statusMetrics = useMemo(
+    () => buildStatusMetrics(status, statusMetadata),
+    [status, statusMetadata],
+  );
   const inventory = permanentInventoryEnabled && permanentInventory
     ? (
       <PermanentInventoryPanel
@@ -120,7 +128,7 @@ export function GameTerminal({
             data-hud-region="status"
             data-overflow-owner="status"
           >
-            <StatusArea status={status} />
+            <StatusArea metrics={statusMetrics} />
             <InputArea request={inputRequest} />
           </div>
         )}

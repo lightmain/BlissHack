@@ -17,8 +17,9 @@
 > 4. `BL_CONDITION` 的 value 参数是指向 `unsigned long` 的指针，必须解引用。
 > 5. 当前构建启用 `ENHANCED_SYMBOLS`，`glyph_info` 大小为 36 字节；
 >    字段 `ttychar`、颜色等既有偏移不变。
-> 6. `shim_procs` 实际注册的是 `genl_status_enablefield`，不是已声明的
->    `shim_status_enablefield`；TypeScript 收不到字段名、格式和启用状态。
+> 6. 上游 `shim_procs` 注册的是 `genl_status_enablefield`。BlissHack 改为
+>    注册组合 wrapper：先保留通用 bookkeeping，再把字段名、格式和启用状态
+>    转发给 TypeScript。
 > 7. 数量型 `yn_function` 要求窗口端口写全局 `yn_number` 后返回 `'#'`，
 >    但当前 `js_globals_init()` 没有向 JavaScript 暴露该变量。因此当前
 >    TypeScript 接口不能可靠实现数量回答，不能用猜测地址绕过。
@@ -910,10 +911,10 @@ VDECLCB(shim_status_enablefield,
 
 **注意**：虽然 `nm` 和 `fmt` 实际上是字符串，但 fmt 标记中用的是 `p`（pointer），所以 JS 侧收到的是 WASM 内存地址，需要用 `Module.UTF8ToString(ptr)` 手动转换。
 
-**当前 WASM 限制**：`shim_procs` 的对应槽位是
-`genl_status_enablefield`，所以此回调不会到达 TypeScript。前端目前只能使用
-`src/botl.c:initblstats` 中的固定格式，并按实际收到的 `status_update` 维护
-已出现字段；它无法可靠获知一个字段何时被动态禁用。
+BlissHack 的 `shim_procs` 在此槽位注册 `shim_status_enablefield` wrapper。
+wrapper 先调用 `genl_status_enablefield()` 保留通用状态元数据，再使用原有
+`"vippb"` ABI 转发 TypeScript callback。前端会立即复制两个字符串指针并以
+不可变 snapshot 保存动态启停状态。
 
 #### shim_status_update
 
@@ -1236,8 +1237,8 @@ Asyncify。
 | `shim_getmsghistory` | `sb` | DECLCB | 消息 |
 | `shim_putmsghistory` | `vsb` | VDECLCB | 消息 |
 | `shim_status_init` | `v` | VDECLCB | 状态栏 |
-| `shim_status_enablefield` | `vippb` | VDECLCB | 状态栏 |
-| `shim_status_update` | `vipiiip` | VDECLCB | 状态栏 |
+| `shim_status_enablefield` | `vippb` | BlissHack 组合 wrapper | 状态栏 |
+| `shim_status_update` | `vipiiip` | BlissHack 组合 wrapper | 状态栏 |
 | `shim_update_inventory` | *(WASM 特殊)* / `vi` (原生) | WASM 直接实现 / 原生 VDECLCB | 背包 |
 | `shim_player_selection` | *(WASM 特殊)* / `v` (原生) | WASM 直接实现 / 原生 VDECLCB | 角色选择 |
 | `shim_ctrl_nhwindow` | *(WASM 特殊)* / `viip` (原生) | WASM 直接实现 / 原生 DECLCB | 窗口管理 |
@@ -1245,8 +1246,8 @@ Asyncify。
 上表列的是 `winshim.c` 中的声明和特殊实现，不等于当前 WASM 构建中
 全部都能由核心调用：
 
-- `shim_status_enablefield` 已声明，但 `shim_procs` 注册的是
-  `genl_status_enablefield`。
+- `shim_status_enablefield` 由 BlissHack 注册到 `shim_procs`，并同时调用
+  `genl_status_enablefield` 与外部 callback。
 - `shim_update_positionbar` 仅在定义 `POSITIONBAR` 时注册；当前构建
   未启用。
 - `shim_change_color` 和 `shim_get_color_string` 仅在定义
@@ -1261,8 +1262,8 @@ Asyncify。
 - `genl_outrip` — 用通用窗口调用构建死亡墓碑；没有 `shim_outrip` 事件，但
   其中的创建窗口、输出、显示和销毁仍会触发相应 shim 回调。
 - `genl_status_finish` — 只清理通用状态缓存，不触发 shim 回调。
-- `genl_status_enablefield` — 保存通用状态元数据；`shim_status_enablefield`
-  虽然有定义，但未注册到当前窗口表，正常核心调用路径不会到达。
+- `genl_status_enablefield` — 保存通用状态元数据；BlissHack 的
+  `shim_status_enablefield` wrapper 会先调用它，再转发外部 callback。
 - `genl_status_update` — 仅在 `STATUS_HILITES` 未启用时使用；它最终把拼接好的
   两行状态文本交给 `putstr()`。当前构建启用了 `STATUS_HILITES`，实际注册
   `shim_status_update`。
@@ -1926,6 +1927,37 @@ C 侧先拒绝未知位、错误版本、非法 `number_pad`、冲突或空的 p
 - TypeScript 返回的合法 pending payload 经 `parseoptions()` 生效。
 - result 回调返回成功和无 pending 位的权威快照。
 - 原生 `@` 命令切换 `autopickup` 后，下一命令边界快照发生对应变化。
+
+### 6.4 状态字段 metadata 转发
+
+上游 shim 声明了 `shim_status_enablefield`，但窗口函数表直接注册
+`genl_status_enablefield`，导致外部 callback 无法获知字段名称、格式和动态
+启停状态。BlissHack 将该槽位替换为组合 wrapper：
+
+```c
+genl_status_enablefield(fieldidx, nm, fmt, enable);
+local_callback(..., "shim_status_enablefield", ..., "vippb", ...);
+```
+
+调用顺序保留通用窗口端口维护的 `status_fieldfmt`、`status_fieldnm` 和
+`status_activefields`，同时让浏览器立即复制仍然有效的字符串指针。修改不增加
+ABI、不读取额外 WASM 地址，也不改变 `shim_status_update` 的刷新语义。
+
+真实 WASM 集成测试同时检查 wrapper 源码调用关系、`shim_procs` 注册槽位以及
+启动时收到的 enabled `BL_HP` metadata。
+
+另外，核心只在存在百分比高亮规则时计算 Energy 和 XP 的 `percent` 参数，HP
+也只在窗口端口声明传统 hitpoint bar 能力时强制计算。BlissHack 的
+`shim_status_update` wrapper 直接使用核心当前 HP、Energy 和经验值补齐这三类
+资源的权威百分比，再按原有 `"vipiiip"` ABI 转发。这样前端无需从显示文本反推
+数值；达到 `MAXULEV` 后没有下一等级区间，wrapper 以 `-1` 明确表示百分比
+不可用，前端只保留等级数值而不渲染进度条。其余显示边界仍由 TypeScript
+clamp。由于等级不变时核心通常不会重发 `BL_XP`，wrapper 会缓存最近的 XP
+显示值，并在后续 `BL_RESET` 或 `BL_FLUSH` 前补发一次带当前经验百分比的
+`BL_XP`；字段禁用后缓存立即失效。`showexp=false` 时，普通经验变化原本不一定
+触发任何状态周期；BlissHack 在 `src/exper.c` 中仅为 shim 窗口端口设置
+`disp.botlx`，确保核心产生 `BL_RESET` advisory，并让 wrapper 在同一周期补发
+XP 进度。
 
 ---
 

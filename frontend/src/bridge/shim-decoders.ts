@@ -6,6 +6,7 @@ import {
   addMenuItem,
   flushStatus,
   setMapCell,
+  setStatusFieldMetadata,
   setStatusValue,
   type ExtendedCommand,
   type GlyphInfo,
@@ -84,6 +85,22 @@ export function addDecodedMenuItem(
     color: asNumber(args[6]),
     text: asString(args[7]),
     itemFlags: asNumber(args[8]) >>> 0,
+  });
+}
+
+/**
+ * Decode and publish one status_enablefield metadata callback.
+ * @param module - module which owns the callback pointers.
+ * @param args - raw field, name pointer, format pointer, and enable flag.
+ */
+export function enableDecodedStatusField(
+  module: EmscriptenModule,
+  args: unknown[],
+): void {
+  setStatusFieldMetadata(asNumber(args[0]), {
+    name: readStringPointer(module, asNumber(args[1])),
+    format: readStringPointer(module, asNumber(args[2])),
+    enabled: Boolean(args[3]),
   });
 }
 
