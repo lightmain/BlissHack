@@ -119,6 +119,35 @@ describe("StatusArea", () => {
     ]);
   });
 
+  it("leaves Tab navigation on every focusable tooltip to the browser", () => {
+    const html = renderToStaticMarkup(createElement(StatusArea, { metrics }));
+    const focusableEntries = html.match(
+      /<span[^>]*tabindex="0"[^>]*>/g,
+    ) ?? [];
+
+    expect(focusableEntries).toHaveLength(4);
+    expect(focusableEntries.every((tag) =>
+      tag.includes("data-browser-tab-navigation")
+    )).toBe(true);
+  });
+
+  it("keeps maximum-level XP text without rendering a progressbar", () => {
+    const html = renderToStaticMarkup(createElement(StatusArea, {
+      metrics: [{
+        ...metrics[2],
+        text: "Xp:30",
+        percent: undefined,
+        tooltip: {
+          ...metrics[2].tooltip,
+          currentValue: "Xp:30",
+        },
+      }],
+    }));
+
+    expect(html).toContain("Xp:30");
+    expect(html).not.toContain('role="progressbar"');
+  });
+
   it("renders HP, Energy, and XP in semantic order regardless of input order", () => {
     const html = renderToStaticMarkup(createElement(StatusArea, {
       metrics: [metrics[1], metrics[2], metrics[0]],
