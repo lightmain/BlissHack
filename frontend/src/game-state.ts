@@ -100,6 +100,13 @@ export interface StatusValue {
   conditionColors: number[];
 }
 
+/** Runtime metadata supplied when NetHack enables or disables a status field. */
+export interface StatusFieldMetadata {
+  name: string;
+  format: string;
+  enabled: boolean;
+}
+
 /** One parsed command from NetHack's extcmdlist. */
 export interface ExtendedCommand {
   sourceIndex: number;
@@ -139,6 +146,7 @@ export interface GameSnapshot {
   map: MapCell[][];
   cursor: { x: number; y: number; visible: boolean };
   status: Record<number, StatusValue>;
+  statusMetadata: Record<number, StatusFieldMetadata>;
   modal: GameModal | null;
   inputRequest: InputRequest | null;
   commandInput: boolean;
@@ -193,6 +201,7 @@ function createInitialSnapshot(): GameSnapshot {
     map: createBlankMap(),
     cursor: { x: 1, y: 0, visible: false },
     status: {},
+    statusMetadata: {},
     modal: null,
     inputRequest: null,
     commandInput: false,
@@ -609,6 +618,43 @@ export function setStatusValue(field: number, value: StatusValue): void {
 }
 
 /**
+ * Publish the current metadata for one NetHack status field.
+ * @param field - BL_* field index.
+ * @param metadata - decoded field name, format, and enablement.
+ */
+export function setStatusFieldMetadata(
+  field: number,
+  metadata: StatusFieldMetadata,
+): void {
+  if (field < 0 || field >= 27) return;
+  const current = snapshot.statusMetadata[field];
+  const shouldClearValue = !metadata.enabled
+    && (field in snapshot.status || field in pendingStatus);
+  if (
+    current?.name === metadata.name
+    && current.format === metadata.format
+    && current.enabled === metadata.enabled
+    && !shouldClearValue
+  ) {
+    return;
+  }
+  const nextStatus = { ...snapshot.status };
+  if (!metadata.enabled) {
+    delete nextStatus[field];
+    const nextPendingStatus = { ...pendingStatus };
+    delete nextPendingStatus[field];
+    pendingStatus = nextPendingStatus;
+  }
+  publish({
+    ...(shouldClearValue ? { status: nextStatus } : {}),
+    statusMetadata: {
+      ...snapshot.statusMetadata,
+      [field]: { ...metadata },
+    },
+  });
+}
+
+/**
  * Publish all status updates collected in the current bot cycle.
  */
 export function flushStatus(): void {
@@ -617,11 +663,11 @@ export function flushStatus(): void {
 }
 
 /**
- * Clear committed and pending status values.
+ * Clear committed status values and field metadata for a fresh status display.
  */
 export function resetStatus(): void {
   pendingStatus = {};
-  publish({ status: {} });
+  publish({ status: {}, statusMetadata: {} });
 }
 
 /**

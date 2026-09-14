@@ -15,15 +15,17 @@ git fetch upstream NetHack-5.0
 git diff --name-status upstream/NetHack-5.0...HEAD -- \
   include src sys/libnh sys/unix/hints win/shim
 git diff upstream/NetHack-5.0...HEAD -- \
+  src/exper.c \
   sys/libnh/libnhmain.c \
   sys/unix/hints/include/cross-pre2.500 \
   sys/unix/hints/include/cross-post.500 \
   win/shim/winshim.c
 ```
 
-截至 alpha-1 阶段二，相关 diff 只应包含：
+截至 alpha-2.0 阶段三，相关 diff 只应包含：
 
 ```text
+M src/exper.c
 M sys/libnh/libnhmain.c
 M sys/unix/hints/include/cross-pre2.500
 M sys/unix/hints/include/cross-post.500
@@ -149,6 +151,36 @@ M win/shim/winshim.c
   `doc/BlissHack/plans/alpha-1.md` 第 6 节。
 - **回归测试**：
   - `frontend/scripts/build-wasm-toolchain.test.mjs`
+  - `frontend/test/integration-tests/wasm-test.mjs`
+
+### 2.8 图形化状态数据补全
+
+- **文件**：
+  - `src/exper.c`
+  - `win/shim/winshim.c`
+- **引入提交**：alpha-2.0 阶段三提交
+  `feat: add graphical character status HUD`
+- **目的**：
+  - 把 `shim_procs` 的 status enablefield 槽位从
+    `genl_status_enablefield` 改为 `shim_status_enablefield`。
+  - wrapper 先调用 `genl_status_enablefield()`，保留通用状态缓存，再通过
+    既有 `"vippb"` shim ABI 转发字段名、格式和动态启停状态。
+  - 让 React 状态语义层无需解析显示文本即可隐藏已停用字段。
+  - `shim_status_update` wrapper 使用核心当前 HP、Energy 和经验值补齐资源
+    百分比，避免前端从格式化文本反推；其余字段保持核心传入值。
+  - 满级没有下一等级进度区间，wrapper 以 `-1` 标记 XP 百分比不可用，使
+    React 保留等级数值但不显示误导性的 0% 进度条。
+  - 在等级不变但经验变化时，wrapper 会在 `BL_RESET` 或 `BL_FLUSH` 前补发
+    缓存的 `BL_XP` 显示值和当前百分比；动态禁用 XP 字段时同步丢弃缓存。
+  - `showexp=false` 时，`src/exper.c` 仅为 shim 窗口端口请求一次
+    `BL_RESET` 状态周期，保证经验变化仍能送达图形 XP 进度条。
+- **ABI 范围**：不新增 callback 或导出函数；只恢复已经声明但上游未注册的
+  callback 路径。
+- **行为依据**：
+  `doc/BlissHack/shim-interface-reference.md` 第 2.10 节和第 6.4 节。
+- **回归测试**：
+  - `frontend/src/game-state.test.ts`
+  - `frontend/src/nethack-bridge.test.ts`
   - `frontend/test/integration-tests/wasm-test.mjs`
 
 ## 3. 上游合并检查
