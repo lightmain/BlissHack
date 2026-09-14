@@ -120,8 +120,11 @@ test("exports, clears, and restores a complete BlissHack backup", async ({
   await page.getByRole("button", { name: "Back to Home" }).click();
 
   await continueSavedGame(page, name);
-  await expect(page.getByLabel(new RegExp(`${name} the .+, \\d+% HP`)))
-    .toBeVisible({ timeout: 15_000 });
+  await expect(
+    page.getByRole("region", { name: "Character status" })
+      .locator(".nh-status-value")
+      .filter({ hasText: new RegExp(`^${name} the .+$`) }),
+  ).toBeVisible({ timeout: 15_000 });
   expect(errors).toEqual({ console: [], page: [] });
 });
 

@@ -81,7 +81,16 @@ test("plays through startup and routes terminal UI input", async ({ page }) => {
     messageMetrics.requiredHeight - 0.5,
   );
 
-  await expect(page.getByLabel(/E2E_Ada the .+, 100% HP/)).toBeVisible();
+  const status = page.getByRole("region", { name: "Character status" });
+  await expect(
+    status.locator(".nh-status-value").filter({
+      hasText: /^E2E_Ada the .+$/,
+    }),
+  ).toBeVisible();
+  const hitPointProgressbar = page.getByRole("progressbar", {
+    name: /^Hit points:/,
+  });
+  await expect(hitPointProgressbar).toBeVisible();
   const map = page.getByRole("img", { name: "Dungeon map" });
   await expect(map).toBeVisible();
   await expect(map).toHaveClass(/nh-map-tiles/);
@@ -107,12 +116,27 @@ test("plays through startup and routes terminal UI input", async ({ page }) => {
     Math.round(mapDimensions.cssHeight * mapDimensions.devicePixelRatio),
   );
 
-  const fill = page.locator(".nh-hp-fill");
-  await expect(fill).toHaveClass(/nh-hp-full/);
-  expect(await fill.textContent()).toHaveLength(30);
-  expect(
-    await fill.evaluate((element) => getComputedStyle(element).backgroundColor),
-  ).not.toBe("rgba(0, 0, 0, 0)");
+  await expect(hitPointProgressbar).toHaveAttribute(
+    "aria-valuenow",
+    /^-?\d+(?:\.\d+)?$/,
+  );
+  const hitPointPercent = Number(
+    await hitPointProgressbar.getAttribute("aria-valuenow"),
+  );
+  expect(hitPointPercent).toBeGreaterThanOrEqual(0);
+  expect(hitPointPercent).toBeLessThanOrEqual(100);
+
+  const fill = page.locator(".nh-status-bar-hitpoints");
+  await expect(fill).toBeVisible();
+  const fillStyle = await fill.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      backgroundColor: style.backgroundColor,
+      width: Number.parseFloat(style.width),
+    };
+  });
+  expect(fillStyle.width).toBeGreaterThan(0);
+  expect(fillStyle.backgroundColor).not.toBe("rgba(0, 0, 0, 0)");
 
   const firstStatusRow = page.locator(".nh-status > div").first();
   const titleBox = await firstStatusRow.locator(":scope > span").first()
@@ -165,6 +189,8 @@ test("warns that a New Game name will continue an existing save", async ({
   await nameInput.fill(`  ${name}  `);
   await expect(page.getByText(hint, { exact: true })).toBeVisible();
   await nameInput.press("Enter");
-  await expect(page.locator(".nh-hp-bar")).toBeVisible({ timeout: 15_000 });
+  await expect(
+    page.getByRole("progressbar", { name: /^Hit points:/ }),
+  ).toBeVisible({ timeout: 15_000 });
   expect(errors).toEqual({ console: [], page: [] });
 });

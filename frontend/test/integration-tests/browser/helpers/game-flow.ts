@@ -57,7 +57,9 @@ export async function startNewGameFromHome(
   ).toBeVisible();
   await page.keyboard.press("n");
 
-  await expect(page.locator(".nh-hp-bar")).toBeVisible();
+  await expect(
+    page.getByRole("progressbar", { name: /^Hit points:/ }),
+  ).toBeVisible();
 }
 
 /**
@@ -145,6 +147,9 @@ export async function continueSavedGame(
   await page.getByRole("button", {
     name: new RegExp(`^${name}\\b`),
   }).click();
+  await expect(
+    page.getByRole("progressbar", { name: /^Hit points:/ }),
+  ).toBeVisible({ timeout: 15_000 });
 }
 
 /**

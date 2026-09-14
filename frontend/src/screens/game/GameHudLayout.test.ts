@@ -214,4 +214,31 @@ describe("GameHudLayout contract", () => {
         .toMatch(/\boverflow\s*:\s*(?:auto|hidden)\s*;/);
     }
   });
+
+  it("wraps status groups without clipping and reveals tooltips on hover or focus", () => {
+    const statusGroup = cssFor(".nh-status-group");
+    const statusConditions = cssFor(".nh-status-conditions");
+    const hoverTooltip = [
+      cssFor(".nh-status-metric:hover .nh-status-tooltip"),
+      cssFor(".nh-status-condition-entry:hover .nh-status-tooltip"),
+    ].join("\n");
+    const focusTooltip = [
+      cssFor(".nh-status-metric:focus .nh-status-tooltip"),
+      cssFor(".nh-status-metric:focus-within .nh-status-tooltip"),
+      cssFor(".nh-status-condition-entry:focus .nh-status-tooltip"),
+      cssFor(".nh-status-condition-entry:focus-within .nh-status-tooltip"),
+    ].join("\n");
+
+    expect(statusGroup).toMatch(/\bflex-wrap\s*:\s*wrap\s*;/);
+    expect(statusGroup).not.toMatch(/\boverflow\s*:\s*hidden\s*;/);
+    expect(statusConditions).toMatch(/\bflex-wrap\s*:\s*wrap\s*;/);
+    expect(statusConditions).toMatch(/\bmax-width\s*:\s*100%\s*;/);
+    expect(statusConditions).not.toMatch(/\boverflow\s*:\s*hidden\s*;/);
+    for (const visibleTooltip of [hoverTooltip, focusTooltip]) {
+      expect(visibleTooltip).toMatch(/\bwidth\s*:\s*max-content\s*;/);
+      expect(visibleTooltip).toMatch(/\bheight\s*:\s*auto\s*;/);
+      expect(visibleTooltip).toMatch(/\boverflow\s*:\s*visible\s*;/);
+      expect(visibleTooltip).toMatch(/\bclip\s*:\s*auto\s*;/);
+    }
+  });
 });

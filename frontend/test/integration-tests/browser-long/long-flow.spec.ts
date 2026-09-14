@@ -65,7 +65,9 @@ test("continues, saves, and reloads one game ten times", async ({ page }) => {
         name: new RegExp(`^${name}\\b`),
       }).click();
 
-      await expect(page.getByLabel(new RegExp(`${name} the .+, \\d+% HP`)))
+      await expect(page.getByRole("region", { name: "Character status" })
+        .locator(".nh-status-value")
+        .filter({ hasText: new RegExp(`^${name} the .+$`) }))
         .toBeVisible({ timeout: 15_000 });
       await expect(page.getByRole("textbox", { name: "Who are you?" }))
         .toHaveCount(0);
@@ -115,7 +117,9 @@ test("exports, deletes, imports, and continues five times", async ({ page }) => 
       await picker.getByRole("button", {
         name: new RegExp(`^${name}\\b`),
       }).click();
-      await expect(page.getByLabel(new RegExp(`${name} the .+, \\d+% HP`)))
+      await expect(page.getByRole("region", { name: "Character status" })
+        .locator(".nh-status-value")
+        .filter({ hasText: new RegExp(`^${name} the .+$`) }))
         .toBeVisible({ timeout: 15_000 });
       await saveAndReturnHome(page);
     });

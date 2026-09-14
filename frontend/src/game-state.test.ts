@@ -419,6 +419,51 @@ describe("game state status and runtime flags", () => {
     expect(statusMetadata()[8]?.enabled).toBe(false);
   });
 
+  it("clears committed and pending values when a field is disabled", () => {
+    expectedGameState.setStatusFieldMetadata(8, {
+      name: "score",
+      format: " S:%s",
+      enabled: true,
+    });
+    setStatusValue(8, {
+      text: "S:10",
+      change: 0,
+      percent: 0,
+      color: 7,
+      attributes: 0,
+      conditionColors: [],
+    });
+    flushStatus();
+    setStatusValue(8, {
+      text: "S:20",
+      change: 1,
+      percent: 0,
+      color: 7,
+      attributes: 0,
+      conditionColors: [],
+    });
+
+    expectedGameState.setStatusFieldMetadata(8, {
+      name: "score",
+      format: " S:%s",
+      enabled: false,
+    });
+    expect(getSnapshot().status[8]).toBeUndefined();
+
+    flushStatus();
+    expect(getSnapshot().status[8]).toBeUndefined();
+
+    expectedGameState.setStatusFieldMetadata(8, {
+      name: "score",
+      format: " S:%s",
+      enabled: true,
+    });
+    expect(getSnapshot().status[8]).toBeUndefined();
+
+    flushStatus();
+    expect(getSnapshot().status[8]).toBeUndefined();
+  });
+
   it("leaves input state and prior snapshots unchanged when status is flushed", () => {
     setInputRequest({
       kind: "yn",

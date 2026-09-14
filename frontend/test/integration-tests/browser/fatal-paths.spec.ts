@@ -104,6 +104,10 @@ test("allows a temporary new game when IndexedDB is unavailable", async ({
   await expect(page.getByRole("button", { name: "Continue" })).toBeDisabled();
   await expect(page.getByRole("button", { name: "New Game" })).toBeEnabled();
   await startNewGameFromHome(page, "E2E_Temporary");
-  await expect(page.getByLabel(/E2E_Temporary the .+, 100% HP/)).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "Character status" })
+      .locator(".nh-status-value")
+      .filter({ hasText: /^E2E_Temporary the .+$/ }),
+  ).toBeVisible();
   expect(errors).toEqual({ console: [], page: [] });
 });

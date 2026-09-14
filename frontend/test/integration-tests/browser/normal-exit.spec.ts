@@ -18,7 +18,11 @@ test("quits an active game and starts a clean second session", async ({
 
   await expect(page.locator(".nh-shell")).toHaveCount(0);
   await startNewGameFromHome(page, "E2E_AfterQuit");
-  await expect(page.getByLabel(/E2E_AfterQuit the .+, 100% HP/)).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "Character status" })
+      .locator(".nh-status-value")
+      .filter({ hasText: /^E2E_AfterQuit the .+$/ }),
+  ).toBeVisible();
   await saveAndReturnHome(page);
 
   const { diagnostic } = await exportDiagnosticLog(page);
