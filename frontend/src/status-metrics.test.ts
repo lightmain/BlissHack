@@ -118,6 +118,25 @@ describe("buildStatusMetrics", () => {
     ]);
   });
 
+  it("treats a negative BL_XP percent as unavailable at maximum level", () => {
+    const metrics = buildStatusMetrics({
+      13: statusValue({ text: " Xp:30", percent: -1 }),
+      18: statusValue({ text: " HP:1", percent: -1 }),
+    }, enabledMetadata([13, 18]));
+    const experience = metrics.find(({ field }) => field === 13);
+    const hitPoints = metrics.find(({ field }) => field === 18);
+
+    expect(experience).toMatchObject({
+      id: "experience-level",
+      text: "Xp:30",
+      tooltip: {
+        currentValue: "Xp:30",
+      },
+    });
+    expect(experience).not.toHaveProperty("percent");
+    expect(hitPoints?.percent).toBe(0);
+  });
+
   it("omits empty and dynamically disabled fields without placeholders", () => {
     const status = {
       0: statusValue({ text: "Ada the Tourist" }),

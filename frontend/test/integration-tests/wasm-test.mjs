@@ -377,9 +377,9 @@ async function run() {
   assert(
     changedExperience !== null
       && /\bu\.uexp\s*=\s*newexp\s*;/.test(changedExperience)
-      && /\bif\s*\(\s*WINDOWPORT\s*\(\s*shim\s*\)\s*\)\s*(?:\{\s*)?disp\.botlx\s*=\s*TRUE\s*;/.test(
-        changedExperience,
-      ),
+      && /!\s*flags\.showexp\b/.test(changedExperience)
+      && /\bWINDOWPORT\s*\(\s*shim\s*\)/.test(changedExperience)
+      && /\bdisp\.botlx\s*=\s*TRUE\s*;/.test(changedExperience),
     "more_experienced requests a guaranteed shim status cycle for XP changes"
       + " when showexp is false",
   );

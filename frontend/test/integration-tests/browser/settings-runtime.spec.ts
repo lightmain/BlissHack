@@ -6,6 +6,7 @@ import {
   openHome,
   saveAndReturnHome,
 } from "./helpers/game-flow";
+import { readShellRevision } from "./helpers/map-viewport-state";
 
 test("installs current settings for new and continued games", async ({ page }) => {
   const errors = captureErrors(page);
@@ -342,6 +343,51 @@ test("renders and collapses the core permanent inventory without a modal", async
     (terminal) => !terminal.contains(document.activeElement),
   )).toBe(true);
   await page.keyboard.press("Escape");
+  expect(errors).toEqual({ console: [], page: [] });
+});
+
+test("leaves status tooltip Tab navigation to the browser", async ({ page }) => {
+  const errors = captureErrors(page);
+  await openHome(page, "status-tooltip-tab");
+
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("checkbox", {
+    name: "Offer tutorial for new games",
+  }).uncheck();
+  await page.getByRole("checkbox", {
+    name: "Enable Permanent Inventory",
+    exact: true,
+  }).check();
+  await page.getByRole("button", { name: "Apply" }).click();
+
+  await startWithoutTutorial(page, "StatusTooltipTab");
+  const statusItems = page.locator(
+    ".nh-status-metric[tabindex='0'], "
+      + ".nh-status-condition-entry[tabindex='0']",
+  );
+  expect(await statusItems.count()).toBeGreaterThanOrEqual(2);
+
+  const firstStatusItem = statusItems.first();
+  const secondStatusItem = statusItems.nth(1);
+  await firstStatusItem.focus();
+  await expect(firstStatusItem).toBeFocused();
+  const revisionBeforeTab = await readShellRevision(page);
+  await page.evaluate(() => {
+    document.documentElement.dataset.lastKeyDefaultPrevented = "";
+    globalThis.addEventListener("keydown", (event) => {
+      document.documentElement.dataset.lastKeyDefaultPrevented =
+        String(event.defaultPrevented);
+    }, { once: true });
+  });
+
+  await page.keyboard.press("Tab");
+
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-last-key-default-prevented",
+    "false",
+  );
+  await expect(secondStatusItem).toBeFocused();
+  expect(await readShellRevision(page)).toBe(revisionBeforeTab);
   expect(errors).toEqual({ console: [], page: [] });
 });
 
