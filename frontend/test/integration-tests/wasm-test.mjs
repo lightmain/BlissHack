@@ -348,6 +348,10 @@ async function run() {
     winshimSource,
     /\bshim_status_enablefield\s*\([^;{}]*\)\s*/,
   );
+  const statusPercent = cBlockAfter(
+    winshimSource,
+    /\bshim_status_percent\s*\([^;{}]*\)\s*/,
+  );
   const shimProcs = cBlockAfter(
     winshimSource,
     /\bstruct\s+window_procs\s+shim_procs\s*=\s*/,
@@ -363,6 +367,13 @@ async function run() {
         shimProcs,
       ),
     "shim_procs registers the status metadata wrapper",
+  );
+  assert(
+    statusPercent !== null
+      && /\bcase\s+BL_XP\s*:\s*if\s*\(\s*u\.ulevel\s*>=\s*MAXULEV\s*\)\s*return\s+-1\s*;/.test(
+        statusPercent,
+      ),
+    "shim_status_percent returns -1 for unavailable maximum-level XP progress",
   );
   const moreExperienced = cBlockAfter(
     experSource,
