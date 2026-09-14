@@ -52,11 +52,13 @@ test("restores the saved identity and map position", async ({ page }) => {
   await page.reload();
   await continueSavedGame(page, name);
 
-  await expect(page.getByLabel(new RegExp(`${name} the .+, \\d+% HP`)))
-    .toBeVisible({ timeout: 15_000 });
+  await expect(
+    page.getByRole("region", { name: "Character status" })
+      .locator(".nh-status-value")
+      .filter({ hasText: new RegExp(`^${name} the .+$`) }),
+  ).toBeVisible({ timeout: 15_000 });
   await expect(page.getByRole("textbox", { name: "Who are you?" })).toHaveCount(0);
   await expect(page.getByText(/Shall I pick character's/)).toHaveCount(0);
-  await expect(page.getByText("Running", { exact: true })).toBeVisible();
   await expect.poll(async () => readCursorPosition(page)).toEqual(savedPosition);
   expect(errors).toEqual({ console: [], page: [] });
 });

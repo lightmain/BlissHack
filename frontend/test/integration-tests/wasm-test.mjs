@@ -5,6 +5,8 @@
  * handling works end-to-end.
  *
  * Run: npm run test:integration
+ * Source contracts only:
+ * BLISSHACK_SOURCE_CONTRACT_ONLY=1 npm run test:integration:wasm
  *
  * Requires: frontend/public/nethack.js and nethack.wasm
  * (built via `make CROSS_TO_WASM=1` and copied to frontend/public/)
@@ -28,6 +30,14 @@ const WINSHIM_SOURCE = join(
   "win",
   "shim",
   "winshim.c",
+);
+const EXPER_SOURCE = join(
+  __dirname,
+  "..",
+  "..",
+  "..",
+  "src",
+  "exper.c",
 );
 
 /* ------------------------------------------------------------------ */
@@ -89,6 +99,7 @@ const runtimeSettingsResults = [];
 const permanentInventoryUpdates = [];
 const glyphEvents = [];
 const statusFieldMetadataEvents = [];
+const statusUpdateEvents = [];
 let queuedRuntimeSettings = 0;
 let activeModule = null;
 
@@ -254,6 +265,13 @@ async function blissCallback(name, ...args) {
       });
       return undefined;
 
+    case "shim_status_update":
+      statusUpdateEvents.push({
+        field: Number(args[0]),
+        percent: Number(args[3]),
+      });
+      return undefined;
+
     case "shim_start_menu":
       if ((args[1] & 1) !== 0) {
         permanentInventoryUpdates.push({ kind: "start", windowId: args[0] });
@@ -314,15 +332,18 @@ async function run() {
   assert(existsSync(WASM_JS), "nethack.js exists");
   assert(existsSync(WASM_BIN), "nethack.wasm exists");
   assert(existsSync(WINSHIM_SOURCE), "winshim.c exists");
+  assert(existsSync(EXPER_SOURCE), "exper.c exists");
   if (
     !existsSync(WASM_JS)
     || !existsSync(WASM_BIN)
     || !existsSync(WINSHIM_SOURCE)
+    || !existsSync(EXPER_SOURCE)
   ) {
     console.error("\nMissing WASM files. Build with `make CROSS_TO_WASM=1` first.");
     process.exit(1);
   }
   const winshimSource = readFileSync(WINSHIM_SOURCE, "utf8");
+  const experSource = readFileSync(EXPER_SOURCE, "utf8");
   const statusWrapper = cBlockAfter(
     winshimSource,
     /\bshim_status_enablefield\s*\([^;{}]*\)\s*/,
@@ -343,6 +364,29 @@ async function run() {
       ),
     "shim_procs registers the status metadata wrapper",
   );
+  const moreExperienced = cBlockAfter(
+    experSource,
+    /\bmore_experienced\s*\([^;{}]*\)\s*/,
+  );
+  const changedExperience = moreExperienced === null
+    ? null
+    : cBlockAfter(
+      moreExperienced,
+      /\bif\s*\(\s*newexp\s*!=\s*oldexp\s*\)\s*/,
+    );
+  assert(
+    changedExperience !== null
+      && /\bu\.uexp\s*=\s*newexp\s*;/.test(changedExperience)
+      && /\bif\s*\(\s*WINDOWPORT\s*\(\s*shim\s*\)\s*\)\s*(?:\{\s*)?disp\.botlx\s*=\s*TRUE\s*;/.test(
+        changedExperience,
+      ),
+    "more_experienced requests a guaranteed shim status cycle for XP changes"
+      + " when showexp is false",
+  );
+  if (process.env.BLISSHACK_SOURCE_CONTRACT_ONLY === "1") {
+    console.log(`\n=== Results: ${passed} passed, ${failed} failed ===`);
+    process.exit(failed > 0 ? 1 : 0);
+  }
 
   // --- Module loading ---
   console.log("\n--- Module loading ---");
@@ -437,6 +481,7 @@ async function run() {
   runtimeSettingsResults.length = 0;
   glyphEvents.length = 0;
   statusFieldMetadataEvents.length = 0;
+  statusUpdateEvents.length = 0;
   queuedRuntimeSettings = 0;
 
   const gamePromise = module.ccall("main", "number", [], [], { async: true });
@@ -473,6 +518,29 @@ async function run() {
     "received enabled hitpoints field metadata from the core",
   );
   assert(receivedEventNames.has("shim_status_update"), "received shim_status_update");
+  const startupEnergyStatus = statusUpdateEvents.findLast(
+    (event) => event.field === 11,
+  );
+  const startupExperienceStatus = statusUpdateEvents.findLast(
+    (event) => event.field === 13,
+  );
+  const startupHitpointStatus = statusUpdateEvents.findLast(
+    (event) => event.field === 18,
+  );
+  assert(
+    startupEnergyStatus?.percent === 100,
+    "initial Energy status reports 100 percent when current equals maximum",
+  );
+  assert(
+    startupHitpointStatus?.percent === 100,
+    "initial HP status reports 100 percent when current equals maximum",
+  );
+  assert(
+    startupExperienceStatus !== undefined
+      && startupExperienceStatus.percent >= 0
+      && startupExperienceStatus.percent <= 100,
+    "initial XP status reports a percentage in the range 0..100",
+  );
   assert(
     receivedEvents.indexOf("shim_askname")
       < receivedEvents.indexOf("shim_player_selection_or_tty"),
@@ -622,10 +690,32 @@ async function run() {
 
   if (pendingInput) {
     const countBefore = eventCount;
-    await sendKeyAndWait(32); // space key
+    const experienceUpdatesBeforeCommand = statusUpdateEvents.filter(
+      (event) => event.field === 13,
+    ).length;
+    await sendKeyAndWait(46); // ordinary wait command; cannot grant XP
     assert(
       eventCount > countBefore,
       `game processed input (${eventCount - countBefore} new events)`
+    );
+    const experienceUpdatesAfterCommand = statusUpdateEvents.filter(
+      (event) => event.field === 13,
+    );
+    assert(
+      experienceUpdatesAfterCommand.length > experienceUpdatesBeforeCommand,
+      "status flush after an ordinary command re-emits BL_XP progress"
+        + ` (${experienceUpdatesBeforeCommand}`
+        + ` -> ${experienceUpdatesAfterCommand.length}; recent fields `
+        + `${statusUpdateEvents.slice(-12).map(({ field }) => field).join(",")})`,
+    );
+    const refreshedExperienceStatus = experienceUpdatesAfterCommand
+      .slice(experienceUpdatesBeforeCommand)
+      .at(-1);
+    assert(
+      refreshedExperienceStatus !== undefined
+        && refreshedExperienceStatus.percent >= 0
+        && refreshedExperienceStatus.percent <= 100,
+      "re-emitted BL_XP progress remains in the range 0..100",
     );
   }
 

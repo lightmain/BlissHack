@@ -88,16 +88,32 @@ describe("status field definitions", () => {
 });
 
 describe("buildStatusMetrics", () => {
-  it("clamps HP, Energy, and XP percentages to renderable bounds", () => {
-    const metrics = buildStatusMetrics({
+  it("only clamps core percentages without deriving them from status text", () => {
+    const clampedMetrics = buildStatusMetrics({
       11: statusValue({ text: "Pw:30", percent: 140 }),
       13: statusValue({ text: "Xp:4", percent: 55 }),
       18: statusValue({ text: "HP:1", percent: -20 }),
     }, enabledMetadata([11, 13, 18]));
 
-    expect(metrics.map(({ id, percent }) => ({ id, percent }))).toEqual([
+    expect(clampedMetrics.map(({ id, percent }) => ({ id, percent }))).toEqual([
       { id: "power", percent: 100 },
       { id: "experience-level", percent: 55 },
+      { id: "hitpoints", percent: 0 },
+    ]);
+    const zeroPercentMetrics = buildStatusMetrics({
+      11: statusValue({ text: " Pw:18", percent: 0 }),
+      12: statusValue({ text: "(40)" }),
+      13: statusValue({ text: " Xp:10", percent: 0 }),
+      18: statusValue({ text: " HP:9", percent: 0 }),
+      19: statusValue({ text: "(12)" }),
+      21: statusValue({ text: "/7560" }),
+    }, enabledMetadata([11, 12, 13, 18, 19, 21]));
+
+    expect(zeroPercentMetrics.filter(({ percent }) => percent !== undefined).map(
+      ({ id, percent }) => ({ id, percent }),
+    )).toEqual([
+      { id: "power", percent: 0 },
+      { id: "experience-level", percent: 0 },
       { id: "hitpoints", percent: 0 },
     ]);
   });
@@ -162,6 +178,24 @@ describe("buildStatusMetrics", () => {
         attributes: 0x40,
       }),
     ]);
+  });
+
+  it("uses NetHack's formal abbreviations for environment conditions", () => {
+    const inLava = 0x00002000;
+    const submerged = 0x00800000;
+    const woundedLegs = 0x10000000;
+    const metrics = buildStatusMetrics({
+      22: statusValue({
+        conditionMask: (inLava | submerged | woundedLegs) >>> 0,
+      }),
+    }, enabledMetadata([22]));
+
+    expect(metrics[0].conditions?.map(({ id, label }) => ({ id, label })))
+      .toEqual([
+        { id: "in-lava", label: "InLava" },
+        { id: "submerged", label: "Submrg" },
+        { id: "wounded-legs", label: "WLegs" },
+      ]);
   });
 
   it("normalizes negative, unchanged, and positive change values", () => {

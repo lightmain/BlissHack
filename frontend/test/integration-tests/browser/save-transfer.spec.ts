@@ -87,8 +87,11 @@ test("exports, deletes, imports, and continues identical raw save bytes", async 
 
   await page.reload();
   await continueSavedGame(page, name);
-  await expect(page.getByLabel(new RegExp(`${name} the .+, \\d+% HP`)))
-    .toBeVisible({ timeout: 15_000 });
+  await expect(
+    page.getByRole("region", { name: "Character status" })
+      .locator(".nh-status-value")
+      .filter({ hasText: new RegExp(`^${name} the .+$`) }),
+  ).toBeVisible({ timeout: 15_000 });
   expect(errors).toEqual({ console: [], page: [] });
 });
 

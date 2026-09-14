@@ -50,8 +50,11 @@ test("installs current settings for new and continued games", async ({ page }) =
   await continueSavedGame(page, name);
   await expect(inventory).toBeVisible();
   await expect(inventory).toContainText(retainedItem ?? "");
-  await expect(page.getByLabel(new RegExp(`${name} the .+, \\d+% HP`)))
-    .toBeVisible({ timeout: 15_000 });
+  await expect(
+    page.getByRole("region", { name: "Character status" })
+      .locator(".nh-status-value")
+      .filter({ hasText: new RegExp(`^${name} the .+$`) }),
+  ).toBeVisible({ timeout: 15_000 });
   await expect(page.locator(".nh-shell")).toHaveAttribute(
     "data-number-pad",
     "off",
@@ -93,6 +96,53 @@ test("renders and collapses the core permanent inventory without a modal", async
   ).toBeLessThanOrEqual(
     viewport?.width ?? 0,
   );
+
+  await page.setViewportSize({ width: 900, height: 700 });
+  const compactViewport = page.viewportSize();
+  const [
+    compactMapViewportBox,
+    compactInventoryBox,
+    compactStatusBox,
+  ] = await Promise.all([
+    page.locator(".nh-map-scroll").boundingBox(),
+    inventory.boundingBox(),
+    page.locator(".nh-status").boundingBox(),
+  ]);
+  expect(compactViewport).not.toBeNull();
+  expect(compactMapViewportBox).not.toBeNull();
+  expect(compactInventoryBox).not.toBeNull();
+  expect(compactStatusBox).not.toBeNull();
+  expect(compactInventoryBox!.x).toBeGreaterThanOrEqual(0);
+  expect(compactInventoryBox!.y).toBeGreaterThanOrEqual(0);
+  expect(
+    compactInventoryBox!.x + compactInventoryBox!.width,
+  ).toBeLessThanOrEqual(compactViewport!.width);
+  expect(
+    compactInventoryBox!.y + compactInventoryBox!.height,
+  ).toBeLessThanOrEqual(compactViewport!.height);
+  expect(
+    compactMapViewportBox!.x + compactMapViewportBox!.width,
+  ).toBeLessThanOrEqual(compactInventoryBox!.x);
+  expect(
+    compactMapViewportBox!.y + compactMapViewportBox!.height,
+  ).toBeLessThanOrEqual(compactStatusBox!.y);
+
+  const statusGroupDimensions = await page.locator(
+    ".nh-status-group",
+  ).evaluateAll((groups) => groups.map((group) => ({
+    clientHeight: group.clientHeight,
+    clientWidth: group.clientWidth,
+    scrollHeight: group.scrollHeight,
+    scrollWidth: group.scrollWidth,
+  })));
+  expect(statusGroupDimensions.length).toBeGreaterThan(0);
+  for (const dimensions of statusGroupDimensions) {
+    expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth);
+    expect(dimensions.scrollHeight).toBeLessThanOrEqual(
+      dimensions.clientHeight,
+    );
+  }
+  await page.setViewportSize({ width: 1280, height: 900 });
 
   await inventory.focus();
   await page.keyboard.press("Tab");
@@ -311,7 +361,9 @@ async function startWithoutTutorial(page: Page, name: string): Promise<void> {
   await page.keyboard.press("y");
   await expect(page.locator(".nh-text-dialog")).toBeVisible();
   await page.keyboard.press("Enter");
-  await expect(page.locator(".nh-hp-bar")).toBeVisible();
+  await expect(
+    page.getByRole("progressbar", { name: /^Hit points:/ }),
+  ).toBeVisible();
 }
 
 /**

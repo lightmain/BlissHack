@@ -118,4 +118,33 @@ describe("StatusArea", () => {
       "BlindSight is currently blocked.",
     ]);
   });
+
+  it("renders HP, Energy, and XP in semantic order regardless of input order", () => {
+    const html = renderToStaticMarkup(createElement(StatusArea, {
+      metrics: [metrics[1], metrics[2], metrics[0]],
+    }));
+    const progressbarLabels = [
+      ...html.matchAll(/<[^>]+role="progressbar"[^>]*>/g),
+    ].map((match) => match[0].match(/aria-label="([^"]+)"/)?.[1]);
+
+    expect(progressbarLabels).toEqual([
+      "Hit points: HP:42",
+      "Energy: Pw:18",
+      "Experience: Xp:4",
+    ]);
+  });
+
+  it("inherits the HUD color for NetHack NO_COLOR metrics", () => {
+    const html = renderToStaticMarkup(createElement(StatusArea, {
+      metrics: [{ ...metrics[1], color: 8 }],
+    }));
+    const metricTag = html.match(
+      /<span[^>]*aria-describedby="status-tooltip-power"[^>]*>/,
+    )?.[0];
+    const className = metricTag?.match(/class="([^"]*)"/)?.[1] ?? "";
+
+    expect(metricTag).toBeDefined();
+    expect(className).not.toMatch(/\bnh-color-/);
+    expect(html).not.toContain("nh-color-dark-gray");
+  });
 });
