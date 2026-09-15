@@ -39,6 +39,27 @@ function createInventoryIntent(): Extract<
   };
 }
 
+/** Return one drop intent bound to the visible inventory snapshot. */
+function createDropIntent(): Extract<ActionIntent, { kind: "drop-item" }> {
+  return {
+    kind: "drop-item",
+    moduleId: "module-1",
+    sessionId: "session-1",
+    snapshotRevision: 12,
+    inventoryRevision: INVENTORY_REVISION,
+    identifier: 41,
+    accelerator: ITEM_ACCELERATOR,
+    glyph: null,
+    origin: {
+      kind: "inventory",
+      clientX: 240,
+      clientY: 160,
+      inventoryRevision: INVENTORY_REVISION,
+      accelerator: ITEM_ACCELERATOR,
+    },
+  };
+}
+
 function createMapContextIntent(): Extract<
   ActionIntent,
   { kind: "map-context" }
@@ -110,18 +131,21 @@ function createHarness() {
   const submitMenuSelection = vi.fn();
   const releaseInputToUi = vi.fn();
   const onCancel = vi.fn();
+  const onComplete = vi.fn();
   const setActionIntentActive = vi.fn();
   const options = {
     startCommand,
     submitMenuSelection,
     releaseInputToUi,
     onCancel,
+    onComplete,
     setActionIntentActive,
   };
   const controller = createGameActionController(options);
   return {
     controller,
     onCancel,
+    onComplete,
     releaseInputToUi,
     setActionIntentActive,
     startCommand,
@@ -175,6 +199,193 @@ describe("GameActionController", () => {
     expect(startCommand).toHaveBeenCalledTimes(1);
     expect(startCommand).toHaveBeenCalledWith(intent);
   });
+
+  it("starts one drop command and selects the whole current accelerator row", () => {
+    const { controller, startCommand, submitMenuSelection } = createHarness();
+    const intent = createDropIntent();
+
+    controller.request(intent);
+    controller.observe(createObservation({ input: { kind: "command" } }));
+
+    expect(startCommand).toHaveBeenCalledOnce();
+    expect(startCommand).toHaveBeenCalledWith(intent);
+
+    controller.observe(createObservation({
+      input: {
+        kind: "menu",
+        items: [
+          menuItem(41, "b".charCodeAt(0), "old identifier, new accelerator"),
+          menuItem(9001, ITEM_ACCELERATOR, "current accelerator, new identifier"),
+        ],
+        windowId: 30,
+        how: PICK_ONE,
+      },
+    }));
+
+    expect(submitMenuSelection).toHaveBeenCalledOnce();
+    expect(submitMenuSelection).toHaveBeenCalledWith([
+      { itemIndex: 1, count: -1 },
+    ]);
+  });
+
+  it.each(INVALID_MENU_METADATA)(
+    "rejects a drop selector with $label without selecting",
+    ({ metadata }) => {
+      const {
+        controller,
+        onCancel,
+        releaseInputToUi,
+        submitMenuSelection,
+      } = createHarness();
+      const invalidMenu = {
+        kind: "menu" as const,
+        items: [
+          menuItem(9001, ITEM_ACCELERATOR, "current target row"),
+        ],
+        ...metadata,
+      };
+
+      controller.request(createDropIntent());
+      controller.observe(createObservation({ input: { kind: "command" } }));
+      controller.observe(createObservation({ input: invalidMenu }));
+
+      expect(submitMenuSelection).not.toHaveBeenCalled();
+      expect(onCancel).toHaveBeenCalledWith("unexpected-input");
+      expect(releaseInputToUi).toHaveBeenCalledWith(invalidMenu);
+    },
+  );
+
+  it("rejects a matching drop accelerator when its current identifier is absent", () => {
+    const {
+      controller,
+      onCancel,
+      submitMenuSelection,
+    } = createHarness();
+
+    controller.request(createDropIntent());
+    controller.observe(createObservation({ input: { kind: "command" } }));
+    controller.observe(createObservation({
+      input: {
+        kind: "menu",
+        items: [{
+          ...menuItem(9001, ITEM_ACCELERATOR, "non-selectable target row"),
+          identifier: null,
+        }],
+        windowId: 30,
+        how: PICK_ONE,
+      },
+    }));
+
+    expect(submitMenuSelection).not.toHaveBeenCalled();
+    expect(onCancel).toHaveBeenCalledWith("missing-accelerator");
+  });
+
+  it("hands a native follow-up prompt to the ordinary UI without another selection", () => {
+    const {
+      controller,
+      onCancel,
+      releaseInputToUi,
+      submitMenuSelection,
+    } = createHarness();
+    const prompt = {
+      kind: "yn" as const,
+      query: "Drop the equipped item?",
+      choices: "yn",
+      defaultCode: "n".charCodeAt(0),
+    };
+
+    controller.request(createDropIntent());
+    controller.observe(createObservation({ input: { kind: "command" } }));
+    controller.observe(createObservation({
+      input: {
+        kind: "menu",
+        items: [
+          menuItem(9001, ITEM_ACCELERATOR, "current target row"),
+        ],
+        windowId: 30,
+        how: PICK_ONE,
+      },
+    }));
+    controller.observe(createObservation({ input: prompt }));
+
+    expect(submitMenuSelection).toHaveBeenCalledOnce();
+    expect(onCancel).toHaveBeenCalledWith("unexpected-input");
+    expect(releaseInputToUi).toHaveBeenCalledWith(prompt);
+    expect(controller.getState()).toMatchObject({
+      status: "idle",
+      intent: null,
+      lastCancellationReason: "unexpected-input",
+    });
+  });
+
+  it("[defect-probing] completes a successful drop after the core publishes a new inventory revision", () => {
+    const {
+      controller,
+      onCancel,
+      onComplete,
+      releaseInputToUi,
+      startCommand,
+      submitMenuSelection,
+    } = createHarness();
+    const intent = createDropIntent();
+
+    controller.request(intent);
+    controller.observe(createObservation({ input: { kind: "command" } }));
+    controller.observe(createObservation({
+      input: {
+        kind: "menu",
+        items: [
+          menuItem(9001, ITEM_ACCELERATOR, "current target row"),
+        ],
+        windowId: 30,
+        how: PICK_ONE,
+      },
+    }));
+    controller.observe(createObservation({
+      inventoryRevision: INVENTORY_REVISION + 1,
+      snapshotRevision: 13,
+      input: { kind: "command" },
+    }));
+
+    expect(startCommand).toHaveBeenCalledOnce();
+    expect(submitMenuSelection).toHaveBeenCalledOnce();
+    expect(onCancel).not.toHaveBeenCalled();
+    expect(releaseInputToUi).not.toHaveBeenCalled();
+    expect(onComplete).toHaveBeenCalledOnce();
+    expect(onComplete).toHaveBeenCalledWith(intent);
+    expect(controller.getState()).toMatchObject({
+      status: "idle",
+      intent: null,
+      lastCancellationReason: null,
+    });
+  });
+
+  it.each([
+    {
+      label: "inventory revision",
+      observation: { inventoryRevision: INVENTORY_REVISION + 1 },
+      reason: "inventory-revision-changed",
+    },
+    {
+      label: "session",
+      observation: { sessionId: "session-2" },
+      reason: "session-reset",
+    },
+  ] as const)(
+    "cancels a pending drop before command start when the $label changes",
+    ({ observation, reason }) => {
+      const { controller, onCancel, startCommand } = createHarness();
+      controller.request(createDropIntent());
+
+      controller.observe(createObservation({
+        ...observation,
+        input: { kind: "command" },
+      }));
+
+      expect(startCommand).not.toHaveBeenCalled();
+      expect(onCancel).toHaveBeenCalledWith(reason);
+    },
+  );
 
   it("[defect-probing] completes map inspection only at the next command boundary", () => {
     const {
