@@ -198,12 +198,16 @@ async function expectRendererContent(
 }
 
 /**
- * Freeze one validated inventory DOM snapshot while pixel baselines are taken.
+ * Hide validated random inventory rows before pixel baselines are taken.
  * @param page - Playwright page after authoritative inventory stabilization.
  */
 async function freezeInventoryPresentation(page: Page): Promise<void> {
-  await page.locator(".permanent-inventory-items").evaluate((items) => {
-    items.replaceWith(items.cloneNode(true));
+  await page.addStyleTag({
+    content: `
+      .permanent-inventory-items {
+        display: none !important;
+      }
+    `,
   });
 }
 
@@ -425,11 +429,6 @@ for (const { renderer, position } of HUD_VARIANTS) {
                 page.locator(".nh-messages > *"),
                 page.locator(".permanent-inventory-header strong"),
                 page.locator(".permanent-inventory-header span"),
-                page.locator(".permanent-inventory-heading"),
-                page.locator(".permanent-inventory-items .nh-menu-glyph"),
-                page.locator(".permanent-inventory-items .nh-menu-mark"),
-                page.locator(".permanent-inventory-items .nh-menu-accelerator"),
-                page.locator(".permanent-inventory-items .nh-menu-text"),
                 page.locator(".nh-status-resource-value"),
                 page.locator(".nh-status-value"),
                 page.locator(".nh-condition"),
@@ -481,7 +480,7 @@ test("HUD visual regression: disabled below inventory reserves no collapsed trac
         : -1,
     };
   });
-  expect(layout.gridRows.slice(-2)).toEqual(["0px", "0px"]);
+  expect([layout.gridRows[2], layout.gridRows[4]]).toEqual(["0px", "0px"]);
   expect(layout.statusBottom).toBeCloseTo(VIEWPORTS[1].height, 0);
   expect(errors).toEqual({ console: [], page: [] });
 });

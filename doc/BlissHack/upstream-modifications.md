@@ -17,7 +17,6 @@ git diff --name-status upstream/NetHack-5.0...HEAD -- \
 git diff upstream/NetHack-5.0...HEAD -- \
   src/cmd.c \
   src/do.c \
-  src/exper.c \
   sys/libnh/libnhmain.c \
   sys/unix/hints/include/cross-pre2.500 \
   sys/unix/hints/include/cross-post.500 \
@@ -29,7 +28,6 @@ git diff upstream/NetHack-5.0...HEAD -- \
 ```text
 M src/cmd.c
 M src/do.c
-M src/exper.c
 M sys/libnh/libnhmain.c
 M sys/unix/hints/include/cross-pre2.500
 M sys/unix/hints/include/cross-post.500
@@ -159,9 +157,7 @@ M win/shim/winshim.c
 
 ### 2.8 图形化状态数据补全
 
-- **文件**：
-  - `src/exper.c`
-  - `win/shim/winshim.c`
+- **文件**：`win/shim/winshim.c`
 - **引入提交**：alpha-2.0 阶段三提交
   `feat: add graphical character status HUD`
 - **目的**：
@@ -174,10 +170,10 @@ M win/shim/winshim.c
     百分比，避免前端从格式化文本反推；其余字段保持核心传入值。
   - 满级没有下一等级进度区间，wrapper 以 `-1` 标记 XP 百分比不可用，使
     React 保留等级数值但不显示误导性的 0% 进度条。
+  - `showexp=false` 时同样以 `-1` 标记 XP 百分比不可用；等级文本继续显示，
+    经验点和图形化经验进度条都按核心设置隐藏。
   - 在等级不变但经验变化时，wrapper 会在 `BL_RESET` 或 `BL_FLUSH` 前补发
     缓存的 `BL_XP` 显示值和当前百分比；动态禁用 XP 字段时同步丢弃缓存。
-  - `showexp=false` 时，`src/exper.c` 仅为 shim 窗口端口请求一次
-    `BL_RESET` 状态周期，保证经验变化仍能送达图形 XP 进度条。
 - **ABI 范围**：不新增 callback 或导出函数；只恢复已经声明但上游未注册的
   callback 路径。
 - **行为依据**：
@@ -209,6 +205,9 @@ M win/shim/winshim.c
   - 保留 `therecmdmenu` 预置地图坐标对应的真实鼠标 modifier，使右键菜单只
     使用核心为 secondary click 提供的动作。
   - 在 `doclicklook()` 消费后清除预置坐标，避免后续键盘命令复用旧目标。
+  - 相邻关闭或锁定门的 `mouseaction` 排入标准方向移动，让核心已有的
+    autoopen/autounlock 路径决定开门或反馈；只有右键菜单显式选择 Kick 才
+    直接排入带方向的踢门动作。
 - **ABI 范围**：不导出新的 C 函数，不暴露对象指针；仅在 Emscripten
   `shim_get_nh_event()` 中增加 `shim_command_sync` 和
   `shim_command_result` 私有回调。原生 `libnethack.a` ABI 保持不变。

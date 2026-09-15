@@ -1950,14 +1950,11 @@ ABI、不读取额外 WASM 地址，也不改变 `shim_status_update` 的刷新�
 也只在窗口端口声明传统 hitpoint bar 能力时强制计算。BlissHack 的
 `shim_status_update` wrapper 直接使用核心当前 HP、Energy 和经验值补齐这三类
 资源的权威百分比，再按原有 `"vipiiip"` ABI 转发。这样前端无需从显示文本反推
-数值；达到 `MAXULEV` 后没有下一等级区间，wrapper 以 `-1` 明确表示百分比
-不可用，前端只保留等级数值而不渲染进度条。其余显示边界仍由 TypeScript
-clamp。由于等级不变时核心通常不会重发 `BL_XP`，wrapper 会缓存最近的 XP
-显示值，并在后续 `BL_RESET` 或 `BL_FLUSH` 前补发一次带当前经验百分比的
-`BL_XP`；字段禁用后缓存立即失效。`showexp=false` 时，普通经验变化原本不一定
-触发任何状态周期；BlissHack 在 `src/exper.c` 中仅为 shim 窗口端口设置
-`disp.botlx`，确保核心产生 `BL_RESET` advisory，并让 wrapper 在同一周期补发
-XP 进度。
+数值；`showexp=false` 或达到 `MAXULEV` 后没有可显示的经验进度，wrapper 以
+`-1` 明确表示百分比不可用，前端只保留等级数值而不渲染进度条。其余显示边界
+仍由 TypeScript clamp。由于等级不变时核心通常不会重发 `BL_XP`，wrapper 会
+缓存最近的 XP 显示值，并在后续 `BL_RESET` 或 `BL_FLUSH` 前补发一次带当前
+经验百分比的 `BL_XP`；字段禁用后缓存立即失效。
 
 ### 6.5 顶层 command intent 协议与鼠标菜单坐标
 
@@ -2009,6 +2006,11 @@ session reset 会同时清理 pending 和 active 请求。
 预置坐标分支消费后立即清零；键盘启动的方向选择分支仍保留原有
 `CLICK_1 | CLICK_2` 行为。`doclicklook()` 也会在复制预置坐标后立即清零，
 避免 command intent 的坐标被后续键盘命令复用。
+
+上游 `mouseaction` 会把相邻锁门直接转换为 `dokick`，且这条路径没有附带方向。
+BlissHack 对相邻关闭或锁定门统一排入对应的普通方向移动，让核心已有的
+autoopen/autounlock 流程处理开门、锁门反馈和可用工具；右键菜单中显式选择
+“Kick the door”仍排入带方向的原生踢门动作。
 
 地图右键仍通过标准 `nh_poskey` 鼠标路径进入 `therecmdmenu`；地图悬停检查、
 永久背包右键和拖放丢弃分别通过上述 `clicklook`、`inventory` 和 `drop`
