@@ -23,10 +23,12 @@ import {
   normalizePlayerNameInput,
   preparePlayerNamePrompt,
   queueRuntimeSettings,
+  requestCoreCommand,
   requestSaveAndExit,
   resetBridgeState,
   sendKey,
   sendPosition,
+  setActionIntentActive,
   setKnownSaveNames,
   setRestoreRequired,
   setStartupIdentity,
@@ -38,6 +40,7 @@ import {
   validateSaveMetadata,
   type EmscriptenModule,
 } from "./nethack-bridge";
+import { encodeCoreCommandRequest } from "./game-actions/core-command-protocol";
 import { createDefaultProfile } from "./settings/profile";
 import { encodeRuntimeSettings } from "./settings/runtime-settings-protocol";
 
@@ -861,6 +864,216 @@ describe("key, position, and prompt input", () => {
     expect(getSnapshot().numberPad).toBe(true);
     await shimCallback("shim_number_pad", 0);
     expect(getSnapshot().numberPad).toBe(false);
+  });
+});
+
+describe("core command synchronization", () => {
+  it("accepts requests only at top-level command input and ends it with ESC", async () => {
+    expect(requestCoreCommand({ command: "inventory" })).toBe(false);
+
+    const ordinaryInput = shimCallback("shim_nhgetch");
+    expect(requestCoreCommand({ command: "inventory" })).toBe(false);
+    sendKey("i".charCodeAt(0));
+    await expect(ordinaryInput).resolves.toBe("i".charCodeAt(0));
+
+    const directionInput = shimCallback(
+      "shim_nh_poskey",
+      0x300,
+      0x302,
+      0x304,
+      3,
+    );
+    expect(requestCoreCommand({ command: "inventory" })).toBe(false);
+    sendKey("h".charCodeAt(0));
+    await expect(directionInput).resolves.toBe("h".charCodeAt(0));
+
+    const commandInput = shimCallback(
+      "shim_nh_poskey",
+      0x300,
+      0x302,
+      0x304,
+      1,
+    );
+    expect(requestCoreCommand({ command: "inventory" })).toBe(true);
+
+    await expect(commandInput).resolves.toBe(27);
+    expect(getSnapshot().commandInput).toBe(false);
+    expect(isWaitingForInput()).toBe(false);
+  });
+
+  it("synchronizes once and rejects another request until the result arrives", async () => {
+    const request = { command: "inventory" } as const;
+    const payload = encodeCoreCommandRequest(request);
+    const firstInput = shimCallback(
+      "shim_nh_poskey",
+      0x300,
+      0x302,
+      0x304,
+      1,
+    );
+    expect(requestCoreCommand(request)).toBe(true);
+    await expect(firstInput).resolves.toBe(27);
+
+    await expect(shimCallback("shim_command_sync")).resolves.toBe(payload);
+    await expect(shimCallback("shim_command_sync")).resolves.toBe(0);
+
+    const blockedInput = shimCallback(
+      "shim_nh_poskey",
+      0x300,
+      0x302,
+      0x304,
+      1,
+    );
+    expect(requestCoreCommand({ command: "drop" })).toBe(false);
+    await expectPending(blockedInput);
+    sendKey(".".charCodeAt(0));
+    await expect(blockedInput).resolves.toBe(".".charCodeAt(0));
+
+    await expect(
+      shimCallback("shim_command_result", payload, 1),
+    ).resolves.toBeUndefined();
+
+    const nextInput = shimCallback(
+      "shim_nh_poskey",
+      0x300,
+      0x302,
+      0x304,
+      1,
+    );
+    expect(requestCoreCommand({ command: "drop" })).toBe(true);
+    await expect(nextInput).resolves.toBe(27);
+  });
+
+  it("rejects a result whose payload does not match the active request", async () => {
+    const request = { command: "inventory" } as const;
+    const input = shimCallback(
+      "shim_nh_poskey",
+      0x300,
+      0x302,
+      0x304,
+      1,
+    );
+    expect(requestCoreCommand(request)).toBe(true);
+    await expect(input).resolves.toBe(27);
+    const payload = await shimCallback("shim_command_sync") as number;
+
+    await expect(
+      shimCallback("shim_command_result", (payload ^ 1) >>> 0, 1),
+    ).resolves.toBeUndefined();
+
+    expect(getSnapshot()).toMatchObject({
+      phase: "error",
+      error: expect.stringContaining(
+        "Core command result does not match the active request",
+      ),
+    });
+  });
+
+  it("treats accepted=0 as a rejected command failure", async () => {
+    const input = shimCallback(
+      "shim_nh_poskey",
+      0x300,
+      0x302,
+      0x304,
+      1,
+    );
+    expect(requestCoreCommand({ command: "inventory" })).toBe(true);
+    await expect(input).resolves.toBe(27);
+    const payload = await shimCallback("shim_command_sync") as number;
+
+    await expect(
+      shimCallback("shim_command_result", payload, 0),
+    ).resolves.toBeUndefined();
+
+    expect(getSnapshot()).toMatchObject({
+      phase: "error",
+      error: expect.stringContaining(
+        "Core rejected a validated command request",
+      ),
+    });
+  });
+
+  it("clears pending and active command requests on reset", async () => {
+    const pendingInput = shimCallback(
+      "shim_nh_poskey",
+      0x300,
+      0x302,
+      0x304,
+      1,
+    );
+    expect(requestCoreCommand({ command: "inventory" })).toBe(true);
+    await expect(pendingInput).resolves.toBe(27);
+
+    resetBridgeState();
+    await expect(shimCallback("shim_command_sync")).resolves.toBe(0);
+
+    const activeInput = shimCallback(
+      "shim_nh_poskey",
+      0x300,
+      0x302,
+      0x304,
+      1,
+    );
+    expect(requestCoreCommand({ command: "inventory" })).toBe(true);
+    await expect(activeInput).resolves.toBe(27);
+    await expect(shimCallback("shim_command_sync")).resolves.toBe(
+      encodeCoreCommandRequest({ command: "inventory" }),
+    );
+
+    resetBridgeState();
+    const freshInput = shimCallback(
+      "shim_nh_poskey",
+      0x300,
+      0x302,
+      0x304,
+      1,
+    );
+    expect(requestCoreCommand({ command: "drop" })).toBe(true);
+    await expect(freshInput).resolves.toBe(27);
+    await expect(shimCallback("shim_command_sync")).resolves.toBe(
+      encodeCoreCommandRequest({ command: "drop" }),
+    );
+  });
+
+  it("keeps action-intent commands isolated from keyboard typeahead", async () => {
+    const initialInput = shimCallback(
+      "shim_nh_poskey",
+      0x300,
+      0x302,
+      0x304,
+      1,
+    );
+    sendKey("h".charCodeAt(0));
+    await expect(initialInput).resolves.toBe("h".charCodeAt(0));
+    sendKey("j".charCodeAt(0));
+
+    setActionIntentActive(true);
+    const intentInput = shimCallback(
+      "shim_nh_poskey",
+      0x300,
+      0x302,
+      0x304,
+      1,
+    );
+    expect(requestCoreCommand({ command: "inventory" })).toBe(true);
+    await expect(intentInput).resolves.toBe(27);
+    const payload = await shimCallback("shim_command_sync") as number;
+    await shimCallback("shim_command_result", payload, 1);
+
+    sendKey("k".charCodeAt(0));
+    setActionIntentActive(false);
+    sendKey("l".charCodeAt(0));
+
+    const nextInput = shimCallback(
+      "shim_nh_poskey",
+      0x300,
+      0x302,
+      0x304,
+      1,
+    );
+    await expectPending(nextInput);
+    sendKey("y".charCodeAt(0));
+    await expect(nextInput).resolves.toBe("y".charCodeAt(0));
   });
 });
 
