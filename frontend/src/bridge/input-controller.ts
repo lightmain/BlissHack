@@ -28,6 +28,10 @@ import {
 } from "../settings/runtime-settings-protocol";
 import type { EmscriptenModule } from "./emscripten-module";
 import { readExtendedCommands } from "./shim-decoders";
+import {
+  encodeCoreCommandRequest,
+  type CoreCommandRequest,
+} from "../game-actions/core-command-protocol";
 
 interface MenuSelection {
   itemIndex: number;
@@ -91,6 +95,8 @@ let actionIntentActive = false;
 let saveExitAutomation: "confirm" | "display" | null = null;
 let knownSaveNames: string[] = [];
 let pendingRuntimeSettings: RuntimeNetHackSettings | null = null;
+let pendingCoreCommand: number | null = null;
+let activeCoreCommand: number | null = null;
 
 /** Queue one complete dynamic settings update for the next safe boundary. */
 export function queueRuntimeSettings(settings: NetHackSettingsV1): void {
@@ -164,6 +170,31 @@ export function requestSaveAndExit(): void {
   if (pendingAction?.kind !== "key" || !pendingAction.commandInput) return;
   saveExitAutomation = "confirm";
   sendKey(SAVE_COMMAND);
+}
+
+/**
+ * Queue one allowlisted command and advance to the next safe core boundary.
+ * @param request - versioned command without a key-binding dependency.
+ * @returns whether the current top-level input accepted the request.
+ */
+export function requestCoreCommand(request: CoreCommandRequest): boolean {
+  const pending = pendingAction;
+  if (
+    pending?.kind !== "key"
+    || !pending.commandInput
+    || pendingCoreCommand !== null
+    || activeCoreCommand !== null
+  ) {
+    return false;
+  }
+  pendingCoreCommand = encodeCoreCommandRequest(request);
+  pendingAction = null;
+  queuedKeys.length = 0;
+  typeaheadEnabled = false;
+  setCommandInput(false);
+  setInputRequest(null);
+  pending.resolve(27);
+  return true;
 }
 
 /** Resolve nh_poskey with a map position and mouse button modifier. */
@@ -293,6 +324,8 @@ export function setActionIntentActive(active: boolean): void {
 export function resetInputController(): void {
   pendingAction = null;
   pendingRuntimeSettings = null;
+  pendingCoreCommand = null;
+  activeCoreCommand = null;
   queuedKeys.length = 0;
   typeaheadEnabled = false;
   actionIntentActive = false;
@@ -331,6 +364,32 @@ export function acceptRuntimeSettingsResult(
   );
   if (success !== 1) {
     throw new Error("Core rejected a validated runtime settings update");
+  }
+}
+
+/** Return at most one command queued for this safe core boundary. */
+export function synchronizeCoreCommand(): number {
+  if (activeCoreCommand !== null || pendingCoreCommand === null) return 0;
+  activeCoreCommand = pendingCoreCommand;
+  pendingCoreCommand = null;
+  return activeCoreCommand;
+}
+
+/**
+ * Confirm that the core consumed the exact command payload it received.
+ * @param payload - original versioned payload.
+ * @param accepted - whether the core validated and queued the command.
+ */
+export function acceptCoreCommandResult(
+  payload: number,
+  accepted: number,
+): void {
+  if (activeCoreCommand === null || (payload >>> 0) !== activeCoreCommand) {
+    throw new Error("Core command result does not match the active request");
+  }
+  activeCoreCommand = null;
+  if (accepted !== 1) {
+    throw new Error("Core rejected a validated command request");
   }
 }
 

@@ -15,6 +15,7 @@ git fetch upstream NetHack-5.0
 git diff --name-status upstream/NetHack-5.0...HEAD -- \
   include src sys/libnh sys/unix/hints win/shim
 git diff upstream/NetHack-5.0...HEAD -- \
+  src/cmd.c \
   src/exper.c \
   sys/libnh/libnhmain.c \
   sys/unix/hints/include/cross-pre2.500 \
@@ -22,9 +23,10 @@ git diff upstream/NetHack-5.0...HEAD -- \
   win/shim/winshim.c
 ```
 
-截至 alpha-2.0 阶段三，相关 diff 只应包含：
+截至 alpha-2.0 阶段五，相关 diff 只应包含：
 
 ```text
+M src/cmd.c
 M src/exper.c
 M sys/libnh/libnhmain.c
 M sys/unix/hints/include/cross-pre2.500
@@ -182,6 +184,33 @@ M win/shim/winshim.c
   - `frontend/src/game-state.test.ts`
   - `frontend/src/nethack-bridge.test.ts`
   - `frontend/test/integration-tests/wasm-test.mjs`
+
+### 2.9 浏览器 command intent 与右键菜单坐标
+
+- **文件**：
+  - `src/cmd.c`
+  - `win/shim/winshim.c`
+- **引入提交**：alpha-2.0 阶段五提交
+  `feat: add core-driven context action menus`
+- **目的**：
+  - 在 `shim_get_nh_event()` 的安全命令边界消费一个版本化 32-bit command
+    intent，按 `extcmdlist` 中的固定名称把 `clicklook`、`inventory` 或
+    `drop` 排入核心命令队列。
+  - 用独立 result callback 确认原始 payload 是否通过版本、未知位、坐标和
+    command allowlist 校验。
+  - 保留 `therecmdmenu` 预置地图坐标对应的真实鼠标 modifier，使右键菜单只
+    使用核心为 secondary click 提供的动作。
+  - 在 `doclicklook()` 消费后清除预置坐标，避免后续键盘命令复用旧目标。
+- **ABI 范围**：不导出新的 C 函数，不暴露对象指针；仅在 Emscripten
+  `shim_get_nh_event()` 中增加 `shim_command_sync` 和
+  `shim_command_result` 私有回调。原生 `libnethack.a` ABI 保持不变。
+- **行为依据**：
+  `doc/BlissHack/shim-interface-reference.md` 第 6.5 节。
+- **回归测试**：
+  - `frontend/src/game-actions/core-command-protocol.test.ts`
+  - `frontend/src/nethack-bridge.test.ts`
+  - `frontend/test/integration-tests/wasm-test.mjs`
+  - `frontend/test/integration-tests/browser/context-actions.spec.ts`
 
 ## 3. 上游合并检查
 

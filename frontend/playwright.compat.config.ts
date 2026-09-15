@@ -18,6 +18,9 @@ const basicFlowNames = [
   "clears inspection tooltips on leave, game key input, and pause",
   "opens an anchored core map menu and cancels it without a turn",
   "opens itemactions from permanent inventory without flashing its selector",
+  "moves real menu focus and restores the inventory trigger after Escape",
+  "closes on left click outside and restores the inventory trigger",
+  "prevents the native menu on right click outside and restores the inventory trigger",
 ].join("|");
 
 export default defineConfig({

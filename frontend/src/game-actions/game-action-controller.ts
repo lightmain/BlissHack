@@ -1,4 +1,4 @@
-import type { MenuItem } from "../game-state";
+import { PICK_ONE, type MenuItem } from "../game-state";
 import type {
   ActionIntent,
   ActionIntentCancellationReason,
@@ -132,36 +132,48 @@ export function createGameActionController(
     return true;
   }
 
+  /** Cancel automation before exposing an unexpected core prompt normally. */
+  function releaseUnexpectedInput(input: ActionControllerInput): void {
+    cancel("unexpected-input");
+    options.releaseInputToUi(input);
+  }
+
   /** Present or automate the expected menu for the active intent. */
   function handleMenu(
     input: Extract<ActionControllerInput, { kind: "menu" }>,
   ): void {
     const intent = state.intent;
     if (!intent) return;
+    if (!isPickOneMenu(input) || intent.kind === "map-inspect") {
+      releaseUnexpectedInput(input);
+      return;
+    }
+    if (intent.kind === "drop-item" && state.targetSelected) {
+      releaseUnexpectedInput(input);
+      return;
+    }
     if (
-      intent.kind === "inventory-context"
-      || intent.kind === "drop-item"
+      (intent.kind === "inventory-context" || intent.kind === "drop-item")
+      && !state.targetSelected
     ) {
-      if (!state.targetSelected) {
-        const itemIndex = findAccelerator(input.items, intent.accelerator);
-        if (itemIndex < 0) {
-          cancel("missing-accelerator");
-          return;
-        }
-        transition({ type: "waiting", targetSelected: true });
-        options.submitMenuSelection([{
-          itemIndex,
-          count: intent.kind === "drop-item" ? -1 : 1,
-        }]);
+      const itemIndex = findAccelerator(input.items, intent.accelerator);
+      if (itemIndex < 0) {
+        cancel("missing-accelerator");
         return;
       }
+      transition({ type: "waiting", targetSelected: true });
+      options.submitMenuSelection([{
+        itemIndex,
+        count: intent.kind === "drop-item" ? -1 : 1,
+      }]);
+      return;
     }
     transition({
       type: "presenting",
       presentation: {
-        how: input.how ?? 1,
+        how: input.how,
         origin: intent.origin,
-        windowId: input.windowId ?? -1,
+        windowId: input.windowId,
       },
     });
   }
@@ -174,8 +186,7 @@ export function createGameActionController(
       if (observation.input === null) return;
       if (observation.input.kind !== "command") {
         const input = observation.input;
-        cancel("unexpected-input");
-        options.releaseInputToUi(input);
+        releaseUnexpectedInput(input);
         return;
       }
       const intent = state.intent;
@@ -214,8 +225,7 @@ export function createGameActionController(
       handleMenu(input);
       return;
     }
-    cancel("unexpected-input");
-    options.releaseInputToUi(input);
+    releaseUnexpectedInput(input);
   }
 
   return {
@@ -281,4 +291,17 @@ function findAccelerator(
       item.identifier !== null
       && item.accelerator === accelerator,
   );
+}
+
+/**
+ * Validate the metadata shared by every automated stage-five menu step.
+ * @param input - menu observation copied from the current core snapshot.
+ * @returns whether the menu is a selectable, core-owned PICK_ONE window.
+ */
+function isPickOneMenu(
+  input: Extract<ActionControllerInput, { kind: "menu" }>,
+): input is typeof input & { how: typeof PICK_ONE; windowId: number } {
+  return input.how === PICK_ONE
+    && Number.isSafeInteger(input.windowId)
+    && (input.windowId ?? -1) > 0;
 }

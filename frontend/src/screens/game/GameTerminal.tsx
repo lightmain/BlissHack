@@ -23,7 +23,10 @@ import {
 import type { InterfaceSettings } from "../../settings/profile";
 import { buildStatusMetrics } from "../../status-metrics";
 import { textAttributeClass } from "../../text-styling";
-import { PermanentInventoryPanel } from "../PermanentInventoryPanel";
+import {
+  PermanentInventoryPanel,
+  type InventoryContextRequest,
+} from "../PermanentInventoryPanel";
 import { GameHudLayout } from "./GameHudLayout";
 import { StatusArea } from "./StatusArea";
 
@@ -40,6 +43,7 @@ interface GameTerminalProps {
   mapRenderer: InterfaceSettings["mapRenderer"];
   messages: TextLine[];
   onContextClick(origin: MapInteractionOrigin): boolean;
+  onContextItem?(request: InventoryContextRequest): void;
   onDragChange?(dragging: boolean): void;
   onHoverLeave?(): void;
   onHoverTarget?(origin: MapInteractionOrigin): void;
@@ -70,6 +74,7 @@ export function GameTerminal({
   mapRenderer,
   messages,
   onContextClick,
+  onContextItem,
   onDragChange,
   onHoverLeave,
   onHoverTarget,
@@ -94,6 +99,7 @@ export function GameTerminal({
       <PermanentInventoryPanel
         collapsed={permanentInventoryCollapsed}
         inventory={permanentInventory}
+        onContextItem={onContextItem}
         onInspect={onInspect}
         onInspectLeave={onInspectLeave}
         onCollapsedChange={onInventoryCollapsedChange}

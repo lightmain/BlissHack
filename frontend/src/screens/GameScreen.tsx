@@ -35,6 +35,7 @@ import type { ProfileLoadStatus } from "../settings/profile-store";
 import {
   dismissDisplay,
   queueRuntimeSettings,
+  requestCoreCommand,
   requestSaveAndExit,
   sendKey,
   sendPosition,
@@ -57,6 +58,7 @@ import { SettingsScreen } from "./SettingsScreen";
 import { GameModalRenderer } from "./game/GameModals";
 import { GameTerminal } from "./game/GameTerminal";
 import { PauseOverlay } from "./game/PauseOverlay";
+import type { InventoryContextRequest } from "./PermanentInventoryPanel";
 
 interface GameScreenProps {
   loadStatus: ProfileLoadStatus;
@@ -127,7 +129,19 @@ export function GameScreen({
         }
         if (intent.kind === "map-inspect") {
           inspectRuntime.startCapture();
-          sendPosition(intent.origin.mapX, intent.origin.mapY, 2);
+          if (!requestCoreCommand({
+            command: "clicklook",
+            x: intent.origin.mapX,
+            y: intent.origin.mapY,
+          })) {
+            throw new Error("Core command boundary rejected map inspection");
+          }
+          return;
+        }
+        if (intent.kind === "inventory-context") {
+          if (!requestCoreCommand({ command: "inventory" })) {
+            throw new Error("Core command boundary rejected inventory context");
+          }
           return;
         }
         throw new Error(`Unsupported action intent: ${intent.kind}`);
@@ -144,6 +158,11 @@ export function GameScreen({
       setActionIntentActive,
     }),
     [inspectRuntime, moduleId, sessionId],
+  );
+  const actionState = useSyncExternalStore(
+    actionController.subscribe,
+    actionController.getState,
+    actionController.getState,
   );
   const hoverController = useMemo(
     () => createHoverInspectController({
@@ -388,6 +407,52 @@ export function GameScreen({
   }, [actionController, hoverController, moduleId, sessionId]);
 
   /**
+   * Start itemactions only for the exact permanent-inventory snapshot shown.
+   * @param request - snapshot-local identifier, accelerator, and viewport anchor.
+   */
+  const handleInventoryContext = useCallback((
+    request: InventoryContextRequest,
+  ): void => {
+    hoverController.leave();
+    const current = snapshotRef.current;
+    const inventory = current.permanentInventory;
+    const target = inventory?.items.find(
+      (item) =>
+        item.identifier === request.identifier
+        && item.accelerator === request.origin.accelerator,
+    );
+    if (
+      !current.commandInput
+      || current.modal !== null
+      || !inventory
+      || inventory.revision !== request.origin.inventoryRevision
+      || !target
+    ) {
+      return;
+    }
+    if (!actionController.request({
+      kind: "inventory-context",
+      moduleId,
+      sessionId,
+      snapshotRevision: current.revision,
+      inventoryRevision: inventory.revision,
+      identifier: request.identifier,
+      accelerator: request.origin.accelerator,
+      origin: request.origin,
+    })) {
+      return;
+    }
+    actionController.observe({
+      moduleId,
+      sessionId,
+      snapshotRevision: current.revision,
+      inventoryRevision: inventory.revision,
+      mapRevision: current.mapRevision,
+      input: { kind: "command" },
+    });
+  }, [actionController, hoverController, moduleId, sessionId]);
+
+  /**
    * Debounce one map cell before requesting its core-authoritative description.
    * @param origin - current pointer and map coordinates.
    */
@@ -472,6 +537,7 @@ export function GameScreen({
           mapRenderer={settings.mapRenderer}
           messages={snapshot.messages}
           onContextClick={handleContextClick}
+          onContextItem={handleInventoryContext}
           onDragChange={handleMapDragChange}
           onHoverLeave={handleInspectLeave}
           onHoverTarget={handleMapHover}
@@ -497,8 +563,21 @@ export function GameScreen({
             id={inspectTooltip.id}
           />
         )}
+        {snapshot.modal?.kind === "menu"
+          && actionState.contextMenu?.windowId === snapshot.modal.windowId
+          && (
+            <GameModalRenderer
+              contextMenu={actionState.contextMenu}
+              modal={snapshot.modal}
+            />
+          )}
       </OverlayRoot>
-      {snapshot.modal && <GameModalRenderer modal={snapshot.modal} />}
+      {snapshot.modal
+        && !(
+          snapshot.modal.kind === "menu"
+          && actionState.intent !== null
+        )
+        && <GameModalRenderer modal={snapshot.modal} />}
       {pauseView === "pause" && (
         <PauseOverlay
           ready={

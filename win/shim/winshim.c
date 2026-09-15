@@ -2,16 +2,18 @@
 /* Copyright (c) Adam Powers, 2020                                */
 /* NetHack may be freely redistributed.  See license for details. */
 /* Modified for BlissHack by lightmain, 2026-09-02, 2026-09-06, 2026-09-07,
- * and 2026-09-14:
+ * 2026-09-14, and 2026-09-15:
  * preserve character selection quit semantics, expose narrow browser save
  * helpers, and synchronize a fixed set of in-game options at command
  * boundaries, including the permanent inventory capability and settings;
  * forward status field metadata while preserving generic bookkeeping, and
- * provide authoritative resource percentages to the graphical status HUD. */
+ * provide authoritative resource percentages to the graphical status HUD;
+ * consume allowlisted browser commands at the main command boundary. */
 
 /* not an actual windowing port, but a fake win port for libnethack */
 
 #include "hack.h"
+#include "func_tab.h"
 #include <string.h>
 
 #ifdef SHIM_GRAPHICS
@@ -203,6 +205,21 @@ VDECLCB(shim_askname,(void), "v")
      | SHIM_SETTINGS_PICKUP_ALL | SHIM_SETTINGS_NUMPAD_MASK \
      | SHIM_SETTINGS_PICKUP_MASK | SHIM_SETTINGS_PERM_INVENT \
      | SHIM_SETTINGS_PERMINV_MODE_MASK | SHIM_SETTINGS_VERSION_MASK)
+
+#define SHIM_COMMAND_VERSION 1U
+#define SHIM_COMMAND_CLICKLOOK 1U
+#define SHIM_COMMAND_INVENTORY 2U
+#define SHIM_COMMAND_DROP 3U
+#define SHIM_COMMAND_ID_MASK 0xfU
+#define SHIM_COMMAND_X_SHIFT 4
+#define SHIM_COMMAND_X_MASK (0x7fU << SHIM_COMMAND_X_SHIFT)
+#define SHIM_COMMAND_Y_SHIFT 11
+#define SHIM_COMMAND_Y_MASK (0x1fU << SHIM_COMMAND_Y_SHIFT)
+#define SHIM_COMMAND_VERSION_SHIFT 28
+#define SHIM_COMMAND_VERSION_MASK (7U << SHIM_COMMAND_VERSION_SHIFT)
+#define SHIM_COMMAND_DEFINED_MASK \
+    (SHIM_COMMAND_ID_MASK | SHIM_COMMAND_X_MASK | SHIM_COMMAND_Y_MASK \
+     | SHIM_COMMAND_VERSION_MASK)
 
 static const char shim_pickup_symbols[] = "$\")[%?+!=/(*`0_";
 static const int shim_numpad_modes[] = { 0, 1, 2, 3, 4, -1 };
@@ -405,29 +422,111 @@ shim_settings_result(int success, int snapshot)
                        NULL, "vii", args);
 }
 
-/* Exchange runtime settings at the existing command-loop safe boundary. */
+/* Retrieve one allowlisted command request for this command-loop boundary. */
+static int
+shim_command_sync(void)
+{
+    int request = 0;
+
+    if (shim_callback_name)
+        local_callback(shim_callback_name, "shim_command_sync",
+                       (void *) &request, "i", NULL);
+    return request;
+}
+
+/* Report whether the exact command payload was accepted into the core queue. */
+static void
+shim_command_result(int request, int success)
+{
+    void *args[] = { &request, &success };
+
+    if (shim_callback_name)
+        local_callback(shim_callback_name, "shim_command_result",
+                       NULL, "vii", args);
+}
+
+/* Validate and queue one fixed command by its authoritative extcmd name. */
+static boolean
+shim_queue_command(unsigned int payload)
+{
+    struct ext_func_tab *entry;
+    const char *name;
+    unsigned int command, version, x, y;
+
+    if (payload & ~SHIM_COMMAND_DEFINED_MASK)
+        return FALSE;
+    version = (payload & SHIM_COMMAND_VERSION_MASK)
+              >> SHIM_COMMAND_VERSION_SHIFT;
+    if (version != SHIM_COMMAND_VERSION)
+        return FALSE;
+    command = payload & SHIM_COMMAND_ID_MASK;
+    x = (payload & SHIM_COMMAND_X_MASK) >> SHIM_COMMAND_X_SHIFT;
+    y = (payload & SHIM_COMMAND_Y_MASK) >> SHIM_COMMAND_Y_SHIFT;
+    switch (command) {
+    case SHIM_COMMAND_CLICKLOOK:
+        if (!isok((coordxy) x, (coordxy) y))
+            return FALSE;
+        name = "clicklook";
+        break;
+    case SHIM_COMMAND_INVENTORY:
+        if (x || y)
+            return FALSE;
+        name = "inventory";
+        break;
+    case SHIM_COMMAND_DROP:
+        if (x || y)
+            return FALSE;
+        name = "drop";
+        break;
+    default:
+        return FALSE;
+    }
+
+    for (entry = extcmdlist; entry->ef_txt; ++entry)
+        if (!strcmp(entry->ef_txt, name))
+            break;
+    if (!entry->ef_txt || !entry->ef_funct
+        || (entry->flags & CMD_NOT_AVAILABLE) != 0)
+        return FALSE;
+    if (command == SHIM_COMMAND_CLICKLOOK) {
+        gc.clicklook_cc.x = (coordxy) x;
+        gc.clicklook_cc.y = (coordxy) y;
+    }
+    cmdq_add_ec(CQ_CANNED, entry->ef_funct);
+    return TRUE;
+}
+
+/* Exchange settings and commands at the existing command-loop safe boundary. */
 void
 shim_get_nh_event(void)
 {
     unsigned int before = shim_settings_snapshot(),
                  update = (unsigned int) shim_settings_sync((int) before),
-                 after;
-    boolean valid, applied = FALSE;
+                 command;
+    boolean valid, applied, accepted;
+    unsigned int after;
 
-    if (!update)
-        return;
-    valid = shim_settings_payload_valid(update, TRUE);
-    if (valid)
-        applied = shim_apply_settings(update);
-    after = shim_settings_snapshot();
-    if (applied
-        && after != (update & ~SHIM_SETTINGS_PENDING))
+    if (update) {
         applied = FALSE;
-    if (!applied && valid) {
-        (void) shim_apply_settings(before);
+        valid = shim_settings_payload_valid(update, TRUE);
+        if (valid)
+            applied = shim_apply_settings(update);
         after = shim_settings_snapshot();
+        if (applied
+            && after != (update & ~SHIM_SETTINGS_PENDING))
+            applied = FALSE;
+        if (!applied && valid) {
+            (void) shim_apply_settings(before);
+            after = shim_settings_snapshot();
+        }
+        shim_settings_result(applied ? 1 : 0, (int) after);
     }
-    shim_settings_result(applied ? 1 : 0, (int) after);
+
+    command = (unsigned int) shim_command_sync();
+    if (command) {
+        accepted = shim_queue_command(command);
+        shim_command_result((int) command, accepted ? 1 : 0);
+    }
 }
 #else
 VDECLCB(shim_get_nh_event,(void), "v")
