@@ -17,6 +17,7 @@ interface MapCameraOptions {
   commandInput: boolean;
   followPlayer: boolean;
   layoutKey: string;
+  onViewportChange?(): void;
 }
 
 interface MapCamera {
@@ -36,6 +37,7 @@ export function useMapCamera({
   commandInput,
   followPlayer,
   layoutKey,
+  onViewportChange,
 }: MapCameraOptions): MapCamera {
   const scrollRef = useRef<HTMLDivElement>(null);
   const scrollAnchorRef = useRef<ReturnType<typeof mapScrollAnchor> | null>(
@@ -63,6 +65,9 @@ export function useMapCamera({
   ): void => {
     const viewport = scrollRef.current;
     if (!viewport) return;
+    const changed = viewport.scrollLeft !== offset.left
+      || viewport.scrollTop !== offset.top;
+    if (changed) onViewportChange?.();
     suppressScrollTrackingRef.current = true;
     if (scrollTrackingFrameRef.current !== null) {
       window.cancelAnimationFrame(scrollTrackingFrameRef.current);
@@ -74,7 +79,7 @@ export function useMapCamera({
       suppressScrollTrackingRef.current = false;
       scrollTrackingFrameRef.current = null;
     });
-  }, [rememberScrollAnchor]);
+  }, [onViewportChange, rememberScrollAnchor]);
 
   /** Center the current Follow target and end a manual camera excursion. */
   const followTarget = useCallback((): void => {
@@ -130,9 +135,10 @@ export function useMapCamera({
   /** Record user-driven scrolling while ignoring renderer restoration events. */
   const handleScroll = useCallback((): void => {
     if (suppressScrollTrackingRef.current) return;
+    onViewportChange?.();
     rememberScrollAnchor();
     manualPanRef.current = true;
-  }, [rememberScrollAnchor]);
+  }, [onViewportChange, rememberScrollAnchor]);
 
   useLayoutEffect(() => {
     const viewport = scrollRef.current;

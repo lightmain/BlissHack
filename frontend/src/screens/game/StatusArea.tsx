@@ -1,4 +1,17 @@
-import { memo, type CSSProperties } from "react";
+import {
+  memo,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
+import type { LocalInspectRequest } from "../../interactions/InspectTooltip";
+import {
+  planLocalInspectActivity,
+  type LocalInspectActivity,
+  type LocalInspectActivityEvent,
+} from "../../interactions/local-inspect-activity";
 import {
   type StatusCondition,
   type StatusMetric,
@@ -64,8 +77,12 @@ const METRIC_DISPLAY_INDEX: ReadonlyMap<string, number> = new Map(
  */
 export const StatusArea = memo(function StatusArea({
   metrics,
+  onInspect,
+  onInspectLeave,
 }: {
   metrics: readonly StatusMetric[];
+  onInspect?(request: LocalInspectRequest): void;
+  onInspectLeave?(key?: string): void;
 }) {
   return (
     <section className="nh-status" aria-label="Character status">
@@ -80,7 +97,8 @@ export const StatusArea = memo(function StatusArea({
             data-status-group={group}
             key={group}
           >
-            {groupedMetrics.map(renderStatusMetric)}
+            {groupedMetrics.map((metric) =>
+              renderStatusMetric(metric, onInspect, onInspectLeave))}
           </div>
         );
       })}
@@ -93,7 +111,11 @@ export const StatusArea = memo(function StatusArea({
  * @param metric - active semantic status metric.
  * @returns one resource, condition, or compact value element.
  */
-function renderStatusMetric(metric: StatusMetric) {
+function renderStatusMetric(
+  metric: StatusMetric,
+  onInspect?: (request: LocalInspectRequest) => void,
+  onInspectLeave?: (key?: string) => void,
+) {
   if (metric.conditions) {
     return (
       <span
@@ -102,15 +124,15 @@ function renderStatusMetric(metric: StatusMetric) {
         key={metric.field}
       >
         {metric.conditions.map((condition) =>
-          renderCondition(metric, condition))}
+          renderCondition(metric, condition, onInspect, onInspectLeave))}
       </span>
     );
   }
 
   const barKind = RESOURCE_BARS[metric.id];
   return barKind && metric.percent !== undefined
-    ? renderResourceMetric(metric, barKind)
-    : renderCompactMetric(metric);
+    ? renderResourceMetric(metric, barKind, onInspect, onInspectLeave)
+    : renderCompactMetric(metric, onInspect, onInspectLeave);
 }
 
 /**
@@ -122,16 +144,20 @@ function renderStatusMetric(metric: StatusMetric) {
 function renderResourceMetric(
   metric: StatusMetric,
   barKind: "primary" | "secondary",
+  onInspect?: (request: LocalInspectRequest) => void,
+  onInspectLeave?: (key?: string) => void,
 ) {
   const tooltipId = `status-tooltip-${metric.id}`;
   return (
-    <span
-      aria-describedby={tooltipId}
+    <InspectableStatus
       className={`nh-status-metric nh-status-resource ${statusClasses(metric)}`}
-      data-change={metric.change}
-      data-browser-tab-navigation
+      dataChange={metric.change}
+      describedBy={tooltipId}
       key={metric.field}
-      tabIndex={0}
+      inspectKey={`status:${metric.id}`}
+      onInspect={onInspect}
+      onInspectLeave={onInspectLeave}
+      tooltip={metric.tooltip}
     >
       <span className="nh-status-resource-value">{metric.text}</span>
       <span
@@ -150,7 +176,7 @@ function renderResourceMetric(
         />
       </span>
       <StatusTooltipContent id={tooltipId} tooltip={metric.tooltip} />
-    </span>
+    </InspectableStatus>
   );
 }
 
@@ -159,20 +185,26 @@ function renderResourceMetric(
  * @param metric - active semantic status metric.
  * @returns one focusable value and its description.
  */
-function renderCompactMetric(metric: StatusMetric) {
+function renderCompactMetric(
+  metric: StatusMetric,
+  onInspect?: (request: LocalInspectRequest) => void,
+  onInspectLeave?: (key?: string) => void,
+) {
   const tooltipId = `status-tooltip-${metric.id}`;
   return (
-    <span
-      aria-describedby={tooltipId}
+    <InspectableStatus
       className={`nh-status-metric ${statusClasses(metric)}`}
-      data-change={metric.change}
-      data-browser-tab-navigation
+      dataChange={metric.change}
+      describedBy={tooltipId}
       key={metric.field}
-      tabIndex={0}
+      inspectKey={`status:${metric.id}`}
+      onInspect={onInspect}
+      onInspectLeave={onInspectLeave}
+      tooltip={metric.tooltip}
     >
       <span className="nh-status-value">{metric.text}</span>
       <StatusTooltipContent id={tooltipId} tooltip={metric.tooltip} />
-    </span>
+    </InspectableStatus>
   );
 }
 
@@ -185,16 +217,20 @@ function renderCompactMetric(metric: StatusMetric) {
 function renderCondition(
   metric: StatusMetric,
   condition: StatusCondition,
+  onInspect?: (request: LocalInspectRequest) => void,
+  onInspectLeave?: (key?: string) => void,
 ) {
   const tooltipId = `status-tooltip-condition-${condition.id}`;
   return (
-    <span
+    <InspectableStatus
       className="nh-status-condition-entry"
-      data-change={metric.change}
-      data-browser-tab-navigation
+      dataChange={metric.change}
+      describedBy={tooltipId}
       key={condition.id}
-      tabIndex={0}
-      aria-describedby={tooltipId}
+      inspectKey={`status:condition:${condition.id}`}
+      onInspect={onInspect}
+      onInspectLeave={onInspectLeave}
+      tooltip={condition.tooltip}
     >
       <span
         className={`nh-condition ${statusColorClass(condition.color)} ${statusAttributeClass(condition.attributes)}`}
@@ -202,7 +238,7 @@ function renderCondition(
         {condition.label}
       </span>
       <StatusTooltipContent id={tooltipId} tooltip={condition.tooltip} />
-    </span>
+    </InspectableStatus>
   );
 }
 
@@ -222,6 +258,87 @@ function StatusTooltipContent({
     <span className="nh-status-tooltip" id={id} role="tooltip">
       <strong>{tooltip.currentValue}</strong>
       <span>{tooltip.description}</span>
+    </span>
+  );
+}
+
+/**
+ * Own hover and focus jointly for one status field in the shared overlay.
+ * @param props - visual content, tooltip data, and overlay callbacks.
+ * @returns one focusable status wrapper.
+ */
+function InspectableStatus({
+  children,
+  className,
+  dataChange,
+  describedBy,
+  inspectKey,
+  onInspect,
+  onInspectLeave,
+  tooltip,
+}: {
+  children: ReactNode;
+  className: string;
+  dataChange: number;
+  describedBy: string;
+  inspectKey: string;
+  onInspect?: (request: LocalInspectRequest) => void;
+  onInspectLeave?: (key?: string) => void;
+  tooltip: StatusTooltip;
+}) {
+  const elementRef = useRef<HTMLSpanElement>(null);
+  const wasActiveRef = useRef(false);
+  const [activity, setActivity] = useState<LocalInspectActivity>({
+    focused: false,
+    pointerInside: false,
+  });
+  const active = activity.focused || activity.pointerInside;
+
+  useEffect(() => () => {
+    if (wasActiveRef.current) onInspectLeave?.(inspectKey);
+  }, [inspectKey, onInspectLeave]);
+
+  useEffect(() => {
+    if (active && elementRef.current && onInspect) {
+      const bounds = elementRef.current.getBoundingClientRect();
+      onInspect({
+        kind: "status",
+        key: inspectKey,
+        anchor: {
+          clientX: bounds.left + bounds.width / 2,
+          clientY: bounds.top,
+        },
+        content: {
+          title: tooltip.currentValue,
+          description: tooltip.description,
+        },
+      });
+    } else if (wasActiveRef.current && !active) {
+      onInspectLeave?.(inspectKey);
+    }
+    wasActiveRef.current = active;
+  }, [active, inspectKey, onInspect, onInspectLeave, tooltip]);
+
+  /** Apply one pointer or focus boundary to the joint ownership state. */
+  function updateActivity(event: LocalInspectActivityEvent): void {
+    setActivity((current) => planLocalInspectActivity(current, event).next);
+  }
+
+  return (
+    <span
+      aria-describedby={describedBy}
+      className={className}
+      data-browser-tab-navigation
+      data-change={dataChange}
+      data-inspect-target={inspectKey}
+      onBlur={() => updateActivity("blur")}
+      onFocus={() => updateActivity("focus")}
+      onPointerEnter={() => updateActivity("pointer-enter")}
+      onPointerLeave={() => updateActivity("pointer-leave")}
+      ref={elementRef}
+      tabIndex={0}
+    >
+      {children}
     </span>
   );
 }

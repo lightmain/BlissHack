@@ -1,9 +1,12 @@
 import {
+  useEffect,
   useRef,
   type FocusEvent,
+  type PointerEvent,
 } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { PermanentInventoryState } from "../game-state";
+import type { LocalInspectRequest } from "../interactions/InspectTooltip";
 import type { PermanentInventoryPosition } from "../settings/profile";
 import { colorClass, textAttributeClass } from "../text-styling";
 
@@ -11,6 +14,8 @@ interface PermanentInventoryPanelProps {
   collapsed: boolean;
   inventory: PermanentInventoryState;
   onCollapsedChange(collapsed: boolean): void;
+  onInspect?(request: LocalInspectRequest): void;
+  onInspectLeave?(key?: string): void;
   position: PermanentInventoryPosition;
 }
 
@@ -21,13 +26,22 @@ export function PermanentInventoryPanel({
   collapsed,
   inventory,
   onCollapsedChange,
+  onInspect,
+  onInspectLeave,
   position,
 }: PermanentInventoryPanelProps) {
   const mouseFocusRef = useRef(false);
+  const previousRevisionRef = useRef(inventory.revision);
   const itemCount = inventory.items.filter(
     (item) => item.identifier !== null,
   ).length;
   const toggleLabel = collapsed ? "Expand inventory" : "Collapse inventory";
+
+  useEffect(() => {
+    if (previousRevisionRef.current === inventory.revision) return;
+    previousRevisionRef.current = inventory.revision;
+    onInspectLeave?.();
+  }, [inventory.revision, onInspectLeave]);
 
   /**
    * Mark the start of a mouse gesture which may focus the panel container.
@@ -120,8 +134,22 @@ export function PermanentInventoryPanel({
                       colorClass(item.color),
                       textAttributeClass(item.attribute),
                     ].filter(Boolean).join(" ")}
+                    data-inspect-target={`inventory:${inventory.revision}:${item.accelerator}`}
                     key={`${inventory.revision}-${index}`}
                     onFocus={(event) => event.currentTarget.blur()}
+                    onPointerEnter={(event) =>
+                      requestInventoryInspect(
+                        event,
+                        inventory,
+                        item.accelerator,
+                        item.text,
+                        glyph,
+                        onInspect,
+                      )}
+                    onPointerLeave={() =>
+                      onInspectLeave?.(
+                        `inventory:${inventory.revision}:${item.accelerator}`,
+                      )}
                     tabIndex={-1}
                     type="button"
                   >
@@ -146,4 +174,38 @@ export function PermanentInventoryPanel({
       )}
     </aside>
   );
+}
+
+/**
+ * Convert one permanent-inventory row into a presentation-only tooltip request.
+ * @param event - pointer event used only to copy current viewport geometry.
+ * @param inventory - committed inventory snapshot which owns the row.
+ * @param accelerator - current core-provided inventory letter.
+ * @param text - current core-provided item description.
+ * @param glyph - decoded visible item character.
+ * @param onInspect - optional shared overlay callback.
+ */
+function requestInventoryInspect(
+  event: PointerEvent<HTMLButtonElement>,
+  inventory: PermanentInventoryState,
+  accelerator: number,
+  text: string,
+  glyph: string,
+  onInspect?: (request: LocalInspectRequest) => void,
+): void {
+  if (!onInspect) return;
+  const bounds = event.currentTarget.getBoundingClientRect();
+  onInspect({
+    kind: "inventory",
+    key: `inventory:${inventory.revision}:${accelerator}`,
+    anchor: {
+      clientX: bounds.left,
+      clientY: bounds.top + bounds.height / 2,
+    },
+    content: {
+      title: text,
+      description: "Inventory item",
+      glyph: glyph || undefined,
+    },
+  });
 }

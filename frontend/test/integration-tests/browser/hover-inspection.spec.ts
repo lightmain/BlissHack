@@ -167,6 +167,22 @@ async function setOppositeHorizontalScroll(
 }
 
 /**
+ * Place the camera at the center so a viewport resize must restore its anchor.
+ * @param viewport - map scroll container.
+ * @returns centered offset and the full scroll range.
+ */
+async function setCenteredHorizontalScroll(
+  viewport: Locator,
+): Promise<{ left: number; maxLeft: number }> {
+  return viewport.evaluate(async (element) => {
+    const maxLeft = element.scrollWidth - element.clientWidth;
+    element.scrollLeft = maxLeft / 2;
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    return { left: element.scrollLeft, maxLeft };
+  });
+}
+
+/**
  * Assert that a pending hover target was cleared before the dwell timer could inspect.
  * @param page - running game page.
  */
@@ -286,6 +302,27 @@ test("inspects the player cell without changing visible messages or turn count",
   expect.soft(errors).toEqual({ console: [], page: [] });
 });
 
+test("clears pending and visible map inspection when the pointer leaves", async ({
+  page,
+}) => {
+  const errors = captureErrors(page);
+  await startNewGame(page, "HoverCleanupLeave");
+  await expectCommandReady(page);
+  const cursor = await readCursorPosition(page);
+  const tooltip = inspectTooltip(page);
+
+  await hoverMapCell(page, cursor.x, cursor.y);
+  await page.waitForTimeout(120);
+  await page.mouse.move(1, 1);
+  await expectPendingHoverCleared(page);
+
+  await hoverMapCell(page, cursor.x, cursor.y);
+  await expect(tooltip).toBeVisible();
+  await page.mouse.move(1, 1);
+  await expect(tooltip).toHaveCount(0);
+  expect(errors).toEqual({ console: [], page: [] });
+});
+
 test("clears inspection tooltips on leave, game key input, and pause", async ({
   page,
 }) => {
@@ -352,7 +389,7 @@ test("clears a pending map hover when camera reposition changes the viewport", a
   await startNewGame(page, "HoverCleanupCamera");
   await expectCommandReady(page);
   const viewport = page.locator(".nh-map-scroll");
-  const manualScroll = await setOppositeHorizontalScroll(viewport);
+  const manualScroll = await setCenteredHorizontalScroll(viewport);
   expect(manualScroll.maxLeft).toBeGreaterThan(0);
 
   await hoverVisibleMapPoint(page);

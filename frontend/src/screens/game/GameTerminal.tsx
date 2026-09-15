@@ -15,6 +15,7 @@ import {
   type MapInteractionOrigin,
 } from "../../map/MapViewport";
 import type { TileRendererFallbackReason } from "../../map/TileMapRenderer";
+import type { LocalInspectRequest } from "../../interactions/InspectTooltip";
 import {
   normalizePlayerNameInput,
   submitLine,
@@ -39,8 +40,11 @@ interface GameTerminalProps {
   mapRenderer: InterfaceSettings["mapRenderer"];
   messages: TextLine[];
   onContextClick(origin: MapInteractionOrigin): boolean;
+  onDragChange?(dragging: boolean): void;
   onHoverLeave?(): void;
   onHoverTarget?(origin: MapInteractionOrigin): void;
+  onInspect?(request: LocalInspectRequest): void;
+  onInspectLeave?(key?: string): void;
   onInventoryCollapsedChange(collapsed: boolean): void;
   onMapRendererFallback?(reason: TileRendererFallbackReason): void;
   onPrimaryClick(origin: MapInteractionOrigin): void;
@@ -66,8 +70,11 @@ export function GameTerminal({
   mapRenderer,
   messages,
   onContextClick,
+  onDragChange,
   onHoverLeave,
   onHoverTarget,
+  onInspect,
+  onInspectLeave,
   onInventoryCollapsedChange,
   onMapRendererFallback,
   onPrimaryClick,
@@ -87,6 +94,8 @@ export function GameTerminal({
       <PermanentInventoryPanel
         collapsed={permanentInventoryCollapsed}
         inventory={permanentInventory}
+        onInspect={onInspect}
+        onInspectLeave={onInspectLeave}
         onCollapsedChange={onInventoryCollapsedChange}
         position={permanentInventoryPosition}
       />
@@ -112,6 +121,7 @@ export function GameTerminal({
             map={map}
             mapRenderer={mapRenderer}
             onContextClick={onContextClick}
+            onDragChange={onDragChange}
             onHoverLeave={onHoverLeave}
             onHoverTarget={onHoverTarget}
             onMapRendererFallback={onMapRendererFallback}
@@ -128,7 +138,11 @@ export function GameTerminal({
             data-hud-region="status"
             data-overflow-owner="status"
           >
-            <StatusArea metrics={statusMetrics} />
+            <StatusArea
+              metrics={statusMetrics}
+              onInspect={onInspect}
+              onInspectLeave={onInspectLeave}
+            />
             <InputArea request={inputRequest} />
           </div>
         )}

@@ -433,22 +433,24 @@
   border: 0;
 }
 
-.nh-status-metric:hover .nh-status-tooltip,
-.nh-status-metric:focus .nh-status-tooltip,
-.nh-status-condition-entry:hover .nh-status-tooltip,
-.nh-status-condition-entry:focus .nh-status-tooltip {
+.nh-overlay-root {
   position: fixed;
-  z-index: 20;
-  left: 12px;
-  bottom: clamp(7.75rem, 18vh, 12rem);
+  z-index: 25;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.nh-inspect-tooltip {
+  position: fixed;
+  left: var(--overlay-left);
+  top: var(--overlay-top);
   width: max-content;
   max-width: min(28rem, calc(100vw - 24px));
-  height: auto;
   padding: 7px 9px;
   display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
   gap: 3px;
-  overflow: visible;
-  clip: auto;
   white-space: normal;
   border: 1px solid #69747a;
   border-radius: 3px;
@@ -458,8 +460,22 @@
   font-weight: 400;
 }
 
-.nh-status-tooltip > span {
-  display: block;
+.nh-inspect-tooltip[aria-hidden="true"] {
+  visibility: hidden;
+}
+
+.nh-inspect-tooltip > strong,
+.nh-inspect-tooltip > span:not(.nh-inspect-glyph) {
+  grid-column: 2;
+}
+
+.nh-inspect-glyph {
+  min-width: 2ch;
+  grid-row: 1 / span 2;
+  align-self: center;
+  color: #7ddc8c;
+  font-size: 18px;
+  text-align: center;
 }
 
 .nh-blink {
