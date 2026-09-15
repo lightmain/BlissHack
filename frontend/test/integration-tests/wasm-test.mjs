@@ -39,6 +39,14 @@ const EXPER_SOURCE = join(
   "src",
   "exper.c",
 );
+const CMD_SOURCE = join(
+  __dirname,
+  "..",
+  "..",
+  "..",
+  "src",
+  "cmd.c",
+);
 
 /* ------------------------------------------------------------------ */
 /*  Test harness                                                       */
@@ -100,7 +108,11 @@ const permanentInventoryUpdates = [];
 const glyphEvents = [];
 const statusFieldMetadataEvents = [];
 const statusUpdateEvents = [];
+const coreCommandResults = [];
+const menuSelections = [];
+const activeMenus = new Map();
 let queuedRuntimeSettings = 0;
+let queuedCoreCommand = 0;
 let activeModule = null;
 
 const RUNTIME_SETTINGS_VERSION = 2 << 28;
@@ -111,6 +123,12 @@ const RUNTIME_SETTINGS_PERM_INVENT = 1 << 25;
 const RUNTIME_SETTINGS_PERMINV_ALL = 1 << 26;
 const RUNTIME_SETTINGS_PERMINV_FULL = 2 << 26;
 const RUNTIME_SETTINGS_PERMINV_MODE_MASK = 3 << 26;
+const CORE_COMMAND_VERSION = 1 << 28;
+const CORE_COMMAND_INVENTORY = 2;
+const CORE_COMMAND_RESERVED = (1 << 31) >>> 0;
+const MENU_BEHAVE_PERMINV = 1;
+const MENU_BEHAVE_STANDARD = 0;
+const PICK_ONE = 1;
 const MAX_ATLAS_TILE_INDEX = 2306;
 const FIRST_OTHER_TILE_INDEX = 1272;
 const LAST_LINEAR_CMAP_OFFSET = 32;
@@ -235,6 +253,20 @@ async function blissCallback(name, ...args) {
       });
       return undefined;
 
+    case "shim_command_sync": {
+      const command = queuedCoreCommand;
+      queuedCoreCommand = 0;
+      return command;
+    }
+
+    case "shim_command_result":
+      coreCommandResults.push({
+        payload: args[0] >>> 0,
+        success: Number(args[1]),
+        eventIndex: eventCount,
+      });
+      return undefined;
+
     case "shim_nhgetch":
       inputStates.push(args[0]);
       return new Promise((resolve) => {
@@ -272,33 +304,60 @@ async function blissCallback(name, ...args) {
       });
       return undefined;
 
-    case "shim_start_menu":
-      if ((args[1] & 1) !== 0) {
-        permanentInventoryUpdates.push({ kind: "start", windowId: args[0] });
+    case "shim_start_menu": {
+      const windowId = Number(args[0]);
+      const behavior = Number(args[1]) >>> 0;
+      activeMenus.set(windowId, {
+        behavior,
+        itemCount: 0,
+        selectableItemCount: 0,
+      });
+      if ((behavior & MENU_BEHAVE_PERMINV) !== 0) {
+        permanentInventoryUpdates.push({ kind: "start", windowId });
       }
       return undefined;
+    }
 
-    case "shim_add_menu":
+    case "shim_add_menu": {
+      const windowId = Number(args[0]);
+      const menu = activeMenus.get(windowId);
+      if (menu) {
+        menu.itemCount += 1;
+        if (Number(args[2]) !== 0) menu.selectableItemCount += 1;
+      }
       if (permanentInventoryUpdates.some(
-        (event) => event.kind === "start" && event.windowId === args[0],
+        (event) => event.kind === "start" && event.windowId === windowId,
       )) {
         permanentInventoryUpdates.push({
           kind: "item",
-          windowId: args[0],
+          windowId,
           text: String(args[7] ?? ""),
         });
       }
       return undefined;
+    }
 
-    case "shim_select_menu":
+    case "shim_select_menu": {
+      const windowId = Number(args[0]);
+      const how = Number(args[1]);
+      const menu = activeMenus.get(windowId);
+      menuSelections.push({
+        windowId,
+        how,
+        behavior: menu?.behavior ?? null,
+        itemCount: menu?.itemCount ?? 0,
+        selectableItemCount: menu?.selectableItemCount ?? 0,
+        eventIndex: eventCount,
+      });
       if (args[1] === 0) {
         permanentInventoryUpdates.push({
           kind: "commit",
-          windowId: args[0],
+          windowId,
         });
         return 0;
       }
       return -1; // cancel/dismiss
+    }
     case "shim_message_menu":
     case "shim_doprev_message":
       return 0;
@@ -333,17 +392,22 @@ async function run() {
   assert(existsSync(WASM_BIN), "nethack.wasm exists");
   assert(existsSync(WINSHIM_SOURCE), "winshim.c exists");
   assert(existsSync(EXPER_SOURCE), "exper.c exists");
+  assert(existsSync(CMD_SOURCE), "cmd.c exists");
   if (
     !existsSync(WASM_JS)
     || !existsSync(WASM_BIN)
     || !existsSync(WINSHIM_SOURCE)
     || !existsSync(EXPER_SOURCE)
+    || !existsSync(CMD_SOURCE)
   ) {
-    console.error("\nMissing WASM files. Build with `make CROSS_TO_WASM=1` first.");
+    console.error(
+      "\nMissing WASM or source files. Build with `make CROSS_TO_WASM=1` first.",
+    );
     process.exit(1);
   }
   const winshimSource = readFileSync(WINSHIM_SOURCE, "utf8");
   const experSource = readFileSync(EXPER_SOURCE, "utf8");
+  const cmdSource = readFileSync(CMD_SOURCE, "utf8");
   const statusWrapper = cBlockAfter(
     winshimSource,
     /\bshim_status_enablefield\s*\([^;{}]*\)\s*/,
@@ -393,6 +457,148 @@ async function run() {
       && /\bdisp\.botlx\s*=\s*TRUE\s*;/.test(changedExperience),
     "more_experienced requests a guaranteed shim status cycle for XP changes"
       + " when showexp is false",
+  );
+  const commandSync = cBlockAfter(
+    winshimSource,
+    /\nstatic\s+int\s*\nshim_command_sync\s*\([^;{}]*\)\s*/,
+  );
+  const commandResult = cBlockAfter(
+    winshimSource,
+    /\nstatic\s+void\s*\nshim_command_result\s*\([^;{}]*\)\s*/,
+  );
+  const commandQueue = cBlockAfter(
+    winshimSource,
+    /\nstatic\s+boolean\s*\nshim_queue_command\s*\([^;{}]*\)\s*/,
+  );
+  const getNhEvent = cBlockAfter(
+    winshimSource,
+    /\nvoid\s*\nshim_get_nh_event\s*\([^;{}]*\)\s*/,
+  );
+  const allowlistedCommands = commandQueue === null
+    ? []
+    : [...commandQueue.matchAll(
+      /\bcase\s+(SHIM_COMMAND_[A-Z_]+)\s*:/g,
+    )].map((match) => match[1]);
+  assert(
+    /#define\s+SHIM_COMMAND_VERSION\s+1U\b/.test(winshimSource)
+      && /#define\s+SHIM_COMMAND_VERSION_SHIFT\s+28\b/.test(winshimSource)
+      && /#define\s+SHIM_COMMAND_VERSION_MASK\s+\(7U\s*<<\s*SHIM_COMMAND_VERSION_SHIFT\)/.test(
+        winshimSource,
+      ),
+    "winshim command protocol has the expected version field",
+  );
+  assert(
+    JSON.stringify(allowlistedCommands) === JSON.stringify([
+      "SHIM_COMMAND_CLICKLOOK",
+      "SHIM_COMMAND_INVENTORY",
+      "SHIM_COMMAND_DROP",
+    ])
+      && commandQueue !== null
+      && /\bname\s*=\s*"clicklook"\s*;/.test(commandQueue)
+      && /\bname\s*=\s*"inventory"\s*;/.test(commandQueue)
+      && /\bname\s*=\s*"drop"\s*;/.test(commandQueue)
+      && /\bdefault\s*:\s*return\s+FALSE\s*;/.test(commandQueue),
+    "winshim command protocol allowlists only clicklook, inventory, and drop",
+  );
+  assert(
+    commandQueue !== null
+      && /\bpayload\s*&\s*~SHIM_COMMAND_DEFINED_MASK\b/.test(commandQueue)
+      && /\bversion\s*!=\s*SHIM_COMMAND_VERSION\b/.test(commandQueue)
+      && /\bSHIM_COMMAND_CLICKLOOK\b[\s\S]*?\bisok\s*\(\s*\(coordxy\)\s*x\s*,\s*\(coordxy\)\s*y\s*\)/.test(
+        commandQueue,
+      )
+      && /\bSHIM_COMMAND_INVENTORY\b[\s\S]*?\bif\s*\(\s*x\s*\|\|\s*y\s*\)/.test(
+        commandQueue,
+      )
+      && /\bSHIM_COMMAND_DROP\b[\s\S]*?\bif\s*\(\s*x\s*\|\|\s*y\s*\)/.test(
+        commandQueue,
+      )
+      && /\bentry->flags\s*&\s*CMD_NOT_AVAILABLE\b/.test(commandQueue),
+    "winshim rejects reserved bits, incompatible versions, invalid coordinates,"
+      + " and unavailable commands",
+  );
+  assert(
+    commandQueue !== null
+      && /\bextcmdlist\b/.test(commandQueue)
+      && /\bstrcmp\s*\(\s*entry->ef_txt\s*,\s*name\s*\)/.test(commandQueue)
+      && /\bcmdq_add_ec\s*\(\s*CQ_CANNED\s*,\s*entry->ef_funct\s*\)/.test(
+        commandQueue,
+      ),
+    "winshim resolves allowlisted names through authoritative command metadata",
+  );
+  assert(
+    commandSync !== null
+      && /\brequest\s*=\s*0\s*;/.test(commandSync)
+      && /\blocal_callback\s*\(\s*shim_callback_name\s*,\s*"shim_command_sync"\s*,[\s\S]*?"i"\s*,\s*NULL\s*\)/.test(
+        commandSync,
+      )
+      && getNhEvent !== null
+      && /\bcommand\s*=\s*\(unsigned int\)\s*shim_command_sync\s*\(\s*\)\s*;[\s\S]*?\baccepted\s*=\s*shim_queue_command\s*\(\s*command\s*\)\s*;[\s\S]*?\bshim_command_result\s*\(\s*\(int\)\s*command\s*,\s*accepted\s*\?\s*1\s*:\s*0\s*\)\s*;/.test(
+        getNhEvent,
+      )
+      && [...winshimSource.matchAll(/\bshim_queue_command\s*\(/g)].length === 2,
+    "winshim consumes at most one command only at shim_get_nh_event",
+  );
+  assert(
+    commandResult !== null
+      && /void\s*\*args\[\]\s*=\s*\{\s*&request\s*,\s*&success\s*\}\s*;/.test(
+        commandResult,
+      )
+      && /\blocal_callback\s*\(\s*shim_callback_name\s*,\s*"shim_command_result"\s*,[\s\S]*?"vii"\s*,\s*args\s*\)/.test(
+        commandResult,
+      ),
+    "winshim reports the exact command payload and acceptance result",
+  );
+  const thereCommandMenu = cBlockAfter(
+    cmdSource,
+    /\nstaticfn\s+int\s*\ndotherecmdmenu\s*\(\s*void\s*\)\s*/,
+  );
+  const clickToCommand = cBlockAfter(
+    cmdSource,
+    /\nvoid\s*\nclick_to_cmd\s*\([^;{}]*\)\s*/,
+  );
+  const clickLook = cBlockAfter(
+    cmdSource,
+    /\nstaticfn\s+int\s*\ndoclicklook\s*\(\s*void\s*\)\s*/,
+  );
+  assert(
+    clickToCommand !== null
+      && /\bgc\.clicklook_cc\.x\s*=\s*x\s*;[\s\S]*?\bgc\.clicklook_cc\.y\s*=\s*y\s*;/.test(
+        clickToCommand,
+      )
+      && /\bef_funct\s*==\s*dotherecmdmenu\b[\s\S]*?\biflags\.getdir_click\s*=\s*mod\s*;[\s\S]*?\bcmdq_add_ec\s*\(\s*CQ_CANNED\s*,\s*gc\.Cmd\.mousebtn\[mod-1\]->ef_funct\s*\)/.test(
+        clickToCommand,
+      ),
+    "click_to_cmd preserves the real modifier for a bound therecmdmenu",
+  );
+  assert(
+    thereCommandMenu !== null
+      && /\bclick\s*=\s*iflags\.getdir_click\s*;/.test(thereCommandMenu)
+      && /\bclick\s*!=\s*CLICK_1\s*&&\s*click\s*!=\s*CLICK_2\b[\s\S]*?\bclick\s*=\s*CLICK_1\s*;/.test(
+        thereCommandMenu,
+      )
+      && /\bthere_cmd_menu\s*\(\s*x\s*,\s*y\s*,\s*click\s*\)/.test(
+        thereCommandMenu,
+      )
+      && /\bgc\.clicklook_cc\.x\s*=\s*gc\.clicklook_cc\.y\s*=\s*-1\s*;[\s\S]*?\biflags\.getdir_click\s*=\s*0\s*;/.test(
+        thereCommandMenu,
+      ),
+    "therecmdmenu consumes the modifier and clears its stored click request",
+  );
+  const clickLookReset = clickLook?.indexOf(
+    "gc.clicklook_cc.x = gc.clicklook_cc.y = -1;",
+  ) ?? -1;
+  const clickLookValidation = clickLook?.indexOf("if (!isok(x, y))") ?? -1;
+  const clickLookDescription = clickLook?.indexOf("auto_describe(x, y);") ?? -1;
+  assert(
+    clickLook !== null
+      && /\bcoordxy\s+x\s*=\s*gc\.clicklook_cc\.x\s*,\s*y\s*=\s*gc\.clicklook_cc\.y\s*;/.test(
+        clickLook,
+      )
+      && clickLookReset >= 0
+      && clickLookReset < clickLookValidation
+      && clickLookValidation < clickLookDescription,
+    "clicklook clears stale coordinates before validation and uses local copies",
   );
   if (process.env.BLISSHACK_SOURCE_CONTRACT_ONLY === "1") {
     console.log(`\n=== Results: ${passed} passed, ${failed} failed ===`);
@@ -493,7 +699,11 @@ async function run() {
   glyphEvents.length = 0;
   statusFieldMetadataEvents.length = 0;
   statusUpdateEvents.length = 0;
+  coreCommandResults.length = 0;
+  menuSelections.length = 0;
+  activeMenus.clear();
   queuedRuntimeSettings = 0;
+  queuedCoreCommand = 0;
 
   const gamePromise = module.ccall("main", "number", [], [], { async: true });
   gamePromise.catch(() => {});
@@ -729,6 +939,60 @@ async function run() {
       "re-emitted BL_XP progress remains in the range 0..100",
     );
   }
+
+  // --- Core command protocol ---
+  console.log("\n--- Core command protocol ---");
+  const invalidInventoryCommand = (
+    CORE_COMMAND_VERSION
+    | CORE_COMMAND_INVENTORY
+    | CORE_COMMAND_RESERVED
+  ) >>> 0;
+  let commandResultsBefore = coreCommandResults.length;
+  let menuSelectionsBefore = menuSelections.length;
+  queuedCoreCommand = invalidInventoryCommand;
+  await sendKeyAndWait(27);
+  assert(
+    coreCommandResults.length === commandResultsBefore + 1
+      && coreCommandResults.at(-1)?.payload === invalidInventoryCommand
+      && coreCommandResults.at(-1)?.success === 0,
+    "real WASM callback rejects a command payload containing a reserved bit",
+  );
+  assert(
+    menuSelections.length === menuSelectionsBefore,
+    "rejected command payload does not enter a core menu",
+  );
+
+  const inventoryCommand = (
+    CORE_COMMAND_VERSION | CORE_COMMAND_INVENTORY
+  ) >>> 0;
+  commandResultsBefore = coreCommandResults.length;
+  menuSelectionsBefore = menuSelections.length;
+  queuedCoreCommand = inventoryCommand;
+  await sendKeyAndWait(27);
+  const inventoryCommandResult = coreCommandResults.at(-1);
+  const commandMenus = menuSelections.slice(menuSelectionsBefore);
+  const inventorySelector = commandMenus.find(
+    (selection) =>
+      selection.behavior === MENU_BEHAVE_STANDARD
+      && selection.how === PICK_ONE
+      && selection.selectableItemCount > 0,
+  );
+  assert(
+    coreCommandResults.length === commandResultsBefore + 1
+      && inventoryCommandResult?.payload === inventoryCommand
+      && inventoryCommandResult.success === 1,
+    "real WASM callback accepts the versioned inventory command payload",
+  );
+  assert(
+    inventorySelector !== undefined,
+    "accepted inventory command enters an ordinary selectable core menu",
+  );
+  assert(
+    inventorySelector !== undefined
+      && inventoryCommandResult !== undefined
+      && inventoryCommandResult.eventIndex < inventorySelector.eventIndex,
+    "command result precedes the inventory select_menu callback",
+  );
 
   // --- Runtime settings protocol ---
   console.log("\n--- Runtime settings protocol ---");

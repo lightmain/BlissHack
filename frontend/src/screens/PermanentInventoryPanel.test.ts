@@ -52,7 +52,7 @@ function renderPanel(collapsed: boolean): string {
 }
 
 describe("PermanentInventoryPanel", () => {
-  it("renders core-provided rows as a focusable, non-interactive region", () => {
+  it("renders core-provided rows as context-menu targets outside the tab order", () => {
     const html = renderPanel(false);
 
     expect(html).toContain('role="region"');
@@ -67,7 +67,8 @@ describe("PermanentInventoryPanel", () => {
     expect(html).toContain(")");
     expect(html).toMatch(/>a<\/span>/);
     expect(html).toContain("nh-color-green");
-    expect(html).toContain('aria-disabled="true"');
+    expect(html).toContain('aria-haspopup="menu"');
+    expect(html).not.toContain('aria-disabled="true"');
     expect(html).toContain("nh-menu-mark");
     expect(html).toMatch(/selected/);
     expect((html.match(/<button\b/g) ?? [])).toHaveLength(2);
