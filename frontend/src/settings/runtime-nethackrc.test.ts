@@ -51,6 +51,7 @@ describe("runtime NetHack rc installation", () => {
     installRuntimeNetHackRc(asModule(fileSystem), settings);
 
     expect(new TextDecoder().decode(files.get(NETHACKRC_PATH))).toBe([
+      "BINDINGS=mouse1:mouseaction,mouse2:therecmdmenu",
       "OPTIONS=autopickup",
       "OPTIONS=pickup_types:all",
       "OPTIONS=number_pad:3",

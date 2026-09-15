@@ -272,6 +272,118 @@ describe("GameActionController", () => {
     ]);
   });
 
+  it("hides the inventory selector and presents only the resulting itemactions menu", () => {
+    const { controller, submitMenuSelection } = createHarness();
+    const intent = createInventoryIntent();
+    controller.request(intent);
+    controller.observe(createObservation({ input: { kind: "command" } }));
+
+    controller.observe(createObservation({
+      input: {
+        kind: "menu",
+        items: [
+          menuItem(7001, "q".charCodeAt(0), "opaque row one"),
+          menuItem(7002, ITEM_ACCELERATOR, "opaque row two"),
+        ],
+        windowId: 31,
+        how: 1,
+      },
+    }));
+
+    expect(submitMenuSelection).toHaveBeenCalledWith([
+      { itemIndex: 1, count: 1 },
+    ]);
+    expect(controller.getState()).toMatchObject({
+      status: "waiting-expected-input",
+      targetSelected: true,
+      contextMenu: null,
+    });
+
+    controller.observe(createObservation({
+      input: {
+        kind: "menu",
+        items: [
+          menuItem(8101, 0, "opaque core action"),
+        ],
+        windowId: 32,
+        how: 1,
+      },
+    }));
+
+    expect(submitMenuSelection).toHaveBeenCalledTimes(1);
+    expect(controller.getState()).toMatchObject({
+      status: "presenting-context-menu",
+      contextMenu: {
+        windowId: 32,
+        how: 1,
+        origin: intent.origin,
+      },
+    });
+  });
+
+  it("cancels safely when the newly generated inventory menu lacks the accelerator", () => {
+    const {
+      controller,
+      onCancel,
+      submitMenuSelection,
+    } = createHarness();
+    controller.request(createInventoryIntent());
+    controller.observe(createObservation({ input: { kind: "command" } }));
+
+    controller.observe(createObservation({
+      input: {
+        kind: "menu",
+        items: [
+          menuItem(7001, "b".charCodeAt(0), "opaque non-target row"),
+        ],
+      },
+    }));
+
+    expect(submitMenuSelection).not.toHaveBeenCalled();
+    expect(onCancel).toHaveBeenCalledWith("missing-accelerator");
+    expect(controller.getState()).toMatchObject({
+      status: "idle",
+      intent: null,
+      lastCancellationReason: "missing-accelerator",
+    });
+  });
+
+  it("cancels before itemactions when the inventory revision changes after selection", () => {
+    const {
+      controller,
+      onCancel,
+      submitMenuSelection,
+    } = createHarness();
+    controller.request(createInventoryIntent());
+    controller.observe(createObservation({ input: { kind: "command" } }));
+    controller.observe(createObservation({
+      input: {
+        kind: "menu",
+        items: [
+          menuItem(7002, ITEM_ACCELERATOR, "opaque target row"),
+        ],
+      },
+    }));
+
+    controller.observe(createObservation({
+      inventoryRevision: INVENTORY_REVISION + 1,
+      input: {
+        kind: "menu",
+        items: [
+          menuItem(8101, 0, "opaque core action"),
+        ],
+      },
+    }));
+
+    expect(submitMenuSelection).toHaveBeenCalledTimes(1);
+    expect(onCancel).toHaveBeenCalledWith("inventory-revision-changed");
+    expect(controller.getState()).toMatchObject({
+      status: "idle",
+      intent: null,
+      lastCancellationReason: "inventory-revision-changed",
+    });
+  });
+
   it("cancels before command start when the inventory revision changes", () => {
     const { controller, onCancel, startCommand } = createHarness();
     controller.request(createInventoryIntent());
