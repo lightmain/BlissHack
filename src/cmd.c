@@ -3,8 +3,9 @@
 /*-Copyright (c) Robert Patrick Rankin, 2013. */
 /* NetHack may be freely redistributed.  See license for details. */
 /* Modified for BlissHack by lightmain, 2026-09-15: preserve the actual
- * mouse modifier for browser-driven therecmdmenu requests and allow the
- * native request-menu prefix to drive browser inventory drops. */
+ * mouse modifier for browser-driven therecmdmenu requests, allow the native
+ * request-menu prefix to drive browser inventory drops, and route primary
+ * door clicks through ordinary movement for native autoopen semantics. */
 
 #include "hack.h"
 #include "func_tab.h"
@@ -5003,16 +5004,11 @@ domouseaction(void)
         dir = xytodir(x, y);
         if (!m_at(u.ux + x, u.uy + y)
             && !test_move(u.ux, u.uy, x, y, TEST_MOVE)) {
-            if (IS_DOOR(levl[u.ux + x][u.uy + y].typ)) {
-                /* slight assistance to player: choose kick/open for them */
-                if (levl[u.ux + x][u.uy + y].doormask & D_LOCKED) {
-                    cmdq_add_ec(CQ_CANNED, dokick);
-                    return ECMD_OK;
-                }
-                if (levl[u.ux + x][u.uy + y].doormask & D_CLOSED) {
-                    cmdq_add_ec(CQ_CANNED, doopen);
-                    return ECMD_OK;
-                }
+            if (IS_DOOR(levl[u.ux + x][u.uy + y].typ)
+                && (levl[u.ux + x][u.uy + y].doormask
+                    & (D_LOCKED | D_CLOSED))) {
+                cmdq_add_ec(CQ_CANNED, move_funcs[dir][MV_WALK]);
+                return ECMD_OK;
             }
             if (levl[u.ux + x][u.uy + y].typ <= SCORR) {
                 cmdq_add_ec(CQ_CANNED, dosearch);

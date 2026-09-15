@@ -31,14 +31,6 @@ const WINSHIM_SOURCE = join(
   "shim",
   "winshim.c",
 );
-const EXPER_SOURCE = join(
-  __dirname,
-  "..",
-  "..",
-  "..",
-  "src",
-  "exper.c",
-);
 const CMD_SOURCE = join(
   __dirname,
   "..",
@@ -416,7 +408,6 @@ async function run() {
   assert(existsSync(WASM_JS), "nethack.js exists");
   assert(existsSync(WASM_BIN), "nethack.wasm exists");
   assert(existsSync(WINSHIM_SOURCE), "winshim.c exists");
-  assert(existsSync(EXPER_SOURCE), "exper.c exists");
   assert(existsSync(CMD_SOURCE), "cmd.c exists");
   assert(existsSync(HACK_SOURCE), "hack.c exists");
   assert(existsSync(LOCK_SOURCE), "lock.c exists");
@@ -425,7 +416,6 @@ async function run() {
     !existsSync(WASM_JS)
     || !existsSync(WASM_BIN)
     || !existsSync(WINSHIM_SOURCE)
-    || !existsSync(EXPER_SOURCE)
     || !existsSync(CMD_SOURCE)
     || !existsSync(HACK_SOURCE)
     || !existsSync(LOCK_SOURCE)
@@ -437,7 +427,6 @@ async function run() {
     process.exit(1);
   }
   const winshimSource = readFileSync(WINSHIM_SOURCE, "utf8");
-  const experSource = readFileSync(EXPER_SOURCE, "utf8");
   const cmdSource = readFileSync(CMD_SOURCE, "utf8");
   const hackSource = readFileSync(HACK_SOURCE, "utf8");
   const lockSource = readFileSync(LOCK_SOURCE, "utf8");
@@ -468,29 +457,11 @@ async function run() {
   );
   assert(
     statusPercent !== null
-      && /\bcase\s+BL_XP\s*:\s*if\s*\(\s*u\.ulevel\s*>=\s*MAXULEV\s*\)\s*return\s+-1\s*;/.test(
+      && /\bcase\s+BL_XP\s*:\s*if\s*\(\s*!flags\.showexp\s*\|\|\s*u\.ulevel\s*>=\s*MAXULEV\s*\)\s*return\s+-1\s*;/.test(
         statusPercent,
       ),
-    "shim_status_percent returns -1 for unavailable maximum-level XP progress",
-  );
-  const moreExperienced = cBlockAfter(
-    experSource,
-    /\bmore_experienced\s*\([^;{}]*\)\s*/,
-  );
-  const changedExperience = moreExperienced === null
-    ? null
-    : cBlockAfter(
-      moreExperienced,
-      /\bif\s*\(\s*newexp\s*!=\s*oldexp\s*\)\s*/,
-    );
-  assert(
-    changedExperience !== null
-      && /\bu\.uexp\s*=\s*newexp\s*;/.test(changedExperience)
-      && /!\s*flags\.showexp\b/.test(changedExperience)
-      && /\bWINDOWPORT\s*\(\s*shim\s*\)/.test(changedExperience)
-      && /\bdisp\.botlx\s*=\s*TRUE\s*;/.test(changedExperience),
-    "more_experienced requests a guaranteed shim status cycle for XP changes"
-      + " when showexp is false",
+    "shim_status_percent hides XP progress when showexp is disabled"
+      + " or the character is at maximum level",
   );
   const commandSync = cBlockAfter(
     winshimSource,
@@ -608,16 +579,47 @@ async function run() {
     cmdSource,
     /\nstaticfn\s+int\s*\ndoclicklook\s*\(\s*void\s*\)\s*/,
   );
+  const actOnAction = cBlockAfter(
+    cmdSource,
+    /\nstaticfn\s+void\s*\nact_on_act\s*\([^;{}]*\)\s*/,
+  );
   const mouseAction = cBlockAfter(
     cmdSource,
     /\nstaticfn\s+int\s*\ndomouseaction\s*\(\s*void\s*\)\s*/,
   );
-  const blockedMouseTarget = mouseAction === null
+  const travelCommandBranch = mouseAction === null
     ? null
     : cBlockAfter(
       mouseAction,
+      /\bif\s*\(\s*flags\.travelcmd\s*\)\s*/,
+    );
+  const distantTravelTarget = travelCommandBranch === null
+    ? null
+    : cBlockAfter(
+      travelCommandBranch,
+      /\bif\s*\(\s*abs\s*\(\s*x\s*\)\s*<=\s*1\s*&&\s*abs\s*\(\s*y\s*\)\s*<=\s*1\s*\)\s*\{[^{}]*\}\s*else\s*/,
+    );
+  const blockedMouseTarget = travelCommandBranch === null
+    ? null
+    : cBlockAfter(
+      travelCommandBranch,
       /\bif\s*\(\s*!m_at\s*\(\s*u\.ux\s*\+\s*x\s*,\s*u\.uy\s*\+\s*y\s*\)\s*&&\s*!test_move\s*\(\s*u\.ux\s*,\s*u\.uy\s*,\s*x\s*,\s*y\s*,\s*TEST_MOVE\s*\)\s*\)\s*/,
     );
+  const blockedDoorTarget = blockedMouseTarget === null
+    ? null
+    : cBlockAfter(
+      blockedMouseTarget,
+      /\bif\s*\(\s*IS_DOOR\s*\([^)]*\)\s*&&\s*\([^{};]*D_LOCKED[^{};]*D_CLOSED[^{};]*\)\s*\)\s*/,
+    );
+  const blockedHiddenTarget = blockedMouseTarget === null
+    ? null
+    : cBlockAfter(
+      blockedMouseTarget,
+      /\bif\s*\(\s*levl\[u\.ux\s*\+\s*x\]\[u\.uy\s*\+\s*y\]\.typ\s*<=\s*SCORR\s*\)\s*/,
+    );
+  const kickDoorCase = actOnAction?.match(
+    /\bcase\s+MCMD_KICK_DOOR\s*:\s*([\s\S]*?)\bbreak\s*;/,
+  )?.[1] ?? null;
   const setMoveCommand = cBlockAfter(
     cmdSource,
     /\nvoid\s*\nset_move_cmd\s*\([^;{}]*\)\s*/,
@@ -681,14 +683,65 @@ async function run() {
     mouseAction !== null
       && blockedMouseTarget !== null
       && /\bdir\s*=\s*xytodir\s*\(\s*x\s*,\s*y\s*\)\s*;/.test(mouseAction)
+      && blockedDoorTarget !== null
       && /\bcmdq_add_ec\s*\(\s*CQ_CANNED\s*,\s*move_funcs\[dir\]\[MV_WALK\]\s*\)\s*;/.test(
-        blockedMouseTarget,
+        blockedDoorTarget,
       )
       && !/\bcmdq_add_ec\s*\(\s*CQ_CANNED\s*,\s*(?:dokick|doopen)\s*\)\s*;/.test(
-        blockedMouseTarget,
+        blockedDoorTarget,
       ),
     "mouseaction queues blocked adjacent doors as directional walks"
       + " without direct open or kick commands",
+  );
+  const blockedTargetIndex = travelCommandBranch?.indexOf(
+    blockedMouseTarget ?? "",
+  ) ?? -1;
+  const travelBranchIndex = mouseAction?.indexOf(
+    travelCommandBranch ?? "",
+  ) ?? -1;
+  const finalWalkIndex = mouseAction?.lastIndexOf(
+    "cmdq_add_ec(CQ_CANNED, move_funcs[dir][MV_WALK]);",
+  ) ?? -1;
+  const occupiedTargetTail = blockedTargetIndex < 0
+    ? null
+    : travelCommandBranch?.slice(
+      blockedTargetIndex + (blockedMouseTarget?.length ?? 0),
+    ) ?? null;
+  assert(
+    mouseAction !== null
+      && travelCommandBranch !== null
+      && blockedMouseTarget !== null
+      && /\bif\s*\(\s*!m_at\s*\(/.test(travelCommandBranch)
+      && blockedTargetIndex >= 0
+      && occupiedTargetTail !== null
+      && !/\b(?:return|cmdq_add_)\b/.test(occupiedTargetTail)
+      && travelBranchIndex >= 0
+      && finalWalkIndex > travelBranchIndex + travelCommandBranch.length,
+    "mouseaction leaves occupied adjacent targets on the final attack walk",
+  );
+  assert(
+    blockedHiddenTarget !== null
+      && /\bcmdq_add_ec\s*\(\s*CQ_CANNED\s*,\s*dosearch\s*\)\s*;/.test(
+        blockedHiddenTarget,
+      ),
+    "mouseaction preserves searching for blocked stone and secret corridors",
+  );
+  assert(
+    distantTravelTarget !== null
+      && /\biflags\.travelcc\.x\s*=\s*u\.tx\s*=\s*u\.ux\s*\+\s*x\s*;[\s\S]*?\biflags\.travelcc\.y\s*=\s*u\.ty\s*=\s*u\.uy\s*\+\s*y\s*;[\s\S]*?\bcmdq_add_ec\s*\(\s*CQ_CANNED\s*,\s*dotravel_target\s*\)\s*;/.test(
+        distantTravelTarget,
+      ),
+    "mouseaction preserves travel for non-adjacent primary clicks",
+  );
+  assert(
+    kickDoorCase !== null
+      && /\bcmdq_add_ec\s*\(\s*CQ_CANNED\s*,\s*dokick\s*\)\s*;/.test(
+        kickDoorCase,
+      )
+      && /\bcmdq_add_dir\s*\(\s*CQ_CANNED\s*,\s*dx\s*,\s*dy\s*,\s*0\s*\)\s*;/.test(
+        kickDoorCase,
+      ),
+    "therecmdmenu keeps explicit door kicks directional",
   );
   assert(
     setMoveCommand !== null

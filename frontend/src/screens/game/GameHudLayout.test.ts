@@ -230,7 +230,7 @@ describe("GameHudLayout contract", () => {
     expect(html).not.toContain('data-hud-region="inventory"');
     expect(cssFor(
       '.nh-hud-layout-below[data-has-inventory="false"]',
-    )).toContain("auto minmax(0, 1fr) auto 0 0");
+    )).toContain("auto minmax(0, 1fr) 0 auto 0");
   });
 
   it("uses the fixed overlay layer instead of revealing inline status tooltips", () => {

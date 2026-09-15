@@ -17,13 +17,16 @@
 ## 2. 实现结果
 
 - `GameHudLayout` 独占 viewport Grid，消息、地图、状态和永久背包各自拥有明确
-  区域与 overflow；永久背包支持 Right、Below 和折叠。
+  区域与 overflow；永久背包支持 Right、Below 和折叠。Below 模式把背包放在
+  状态栏上方，并为展开状态保留 11rem 至 15rem 的响应式高度。
 - 状态栏使用核心结构化字段显示 HP、Energy、XP、属性、AC、金币、回合、地点
-  和 conditions，不从展示文本反推资源百分比。
+  和 conditions，不从展示文本反推资源百分比；关闭 Experience 后隐藏经验点
+  和 XP 进度条，但继续显示角色等级。
 - 地图、背包和状态共用 anchored overlay。地图悬停说明来自核心
   `clicklook`，不写入普通消息历史。
-- 普通地图左键使用核心 `mouseaction`，右键菜单使用核心
-  `therecmdmenu`；永久背包右键菜单使用核心 `itemactions()`。
+- 普通地图左键使用核心 `mouseaction`；相邻关闭或锁定门按普通方向移动进入
+  autoopen/autounlock。右键菜单使用核心 `therecmdmenu`，显式 Kick 仍带目标
+  方向；永久背包右键菜单使用核心 `itemactions()`。
 - `GameActionController` 独占高层动作编排，只在真实 command/menu 边界推进，
   遇到非预期 prompt、过期 session、snapshot 或背包 revision 时安全取消。
 - 永久背包拖放使用 Pointer Events。只有地图接受 drop，落点固定为玩家脚下；
@@ -38,8 +41,8 @@
 | `nethack-classic.png` | 459,374 | `bd41a419de9df7cc9b6533438087b4aabf7a087fad3726e5f615dbe9f2f83de6` |
 | `nethack-classic.json` | 1,877 | `09c7bf5998cd86d7d58a5b9a62b42c852d8a9a8c44d7b067740e3cd1ca02fc09` |
 | `nethack.js` | 95,047 | `cf00ebd0276440ff61c58e6e07bd5fe396918150c8be63662346100dfa951208` |
-| `nethack.wasm` | 6,629,296 | `2fd4b911a574b84524139ccc65778af76e48b9c9811f0a10438fe1d7532322bc` |
-| `nethack-runtime.json` | 575 | `90820dbe72743bd91a88ac16c65898e1709fccf8b5b3854a853d8395eb256b7d` |
+| `nethack.wasm` | 6,629,237 | `d206a483d770edfc6f91ff571c9b2799430cd1c90d48c54ed580ab87f5777056` |
+| `nethack-runtime.json` | 575 | `9c7dd6c02ec1e331e7a78cfc3b3b2cf75003d9fac35ad74ad6641e278a7e09e0` |
 
 运行时 manifest 已验证 Node、Emscripten、Lua、hints、host compiler、文件长度
 和 SHA-256。`nethack.js` 与阶段六重建前保持字节一致。
@@ -53,8 +56,8 @@
 | `npm test` | 53 files，599/599 |
 | `npm run lint` | 0 warnings，0 errors |
 | `npm run build` | TypeScript 与 Vite production build 通过 |
-| `npm run test:integration:wasm` | 82/82 |
-| `npm run test:integration:browser` | Chromium 69/69 |
+| `npm run test:integration:wasm` | 88/88 |
+| `npm run test:integration:browser` | Chromium 70/70 |
 | `npm run test:integration:compat` | Firefox 28/28，WebKit 28/28 |
 | `npm run test:performance` | 2/2 |
 | `npm run test:long` | 4/4 |
@@ -69,11 +72,11 @@ ASCII × Right × 1280×900 / 900×700
 ASCII × Below × 1280×900 / 900×700
 ```
 
-随机地图、消息、背包文本和状态值被稳定遮罩；资源条、背包行结构、区域尺寸、
-分隔线、布局拓扑与 viewport 边界仍参与像素比较。截图前还直接确认 Tiles
-Canvas 非空且包含多种颜色、ASCII 包含 21 行有效内容。三个浏览器都另外执行
-严格几何断言，确认四个 HUD 区域无重叠、无 document/body overflow，且四个
-overflow owner 唯一。
+随机地图、消息、背包内容区和状态值被稳定遮罩；资源条、背包面板、区域尺寸、
+分隔线、布局拓扑与 viewport 边界仍参与像素比较。截图前还直接确认背包包含
+核心发布的装备项、Tiles Canvas 非空且包含多种颜色、ASCII 包含 21 行有效
+内容。三个浏览器都另外执行严格几何断言，确认四个 HUD 区域无重叠、无
+document/body overflow，且四个 overflow owner 唯一。
 
 本机最终性能结果：
 
@@ -102,6 +105,10 @@ overflow owner 唯一。
 首次复审发现的两个 P2（禁用背包后的 Below 折叠空轨道、地图菜单关闭后的
 焦点恢复）和一个 P3（视觉基线遮罩过多）均已修复，并由第二位独立 reviewer
 确认关闭；没有剩余 P1、P2 或 P3。
+
+人工验收反馈修复的独立复审未发现功能问题，并确认 Below Grid、门左键普通
+移动、Experience 动态隐藏和 runtime 三件套实现正确。复审提出的截图随机背包
+噪声、门源码契约范围过宽和本文 runtime 摘要过期均已修正。
 
 ## 6. 待人工验收
 

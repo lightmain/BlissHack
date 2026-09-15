@@ -659,7 +659,7 @@ shim_status_percent(int fldidx, int percent)
         maximum = u.uenmax;
         break;
     case BL_XP:
-        if (u.ulevel >= MAXULEV)
+        if (!flags.showexp || u.ulevel >= MAXULEV)
             return -1;
         start = newuexp(u.ulevel - 1);
         current = u.uexp - start;

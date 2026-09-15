@@ -2,8 +2,6 @@
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /*-Copyright (c) Robert Patrick Rankin, 2007. */
 /* NetHack may be freely redistributed.  See license for details. */
-/* Modified for BlissHack by lightmain, 2026-09-14:
- * keep graphical shim XP progress current when showexp is disabled. */
 
 #include "hack.h"
 #ifndef LONG_MAX
@@ -186,10 +184,6 @@ more_experienced(int exper, int rexp)
         u.uexp = newexp;
         if (flags.showexp)
             disp.botl = TRUE;
-#ifdef SHIM_GRAPHICS
-        if (!flags.showexp && WINDOWPORT(shim))
-            disp.botlx = TRUE;
-#endif
         /* even when experience points aren't being shown, experience level
            might be highlighted with a percentage highlight rule and that
            percentage depends upon experience points */
