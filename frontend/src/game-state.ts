@@ -170,6 +170,10 @@ let pendingMapRows = new Map<number, MapCell[]>();
 let restoredMessageHistory: TextLine[] | null = null;
 let currentMessageHistory: TextLine[] | null = null;
 let permanentInventoryRevision = 0;
+let mapInspectCapture: {
+  token: symbol;
+  lines: TextLine[];
+} | null = null;
 let snapshot = createInitialSnapshot();
 
 /**
@@ -258,6 +262,7 @@ export function resetGameState(): void {
   permanentInventoryRevision = 0;
   restoredMessageHistory = null;
   currentMessageHistory = null;
+  mapInspectCapture = null;
   snapshot = createInitialSnapshot();
   for (const listener of listeners) listener();
 }
@@ -331,6 +336,7 @@ export function clearWindow(winid: number): void {
       mapRevision: snapshot.mapRevision + 1,
     });
   } else if (window.type === NHW_MESSAGE) {
+    if (mapInspectCapture) return;
     publish({ messages: [] });
   }
 }
@@ -370,6 +376,15 @@ export function appendWindowText(
 ): void {
   const window = windows.get(winid);
   const line = { text, attribute };
+  const capture = mapInspectCapture;
+  if (
+    capture
+    && (attribute & ATR_NOHISTORY) !== 0
+    && (window?.type === NHW_MESSAGE || window === undefined)
+  ) {
+    capture.lines.push(line);
+    return;
+  }
   if (window?.type === NHW_MESSAGE) {
     const messages = [...snapshot.messages, line].slice(-200);
     const messageHistory = (attribute & ATR_NOHISTORY) !== 0
@@ -386,6 +401,42 @@ export function appendWindowText(
     messages: [...snapshot.messages, line].slice(-200),
     messageHistory: [...snapshot.messageHistory, line].slice(-500),
   });
+}
+
+/**
+ * Begin capturing clicklook's no-history message output.
+ * @returns an opaque token which owns this capture.
+ */
+export function beginMapInspectMessageCapture(): symbol {
+  if (mapInspectCapture !== null) {
+    throw new Error("A map inspection message capture is already active");
+  }
+  const token = Symbol("map-inspect-capture");
+  mapInspectCapture = { token, lines: [] };
+  return token;
+}
+
+/**
+ * Finish a matching clicklook capture and return its copied output.
+ * @param token - opaque token returned when the capture began.
+ * @returns captured lines, or null when the token is stale.
+ */
+export function finishMapInspectMessageCapture(
+  token: unknown,
+): readonly TextLine[] | null {
+  const capture = mapInspectCapture;
+  if (!capture || capture.token !== token) return null;
+  const lines = capture.lines.map((line) => ({ ...line }));
+  mapInspectCapture = null;
+  return lines;
+}
+
+/**
+ * Discard a matching clicklook capture without publishing its output.
+ * @param token - opaque token returned when the capture began.
+ */
+export function cancelMapInspectMessageCapture(token: unknown): void {
+  if (mapInspectCapture?.token === token) mapInspectCapture = null;
 }
 
 /**

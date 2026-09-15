@@ -24,6 +24,7 @@ interface MapViewportProps {
   map: MapCell[][];
   mapRenderer: InterfaceSettings["mapRenderer"];
   onContextClick(origin: MapInteractionOrigin): boolean;
+  onDragChange?(dragging: boolean): void;
   onHoverLeave?(): void;
   onHoverTarget?(origin: MapInteractionOrigin): void;
   onMapRendererFallback?(reason: TileRendererFallbackReason): void;
@@ -49,6 +50,7 @@ export const MapViewport = memo(function MapViewport({
   map,
   mapRenderer,
   onContextClick,
+  onDragChange,
   onHoverLeave,
   onHoverTarget,
   onMapRendererFallback,
@@ -64,6 +66,7 @@ export const MapViewport = memo(function MapViewport({
     commandInput,
     followPlayer,
     layoutKey,
+    onViewportChange: onHoverLeave,
   });
 
   /**
@@ -95,6 +98,7 @@ export const MapViewport = memo(function MapViewport({
   }
 
   const rightDrag = useRightDragPan({
+    onDragChange,
     onRightClick: (point, target) => {
       const origin = mapOrigin(point.clientX, point.clientY, target);
       if (!origin) return;
@@ -138,6 +142,30 @@ export const MapViewport = memo(function MapViewport({
     if (origin) onHoverTarget?.(origin);
   }
 
+  /** Clear hover state before a secondary click can become a drag. */
+  function handlePointerDown(
+    event: ReactPointerEvent<HTMLDivElement>,
+  ): void {
+    if (event.button === 2) onHoverLeave?.();
+    rightDrag.onPointerDown(event);
+  }
+
+  /** Clear hover state when the browser cancels the active pointer. */
+  function handlePointerCancel(
+    event: ReactPointerEvent<HTMLDivElement>,
+  ): void {
+    onHoverLeave?.();
+    rightDrag.onPointerCancel(event);
+  }
+
+  /** Clear hover state when pointer capture is revoked unexpectedly. */
+  function handleLostPointerCapture(
+    event: ReactPointerEvent<HTMLDivElement>,
+  ): void {
+    onHoverLeave?.();
+    rightDrag.onLostPointerCapture(event);
+  }
+
   /**
    * Suppress the browser context menu while NetHack accepts map clicks.
    * @param event - browser context-menu event.
@@ -160,12 +188,12 @@ export const MapViewport = memo(function MapViewport({
         data-cursor-x={cursor.x}
         data-cursor-y={cursor.y}
         data-dragging={rightDrag.dragging ? "true" : "false"}
-        onLostPointerCapture={rightDrag.onLostPointerCapture}
+        onLostPointerCapture={handleLostPointerCapture}
         onMouseDown={handleMouseDown}
         onContextMenu={handleContextMenu}
-        onPointerLeave={onHoverLeave}
-        onPointerCancel={rightDrag.onPointerCancel}
-        onPointerDown={rightDrag.onPointerDown}
+        onPointerLeave={() => onHoverLeave?.()}
+        onPointerCancel={handlePointerCancel}
+        onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={rightDrag.onPointerUp}
       >

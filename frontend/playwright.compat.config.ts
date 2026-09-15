@@ -12,6 +12,10 @@ const basicFlowNames = [
   "blocks a second game and retries after the owning page closes",
   "keeps a manual Follow anchor after a right-click position look",
   "right-drag pans during position input without submitting it",
+  "delays status inspection and keeps pointer and focus tooltips in the shared viewport layer",
+  "shows the core permanent-inventory item text without sending game input",
+  "inspects the player cell without changing visible messages or turn count",
+  "clears inspection tooltips on leave, game key input, and pause",
 ].join("|");
 
 export default defineConfig({

@@ -8,14 +8,19 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import {
+  beginMapInspectMessageCapture,
+  cancelMapInspectMessageCapture,
+  finishMapInspectMessageCapture,
   getSnapshot,
   getWindow,
   subscribe,
   type GameSnapshot,
+  type TextLine,
 } from "../game-state";
 import {
   createGameActionController,
   type ActionControllerInput,
+  type GameActionController,
 } from "../game-actions/game-action-controller";
 import {
   resolveMapPrimaryInteraction,
@@ -38,6 +43,16 @@ import {
 } from "../nethack-bridge";
 import type { TileRendererFallbackReason } from "../map/TileMapRenderer";
 import type { MapInteractionOrigin } from "../map/MapViewport";
+import {
+  createHoverInspectController,
+  type HoverInspectTooltip,
+  type MapInspectTarget,
+} from "../interactions/hover-inspect-controller";
+import {
+  AnchoredInspectTooltip,
+  type LocalInspectRequest,
+} from "../interactions/InspectTooltip";
+import { OverlayRoot } from "../interactions/OverlayRoot";
 import { SettingsScreen } from "./SettingsScreen";
 import { GameModalRenderer } from "./game/GameModals";
 import { GameTerminal } from "./game/GameTerminal";
@@ -50,6 +65,25 @@ interface GameScreenProps {
   onMapRendererFallback?(reason: TileRendererFallbackReason): void;
   onApplyProfile(profile: BlissHackProfile): Promise<BlissHackProfile>;
   profile: BlissHackProfile;
+}
+
+interface ActiveInspectTooltip {
+  anchor: { clientX: number; clientY: number };
+  content: {
+    title: string;
+    description?: string;
+    glyph?: string;
+  };
+  id: string;
+}
+
+interface MapInspectRuntime {
+  cancel(): void;
+  complete(): void;
+  getSnapshot(): GameSnapshot;
+  open(resolve: (lines: readonly TextLine[]) => void): boolean;
+  startCapture(): void;
+  updateSnapshot(snapshot: GameSnapshot): void;
 }
 
 /**
@@ -67,6 +101,12 @@ export function GameScreen({
 }: GameScreenProps) {
   const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
   const snapshotRef = useRef(snapshot);
+  const inspectRuntime = useMemo<MapInspectRuntime>(
+    () => createMapInspectRuntime(moduleId, sessionId, getSnapshot()),
+    [moduleId, sessionId],
+  );
+  const [inspectTooltip, setInspectTooltip] =
+    useState<ActiveInspectTooltip | null>(null);
   const [pauseView, setPauseView] = useState<"pause" | "settings" | null>(null);
   const previousRuntimeSettings = useRef<string | null>(null);
   const settings = profile.interface;
@@ -78,29 +118,54 @@ export function GameScreen({
     () => createGameActionController({
       scope: { moduleId, sessionId },
       /**
-       * Start only the map command supported by the current stage.
-       * Later phases add safe-boundary inventory and inspect commands.
+       * Start map commands only after the controller reaches a safe boundary.
        */
       startCommand(intent): void {
-        if (intent.kind !== "map-context") {
-          throw new Error(`Unsupported action intent: ${intent.kind}`);
+        if (intent.kind === "map-context") {
+          sendPosition(intent.origin.mapX, intent.origin.mapY, 2);
+          return;
         }
-        sendPosition(intent.origin.mapX, intent.origin.mapY, 2);
+        if (intent.kind === "map-inspect") {
+          inspectRuntime.startCapture();
+          sendPosition(intent.origin.mapX, intent.origin.mapY, 2);
+          return;
+        }
+        throw new Error(`Unsupported action intent: ${intent.kind}`);
       },
       submitMenuSelection,
       releaseInputToUi: () => {
         // Unexpected input remains published in the normal game snapshot.
       },
+      onCancel: () => inspectRuntime.cancel(),
+      onComplete: (intent) => {
+        if (intent.kind !== "map-inspect") return;
+        inspectRuntime.complete();
+      },
       setActionIntentActive,
     }),
-    [moduleId, sessionId],
+    [inspectRuntime, moduleId, sessionId],
+  );
+  const hoverController = useMemo(
+    () => createHoverInspectController({
+      delayMs: 300,
+      hideTooltip: () => setInspectTooltip(null),
+      requestMapInspect: (target) =>
+        requestMapInspection(actionController, target, inspectRuntime),
+      showTooltip: (tooltip) =>
+        setInspectTooltip(activeTooltipFromHover(tooltip)),
+    }),
+    [actionController, inspectRuntime],
   );
 
   useEffect(() => {
     snapshotRef.current = snapshot;
-  }, [snapshot]);
+    inspectRuntime.updateSnapshot(snapshot);
+  }, [inspectRuntime, snapshot]);
 
-  useEffect(() => () => actionController.dispose(), [actionController]);
+  useEffect(() => () => {
+    hoverController.dispose();
+    actionController.dispose();
+  }, [actionController, hoverController]);
 
   useEffect(() => {
     actionController.observe({
@@ -113,6 +178,26 @@ export function GameScreen({
       fatal: snapshot.phase === "error",
     });
   }, [actionController, moduleId, sessionId, snapshot]);
+
+  useEffect(() => {
+    hoverController.observe({
+      commandBoundary: snapshot.commandInput,
+      dragging: false,
+      mapRevision: snapshot.mapRevision,
+      modalOpen: snapshot.modal !== null,
+      moduleId,
+      paused: pauseView !== null,
+      sessionId,
+    });
+  }, [
+    hoverController,
+    moduleId,
+    pauseView,
+    sessionId,
+    snapshot.commandInput,
+    snapshot.mapRevision,
+    snapshot.modal,
+  ]);
 
   useEffect(() => {
     const current = snapshot.runtimeSettings;
@@ -144,6 +229,7 @@ export function GameScreen({
      * @param event - browser keyboard event.
      */
     function handleKeyDown(event: KeyboardEvent): void {
+      hoverController.leave();
       if (pauseView !== null) return;
       if (snapshot.inputRequest?.kind === "line") return;
       if (
@@ -192,6 +278,7 @@ export function GameScreen({
   }, [
     pauseView,
     actionController,
+    hoverController,
     snapshot.commandInput,
     snapshot.inputRequest,
     snapshot.modal,
@@ -249,6 +336,7 @@ export function GameScreen({
   const handlePrimaryClick = useCallback((
     origin: MapInteractionOrigin,
   ): void => {
+    hoverController.leave();
     const current = snapshotRef.current;
     const resolution = resolveMapPrimaryInteraction({
       commandInput: current.commandInput,
@@ -261,7 +349,7 @@ export function GameScreen({
     if (resolution) {
       sendPosition(resolution.x, resolution.y, resolution.modifier);
     }
-  }, [moduleId, sessionId]);
+  }, [hoverController, moduleId, sessionId]);
 
   /**
    * Route a secondary click through explicit-position priority and the intent owner.
@@ -271,6 +359,7 @@ export function GameScreen({
   const handleContextClick = useCallback((
     origin: MapInteractionOrigin,
   ): boolean => {
+    hoverController.leave();
     const current = snapshotRef.current;
     const resolution = resolveMapSecondaryInteraction({
       completion: "click",
@@ -296,7 +385,60 @@ export function GameScreen({
       input: { kind: "command" },
     });
     return true;
-  }, [actionController, moduleId, sessionId]);
+  }, [actionController, hoverController, moduleId, sessionId]);
+
+  /**
+   * Debounce one map cell before requesting its core-authoritative description.
+   * @param origin - current pointer and map coordinates.
+   */
+  const handleMapHover = useCallback((origin: MapInteractionOrigin): void => {
+    const current = snapshotRef.current;
+    const cell = current.map[origin.mapY]?.[origin.mapX];
+    hoverController.hover({
+      kind: "map",
+      moduleId,
+      sessionId,
+      mapRevision: current.mapRevision,
+      glyph: cell?.foreground ?? cell?.background ?? null,
+      origin,
+    });
+  }, [hoverController, moduleId, sessionId]);
+
+  /** Clear the current inspect target without cancelling an in-flight command. */
+  const handleInspectLeave = useCallback((key?: string): void => {
+    hoverController.leave(key);
+  }, [hoverController]);
+
+  /**
+   * Keep the hover owner synchronized with the map's pointer-capture state.
+   * @param dragging - whether a secondary gesture has crossed the pan threshold.
+   */
+  const handleMapDragChange = useCallback((dragging: boolean): void => {
+    const current = snapshotRef.current;
+    hoverController.observe({
+      commandBoundary: current.commandInput,
+      dragging,
+      mapRevision: current.mapRevision,
+      modalOpen: current.modal !== null,
+      moduleId,
+      paused: pauseView !== null,
+      sessionId,
+    });
+  }, [hoverController, moduleId, pauseView, sessionId]);
+
+  /**
+   * Publish a local inventory or status target through the shared hover owner.
+   * @param request - serializable tooltip content and viewport anchor.
+   */
+  const handleLocalInspect = useCallback((
+    request: LocalInspectRequest,
+  ): void => {
+    hoverController.hover({
+      ...request,
+      moduleId,
+      sessionId,
+    });
+  }, [hoverController, moduleId, sessionId]);
 
   return (
     <main
@@ -330,6 +472,11 @@ export function GameScreen({
           mapRenderer={settings.mapRenderer}
           messages={snapshot.messages}
           onContextClick={handleContextClick}
+          onDragChange={handleMapDragChange}
+          onHoverLeave={handleInspectLeave}
+          onHoverTarget={handleMapHover}
+          onInspect={handleLocalInspect}
+          onInspectLeave={handleInspectLeave}
           onInventoryCollapsedChange={setInventoryCollapsed}
           onMapRendererFallback={onMapRendererFallback}
           onPrimaryClick={handlePrimaryClick}
@@ -342,6 +489,15 @@ export function GameScreen({
         />
       )}
 
+      <OverlayRoot>
+        {inspectTooltip && (
+          <AnchoredInspectTooltip
+            anchor={inspectTooltip.anchor}
+            content={inspectTooltip.content}
+            id={inspectTooltip.id}
+          />
+        )}
+      </OverlayRoot>
       {snapshot.modal && <GameModalRenderer modal={snapshot.modal} />}
       {pauseView === "pause" && (
         <PauseOverlay
@@ -369,6 +525,154 @@ export function GameScreen({
       )}
     </main>
   );
+}
+
+/**
+ * Request clicklook through the existing command-boundary action controller.
+ * @param controller - active session action owner.
+ * @param target - current map revision, glyph, and coordinates.
+ * @param runtime - latest snapshot plus sole capture resolver for this session.
+ * @returns lines captured until the next command boundary.
+ */
+function requestMapInspection(
+  controller: GameActionController,
+  target: MapInspectTarget,
+  runtime: MapInspectRuntime,
+): Promise<readonly TextLine[]> {
+  return new Promise((resolve) => {
+    if (!runtime.open(resolve)) {
+      resolve([]);
+      return;
+    }
+    const current = runtime.getSnapshot();
+    const accepted = controller.request({
+      kind: "map-inspect",
+      moduleId: target.moduleId,
+      sessionId: target.sessionId,
+      snapshotRevision: current.revision,
+      mapRevision: target.mapRevision,
+      glyph: target.glyph,
+      origin: target.origin,
+    });
+    if (!accepted) {
+      runtime.cancel();
+      return;
+    }
+    controller.observe({
+      moduleId: target.moduleId,
+      sessionId: target.sessionId,
+      snapshotRevision: current.revision,
+      inventoryRevision: current.permanentInventory?.revision ?? null,
+      mapRevision: current.mapRevision,
+      input: actionInputFromSnapshot(current),
+      fatal: current.phase === "error",
+    });
+  });
+}
+
+/**
+ * Own the mutable capture details which never participate in React rendering.
+ * @param moduleId - module generation which owns the runtime.
+ * @param sessionId - active session which owns the runtime.
+ * @param initialSnapshot - authoritative snapshot at controller creation.
+ * @returns an imperative coordinator with one pending map-inspect request.
+ */
+function createMapInspectRuntime(
+  moduleId: string,
+  sessionId: string,
+  initialSnapshot: GameSnapshot,
+): MapInspectRuntime {
+  let snapshot = initialSnapshot;
+  let pending: {
+    capture: symbol | null;
+    resolve(lines: readonly TextLine[]): void;
+  } | null = null;
+
+  /** Resolve and clear the pending request with the supplied lines. */
+  function settle(lines: readonly TextLine[]): void {
+    const current = pending;
+    if (!current) return;
+    pending = null;
+    current.resolve(lines);
+  }
+
+  return {
+    /** Discard captured output and resolve the pending request as empty. */
+    cancel(): void {
+      if (!pending) return;
+      if (pending.capture) cancelMapInspectMessageCapture(pending.capture);
+      settle([]);
+    },
+    /** Finish capture and resolve the pending request with copied lines. */
+    complete(): void {
+      if (!pending) return;
+      const lines = pending.capture
+        ? finishMapInspectMessageCapture(pending.capture) ?? []
+        : [];
+      settle(lines);
+    },
+    /** Return the latest snapshot published for this session. */
+    getSnapshot(): GameSnapshot {
+      return snapshot;
+    },
+    /**
+     * Reserve the sole pending request.
+     * @param resolve - callback settled on completion or cancellation.
+     * @returns whether the request acquired the runtime.
+     */
+    open(resolve): boolean {
+      if (pending) return false;
+      pending = { capture: null, resolve };
+      return true;
+    },
+    /** Start transient message capture at the core command boundary. */
+    startCapture(): void {
+      if (!pending) {
+        throw new Error(
+          `Missing map inspection request for ${moduleId}/${sessionId}`,
+        );
+      }
+      pending.capture = beginMapInspectMessageCapture();
+    },
+    /**
+     * Refresh the authoritative snapshot used when a delayed request begins.
+     * @param nextSnapshot - latest external-store value.
+     */
+    updateSnapshot(nextSnapshot): void {
+      snapshot = nextSnapshot;
+    },
+  };
+}
+
+/**
+ * Normalize map and local hover results for the shared tooltip renderer.
+ * @param tooltip - controller output which already passed staleness checks.
+ * @returns one anchored, presentation-only tooltip.
+ */
+function activeTooltipFromHover(
+  tooltip: HoverInspectTooltip,
+): ActiveInspectTooltip {
+  if (tooltip.kind !== "map") {
+    return {
+      anchor: tooltip.anchor,
+      content: tooltip.content,
+      id: `inspect-${tooltip.kind}-tooltip`,
+    };
+  }
+  const text = tooltip.lines
+    .map((line) => line.text.trim())
+    .filter(Boolean);
+  return {
+    anchor: {
+      clientX: tooltip.origin.clientX,
+      clientY: tooltip.origin.clientY,
+    },
+    content: {
+      title: text[0] ?? "Unknown location",
+      description: text.slice(1).join(" ") || undefined,
+    },
+    id: "map-inspect-tooltip",
+  };
 }
 
 /**

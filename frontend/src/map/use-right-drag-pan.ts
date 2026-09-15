@@ -24,6 +24,7 @@ interface ActiveRightDrag {
 }
 
 interface RightDragPanOptions {
+  onDragChange?(dragging: boolean): void;
   onRightClick(point: PointerPoint, target: HTMLDivElement): void;
   viewportRef: RefObject<HTMLDivElement | null>;
 }
@@ -43,6 +44,7 @@ interface RightDragPan {
  * @returns pointer handlers and current dragging state.
  */
 export function useRightDragPan({
+  onDragChange,
   onRightClick,
   viewportRef,
 }: RightDragPanOptions): RightDragPan {
@@ -59,7 +61,8 @@ export function useRightDragPan({
     }
     gestureRef.current = null;
     setDragging(false);
-  }, []);
+    onDragChange?.(false);
+  }, [onDragChange]);
 
   /** Begin tracking a secondary-button pointer gesture. */
   const onPointerDown = useCallback((
@@ -97,10 +100,13 @@ export function useRightDragPan({
     });
     if (!move?.dragging) return;
     event.preventDefault();
-    if (!previousDragging) setDragging(true);
+    if (!previousDragging) {
+      setDragging(true);
+      onDragChange?.(true);
+    }
     viewport.scrollLeft = move.left;
     viewport.scrollTop = move.top;
-  }, [viewportRef]);
+  }, [onDragChange, viewportRef]);
 
   /** Finish a pan or dispatch the deferred secondary click. */
   const onPointerUp = useCallback((
@@ -140,11 +146,13 @@ export function useRightDragPan({
     if (!active || active.gesture.pointerId !== event.pointerId) return;
     gestureRef.current = null;
     setDragging(false);
-  }, []);
+    onDragChange?.(false);
+  }, [onDragChange]);
 
   useEffect(() => () => {
     gestureRef.current = null;
-  }, []);
+    onDragChange?.(false);
+  }, [onDragChange]);
 
   return {
     dragging,

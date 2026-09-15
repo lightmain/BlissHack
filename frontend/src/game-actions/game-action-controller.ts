@@ -38,6 +38,7 @@ interface GameActionControllerOptions {
   ): void;
   releaseInputToUi(input: ActionControllerInput): void;
   onCancel?(reason: ActionIntentCancellationReason): void;
+  onComplete?(intent: ActionIntent): void;
   setActionIntentActive?(active: boolean): void;
 }
 
@@ -81,9 +82,11 @@ export function createGameActionController(
 
   /** Complete the active intent and release its input barrier. */
   function complete(): void {
-    if (state.intent === null) return;
+    const intent = state.intent;
+    if (intent === null) return;
     transition({ type: "completed" });
     options.setActionIntentActive?.(false);
+    options.onComplete?.(intent);
   }
 
   /** Validate session and inventory ownership before any automated step. */
@@ -116,6 +119,7 @@ export function createGameActionController(
     }
     if (
       intent.kind === "map-inspect"
+      && state.status === "waiting-command-boundary"
       && observation.mapRevision !== intent.mapRevision
     ) {
       cancel("target-stale");
@@ -202,6 +206,10 @@ export function createGameActionController(
     if (state.status !== "waiting-expected-input") return;
     const input = observation.input;
     if (input === null) return;
+    if (state.intent?.kind === "map-inspect" && input.kind === "command") {
+      complete();
+      return;
+    }
     if (input.kind === "menu") {
       handleMenu(input);
       return;

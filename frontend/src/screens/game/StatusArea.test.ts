@@ -1,31 +1,9 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
+import { planLocalInspectActivity } from "../../interactions/local-inspect-activity";
 import type { StatusMetric } from "../../status-metrics";
-import * as statusAreaModule from "./StatusArea";
-
-const StatusArea = statusAreaModule.StatusArea;
-
-interface LocalInspectActivity {
-  focused: boolean;
-  pointerInside: boolean;
-}
-
-type LocalInspectActivityEvent =
-  | "blur"
-  | "focus"
-  | "pointer-enter"
-  | "pointer-leave";
-
-interface LocalInspectActivityPlan {
-  leaveSharedOverlay: boolean;
-  next: LocalInspectActivity;
-}
-
-type PlanLocalInspectActivity = (
-  current: LocalInspectActivity,
-  event: LocalInspectActivityEvent,
-) => LocalInspectActivityPlan;
+import { StatusArea } from "./StatusArea";
 
 const metrics = [
   {
@@ -104,14 +82,7 @@ const metrics = [
 
 describe("StatusArea", () => {
   it("[defect-probing] keeps shared overlay ownership until pointer and focus both leave", () => {
-    const planLocalInspectActivity = (
-      statusAreaModule as typeof statusAreaModule & {
-        planLocalInspectActivity?: PlanLocalInspectActivity;
-      }
-    ).planLocalInspectActivity;
-
     expect(planLocalInspectActivity).toBeTypeOf("function");
-    if (!planLocalInspectActivity) return;
 
     const inactive = { focused: false, pointerInside: false };
     const hovered = planLocalInspectActivity(inactive, "pointer-enter").next;
