@@ -111,4 +111,18 @@ describe("GameScreen interface settings", () => {
     expect(html).toMatch(/<section[^>]*class="nh-terminal"[^>]*inert=""/);
     expect(html).toContain('role="dialog"');
   });
+
+  it("mounts one session overlay root outside the inert game terminal", () => {
+    const html = renderToStaticMarkup(createElement(GameScreen, {
+      loadStatus: "loaded",
+      moduleId: "module-1",
+      sessionId: "session-1",
+      onApplyProfile: async (candidate) => candidate,
+      profile: createDefaultProfile(),
+    }));
+    const overlayRootIndex = html.indexOf('data-overlay-root="true"');
+
+    expect(html.match(/data-overlay-root="true"/g) ?? []).toHaveLength(1);
+    expect(overlayRootIndex).toBeGreaterThan(html.lastIndexOf("</section>"));
+  });
 });

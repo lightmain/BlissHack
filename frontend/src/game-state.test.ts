@@ -44,6 +44,11 @@ interface ExpectedStatusFieldMetadata {
 }
 
 const expectedGameState = gameState as typeof gameState & {
+  beginMapInspectMessageCapture?: () => unknown;
+  cancelMapInspectMessageCapture?: (capture: unknown) => void;
+  finishMapInspectMessageCapture?: (
+    capture: unknown,
+  ) => readonly gameState.TextLine[] | null;
   setStatusFieldMetadata: (
     field: number,
     metadata: ExpectedStatusFieldMetadata,
@@ -82,6 +87,64 @@ describe("game state windows", () => {
     ]);
     expect(getSnapshot().messageHistory.map((line) => line.text)).toEqual([
       "first",
+    ]);
+  });
+
+  it("[defect-probing] captures only clicklook no-history output while map inspection is active", () => {
+    const beginCapture = expectedGameState.beginMapInspectMessageCapture;
+    const finishCapture = expectedGameState.finishMapInspectMessageCapture;
+    expect(beginCapture).toBeTypeOf("function");
+    expect(finishCapture).toBeTypeOf("function");
+    if (!beginCapture || !finishCapture) return;
+
+    const message = createWindow(NHW_MESSAGE);
+    appendWindowText(message, 0, "before inspection");
+    const capture = beginCapture();
+
+    appendWindowText(message, 0, "ordinary message during inspection");
+    appendWindowText(message, ATR_NOHISTORY, "a peaceful grid bug");
+
+    expect(getSnapshot().messages.map((line) => line.text)).toEqual([
+      "before inspection",
+      "ordinary message during inspection",
+    ]);
+    expect(getSnapshot().messageHistory.map((line) => line.text)).toEqual([
+      "before inspection",
+      "ordinary message during inspection",
+    ]);
+    expect(finishCapture(capture)).toEqual([
+      { text: "a peaceful grid bug", attribute: ATR_NOHISTORY },
+    ]);
+
+    appendWindowText(message, ATR_NOHISTORY, "ordinary transient output");
+    expect(getSnapshot().messages.map((line) => line.text)).toEqual([
+      "before inspection",
+      "ordinary message during inspection",
+      "ordinary transient output",
+    ]);
+    expect(getSnapshot().messageHistory.map((line) => line.text)).toEqual([
+      "before inspection",
+      "ordinary message during inspection",
+    ]);
+  });
+
+  it("clears an active map-inspect message capture on game-state reset", () => {
+    const beginCapture = expectedGameState.beginMapInspectMessageCapture;
+    const finishCapture = expectedGameState.finishMapInspectMessageCapture;
+    expect(beginCapture).toBeTypeOf("function");
+    expect(finishCapture).toBeTypeOf("function");
+    if (!beginCapture || !finishCapture) return;
+
+    const message = createWindow(NHW_MESSAGE);
+    const capture = beginCapture();
+    appendWindowText(message, ATR_NOHISTORY, "stale description");
+
+    resetGameState();
+
+    expect(finishCapture(capture)).toBeNull();
+    appendWindowText(-1, ATR_NOHISTORY, "new session transient output");
+    expect(getSnapshot().messages.map((line) => line.text)).toEqual([
+      "new session transient output",
     ]);
   });
 

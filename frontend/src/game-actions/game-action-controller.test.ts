@@ -170,6 +170,38 @@ describe("GameActionController", () => {
     expect(startCommand).toHaveBeenCalledWith(intent);
   });
 
+  it("[defect-probing] completes map inspection only at the next command boundary", () => {
+    const {
+      controller,
+      onCancel,
+      releaseInputToUi,
+      startCommand,
+    } = createHarness();
+    const intent = createMapInspectIntent();
+
+    controller.request(intent);
+    controller.observe(createObservation({ input: null }));
+    expect(startCommand).not.toHaveBeenCalled();
+
+    controller.observe(createObservation({ input: { kind: "command" } }));
+    expect(startCommand).toHaveBeenCalledOnce();
+    expect(startCommand).toHaveBeenCalledWith(intent);
+    expect(controller.getState().status).toBe("waiting-expected-input");
+
+    controller.observe(createObservation({ input: null }));
+    expect(controller.getState().status).toBe("waiting-expected-input");
+
+    controller.observe(createObservation({ input: { kind: "command" } }));
+
+    expect(controller.getState()).toMatchObject({
+      status: "idle",
+      intent: null,
+      lastCancellationReason: null,
+    });
+    expect(onCancel).not.toHaveBeenCalled();
+    expect(releaseInputToUi).not.toHaveBeenCalled();
+  });
+
   it("freezes bridge typeahead for the complete active-intent lifetime", () => {
     const { controller, setActionIntentActive } = createHarness();
 
