@@ -32,6 +32,13 @@ function inspectTooltip(page: Page): Locator {
 }
 
 /**
+ * Wait long enough for the shared hover dwell timer to fire if it was not cleared.
+ */
+async function waitPastHoverDelay(page: Page): Promise<void> {
+  await page.waitForTimeout(700);
+}
+
+/**
  * Wait for the real WASM main-command boundary.
  * @param page - running game page.
  * @returns locator for the ready game shell.
@@ -123,6 +130,52 @@ async function hoverMapCell(
     viewportBounds!.y + viewportBounds!.height,
   );
   await page.mouse.move(point.x, point.y);
+}
+
+/**
+ * Move to a point safely inside the currently visible map viewport.
+ * @param page - running game page.
+ */
+async function hoverVisibleMapPoint(page: Page): Promise<void> {
+  const viewportBounds = await page.locator(".nh-map-scroll").boundingBox();
+  expect(viewportBounds).not.toBeNull();
+  await page.mouse.move(
+    viewportBounds!.x + viewportBounds!.width * 0.6,
+    viewportBounds!.y + viewportBounds!.height * 0.5,
+  );
+}
+
+/**
+ * Move the map viewport to the opposite horizontal edge.
+ * @param viewport - map scroll container.
+ * @returns previous and resulting offsets plus the full scroll range.
+ */
+async function setOppositeHorizontalScroll(
+  viewport: Locator,
+): Promise<{ left: number; maxLeft: number; previousLeft: number }> {
+  return viewport.evaluate(async (element) => {
+    const maxLeft = element.scrollWidth - element.clientWidth;
+    const previousLeft = element.scrollLeft;
+    element.scrollLeft = previousLeft < maxLeft / 2 ? maxLeft : 0;
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    return {
+      left: element.scrollLeft,
+      maxLeft,
+      previousLeft,
+    };
+  });
+}
+
+/**
+ * Assert that a pending hover target was cleared before the dwell timer could inspect.
+ * @param page - running game page.
+ */
+async function expectPendingHoverCleared(
+  page: Page,
+): Promise<void> {
+  await waitPastHoverDelay(page);
+  expect(await inspectTooltip(page).count()).toBe(0);
+  await expectCommandReady(page);
 }
 
 test("delays status inspection and keeps pointer and focus tooltips in the shared viewport layer", async ({
@@ -267,5 +320,105 @@ test("clears inspection tooltips on leave, game key input, and pause", async ({
   await expect(page.getByRole("dialog", { name: "Game paused" })).toBeVisible();
   await expect(tooltip).toHaveCount(0);
   await expect(shell).toHaveAttribute("data-command-input", "ready");
+  expect(errors).toEqual({ console: [], page: [] });
+});
+
+test("clears a pending map hover when the viewport scrolls", async ({
+  page,
+}) => {
+  const errors = captureErrors(page);
+  await page.setViewportSize({ width: 900, height: 700 });
+  await startNewGame(page, "HoverCleanupScroll");
+  await expectCommandReady(page);
+  const viewport = page.locator(".nh-map-scroll");
+  const cursor = await readCursorPosition(page);
+
+  await hoverMapCell(page, cursor.x, cursor.y);
+  await page.waitForTimeout(120);
+
+  const scroll = await setOppositeHorizontalScroll(viewport);
+  expect(scroll.maxLeft).toBeGreaterThan(0);
+  expect(scroll.left).not.toBe(scroll.previousLeft);
+
+  await expectPendingHoverCleared(page);
+  expect(errors).toEqual({ console: [], page: [] });
+});
+
+test("clears a pending map hover when camera reposition changes the viewport", async ({
+  page,
+}) => {
+  const errors = captureErrors(page);
+  await page.setViewportSize({ width: 900, height: 700 });
+  await startNewGame(page, "HoverCleanupCamera");
+  await expectCommandReady(page);
+  const viewport = page.locator(".nh-map-scroll");
+  const manualScroll = await setOppositeHorizontalScroll(viewport);
+  expect(manualScroll.maxLeft).toBeGreaterThan(0);
+
+  await hoverVisibleMapPoint(page);
+  await page.waitForTimeout(120);
+
+  await page.setViewportSize({ width: 960, height: 700 });
+  await expect.poll(async () =>
+    viewport.evaluate((element) => element.scrollLeft))
+    .not.toBe(manualScroll.left);
+
+  await expectPendingHoverCleared(page);
+  expect(errors).toEqual({ console: [], page: [] });
+});
+
+test("clears a pending hover on right-button pointerdown", async ({ page }) => {
+  const errors = captureErrors(page);
+  await page.setViewportSize({ width: 900, height: 700 });
+  await startNewGame(page, "HoverCleanupRightDown");
+  await expectCommandReady(page);
+  const cursor = await readCursorPosition(page);
+
+  await hoverMapCell(page, cursor.x, cursor.y);
+  await page.waitForTimeout(120);
+  await page.mouse.down({ button: "right" });
+
+  await expectPendingHoverCleared(page);
+  await page.mouse.up({ button: "right" });
+  expect(errors).toEqual({ console: [], page: [] });
+});
+
+test("clears a pending hover on right-button pointercancel", async ({
+  page,
+}) => {
+  const errors = captureErrors(page);
+  await page.setViewportSize({ width: 900, height: 700 });
+  await startNewGame(page, "HoverCleanupPointerCancel");
+  await expectCommandReady(page);
+  const map = page.locator(".nh-map-interaction");
+  const cursor = await readCursorPosition(page);
+
+  await hoverMapCell(page, cursor.x, cursor.y);
+  await page.waitForTimeout(120);
+  await map.dispatchEvent("pointercancel", {
+    button: 2,
+    buttons: 0,
+    pointerId: 1,
+  });
+
+  await expectPendingHoverCleared(page);
+  expect(errors).toEqual({ console: [], page: [] });
+});
+
+test("clears a pending hover on lost right-button pointer capture", async ({
+  page,
+}) => {
+  const errors = captureErrors(page);
+  await page.setViewportSize({ width: 900, height: 700 });
+  await startNewGame(page, "HoverCleanupLostCapture");
+  await expectCommandReady(page);
+  const map = page.locator(".nh-map-interaction");
+  const cursor = await readCursorPosition(page);
+
+  await hoverMapCell(page, cursor.x, cursor.y);
+  await page.waitForTimeout(120);
+  await map.dispatchEvent("lostpointercapture", { pointerId: 1 });
+
+  await expectPendingHoverCleared(page);
   expect(errors).toEqual({ console: [], page: [] });
 });

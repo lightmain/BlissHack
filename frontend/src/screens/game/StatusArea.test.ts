@@ -2,7 +2,30 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import type { StatusMetric } from "../../status-metrics";
-import { StatusArea } from "./StatusArea";
+import * as statusAreaModule from "./StatusArea";
+
+const StatusArea = statusAreaModule.StatusArea;
+
+interface LocalInspectActivity {
+  focused: boolean;
+  pointerInside: boolean;
+}
+
+type LocalInspectActivityEvent =
+  | "blur"
+  | "focus"
+  | "pointer-enter"
+  | "pointer-leave";
+
+interface LocalInspectActivityPlan {
+  leaveSharedOverlay: boolean;
+  next: LocalInspectActivity;
+}
+
+type PlanLocalInspectActivity = (
+  current: LocalInspectActivity,
+  event: LocalInspectActivityEvent,
+) => LocalInspectActivityPlan;
 
 const metrics = [
   {
@@ -80,6 +103,35 @@ const metrics = [
 ] as StatusMetric[];
 
 describe("StatusArea", () => {
+  it("[defect-probing] keeps shared overlay ownership until pointer and focus both leave", () => {
+    const planLocalInspectActivity = (
+      statusAreaModule as typeof statusAreaModule & {
+        planLocalInspectActivity?: PlanLocalInspectActivity;
+      }
+    ).planLocalInspectActivity;
+
+    expect(planLocalInspectActivity).toBeTypeOf("function");
+    if (!planLocalInspectActivity) return;
+
+    const inactive = { focused: false, pointerInside: false };
+    const hovered = planLocalInspectActivity(inactive, "pointer-enter").next;
+    const hoveredAndFocused = planLocalInspectActivity(hovered, "focus").next;
+
+    const afterPointerLeave = planLocalInspectActivity(
+      hoveredAndFocused,
+      "pointer-leave",
+    );
+    expect(afterPointerLeave).toEqual({
+      leaveSharedOverlay: false,
+      next: { focused: true, pointerInside: false },
+    });
+
+    expect(planLocalInspectActivity(afterPointerLeave.next, "blur")).toEqual({
+      leaveSharedOverlay: true,
+      next: { focused: false, pointerInside: false },
+    });
+  });
+
   it("statically renders compact semantic status groups and tooltips", () => {
     const html = renderToStaticMarkup(createElement(StatusArea, { metrics }));
     const progressbars = html.match(/<[^>]+role="progressbar"[^>]*>/g) ?? [];
