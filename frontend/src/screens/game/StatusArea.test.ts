@@ -1,6 +1,6 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { StatusMetric } from "../../status-metrics";
 import { StatusArea } from "./StatusArea";
 
@@ -129,6 +129,40 @@ describe("StatusArea", () => {
     expect(focusableEntries.every((tag) =>
       tag.includes("data-browser-tab-navigation")
     )).toBe(true);
+  });
+
+  it("exposes local inspect targets while retaining hidden described-by text", () => {
+    const html = renderToStaticMarkup(createElement(StatusArea, {
+      metrics,
+      onInspect: vi.fn(),
+      onInspectLeave: vi.fn(),
+    }));
+    const inspectEntries = [
+      ...html.matchAll(
+        /<span(?=[^>]*data-inspect-target="([^"]+)")(?=[^>]*aria-describedby="([^"]+)")(?=[^>]*tabindex="0")[^>]*>/g,
+      ),
+    ];
+
+    expect(inspectEntries.map((match) => match[1])).toEqual([
+      "status:hitpoints",
+      "status:power",
+      "status:experience-level",
+      "status:condition:blind",
+    ]);
+    expect(inspectEntries.map((match) => match[2])).toEqual([
+      "status-tooltip-hitpoints",
+      "status-tooltip-power",
+      "status-tooltip-experience-level",
+      "status-tooltip-condition-blind",
+    ]);
+    expect(html.match(/\bclass="nh-status-tooltip"/g) ?? []).toHaveLength(4);
+    expect(html).toContain(
+      '<span class="nh-status-tooltip" id="status-tooltip-hitpoints" role="tooltip">',
+    );
+    expect(html).toContain("HP:42");
+    expect(html).toContain("Current and maximum hit points.");
+    expect(html).not.toContain("nh-inspect-tooltip");
+    expect(html).not.toContain("nh-overlay-root");
   });
 
   it("keeps maximum-level XP text without rendering a progressbar", () => {

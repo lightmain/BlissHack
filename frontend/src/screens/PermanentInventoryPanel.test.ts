@@ -74,6 +74,35 @@ describe("PermanentInventoryPanel", () => {
     expect((html.match(/tabindex="-1"/g) ?? [])).toHaveLength(1);
   });
 
+  it("marks only concrete snapshot items as local inventory inspect targets", () => {
+    const html = renderToStaticMarkup(createElement(PermanentInventoryPanel, {
+      collapsed: false,
+      inventory,
+      onCollapsedChange: vi.fn(),
+      onInspect: vi.fn(),
+      onInspectLeave: vi.fn(),
+      position: "right",
+    }));
+    const inspectItems = [
+      ...html.matchAll(
+        /<button(?=[^>]*data-inspect-target="([^"]+)")[^>]*>([\s\S]*?)<\/button>/g,
+      ),
+    ];
+
+    expect(inspectItems).toHaveLength(1);
+    expect(inspectItems[0][1]).toBe("inventory:4:97");
+    expect(inspectItems[0][2]).toContain(")");
+    expect(inspectItems[0][2]).toMatch(/>a<\/span>/);
+    expect(inspectItems[0][2]).toContain(
+      "a blessed long sword (weapon in hand)",
+    );
+    expect(inspectItems[0][0]).toContain("nh-color-green");
+    expect(inspectItems[0][0]).toContain("selected");
+    expect(inspectItems[0][0]).not.toContain("Weapons");
+    expect(html).not.toContain("nh-inspect-tooltip");
+    expect(html).not.toContain("nh-overlay-root");
+  });
+
   it("collapses to a labelled control without exposing stale item rows", () => {
     const html = renderPanel(true);
 
