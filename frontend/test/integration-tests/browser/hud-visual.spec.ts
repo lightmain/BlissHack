@@ -354,15 +354,20 @@ function expectValidHudGeometry(
   }
 
   const { inventory, map, messages, status } = geometry.regions;
-  expect(messages.y + messages.height).toBeLessThanOrEqual(map.y);
-  expect(map.y + map.height).toBeLessThanOrEqual(status.y);
+  expect(messages.y + messages.height).toBeCloseTo(map.y, 0);
   if (position === "right") {
+    expect(map.y + map.height).toBeCloseTo(status.y, 0);
     for (const region of [messages, map, status]) {
       expect(region.x + region.width).toBeLessThanOrEqual(inventory.x);
     }
   } else {
-    expect(status.y + status.height).toBeLessThanOrEqual(inventory.y);
+    expect(map.y + map.height).toBeCloseTo(inventory.y, 0);
+    expect(inventory.y + inventory.height).toBeCloseTo(status.y, 0);
+    expect(inventory.height).toBeGreaterThanOrEqual(
+      Math.min(240, expectedViewport.height * 0.25),
+    );
   }
+  expect(status.y + status.height).toBeCloseTo(expectedViewport.height, 0);
 
   expect(geometry.overflowOwners).toHaveLength(4);
   expect(

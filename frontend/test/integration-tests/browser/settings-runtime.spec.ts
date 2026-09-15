@@ -64,6 +64,52 @@ test("installs current settings for new and continued games", async ({ page }) =
   expect(errors).toEqual({ console: [], page: [] });
 });
 
+test("removes the XP progress bar when Experience is disabled at runtime", async ({
+  page,
+}) => {
+  const errors = captureErrors(page);
+  await openHome(page, "experience-runtime");
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("checkbox", {
+    name: "Offer tutorial for new games",
+  }).uncheck();
+  await page.getByRole("checkbox", { name: "Show experience" }).check();
+  await page.getByRole("button", { name: "Apply" }).click();
+  await startWithoutTutorial(page, "ExperienceRuntime");
+
+  const experienceLevel = page.locator(
+    "[data-inspect-target='status:experience-level']",
+  );
+  const experiencePoints = page.locator(
+    "[data-inspect-target='status:experience']",
+  );
+  await expect(experienceLevel).toBeVisible();
+  await expect(experiencePoints).toBeVisible();
+  await expect(
+    page.getByRole("progressbar", { name: /^Experience:/ }),
+  ).toBeVisible();
+
+  await page.keyboard.press("Escape");
+  const pause = page.getByRole("dialog", { name: "Game paused" });
+  await expect(pause).toBeVisible();
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("checkbox", { name: "Show experience" }).uncheck();
+  await page.getByRole("button", { name: "Apply" }).click();
+  await expect(page.locator(".nh-shell")).toHaveAttribute(
+    "data-settings-status",
+    "applied",
+  );
+  await page.getByRole("button", { name: "Resume" }).click();
+
+  await expect(
+    page.getByRole("progressbar", { name: /^Experience:/ }),
+  ).toHaveCount(0);
+  await expect(experiencePoints).toHaveCount(0);
+  await expect(experienceLevel).toBeVisible();
+  await expect(experienceLevel.getByRole("progressbar")).toHaveCount(0);
+  expect(errors).toEqual({ console: [], page: [] });
+});
+
 test("renders and collapses the core permanent inventory without a modal", async ({
   page,
 }) => {
