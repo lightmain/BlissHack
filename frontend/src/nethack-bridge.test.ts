@@ -697,17 +697,17 @@ describe("key, position, and prompt input", () => {
   });
 
   it.each([
-    [1, 0, 0],
+    [1, 0, 1],
     [79, 20, 2],
   ])("returns mouse position (%d,%d) and modifier %d from nh_poskey", async (x, y, mod) => {
     const promise = shimCallback("shim_nh_poskey", 0x300, 0x302, 0x304);
 
-    sendPosition(x, y, mod === 2 ? 2 : 1);
+    sendPosition(x, y, mod as 1 | 2);
 
     await expect(promise).resolves.toBe(0);
     expect(harness.readI16(0x300)).toBe(x);
     expect(harness.readI16(0x302)).toBe(y);
-    expect(harness.readI32(0x304)).toBe(mod === 2 ? 2 : 1);
+    expect(harness.readI32(0x304)).toBe(mod);
   });
 
   it("applies NetHack yn_function default, case, invalid, and escape rules", async () => {
