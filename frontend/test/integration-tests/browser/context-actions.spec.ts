@@ -113,8 +113,14 @@ test("opens an anchored core map menu and cancels it without a turn", async ({
   await expectCoreIdentifiers(menu);
   const menuBounds = await menu.boundingBox();
   expect(menuBounds).not.toBeNull();
-  expect(Math.abs(menuBounds!.x - anchor.x)).toBeLessThanOrEqual(32);
-  expect(Math.abs(menuBounds!.y - anchor.y)).toBeLessThanOrEqual(32);
+  expect(Math.min(
+    Math.abs(menuBounds!.x - anchor.x),
+    Math.abs(menuBounds!.x + menuBounds!.width - anchor.x),
+  )).toBeLessThanOrEqual(32);
+  expect(Math.min(
+    Math.abs(menuBounds!.y - anchor.y),
+    Math.abs(menuBounds!.y + menuBounds!.height - anchor.y),
+  )).toBeLessThanOrEqual(32);
 
   await page.keyboard.press("Escape");
   await expect(menu).toHaveCount(0);

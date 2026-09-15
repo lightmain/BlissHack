@@ -2,9 +2,11 @@ import {
   useEffect,
   useRef,
   type FocusEvent,
+  type MouseEvent,
   type PointerEvent,
 } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import type { InteractionOrigin } from "../game-actions/interaction-origin";
 import type { PermanentInventoryState } from "../game-state";
 import type { LocalInspectRequest } from "../interactions/InspectTooltip";
 import type { PermanentInventoryPosition } from "../settings/profile";
@@ -14,9 +16,15 @@ interface PermanentInventoryPanelProps {
   collapsed: boolean;
   inventory: PermanentInventoryState;
   onCollapsedChange(collapsed: boolean): void;
+  onContextItem?(request: InventoryContextRequest): void;
   onInspect?(request: LocalInspectRequest): void;
   onInspectLeave?(key?: string): void;
   position: PermanentInventoryPosition;
+}
+
+export interface InventoryContextRequest {
+  identifier: number;
+  origin: Extract<InteractionOrigin, { kind: "inventory" }>;
 }
 
 /**
@@ -26,6 +34,7 @@ export function PermanentInventoryPanel({
   collapsed,
   inventory,
   onCollapsedChange,
+  onContextItem,
   onInspect,
   onInspectLeave,
   position,
@@ -114,8 +123,9 @@ export function PermanentInventoryPanel({
             const accelerator = item.accelerator
               ? String.fromCodePoint(item.accelerator)
               : "";
+            const identifier = item.identifier;
             return (
-              item.identifier === null
+              identifier === null
                 ? (
                   <div
                     className={`nh-menu-heading permanent-inventory-heading ${textAttributeClass(item.attribute)}`}
@@ -126,7 +136,7 @@ export function PermanentInventoryPanel({
                 )
                 : (
                   <button
-                    aria-disabled="true"
+                    aria-haspopup="menu"
                     className={[
                       "nh-menu-item",
                       "permanent-inventory-item",
@@ -136,7 +146,18 @@ export function PermanentInventoryPanel({
                     ].filter(Boolean).join(" ")}
                     data-inspect-target={`inventory:${inventory.revision}:${item.accelerator}`}
                     key={`${inventory.revision}-${index}`}
-                    onFocus={(event) => event.currentTarget.blur()}
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      event.currentTarget.focus();
+                      onInspectLeave?.();
+                      requestInventoryContext(
+                        event,
+                        inventory,
+                        identifier,
+                        item.accelerator,
+                        onContextItem,
+                      );
+                    }}
                     onPointerEnter={(event) =>
                       requestInventoryInspect(
                         event,
@@ -174,6 +195,35 @@ export function PermanentInventoryPanel({
       )}
     </aside>
   );
+}
+
+/**
+ * Copy one permanent-inventory row into a serializable context request.
+ * @param event - browser context-menu event.
+ * @param inventory - committed inventory snapshot which owns the row.
+ * @param identifier - snapshot-local core identifier used only for validation.
+ * @param accelerator - current core-provided inventory letter.
+ * @param onContextItem - optional action callback.
+ */
+function requestInventoryContext(
+  event: MouseEvent<HTMLButtonElement>,
+  inventory: PermanentInventoryState,
+  identifier: number,
+  accelerator: number,
+  onContextItem?: (request: InventoryContextRequest) => void,
+): void {
+  if (!onContextItem) return;
+  const bounds = event.currentTarget.getBoundingClientRect();
+  onContextItem({
+    identifier,
+    origin: {
+      kind: "inventory",
+      clientX: bounds.left,
+      clientY: bounds.top + bounds.height / 2,
+      inventoryRevision: inventory.revision,
+      accelerator,
+    },
+  });
 }
 
 /**

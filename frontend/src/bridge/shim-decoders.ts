@@ -35,7 +35,7 @@ export function asString(value: unknown): string {
 /** Return a conservative value matching a failed callback's C return type. */
 export function safeCallbackResult(name: string): unknown {
   if (name === "shim_player_selection_or_tty") return true;
-  if (name === "shim_settings_sync") return 0;
+  if (name === "shim_settings_sync" || name === "shim_command_sync") return 0;
   if (
     name === "shim_create_nhwindow"
     || name === "shim_select_menu"

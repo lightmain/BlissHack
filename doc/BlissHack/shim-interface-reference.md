@@ -1197,7 +1197,7 @@ Asyncify。
 | `shim_init_nhwindows` | `vpp` | VDECLCB | 初始化 |
 | `shim_player_selection_or_tty` | `b` | DECLCB | 角色选择 |
 | `shim_askname` | `v` | VDECLCB | 角色选择 |
-| `shim_get_nh_event` | 原生 `v`；WASM Settings 特殊实现 | 特殊实现 | 生命周期 |
+| `shim_get_nh_event` | 原生 `v`；WASM Settings/Command 特殊实现 | 特殊实现 | 生命周期 |
 | `shim_exit_nhwindows` | `vs` | VDECLCB | 生命周期 |
 | `shim_suspend_nhwindows` | `vs` | VDECLCB | 生命周期 |
 | `shim_resume_nhwindows` | `v` | VDECLCB | 生命周期 |
@@ -1958,6 +1958,56 @@ clamp。由于等级不变时核心通常不会重发 `BL_XP`，wrapper 会缓�
 触发任何状态周期；BlissHack 在 `src/exper.c` 中仅为 shim 窗口端口设置
 `disp.botlx`，确保核心产生 `BL_RESET` advisory，并让 wrapper 在同一周期补发
 XP 进度。
+
+### 6.5 顶层 command intent 协议与鼠标菜单坐标
+
+BlissHack 的 Emscripten `shim_get_nh_event()` 在处理 Settings 后，于同一个
+顶层命令安全边界交换两个私有回调：
+
+```text
+shim_command_sync() -> pending command payload or 0
+shim_command_result(payload, success)
+```
+
+前端只会在 `commandInp` 的 `nhgetch` 或 `nh_poskey` 等待中接受请求，并以
+Escape 无耗时结束当前输入周期。下一次 `shim_get_nh_event()` 才消费请求，
+因此 React 不会在 Asyncify 输入等待期间重入 C。C 侧按 `extcmdlist` 中的固定
+命令名解析 allowlist，再用 `cmdq_add_ec(CQ_CANNED, ...)` 排入正常命令队列。
+当前命令 ID 为：
+
+```text
+1 = clicklook
+2 = inventory
+3 = drop
+```
+
+payload 是版本化 32-bit 无符号位字段：
+
+```text
+bits 0..3   command ID
+bits 4..10  x（仅 clicklook）
+bits 11..15 y（仅 clicklook）
+bits 28..30 protocol version，当前为 1
+bit 31      保留，必须为 0
+```
+
+C 侧拒绝未知位、错误版本、未知命令、非法地图坐标、非 `clicklook` 命令携带
+坐标、不可用命令或没有实现函数的命令。`shim_command_result` 回传原始 payload，
+前端只接受与当前 in-flight 请求完全匹配的结果。每次边界最多消费一个请求；
+session reset 会同时清理 pending 和 active 请求。
+
+浏览器运行时配置固定绑定 `mouse1:mouseaction,mouse2:therecmdmenu`。上游
+`click_to_cmd()` 原本没有为预置坐标保留具体鼠标 modifier，而
+`dotherecmdmenu()` 会把预置坐标分支强制视为同时允许左右键，导致右键目标的
+菜单过滤条件不精确。BlissHack 在排队 `therecmdmenu` 时保存真实 modifier，
+预置坐标分支消费后立即清零；键盘启动的方向选择分支仍保留原有
+`CLICK_1 | CLICK_2` 行为。`doclicklook()` 也会在复制预置坐标后立即清零，
+避免 command intent 的坐标被后续键盘命令复用。
+
+地图右键仍通过标准 `nh_poskey` 鼠标路径进入 `therecmdmenu`；地图悬停检查、
+永久背包右键和拖放丢弃分别通过上述 `clicklook`、`inventory` 和 `drop`
+allowlist 启动。物品选择始终使用该次普通菜单返回的 identifier，永久背包
+identifier 只用于验证用户看到的 snapshot，没有被解释为长期 `struct obj *`。
 
 ---
 

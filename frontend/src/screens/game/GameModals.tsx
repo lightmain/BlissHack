@@ -1,8 +1,11 @@
 import {
   memo,
   useEffect,
+  useLayoutEffect,
   useMemo,
+  useRef,
   useState,
+  type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import {
@@ -21,6 +24,11 @@ import {
   submitExtendedCommand,
   submitMenuSelection,
 } from "../../nethack-bridge";
+import {
+  placeAnchoredOverlay,
+  type AnchoredOverlayPosition,
+} from "../../interactions/anchored-overlay";
+import type { ContextMenuPresentation } from "../../game-actions/game-action-controller";
 import { colorClass, textAttributeClass } from "../../text-styling";
 
 const AUTO_ACCELERATORS =
@@ -31,10 +39,24 @@ const AUTO_ACCELERATORS =
  * @param props - active modal state.
  * @returns the corresponding overlay.
  */
-export const GameModalRenderer = memo(function GameModalRenderer({ modal }: { modal: GameModal }) {
+export const GameModalRenderer = memo(function GameModalRenderer({
+  contextMenu,
+  modal,
+}: {
+  contextMenu?: ContextMenuPresentation | null;
+  modal: GameModal;
+}) {
   if (modal.kind === "menu") {
     const window = getWindow(modal.windowId);
-    return window ? <MenuOverlay how={modal.how} window={window} /> : null;
+    return window
+      ? (
+        <MenuOverlay
+          contextMenu={contextMenu}
+          how={modal.how}
+          window={window}
+        />
+      )
+      : null;
   }
   if (modal.kind === "extcmd") {
     return <ExtendedCommandOverlay commands={modal.commands} />;
@@ -83,7 +105,15 @@ function TextOverlay({ title, lines }: { title: string; lines: TextLine[] }) {
  * @param props - menu window and selection mode.
  * @returns menu overlay.
  */
-function MenuOverlay({ window, how }: { window: WindowState; how: number }) {
+function MenuOverlay({
+  contextMenu,
+  window,
+  how,
+}: {
+  contextMenu?: ContextMenuPresentation | null;
+  window: WindowState;
+  how: number;
+}) {
   const rows = useMemo(() => assignAccelerators(window.menuItems), [window.menuItems]);
   const selectableIndexes = useMemo(
     () => rows.filter((row) => row.item.identifier !== null).map((row) => row.index),
@@ -106,6 +136,78 @@ function MenuOverlay({ window, how }: { window: WindowState; how: number }) {
     return initial;
   });
   const [count, setCount] = useState("");
+  const menuRef = useRef<HTMLElement>(null);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
+  const [position, setPosition] = useState<AnchoredOverlayPosition | null>(null);
+  const anchor = contextMenu?.origin.kind === "keyboard"
+    ? null
+    : contextMenu?.origin ?? null;
+
+  useLayoutEffect(() => {
+    const menu = menuRef.current;
+    if (!anchor || !menu) {
+      setPosition(null);
+      return;
+    }
+
+    /** Reposition the measured menu after viewport geometry changes. */
+    const update = (): void => {
+      const bounds = menu.getBoundingClientRect();
+      setPosition(placeAnchoredOverlay({
+        anchor: { x: anchor.clientX, y: anchor.clientY },
+        gap: 8,
+        margin: 8,
+        overlay: { width: bounds.width, height: bounds.height },
+        viewport: {
+          width: globalThis.innerWidth,
+          height: globalThis.innerHeight,
+        },
+      }));
+    };
+
+    update();
+    globalThis.addEventListener("resize", update);
+    return () => globalThis.removeEventListener("resize", update);
+  }, [anchor, window.menuItems]);
+
+  useLayoutEffect(() => {
+    if (!anchor || position === null || focusIndex < 0) return;
+    menuRef.current
+      ?.querySelector<HTMLElement>(`[data-menu-index="${focusIndex}"]`)
+      ?.focus();
+  }, [anchor, focusIndex, position]);
+
+  useEffect(() => {
+    if (!contextMenu || !anchor) return undefined;
+    returnFocusRef.current = findContextMenuTrigger(contextMenu);
+    return () => restoreContextMenuFocus(returnFocusRef.current);
+  }, [anchor, contextMenu]);
+
+  useEffect(() => {
+    if (!anchor) return undefined;
+
+    /** Suppress the native menu and cancel only secondary clicks outside. */
+    function handleContextMenu(event: MouseEvent): void {
+      event.preventDefault();
+      const menu = menuRef.current;
+      if (
+        !menu
+        || !(event.target instanceof Node)
+        || !menu.contains(event.target)
+      ) {
+        submitMenuSelection(null);
+      }
+    }
+
+    document.addEventListener("contextmenu", handleContextMenu, {
+      capture: true,
+    });
+    return () => document.removeEventListener(
+      "contextmenu",
+      handleContextMenu,
+      { capture: true },
+    );
+  }, [anchor]);
 
   useEffect(() => {
     /**
@@ -244,9 +346,33 @@ function MenuOverlay({ window, how }: { window: WindowState; how: number }) {
     });
   }
 
-  return (
-    <div className="nh-overlay">
-      <section className="nh-dialog nh-menu" role="dialog" aria-label={window.menuPrompt || "Menu"}>
+  const anchored = anchor !== null;
+  const resolvedPosition = position ?? (
+    anchor
+      ? {
+        left: anchor.clientX + 8,
+        top: anchor.clientY + 8,
+        horizontal: "after" as const,
+        vertical: "after" as const,
+      }
+      : null
+  );
+  const menu = (
+    <section
+      aria-hidden={anchored && position === null ? "true" : undefined}
+      aria-label={window.menuPrompt || "Menu"}
+      className={anchored ? "nh-context-menu" : "nh-dialog nh-menu"}
+      data-horizontal={resolvedPosition?.horizontal}
+      data-vertical={resolvedPosition?.vertical}
+      ref={anchored ? menuRef : undefined}
+      role={anchored ? "menu" : "dialog"}
+      style={resolvedPosition
+        ? {
+          "--overlay-left": `${resolvedPosition.left}px`,
+          "--overlay-top": `${resolvedPosition.top}px`,
+        } as CSSProperties
+        : undefined}
+    >
         {window.menuPrompt && <header>{window.menuPrompt}</header>}
         <div className="nh-menu-items">
           {rows.map(({ item, index, accelerator }) =>
@@ -266,9 +392,14 @@ function MenuOverlay({ window, how }: { window: WindowState; how: number }) {
                   colorClass(item.color),
                   textAttributeClass(item.attribute),
                 ].filter(Boolean).join(" ")}
+                data-core-identifier={item.identifier}
+                data-menu-index={index}
                 key={`${index}:${item.text}`}
                 onClick={() => chooseMenuItem(index)}
+                onFocus={() => setFocusIndex(index)}
                 onMouseEnter={() => setFocusIndex(index)}
+                role={anchored ? "menuitem" : undefined}
+                tabIndex={anchored ? (focusIndex === index ? 0 : -1) : undefined}
                 type="button"
               >
                 <span aria-hidden="true" className="nh-menu-glyph">
@@ -288,9 +419,32 @@ function MenuOverlay({ window, how }: { window: WindowState; how: number }) {
           )}
         </div>
         {count && <output className="nh-count">{count}</output>}
-      </section>
-    </div>
+    </section>
   );
+
+  return anchored
+    ? (
+      <div
+        className="nh-context-menu-layer"
+        onPointerDown={(event) => {
+          if (event.button !== 0) return;
+          event.preventDefault();
+          submitMenuSelection(null);
+        }}
+        role="presentation"
+      >
+        <div
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          {menu}
+        </div>
+      </div>
+    )
+    : (
+      <div className="nh-overlay">
+        {menu}
+      </div>
+    );
 }
 
 /**
@@ -415,6 +569,41 @@ function parsedCount(value: string): number {
   if (value === "") return -1;
   const count = Number.parseInt(value, 10);
   return Number.isFinite(count) && count > 0 ? count : -1;
+}
+
+/**
+ * Resolve the permanent-inventory control which opened an anchored menu.
+ * @param contextMenu - active serializable menu presentation.
+ * @returns the connected trigger, when the origin has one.
+ */
+function findContextMenuTrigger(
+  contextMenu: ContextMenuPresentation,
+): HTMLElement | null {
+  const origin = contextMenu.origin;
+  if (origin.kind !== "inventory" || typeof document === "undefined") {
+    return null;
+  }
+  return document.querySelector<HTMLElement>(
+    `[data-inspect-target="inventory:${origin.inventoryRevision}:${origin.accelerator}"]`,
+  );
+}
+
+/**
+ * Restore focus after React removes the menu and clears terminal inertness.
+ * @param target - original context-menu trigger.
+ */
+function restoreContextMenuFocus(target: HTMLElement | null): void {
+  if (!target) return;
+  globalThis.setTimeout(() => {
+    const focus = (): void => {
+      if (target.isConnected && !target.closest("[inert]")) target.focus();
+    };
+    if (typeof globalThis.requestAnimationFrame === "function") {
+      globalThis.requestAnimationFrame(focus);
+    } else {
+      focus();
+    }
+  }, 0);
 }
 
 /**

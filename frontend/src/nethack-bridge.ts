@@ -30,6 +30,7 @@ import { readDlbEntry } from "./dlb";
 import type { SaveIdentity } from "./storage/storage-service";
 import type { EmscriptenModule } from "./bridge/emscripten-module";
 import {
+  acceptCoreCommandResult,
   acceptRuntimeSettingsResult,
   dismissDisplay,
   displayHistory,
@@ -38,6 +39,7 @@ import {
   messageMenu,
   normalizePlayerNameInput,
   queueRuntimeSettings,
+  requestCoreCommand,
   requestSaveAndExit,
   resetInputController,
   selectMenu,
@@ -48,6 +50,7 @@ import {
   submitExtendedCommand,
   submitLine,
   submitMenuSelection,
+  synchronizeCoreCommand,
   synchronizeRuntimeSettings,
   waitForDisplay,
   waitForExtendedCommand,
@@ -85,6 +88,7 @@ export {
   isWaitingForInput,
   normalizePlayerNameInput,
   queueRuntimeSettings,
+  requestCoreCommand,
   requestSaveAndExit,
   sendKey,
   sendPosition,
@@ -192,6 +196,11 @@ async function dispatchShimCallback(
         asNumber(args[0]),
         asNumber(args[1]),
       );
+      return undefined;
+    case "shim_command_sync":
+      return synchronizeCoreCommand();
+    case "shim_command_result":
+      acceptCoreCommandResult(asNumber(args[0]), asNumber(args[1]));
       return undefined;
     case "shim_exit_nhwindows":
       setExitReason(asString(args[0]));

@@ -2,6 +2,8 @@
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /*-Copyright (c) Robert Patrick Rankin, 2013. */
 /* NetHack may be freely redistributed.  See license for details. */
+/* Modified for BlissHack by lightmain, 2026-09-15: preserve the actual
+ * mouse modifier for browser-driven therecmdmenu requests. */
 
 #include "hack.h"
 #include "func_tab.h"
@@ -4354,18 +4356,20 @@ dotherecmdmenu(void)
     coordxy x = gc.clicklook_cc.x;
     coordxy y = gc.clicklook_cc.y;
 
-    iflags.getdir_click = CLICK_1 | CLICK_2; /* allow 'far' click */
-
     if (isok(x, y)) {
+        click = iflags.getdir_click;
+        if (click != CLICK_1 && click != CLICK_2)
+            click = CLICK_1;
         if (x == u.ux && y == u.uy)
             ch = here_cmd_menu();
         else
-            ch = there_cmd_menu(x, y, iflags.getdir_click);
+            ch = there_cmd_menu(x, y, click);
         gc.clicklook_cc.x = gc.clicklook_cc.y = -1;
         iflags.getdir_click = 0;
         return (ch && ch != '\033') ? ECMD_TIME : ECMD_OK;
     }
 
+    iflags.getdir_click = CLICK_1 | CLICK_2; /* allow 'far' click */
     dir = getdir((const char *) 0);
     click = iflags.getdir_click;
     iflags.getdir_click = 0;
@@ -4942,8 +4946,11 @@ click_to_cmd(coordxy x, coordxy y, int mod)
     gc.clicklook_cc.x = x;
     gc.clicklook_cc.y = y;
 
-    if (gc.Cmd.mousebtn[mod-1])
+    if (gc.Cmd.mousebtn[mod-1]) {
+        if (gc.Cmd.mousebtn[mod-1]->ef_funct == dotherecmdmenu)
+            iflags.getdir_click = mod;
         cmdq_add_ec(CQ_CANNED, gc.Cmd.mousebtn[mod-1]->ef_funct);
+    }
 }
 
 staticfn int
@@ -5414,11 +5421,14 @@ dotravel_target(void)
 staticfn int
 doclicklook(void)
 {
-    if (!isok(gc.clicklook_cc.x, gc.clicklook_cc.y))
+    coordxy x = gc.clicklook_cc.x, y = gc.clicklook_cc.y;
+
+    gc.clicklook_cc.x = gc.clicklook_cc.y = -1;
+    if (!isok(x, y))
         return ECMD_OK;
 
     svc.context.move = FALSE;
-    auto_describe(gc.clicklook_cc.x, gc.clicklook_cc.y);
+    auto_describe(x, y);
 
     return ECMD_OK;
 }

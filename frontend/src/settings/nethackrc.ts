@@ -18,6 +18,7 @@ export function generateNetHackRc(settings: NetHackSettingsV1): string {
       .join("");
 
   const lines = [
+    "BINDINGS=mouse1:mouseaction,mouse2:therecmdmenu",
     booleanOption("autopickup", normalized.autopickup),
     `OPTIONS=pickup_types:${pickupTypes}`,
     `OPTIONS=number_pad:${normalized.numberPad}`,

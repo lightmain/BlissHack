@@ -441,6 +441,33 @@
   pointer-events: none;
 }
 
+.nh-context-menu-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: auto;
+}
+
+.nh-context-menu {
+  position: fixed;
+  left: var(--overlay-left);
+  top: var(--overlay-top);
+  width: max-content;
+  min-width: 16rem;
+  max-width: min(34rem, calc(100vw - 16px));
+  max-height: calc(100svh - 16px);
+  overflow: auto;
+  border: 1px solid #69747a;
+  border-radius: 4px;
+  background: #0d1011;
+  box-shadow: 0 12px 36px rgb(0 0 0 / 58%);
+  color: #f0f0e8;
+  pointer-events: auto;
+}
+
+.nh-context-menu[aria-hidden="true"] {
+  visibility: hidden;
+}
+
 .nh-inspect-tooltip {
   position: fixed;
   left: var(--overlay-left);
@@ -655,7 +682,8 @@
   box-shadow: 0 18px 60px rgb(0 0 0 / 65%);
 }
 
-.nh-dialog > header {
+.nh-dialog > header,
+.nh-context-menu > header {
   position: sticky;
   top: 0;
   z-index: 1;
