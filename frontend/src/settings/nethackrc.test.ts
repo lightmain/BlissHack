@@ -11,6 +11,7 @@ describe("NetHack rc generation", () => {
     const rc = generateNetHackRc(createDefaultProfile().nethack);
 
     expect(rc).toBe([
+      "BINDINGS=mouse1:mouseaction,mouse2:therecmdmenu",
       "OPTIONS=autopickup",
       "OPTIONS=pickup_types:all",
       "OPTIONS=number_pad:0",
@@ -47,6 +48,7 @@ describe("NetHack rc generation", () => {
     settings.showTime = false;
 
     expect(generateNetHackRc(settings).split("\n")).toEqual([
+      "BINDINGS=mouse1:mouseaction,mouse2:therecmdmenu",
       "OPTIONS=!autopickup",
       "OPTIONS=pickup_types:all",
       "OPTIONS=number_pad:0",
@@ -93,8 +95,12 @@ describe("NetHack rc generation", () => {
     expect(rc).toContain(
       `OPTIONS=pickup_types:${PICKUP_CLASS_SYMBOLS.join("")}\n`,
     );
-    expect(rc.split("\n").filter(Boolean)).toHaveLength(9);
-    for (const line of rc.split("\n").filter(Boolean)) {
+    const lines = rc.split("\n").filter(Boolean);
+    expect(lines).toHaveLength(10);
+    expect(lines[0]).toBe(
+      "BINDINGS=mouse1:mouseaction,mouse2:therecmdmenu",
+    );
+    for (const line of lines.slice(1)) {
       expect(line).toMatch(/^OPTIONS=[!a-z_].*$/);
     }
   });
