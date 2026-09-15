@@ -69,6 +69,30 @@ async function expectCoreIdentifiers(menu: Locator): Promise<void> {
   )).toBe(true);
 }
 
+/** Start a permanent-inventory game and return its first actionable row. */
+async function startInventoryContextGame(
+  page: Page,
+  name: string,
+): Promise<Locator> {
+  await startContextGame(page, name, { permanentInventory: true });
+  const item = page.getByRole("region", { name: "Inventory" }).locator(
+    ".permanent-inventory-item:not(.permanent-inventory-heading)",
+  ).first();
+  await expect(item).toBeVisible();
+  return item;
+}
+
+/** Open one item's anchored core menu and wait for its final presentation. */
+async function openInventoryContextMenu(
+  page: Page,
+  item: Locator,
+): Promise<Locator> {
+  await item.click({ button: "right" });
+  const menu = contextMenu(page);
+  await expect(menu).toBeVisible();
+  return menu;
+}
+
 test("opens an anchored core map menu and cancels it without a turn", async ({
   page,
 }) => {
@@ -111,14 +135,7 @@ test("opens itemactions from permanent inventory without flashing its selector",
   page,
 }) => {
   const errors = captureErrors(page);
-  await startContextGame(page, "InventoryContext", {
-    permanentInventory: true,
-  });
-  const inventory = page.getByRole("region", { name: "Inventory" });
-  const item = inventory.locator(
-    ".permanent-inventory-item:not(.permanent-inventory-heading)",
-  ).first();
-  await expect(item).toBeVisible();
+  const item = await startInventoryContextGame(page, "InventoryContext");
   const itemBounds = await item.boundingBox();
   expect(itemBounds).not.toBeNull();
 
@@ -142,10 +159,7 @@ test("opens itemactions from permanent inventory without flashing its selector",
     observer.observe(document.body, { childList: true, subtree: true });
   });
 
-  await item.click({ button: "right" });
-
-  const menu = contextMenu(page);
-  await expect(menu).toBeVisible();
+  const menu = await openInventoryContextMenu(page, item);
   await expectCoreIdentifiers(menu);
   await expect(page.locator("html")).toHaveAttribute(
     "data-test-transient-menu-count",
@@ -162,6 +176,81 @@ test("opens itemactions from permanent inventory without flashing its selector",
 
   await page.keyboard.press("Escape");
   await expect(menu).toHaveCount(0);
+  await expect(page.locator(".nh-shell")).toHaveAttribute(
+    "data-command-input",
+    "ready",
+  );
+  expect(errors).toEqual({ console: [], page: [] });
+});
+
+test("[defect-probing] moves real menu focus and restores the inventory trigger after Escape", async ({
+  page,
+}) => {
+  const errors = captureErrors(page);
+  const item = await startInventoryContextGame(page, "InventoryMenuFocus");
+  const menu = await openInventoryContextMenu(page, item);
+  const menuItems = menu.getByRole("menuitem");
+
+  expect(await menuItems.count()).toBeGreaterThan(1);
+  await expect(menuItems.first()).toBeFocused();
+
+  await page.keyboard.press("ArrowDown");
+  await expect(menuItems.nth(1)).toBeFocused();
+  await page.keyboard.press("ArrowUp");
+  await expect(menuItems.first()).toBeFocused();
+
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
+  await expect(item).toBeFocused();
+  await expect(page.locator(".nh-shell")).toHaveAttribute(
+    "data-command-input",
+    "ready",
+  );
+  expect(errors).toEqual({ console: [], page: [] });
+});
+
+test("[defect-probing] closes on left click outside and restores the inventory trigger", async ({
+  page,
+}) => {
+  const errors = captureErrors(page);
+  const item = await startInventoryContextGame(page, "InventoryMenuLeftClose");
+  const menu = await openInventoryContextMenu(page, item);
+
+  await page.mouse.click(4, 4);
+
+  await expect(menu).toHaveCount(0);
+  await expect(item).toBeFocused();
+  await expect(page.locator(".nh-shell")).toHaveAttribute(
+    "data-command-input",
+    "ready",
+  );
+  expect(errors).toEqual({ console: [], page: [] });
+});
+
+test("[defect-probing] prevents the native menu on right click outside and restores the inventory trigger", async ({
+  page,
+}) => {
+  const errors = captureErrors(page);
+  const item = await startInventoryContextGame(page, "InventoryMenuRightClose");
+  const menu = await openInventoryContextMenu(page, item);
+
+  await page.evaluate(() => {
+    delete document.documentElement.dataset.testContextMenuPrevented;
+    document.addEventListener("contextmenu", (event) => {
+      queueMicrotask(() => {
+        document.documentElement.dataset.testContextMenuPrevented =
+          String(event.defaultPrevented);
+      });
+    }, { capture: true, once: true });
+  });
+  await page.mouse.click(4, 4, { button: "right" });
+
+  await expect(menu).toHaveCount(0);
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-test-context-menu-prevented",
+    "true",
+  );
+  await expect(item).toBeFocused();
   await expect(page.locator(".nh-shell")).toHaveAttribute(
     "data-command-input",
     "ready",
