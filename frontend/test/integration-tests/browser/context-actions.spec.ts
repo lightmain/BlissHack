@@ -93,6 +93,19 @@ async function openInventoryContextMenu(
   return menu;
 }
 
+/** Open the player's anchored core map menu and return its trigger and menu. */
+async function openMapContextMenu(
+  page: Page,
+): Promise<{ map: Locator; menu: Locator }> {
+  const cursor = await readCursorPosition(page);
+  const anchor = await mapCellPoint(page, cursor.x, cursor.y);
+  const map = page.locator("[data-context-menu-trigger='map']");
+  await page.mouse.click(anchor.x, anchor.y, { button: "right" });
+  const menu = contextMenu(page);
+  await expect(menu).toBeVisible();
+  return { map, menu };
+}
+
 test("opens an anchored core map menu and cancels it without a turn", async ({
   page,
 }) => {
@@ -128,12 +141,41 @@ test("opens an anchored core map menu and cancels it without a turn", async ({
     "data-command-input",
     "ready",
   );
+  await expect(page.locator("[data-context-menu-trigger='map']")).toBeFocused();
   expect(await turn.textContent()).toBe(turnBefore);
 
   await page.keyboard.press("i");
   await expect(page.locator(".nh-dialog.nh-menu")).toBeVisible();
   await expect(contextMenu(page)).toHaveCount(0);
   await page.keyboard.press("Escape");
+  expect(errors).toEqual({ console: [], page: [] });
+});
+
+test("[defect-probing] restores the map trigger after every anchored-menu dismissal", async ({
+  page,
+}) => {
+  const errors = captureErrors(page);
+  await startContextGame(page, "MapMenuFocus", { showTime: true });
+
+  let opened = await openMapContextMenu(page);
+  await expect(opened.menu.getByRole("menuitem").first()).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(opened.menu).toHaveCount(0);
+  await expect(opened.map).toBeFocused();
+
+  opened = await openMapContextMenu(page);
+  await page.mouse.click(4, 4);
+  await expect(opened.menu).toHaveCount(0);
+  await expect(opened.map).toBeFocused();
+
+  opened = await openMapContextMenu(page);
+  await page.mouse.click(4, 4, { button: "right" });
+  await expect(opened.menu).toHaveCount(0);
+  await expect(opened.map).toBeFocused();
+  await expect(page.locator(".nh-shell")).toHaveAttribute(
+    "data-command-input",
+    "ready",
+  );
   expect(errors).toEqual({ console: [], page: [] });
 });
 

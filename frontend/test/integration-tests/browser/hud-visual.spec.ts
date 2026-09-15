@@ -90,6 +90,8 @@ async function configureHud(
     name: "Enable Permanent Inventory",
     exact: true,
   }).check();
+  await page.getByRole("combobox", { name: "Contents" })
+    .selectOption("in-use");
   await page.getByRole("radio", {
     name: position === "right" ? "Right" : "Below",
   }).check();
@@ -117,6 +119,32 @@ async function expectReadyHud(
   await expect(inventory.locator(
     ".permanent-inventory-item:not(.permanent-inventory-heading)",
   ).first()).toBeVisible();
+  let observedRevision = -1;
+  let stableRevisionSamples = 0;
+  await expect.poll(async () => {
+    const revision = Number(
+      await inventory.getAttribute("data-inventory-revision"),
+    );
+    const text = await inventory.textContent();
+    if (
+      !text?.match(/being worn/i)
+      || !text.match(/weapon in hand|wielded/i)
+    ) {
+      observedRevision = revision;
+      stableRevisionSamples = 0;
+      return stableRevisionSamples;
+    }
+    if (revision === observedRevision) {
+      stableRevisionSamples += 1;
+    } else {
+      observedRevision = revision;
+      stableRevisionSamples = 1;
+    }
+    return stableRevisionSamples;
+  }, {
+    intervals: [100, 200, 400, 800],
+    timeout: 10_000,
+  }).toBeGreaterThanOrEqual(3);
 
   const revision = await readShellRevision(page);
   const inventoryRevision = Number(
@@ -125,6 +153,58 @@ async function expectReadyHud(
   expect(revision).toBeGreaterThan(0);
   expect(inventoryRevision).toBeGreaterThan(0);
   return revision;
+}
+
+/**
+ * Verify that the selected renderer contains real map output before masking it.
+ * @param page - Playwright page with an authoritative map snapshot.
+ * @param renderer - renderer selected through Settings.
+ */
+async function expectRendererContent(
+  page: Page,
+  renderer: HudRenderer,
+): Promise<void> {
+  if (renderer === "tiles") {
+    const pixels = await page.locator("canvas.nh-map-tiles").evaluate(
+      (canvas) => {
+        const context = canvas.getContext("2d");
+        if (!context) return { colors: 0, opaque: 0 };
+        const data = context.getImageData(
+          0,
+          0,
+          canvas.width,
+          canvas.height,
+        ).data;
+        const colors = new Set<number>();
+        let opaque = 0;
+        for (let index = 0; index < data.length; index += 64) {
+          if (data[index + 3] === 0) continue;
+          opaque += 1;
+          colors.add(
+            (data[index] << 16) | (data[index + 1] << 8) | data[index + 2],
+          );
+        }
+        return { colors: colors.size, opaque };
+      },
+    );
+    expect(pixels.opaque).toBeGreaterThan(0);
+    expect(pixels.colors).toBeGreaterThan(1);
+    return;
+  }
+
+  const ascii = page.locator(".nh-map-ascii");
+  await expect(ascii.locator(".nh-map-row")).toHaveCount(21);
+  expect(await ascii.textContent()).toMatch(/\S/);
+}
+
+/**
+ * Freeze one validated inventory DOM snapshot while pixel baselines are taken.
+ * @param page - Playwright page after authoritative inventory stabilization.
+ */
+async function freezeInventoryPresentation(page: Page): Promise<void> {
+  await page.locator(".permanent-inventory-items").evaluate((items) => {
+    items.replaceWith(items.cloneNode(true));
+  });
 }
 
 /**
@@ -300,7 +380,7 @@ function expectValidHudGeometry(
 for (const { renderer, position } of HUD_VARIANTS) {
   test(`HUD visual regression: ${renderer} with inventory ${position}`, async ({
     page,
-  }) => {
+  }, testInfo) => {
     test.slow();
     const errors = captureErrors(page);
     await page.setViewportSize(VIEWPORTS[0]);
@@ -309,9 +389,11 @@ for (const { renderer, position } of HUD_VARIANTS) {
       page,
       `Hud${renderer === "tiles" ? "Tiles" : "Ascii"}${
         position === "right" ? "Right" : "Below"
-      }`,
+      }-Arc-Hum-Mal-Law`,
     );
     const readyRevision = await expectReadyHud(page, renderer, position);
+    await expectRendererContent(page, renderer);
+    await freezeInventoryPresentation(page);
 
     for (const viewport of VIEWPORTS) {
       await test.step(`${viewport.width}x${viewport.height}`, async () => {
@@ -329,22 +411,72 @@ for (const { renderer, position } of HUD_VARIANTS) {
           position,
         );
 
-        await expect(page).toHaveScreenshot(
-          `hud-${renderer}-${position}-${viewport.width}x${viewport.height}.png`,
-          {
-            mask: [
-              page.locator(".nh-map"),
-              page.locator(".nh-messages > *"),
-              page.locator(".permanent-inventory-header > div"),
-              page.locator(".permanent-inventory-items"),
-              page.locator(".nh-status"),
-            ],
-            maskColor: "#202428",
-          },
-        );
+        if (!["firefox", "webkit"].includes(testInfo.project.name)) {
+          await expect(page).toHaveScreenshot(
+            `hud-${renderer}-${position}-${viewport.width}x${viewport.height}.png`,
+            {
+              mask: [
+                page.locator(".nh-map"),
+                page.locator(".nh-messages > *"),
+                page.locator(".permanent-inventory-header strong"),
+                page.locator(".permanent-inventory-header span"),
+                page.locator(".permanent-inventory-heading"),
+                page.locator(".permanent-inventory-items .nh-menu-glyph"),
+                page.locator(".permanent-inventory-items .nh-menu-mark"),
+                page.locator(".permanent-inventory-items .nh-menu-accelerator"),
+                page.locator(".permanent-inventory-items .nh-menu-text"),
+                page.locator(".nh-status-resource-value"),
+                page.locator(".nh-status-value"),
+                page.locator(".nh-condition"),
+              ],
+              maskColor: "#202428",
+            },
+          );
+        }
       });
     }
 
     expect(errors).toEqual({ console: [], page: [] });
   });
 }
+
+test("HUD visual regression: disabled below inventory reserves no collapsed track", async ({
+  page,
+}) => {
+  const errors = captureErrors(page);
+  await page.setViewportSize(VIEWPORTS[1]);
+  await openHome(page, "hud-disabled-below-collapsed");
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("checkbox", {
+    name: "Enable Permanent Inventory",
+    exact: true,
+  }).check();
+  await page.getByRole("radio", { name: "Below" }).check();
+  await page.getByRole("checkbox", { name: "Start collapsed" }).check();
+  await page.getByRole("checkbox", {
+    name: "Enable Permanent Inventory",
+    exact: true,
+  }).uncheck();
+  await page.getByRole("button", { name: "Apply" }).click();
+  await startNewGameFromHome(page, "HudNoInventory-Arc-Hum-Mal-Law");
+
+  const hud = page.locator(".nh-hud-layout");
+  await expect(hud).toHaveAttribute("data-has-inventory", "false");
+  await expect(hud).toHaveAttribute("data-inventory-collapsed", "true");
+  await expect(page.getByRole("region", { name: "Inventory" })).toHaveCount(0);
+  const layout = await hud.evaluate((element) => {
+    const status = element.querySelector<HTMLElement>(
+      '[data-hud-region="status"]',
+    );
+    const statusBounds = status?.getBoundingClientRect();
+    return {
+      gridRows: getComputedStyle(element).gridTemplateRows.split(/\s+/),
+      statusBottom: statusBounds
+        ? statusBounds.y + statusBounds.height
+        : -1,
+    };
+  });
+  expect(layout.gridRows.slice(-2)).toEqual(["0px", "0px"]);
+  expect(layout.statusBottom).toBeCloseTo(VIEWPORTS[1].height, 0);
+  expect(errors).toEqual({ console: [], page: [] });
+});

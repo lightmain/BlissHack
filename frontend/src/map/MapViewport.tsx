@@ -189,6 +189,7 @@ export const MapViewport = memo(function MapViewport({
     >
       <div
         className="nh-map-interaction"
+        data-context-menu-trigger="map"
         data-cursor-visible={cursor.visible ? "true" : "false"}
         data-cursor-x={cursor.x}
         data-cursor-y={cursor.y}
@@ -201,6 +202,7 @@ export const MapViewport = memo(function MapViewport({
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={rightDrag.onPointerUp}
+        tabIndex={-1}
       >
         {mapRenderer === "tiles"
           ? (
