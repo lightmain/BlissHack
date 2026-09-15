@@ -2015,6 +2015,12 @@ session reset 会同时清理 pending 和 active 请求。
 allowlist 启动。物品选择始终使用该次普通菜单返回的 identifier，永久背包
 identifier 只用于验证用户看到的 snapshot，没有被解释为长期 `struct obj *`。
 
+前端 `GameActionController` 只接受当前 intent 预期的 `PICK_ONE` 菜单、正的
+安全整数 window ID 和当前 accelerator；其他 prompt、菜单模式、过期 session、
+snapshot 或永久背包 revision 都会安全取消。拖放开始后不乐观删除物品行，
+只有核心完成原生 drop/rejection 流程并发布新的永久背包 revision 后，界面才
+反映结果。这些校验不会扩展 shim ABI，也不会把 C 对象地址保存在 React 中。
+
 ---
 
 ## 7. 附录：类型速查表

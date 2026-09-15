@@ -21,22 +21,32 @@ frontend. These changes are documented in
 
 ## Project Status
 
-**Alpha-1.1 has passed manual acceptance and is merged into the deployment
-branch.**
+**Alpha-2.0 implementation is in release validation and awaiting manual
+acceptance.**
 
-Alpha-1.1 includes the official NetHack 5.0 16x16 tiles and
-Canvas 2D map, together with improved map camera, right-drag, Follow player,
-profile migration, and WASM toolchain boundaries. GitHub Pages reflects the
-most recently completed deployment; use the version displayed by the site as
-the authority. Alpha-2.0 will focus on a fullscreen HUD, graphical status
-display, and core-driven mouse interactions.
+Alpha-2.0 adds the fullscreen desktop HUD, graphical status display, shared
+inspection overlays, core-driven context menus, and permanent-inventory drag
+and drop. The deployment branch and GitHub Pages remain on the last accepted
+release until manual acceptance is complete; use the version displayed by the
+site as the authority.
 
 The current milestone provides:
 
 - An 80x21 Canvas map using the official tiles by default, with the ASCII
   renderer retained.
+- A viewport-owned HUD with fixed message and status regions plus Right and
+  Below permanent-inventory layouts.
+- Graphical HP, Energy, XP, attributes, conditions, location, and turn status
+  driven by structured core fields.
+- Shared delayed tooltips for status, inventory, and authoritative core map
+  inspection without adding inspection text to message history.
+- Core-generated map and inventory context menus, with mouse actions routed
+  through a fail-closed high-level action controller.
+- Pointer Events inventory drag and drop to the player's current cell, using
+  the native core drop flow and permanent-inventory revisions.
 - Hidden native map scrollbars without removing scrolling; right-drag pans the
-  viewport while a short right-click retains existing map-position input.
+  viewport, ordinary right-click opens core actions, and explicit position
+  input retains its existing mouse semantics.
 - Manual browsing while Follow is enabled; right-click inspection and
   same-coordinate turns preserve the camera, while valid Follow target
   coordinate changes recenter it.
@@ -49,8 +59,6 @@ The current milestone provides:
   position input.
 - Character naming followed by the original role, race, gender, and alignment
   selection flow.
-- A multi-line status display with a color-coded HP bar behind the character
-  name and title.
 - Accurate ASCII, Control, Alt/Meta, direction, and numeric keypad input.
 - Browser-local save and restore through Emscripten IDBFS.
 - Unit, WASM, Chromium, Firefox, WebKit, performance, and long-flow tests.
@@ -131,7 +139,8 @@ browser build, including startup, keyboard input, status rendering, save, and
 restore. The compatibility suite covers critical Firefox and WebKit flows, the
 performance suite checks Canvas map and permanent-inventory rendering, and the
 long suite repeatedly checks session lifecycle, save restoration, and raw save
-transfer.
+transfer. Chromium visual baselines cover the Tiles/ASCII and Right/Below HUD
+combinations at 1280x900 and 900x700.
 
 ## Repository Guide
 
@@ -146,6 +155,7 @@ transfer.
 - [alpha-1 profile v2](doc/BlissHack/plans/in-alpha-1/profile-v2.md)
 - [alpha-1 release acceptance](doc/BlissHack/plans/in-alpha-1/release-acceptance.md)
 - [alpha-1.1 release acceptance](doc/BlissHack/plans/in-alpha-1.1/release-acceptance.md)
+- [alpha-2.0 release acceptance](doc/BlissHack/plans/in-alpha-2.0/release-acceptance.md)
 - [Upstream modification inventory](doc/BlissHack/upstream-modifications.md)
 - [Fatal errors and diagnostic log design](doc/BlissHack/plans/in-prealpha-2/fatal-errors-and-diagnostics.md)
 - [Browser end-to-end test design](doc/BlissHack/plans/in-prealpha-2/browser-end-to-end-tests.md)

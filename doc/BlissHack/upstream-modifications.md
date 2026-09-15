@@ -16,6 +16,7 @@ git diff --name-status upstream/NetHack-5.0...HEAD -- \
   include src sys/libnh sys/unix/hints win/shim
 git diff upstream/NetHack-5.0...HEAD -- \
   src/cmd.c \
+  src/do.c \
   src/exper.c \
   sys/libnh/libnhmain.c \
   sys/unix/hints/include/cross-pre2.500 \
@@ -23,10 +24,11 @@ git diff upstream/NetHack-5.0...HEAD -- \
   win/shim/winshim.c
 ```
 
-截至 alpha-2.0 阶段五，相关 diff 只应包含：
+截至 alpha-2.0 阶段七，相关 diff 只应包含：
 
 ```text
 M src/cmd.c
+M src/do.c
 M src/exper.c
 M sys/libnh/libnhmain.c
 M sys/unix/hints/include/cross-pre2.500
@@ -191,8 +193,9 @@ M win/shim/winshim.c
   - `src/cmd.c`
   - `src/do.c`
   - `win/shim/winshim.c`
-- **引入提交**：alpha-2.0 阶段五提交
-  `feat: add core-driven context action menus`
+- **引入提交**：
+  - `64372bfd9 feat: add core-driven context action menus`
+  - `556f98bfb feat: support dropping permanent inventory items`
 - **目的**：
   - 在 `shim_get_nh_event()` 的安全命令边界消费一个版本化 32-bit command
     intent，按 `extcmdlist` 中的固定名称把 `clicklook`、`inventory` 或
@@ -216,6 +219,7 @@ M win/shim/winshim.c
   - `frontend/src/nethack-bridge.test.ts`
   - `frontend/test/integration-tests/wasm-test.mjs`
   - `frontend/test/integration-tests/browser/context-actions.spec.ts`
+  - `frontend/test/integration-tests/browser/inventory-drag-drop.spec.ts`
 
 ## 3. 上游合并检查
 
