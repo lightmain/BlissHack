@@ -215,30 +215,51 @@ describe("GameHudLayout contract", () => {
     }
   });
 
-  it("wraps status groups without clipping and reveals tooltips on hover or focus", () => {
+  it("uses the fixed overlay layer instead of revealing inline status tooltips", () => {
     const statusGroup = cssFor(".nh-status-group");
     const statusConditions = cssFor(".nh-status-conditions");
-    const hoverTooltip = [
-      cssFor(".nh-status-metric:hover .nh-status-tooltip"),
-      cssFor(".nh-status-condition-entry:hover .nh-status-tooltip"),
-    ].join("\n");
-    const focusTooltip = [
-      cssFor(".nh-status-metric:focus .nh-status-tooltip"),
-      cssFor(".nh-status-metric:focus-within .nh-status-tooltip"),
-      cssFor(".nh-status-condition-entry:focus .nh-status-tooltip"),
-      cssFor(".nh-status-condition-entry:focus-within .nh-status-tooltip"),
-    ].join("\n");
+    const hiddenStatusText = cssFor(".nh-status-tooltip");
+    const overlayRoot = cssFor(".nh-overlay-root");
+    const inspectTooltip = cssFor(".nh-inspect-tooltip");
 
     expect(statusGroup).toMatch(/\bflex-wrap\s*:\s*wrap\s*;/);
     expect(statusGroup).not.toMatch(/\boverflow\s*:\s*hidden\s*;/);
     expect(statusConditions).toMatch(/\bflex-wrap\s*:\s*wrap\s*;/);
     expect(statusConditions).toMatch(/\bmax-width\s*:\s*100%\s*;/);
     expect(statusConditions).not.toMatch(/\boverflow\s*:\s*hidden\s*;/);
-    for (const visibleTooltip of [hoverTooltip, focusTooltip]) {
-      expect(visibleTooltip).toMatch(/\bwidth\s*:\s*max-content\s*;/);
-      expect(visibleTooltip).toMatch(/\bheight\s*:\s*auto\s*;/);
-      expect(visibleTooltip).toMatch(/\boverflow\s*:\s*visible\s*;/);
-      expect(visibleTooltip).toMatch(/\bclip\s*:\s*auto\s*;/);
+
+    expect(hiddenStatusText).toMatch(/\bwidth\s*:\s*1px\s*;/);
+    expect(hiddenStatusText).toMatch(/\bheight\s*:\s*1px\s*;/);
+    expect(hiddenStatusText).toMatch(/\boverflow\s*:\s*hidden\s*;/);
+    expect(hiddenStatusText).toMatch(/\bclip\s*:\s*rect\(0 0 0 0\)\s*;/);
+
+    expect(overlayRoot).toMatch(/\bposition\s*:\s*fixed\s*;/);
+    expect(overlayRoot).toMatch(/\binset\s*:\s*0\s*;/);
+    expect(overlayRoot).toMatch(/\bpointer-events\s*:\s*none\s*;/);
+    expect(inspectTooltip).toMatch(/\bposition\s*:\s*fixed\s*;/);
+    expect(inspectTooltip).toMatch(
+      /\bleft\s*:\s*var\(--overlay-left\)\s*;/,
+    );
+    expect(inspectTooltip).toMatch(
+      /\btop\s*:\s*var\(--overlay-top\)\s*;/,
+    );
+    expect(inspectTooltip).toMatch(/\bwidth\s*:\s*max-content\s*;/);
+    expect(inspectTooltip).not.toMatch(/\bpointer-events\s*:\s*(?:auto|all)\s*;/);
+    expect(inspectTooltip).not.toMatch(/\bvisibility\s*:\s*hidden\s*;/);
+    expect(cssFor('.nh-inspect-tooltip[aria-hidden="true"]'))
+      .toMatch(/\bvisibility\s*:\s*hidden\s*;/);
+
+    for (
+      const legacySelector of [
+        ".nh-status-metric:hover .nh-status-tooltip",
+        ".nh-status-metric:focus .nh-status-tooltip",
+        ".nh-status-metric:focus-within .nh-status-tooltip",
+        ".nh-status-condition-entry:hover .nh-status-tooltip",
+        ".nh-status-condition-entry:focus .nh-status-tooltip",
+        ".nh-status-condition-entry:focus-within .nh-status-tooltip",
+      ]
+    ) {
+      expect(cssFor(legacySelector)).toBe("");
     }
   });
 });
