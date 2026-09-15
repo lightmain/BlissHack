@@ -6,6 +6,8 @@ const previewOrigin = "http://127.0.0.1:4174";
 export default defineConfig({
   testDir: "./test/integration-tests/browser",
   outputDir: "./test-results/playwright",
+  snapshotPathTemplate:
+    "{snapshotDir}/{testFileDir}/{testFileName}-snapshots/{arg}{ext}",
   fullyParallel: false,
   workers: 1,
   forbidOnly: Boolean(process.env.CI),
@@ -13,6 +15,12 @@ export default defineConfig({
   reporter: "list",
   expect: {
     timeout: 10_000,
+    toHaveScreenshot: {
+      animations: "disabled",
+      caret: "hide",
+      maxDiffPixelRatio: 0.001,
+      scale: "css",
+    },
   },
   use: {
     baseURL: `${previewOrigin}${deploymentBasePath}`,
