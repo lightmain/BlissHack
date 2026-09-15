@@ -179,6 +179,40 @@ describe("HoverInspectController", () => {
     expect(showTooltip).not.toHaveBeenCalled();
   });
 
+  it("[defect-probing] restarts dwell after leaving and re-entering the same map target", async () => {
+    vi.useFakeTimers();
+    const {
+      controller,
+      pending,
+      requestMapInspect,
+      showTooltip,
+    } = createHarness();
+    const firstTarget = mapTarget();
+    const reenteredTarget = mapTarget();
+
+    controller.hover(firstTarget);
+    vi.advanceTimersByTime(300);
+    expect(requestMapInspect).toHaveBeenCalledOnce();
+
+    controller.leave();
+    controller.hover(reenteredTarget);
+    vi.advanceTimersByTime(299);
+    expect(requestMapInspect).toHaveBeenCalledOnce();
+
+    pending[0].resolve([
+      { text: "stale first inspection", attribute: 32 },
+    ]);
+    await pending[0].promise;
+    await Promise.resolve();
+
+    expect(showTooltip).toHaveBeenCalledTimes(0);
+    expect(requestMapInspect).toHaveBeenCalledOnce();
+
+    vi.advanceTimersByTime(1);
+    expect(requestMapInspect).toHaveBeenCalledTimes(2);
+    expect(requestMapInspect).toHaveBeenNthCalledWith(2, reenteredTarget);
+  });
+
   it("waits for a command boundary before requesting map inspection", () => {
     vi.useFakeTimers();
     const { controller, requestMapInspect } = createHarness();
