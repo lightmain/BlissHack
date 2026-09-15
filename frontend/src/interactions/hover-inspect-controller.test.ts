@@ -273,6 +273,75 @@ describe("HoverInspectController", () => {
     },
   );
 
+  it("[defect-probing] refreshes a pending local target when the same key has new content and anchor", () => {
+    vi.useFakeTimers();
+    const { controller, showTooltip } = createHarness();
+    const initial = localTarget("status");
+    const refreshed = {
+      ...initial,
+      anchor: { clientX: 420, clientY: 240 },
+      content: {
+        title: "HP:21",
+        description: "Updated current and maximum hit points.",
+      },
+    };
+
+    controller.hover(initial);
+    vi.advanceTimersByTime(150);
+    controller.hover(refreshed);
+    vi.advanceTimersByTime(150);
+
+    expect(showTooltip).toHaveBeenCalledOnce();
+    expect(showTooltip).toHaveBeenLastCalledWith(refreshed);
+  });
+
+  it("[defect-probing] refreshes a visible local tooltip immediately when the same key changes", () => {
+    vi.useFakeTimers();
+    const { controller, showTooltip } = createHarness();
+    const initial = localTarget("inventory");
+    const refreshed = {
+      ...initial,
+      anchor: { clientX: 460, clientY: 260 },
+      content: {
+        title: "an uncursed long sword",
+        description: "Updated inventory item",
+        glyph: ")",
+      },
+    };
+
+    controller.hover(initial);
+    vi.advanceTimersByTime(300);
+    showTooltip.mockClear();
+
+    controller.hover(refreshed);
+
+    expect(showTooltip).toHaveBeenCalledOnce();
+    expect(showTooltip).toHaveBeenLastCalledWith(refreshed);
+  });
+
+  it("[defect-probing] immediately refreshes a visible status tooltip with the same key", () => {
+    vi.useFakeTimers();
+    const { controller, showTooltip } = createHarness();
+    const initial = localTarget("status");
+    const refreshed = {
+      ...initial,
+      anchor: { clientX: 460, clientY: 260 },
+      content: {
+        title: "HP:21",
+        description: "Updated current and maximum hit points.",
+      },
+    };
+
+    controller.hover(initial);
+    vi.advanceTimersByTime(300);
+    showTooltip.mockClear();
+
+    controller.hover(refreshed);
+
+    expect(showTooltip).toHaveBeenCalledOnce();
+    expect(showTooltip).toHaveBeenLastCalledWith(refreshed);
+  });
+
   it.each([
     {
       reason: "leave",
