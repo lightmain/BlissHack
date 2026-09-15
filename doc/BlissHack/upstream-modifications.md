@@ -189,6 +189,7 @@ M win/shim/winshim.c
 
 - **文件**：
   - `src/cmd.c`
+  - `src/do.c`
   - `win/shim/winshim.c`
 - **引入提交**：alpha-2.0 阶段五提交
   `feat: add core-driven context action menus`
@@ -198,6 +199,10 @@ M win/shim/winshim.c
     `drop` 排入核心命令队列。
   - 用独立 result callback 确认原始 payload 是否通过版本、未知位、坐标和
     command allowlist 校验。
+  - 浏览器 drop intent 先排入原生 `do_reqmenu` 前缀，再执行声明
+    `CMD_M_PREFIX` 的 `drop`；`dodrop()` 在该前缀存在时临时启用并随后恢复
+    `force_invmenu`，使 `getobj()` 直接提供可验证的 `PICK_ONE` 菜单，而不
+    由前端盲发字符提示响应。
   - 保留 `therecmdmenu` 预置地图坐标对应的真实鼠标 modifier，使右键菜单只
     使用核心为 secondary click 提供的动作。
   - 在 `doclicklook()` 消费后清除预置坐标，避免后续键盘命令复用旧目标。

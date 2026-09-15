@@ -16,6 +16,10 @@ import {
 } from "../../map/MapViewport";
 import type { TileRendererFallbackReason } from "../../map/TileMapRenderer";
 import type { LocalInspectRequest } from "../../interactions/InspectTooltip";
+import type {
+  InventoryDragController,
+  InventoryDragState,
+} from "../../interactions/inventory-drag-controller";
 import {
   normalizePlayerNameInput,
   submitLine,
@@ -38,6 +42,8 @@ interface GameTerminalProps {
   historyLines: InterfaceSettings["messageHistoryLines"];
   inert: boolean;
   inputRequest: GameSnapshot["inputRequest"];
+  inventoryDragController: InventoryDragController;
+  inventoryDragState: InventoryDragState;
   layoutKey: string;
   map: MapCell[][];
   mapRenderer: InterfaceSettings["mapRenderer"];
@@ -56,6 +62,7 @@ interface GameTerminalProps {
   permanentInventoryCollapsed: boolean;
   permanentInventoryEnabled: boolean;
   permanentInventoryPosition: InterfaceSettings["permanentInventoryPosition"];
+  sessionId: string;
   status: GameSnapshot["status"];
   statusMetadata: GameSnapshot["statusMetadata"];
 }
@@ -69,6 +76,8 @@ export function GameTerminal({
   historyLines,
   inert,
   inputRequest,
+  inventoryDragController,
+  inventoryDragState,
   layoutKey,
   map,
   mapRenderer,
@@ -87,6 +96,7 @@ export function GameTerminal({
   permanentInventoryCollapsed,
   permanentInventoryEnabled,
   permanentInventoryPosition,
+  sessionId,
   status,
   statusMetadata,
 }: GameTerminalProps) {
@@ -98,12 +108,15 @@ export function GameTerminal({
     ? (
       <PermanentInventoryPanel
         collapsed={permanentInventoryCollapsed}
+        dragController={inventoryDragController}
+        dragEnabled={commandInput && !inert}
         inventory={permanentInventory}
         onContextItem={onContextItem}
         onInspect={onInspect}
         onInspectLeave={onInspectLeave}
         onCollapsedChange={onInventoryCollapsedChange}
         position={permanentInventoryPosition}
+        sessionId={sessionId}
       />
     )
     : null;
@@ -123,6 +136,9 @@ export function GameTerminal({
             commandInput={commandInput}
             cursor={cursor}
             followPlayer={followPlayer}
+            inventoryDropHighlight={
+              inventoryDragState.preview?.highlightedCell ?? null
+            }
             layoutKey={layoutKey}
             map={map}
             mapRenderer={mapRenderer}

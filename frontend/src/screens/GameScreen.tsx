@@ -53,7 +53,12 @@ import {
   AnchoredInspectTooltip,
   type LocalInspectRequest,
 } from "../interactions/InspectTooltip";
+import { InventoryDragPreview } from "../interactions/InventoryDragPreview";
 import { OverlayRoot } from "../interactions/OverlayRoot";
+import {
+  createInventoryDragController,
+  type InventoryDragPayload,
+} from "../interactions/inventory-drag-controller";
 import { SettingsScreen } from "./SettingsScreen";
 import { GameModalRenderer } from "./game/GameModals";
 import { GameTerminal } from "./game/GameTerminal";
@@ -85,6 +90,11 @@ interface MapInspectRuntime {
   getSnapshot(): GameSnapshot;
   open(resolve: (lines: readonly TextLine[]) => void): boolean;
   startCapture(): void;
+  updateSnapshot(snapshot: GameSnapshot): void;
+}
+
+interface InventoryDropRuntime {
+  drop(payload: InventoryDragPayload): void;
   updateSnapshot(snapshot: GameSnapshot): void;
 }
 
@@ -144,7 +154,13 @@ export function GameScreen({
           }
           return;
         }
-        throw new Error(`Unsupported action intent: ${intent.kind}`);
+        if (intent.kind === "drop-item") {
+          if (!requestCoreCommand({ command: "drop" })) {
+            throw new Error("Core command boundary rejected inventory drop");
+          }
+          return;
+        }
+        throw new Error("Unsupported action intent");
       },
       submitMenuSelection,
       releaseInputToUi: () => {
@@ -164,6 +180,26 @@ export function GameScreen({
     actionController.getState,
     actionController.getState,
   );
+  const inventoryDropRuntime = useMemo(
+    () => createInventoryDropRuntime(
+      moduleId,
+      sessionId,
+      actionController,
+      getSnapshot(),
+    ),
+    [actionController, moduleId, sessionId],
+  );
+  const inventoryDragController = useMemo(
+    () => createInventoryDragController({
+      onDrop: inventoryDropRuntime.drop,
+    }),
+    [inventoryDropRuntime],
+  );
+  const inventoryDragState = useSyncExternalStore(
+    inventoryDragController.subscribe,
+    inventoryDragController.getState,
+    inventoryDragController.getState,
+  );
   const hoverController = useMemo(
     () => createHoverInspectController({
       delayMs: 300,
@@ -173,18 +209,20 @@ export function GameScreen({
       showTooltip: (tooltip) =>
         setInspectTooltip(activeTooltipFromHover(tooltip)),
     }),
-    [actionController, inspectRuntime],
+    [actionController, inspectRuntime, setInspectTooltip],
   );
 
   useEffect(() => {
     snapshotRef.current = snapshot;
     inspectRuntime.updateSnapshot(snapshot);
-  }, [inspectRuntime, snapshot]);
+    inventoryDropRuntime.updateSnapshot(snapshot);
+  }, [inspectRuntime, inventoryDropRuntime, snapshot]);
 
   useEffect(() => () => {
     hoverController.dispose();
+    inventoryDragController.dispose();
     actionController.dispose();
-  }, [actionController, hoverController]);
+  }, [actionController, hoverController, inventoryDragController]);
 
   useEffect(() => {
     actionController.observe({
@@ -199,9 +237,36 @@ export function GameScreen({
   }, [actionController, moduleId, sessionId, snapshot]);
 
   useEffect(() => {
+    const payload = inventoryDragController.getState().payload;
+    const inventory = snapshot.permanentInventory;
+    const target = payload
+      ? inventory?.items.find(
+        (item) =>
+          item.identifier === payload.identifier
+          && item.accelerator === payload.accelerator,
+      ) ?? null
+      : null;
+    inventoryDragController.observe({
+      inventoryRevision: inventory?.revision ?? -1,
+      sessionId,
+      target: target
+        ? {
+          accelerator: target.accelerator,
+          identifier: target.identifier,
+        }
+        : null,
+    });
+  }, [
+    inventoryDragController,
+    inventoryDragState.payload,
+    sessionId,
+    snapshot.permanentInventory,
+  ]);
+
+  useEffect(() => {
     hoverController.observe({
       commandBoundary: snapshot.commandInput,
-      dragging: false,
+      dragging: inventoryDragState.status === "dragging",
       mapRevision: snapshot.mapRevision,
       modalOpen: snapshot.modal !== null,
       moduleId,
@@ -210,6 +275,7 @@ export function GameScreen({
     });
   }, [
     hoverController,
+    inventoryDragState.status,
     moduleId,
     pauseView,
     sessionId,
@@ -249,6 +315,14 @@ export function GameScreen({
      */
     function handleKeyDown(event: KeyboardEvent): void {
       hoverController.leave();
+      if (inventoryDragState.status !== "idle") {
+        event.preventDefault();
+        if (event.key === "Escape") {
+          event.stopPropagation();
+          inventoryDragController.cancel("escape");
+        }
+        return;
+      }
       if (pauseView !== null) return;
       if (snapshot.inputRequest?.kind === "line") return;
       if (
@@ -298,6 +372,8 @@ export function GameScreen({
     pauseView,
     actionController,
     hoverController,
+    inventoryDragController,
+    inventoryDragState.status,
     snapshot.commandInput,
     snapshot.inputRequest,
     snapshot.modal,
@@ -528,6 +604,8 @@ export function GameScreen({
           historyLines={settings.messageHistoryLines}
           inert={snapshot.modal !== null || pauseView !== null}
           inputRequest={snapshot.inputRequest}
+          inventoryDragController={inventoryDragController}
+          inventoryDragState={inventoryDragState}
           layoutKey={[
             settings.terminalFontSize,
             settings.messageHistoryLines,
@@ -550,12 +628,14 @@ export function GameScreen({
           permanentInventoryCollapsed={settings.permanentInventoryCollapsed}
           permanentInventoryEnabled={gameProfile.nethack.permInvent}
           permanentInventoryPosition={settings.permanentInventoryPosition}
+          sessionId={sessionId}
           status={snapshot.status}
           statusMetadata={snapshot.statusMetadata}
         />
       )}
 
       <OverlayRoot>
+        <InventoryDragPreview state={inventoryDragState} />
         {inspectTooltip && (
           <AnchoredInspectTooltip
             anchor={inspectTooltip.anchor}
@@ -604,6 +684,83 @@ export function GameScreen({
       )}
     </main>
   );
+}
+
+/**
+ * Keep drop validation at the session boundary without exposing React refs.
+ * @param moduleId - module generation which owns the action controller.
+ * @param sessionId - active session which owns the permanent inventory.
+ * @param controller - sole high-level game action coordinator.
+ * @param initialSnapshot - authoritative snapshot at runtime creation.
+ * @returns a mutable snapshot façade used only by pointer completion callbacks.
+ */
+function createInventoryDropRuntime(
+  moduleId: string,
+  sessionId: string,
+  controller: GameActionController,
+  initialSnapshot: GameSnapshot,
+): InventoryDropRuntime {
+  let snapshot = initialSnapshot;
+
+  return {
+    /**
+     * Start one core drop only for the exact current inventory row.
+     * @param payload - immutable item data captured at pointer down.
+     */
+    drop(payload): void {
+      const inventory = snapshot.permanentInventory;
+      const target = inventory?.items.find(
+        (item) =>
+          item.identifier === payload.identifier
+          && item.accelerator === payload.accelerator,
+      );
+      if (
+        payload.sessionId !== sessionId
+        || !snapshot.commandInput
+        || snapshot.modal !== null
+        || !inventory
+        || inventory.revision !== payload.inventoryRevision
+        || !target
+      ) {
+        return;
+      }
+      if (!controller.request({
+        kind: "drop-item",
+        moduleId,
+        sessionId,
+        snapshotRevision: snapshot.revision,
+        inventoryRevision: inventory.revision,
+        identifier: payload.identifier,
+        accelerator: payload.accelerator,
+        glyph: payload.glyph,
+        origin: {
+          kind: "inventory",
+          clientX: payload.clientX ?? 0,
+          clientY: payload.clientY ?? 0,
+          inventoryRevision: payload.inventoryRevision,
+          accelerator: payload.accelerator,
+        },
+      })) {
+        return;
+      }
+      controller.observe({
+        moduleId,
+        sessionId,
+        snapshotRevision: snapshot.revision,
+        inventoryRevision: inventory.revision,
+        mapRevision: snapshot.mapRevision,
+        input: { kind: "command" },
+      });
+    },
+
+    /**
+     * Refresh the authoritative state used by the next pointer completion.
+     * @param nextSnapshot - latest bridge snapshot for this session.
+     */
+    updateSnapshot(nextSnapshot): void {
+      snapshot = nextSnapshot;
+    },
+  };
 }
 
 /**

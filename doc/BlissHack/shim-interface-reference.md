@@ -1996,6 +1996,12 @@ C 侧拒绝未知位、错误版本、未知命令、非法地图坐标、非 `c
 前端只接受与当前 in-flight 请求完全匹配的结果。每次边界最多消费一个请求；
 session reset 会同时清理 pending 和 active 请求。
 
+`drop` intent 在排入原生 `drop` 命令前先排入语义化的 `do_reqmenu` 前缀；
+`drop` 命令因此声明 `CMD_M_PREFIX`。`dodrop()` 仅在此前缀存在时临时启用
+`force_invmenu` 并在 `getobj()` 返回后恢复原值，让核心直接生成标准
+`PICK_ONE` 物品菜单，避免前端向字符提示盲发 `?`；其余物品过滤、数量、
+装备/诅咒拒绝和回合语义仍完全由核心执行。
+
 浏览器运行时配置固定绑定 `mouse1:mouseaction,mouse2:therecmdmenu`。上游
 `click_to_cmd()` 原本没有为预置坐标保留具体鼠标 modifier，而
 `dotherecmdmenu()` 会把预置坐标分支强制视为同时允许左右键，导致右键目标的

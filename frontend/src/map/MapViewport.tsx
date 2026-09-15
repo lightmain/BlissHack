@@ -20,6 +20,7 @@ interface MapViewportProps {
   commandInput: boolean;
   cursor: GameSnapshot["cursor"];
   followPlayer: boolean;
+  inventoryDropHighlight?: { x: number; y: number } | null;
   layoutKey: string;
   map: MapCell[][];
   mapRenderer: InterfaceSettings["mapRenderer"];
@@ -46,6 +47,7 @@ export const MapViewport = memo(function MapViewport({
   commandInput,
   cursor,
   followPlayer,
+  inventoryDropHighlight,
   layoutKey,
   map,
   mapRenderer,
@@ -178,7 +180,10 @@ export const MapViewport = memo(function MapViewport({
     <div
       className="nh-map-scroll"
       data-hud-region="map"
+      data-inventory-drop-zone="true"
       data-overflow-owner="map"
+      data-player-x={cursor.x}
+      data-player-y={cursor.y}
       onScroll={handleScroll}
       ref={scrollRef}
     >
@@ -207,6 +212,19 @@ export const MapViewport = memo(function MapViewport({
             />
           )
           : <AsciiMapRenderer cursor={cursor} map={map} />}
+        {inventoryDropHighlight && (
+          <div
+            aria-hidden="true"
+            className="nh-inventory-drop-highlight"
+            data-inventory-drop-highlight="true"
+            data-map-x={inventoryDropHighlight.x}
+            data-map-y={inventoryDropHighlight.y}
+            style={{
+              left: `${(inventoryDropHighlight.x / 80) * 100}%`,
+              top: `${(inventoryDropHighlight.y / 21) * 100}%`,
+            }}
+          />
+        )}
       </div>
     </div>
   );

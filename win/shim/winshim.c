@@ -491,6 +491,8 @@ shim_queue_command(unsigned int payload)
     if (command == SHIM_COMMAND_CLICKLOOK) {
         gc.clicklook_cc.x = (coordxy) x;
         gc.clicklook_cc.y = (coordxy) y;
+    } else if (command == SHIM_COMMAND_DROP) {
+        cmdq_add_ec(CQ_CANNED, do_reqmenu);
     }
     cmdq_add_ec(CQ_CANNED, entry->ef_funct);
     return TRUE;

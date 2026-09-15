@@ -47,6 +47,14 @@ const CMD_SOURCE = join(
   "src",
   "cmd.c",
 );
+const DO_SOURCE = join(
+  __dirname,
+  "..",
+  "..",
+  "..",
+  "src",
+  "do.c",
+);
 
 /* ------------------------------------------------------------------ */
 /*  Test harness                                                       */
@@ -125,6 +133,7 @@ const RUNTIME_SETTINGS_PERMINV_FULL = 2 << 26;
 const RUNTIME_SETTINGS_PERMINV_MODE_MASK = 3 << 26;
 const CORE_COMMAND_VERSION = 1 << 28;
 const CORE_COMMAND_INVENTORY = 2;
+const CORE_COMMAND_DROP = 3;
 const CORE_COMMAND_RESERVED = (1 << 31) >>> 0;
 const MENU_BEHAVE_PERMINV = 1;
 const MENU_BEHAVE_STANDARD = 0;
@@ -393,12 +402,14 @@ async function run() {
   assert(existsSync(WINSHIM_SOURCE), "winshim.c exists");
   assert(existsSync(EXPER_SOURCE), "exper.c exists");
   assert(existsSync(CMD_SOURCE), "cmd.c exists");
+  assert(existsSync(DO_SOURCE), "do.c exists");
   if (
     !existsSync(WASM_JS)
     || !existsSync(WASM_BIN)
     || !existsSync(WINSHIM_SOURCE)
     || !existsSync(EXPER_SOURCE)
     || !existsSync(CMD_SOURCE)
+    || !existsSync(DO_SOURCE)
   ) {
     console.error(
       "\nMissing WASM or source files. Build with `make CROSS_TO_WASM=1` first.",
@@ -408,6 +419,7 @@ async function run() {
   const winshimSource = readFileSync(WINSHIM_SOURCE, "utf8");
   const experSource = readFileSync(EXPER_SOURCE, "utf8");
   const cmdSource = readFileSync(CMD_SOURCE, "utf8");
+  const doSource = readFileSync(DO_SOURCE, "utf8");
   const statusWrapper = cBlockAfter(
     winshimSource,
     /\bshim_status_enablefield\s*\([^;{}]*\)\s*/,
@@ -525,6 +537,19 @@ async function run() {
         commandQueue,
       ),
     "winshim resolves allowlisted names through authoritative command metadata",
+  );
+  assert(
+    /\{\s*'d'\s*,\s*"drop"[\s\S]*?\bdodrop\s*,\s*CMD_M_PREFIX\b/.test(
+      cmdSource,
+    )
+      && /\bif\s*\(\s*iflags\.menu_requested\s*\)\s*iflags\.force_invmenu\s*=\s*TRUE\s*;[\s\S]*?\bgetobj\s*\(\s*"drop"[\s\S]*?\biflags\.force_invmenu\s*=\s*save_force_invmenu\s*;/.test(
+        doSource,
+      )
+      && commandQueue !== null
+      && /\bcommand\s*==\s*SHIM_COMMAND_DROP\b[\s\S]*?\bcmdq_add_ec\s*\(\s*CQ_CANNED\s*,\s*do_reqmenu\s*\)[\s\S]*?\bcmdq_add_ec\s*\(\s*CQ_CANNED\s*,\s*entry->ef_funct\s*\)/.test(
+        commandQueue,
+      ),
+    "browser drop queues a native request-menu flow through dodrop",
   );
   assert(
     commandSync !== null
@@ -992,6 +1017,29 @@ async function run() {
       && inventoryCommandResult !== undefined
       && inventoryCommandResult.eventIndex < inventorySelector.eventIndex,
     "command result precedes the inventory select_menu callback",
+  );
+
+  const dropCommand = (CORE_COMMAND_VERSION | CORE_COMMAND_DROP) >>> 0;
+  commandResultsBefore = coreCommandResults.length;
+  menuSelectionsBefore = menuSelections.length;
+  queuedCoreCommand = dropCommand;
+  await sendKeyAndWait(27);
+  const dropCommandResult = coreCommandResults.at(-1);
+  const dropSelector = menuSelections.slice(menuSelectionsBefore).find(
+    (selection) =>
+      selection.behavior === MENU_BEHAVE_STANDARD
+      && selection.how === PICK_ONE
+      && selection.selectableItemCount > 0,
+  );
+  assert(
+    coreCommandResults.length === commandResultsBefore + 1
+      && dropCommandResult?.payload === dropCommand
+      && dropCommandResult.success === 1,
+    "real WASM callback accepts the versioned drop command payload",
+  );
+  assert(
+    dropSelector !== undefined,
+    "accepted drop command enters a native PICK_ONE inventory menu",
   );
 
   // --- Runtime settings protocol ---

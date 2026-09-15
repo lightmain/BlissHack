@@ -9,17 +9,24 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { InteractionOrigin } from "../game-actions/interaction-origin";
 import type { PermanentInventoryState } from "../game-state";
 import type { LocalInspectRequest } from "../interactions/InspectTooltip";
+import type {
+  InventoryDragController,
+  InventoryDropTarget,
+} from "../interactions/inventory-drag-controller";
 import type { PermanentInventoryPosition } from "../settings/profile";
 import { colorClass, textAttributeClass } from "../text-styling";
 
 interface PermanentInventoryPanelProps {
   collapsed: boolean;
+  dragController?: InventoryDragController;
+  dragEnabled?: boolean;
   inventory: PermanentInventoryState;
   onCollapsedChange(collapsed: boolean): void;
   onContextItem?(request: InventoryContextRequest): void;
   onInspect?(request: LocalInspectRequest): void;
   onInspectLeave?(key?: string): void;
   position: PermanentInventoryPosition;
+  sessionId?: string;
 }
 
 export interface InventoryContextRequest {
@@ -32,12 +39,15 @@ export interface InventoryContextRequest {
  */
 export function PermanentInventoryPanel({
   collapsed,
+  dragController,
+  dragEnabled = false,
   inventory,
   onCollapsedChange,
   onContextItem,
   onInspect,
   onInspectLeave,
   position,
+  sessionId = "",
 }: PermanentInventoryPanelProps) {
   const mouseFocusRef = useRef(false);
   const previousRevisionRef = useRef(inventory.revision);
@@ -51,6 +61,14 @@ export function PermanentInventoryPanel({
     previousRevisionRef.current = inventory.revision;
     onInspectLeave?.();
   }, [inventory.revision, onInspectLeave]);
+
+  useEffect(() => () => {
+    dragController?.cancel("unmount");
+  }, [dragController]);
+
+  useEffect(() => {
+    if (collapsed) dragController?.cancel("unmount");
+  }, [collapsed, dragController]);
 
   /**
    * Mark the start of a mouse gesture which may focus the panel container.
@@ -85,6 +103,7 @@ export function PermanentInventoryPanel({
       className={`permanent-inventory permanent-inventory-${position}${collapsed ? " permanent-inventory-collapsed" : ""}`}
       data-browser-keyboard
       data-hud-region="inventory"
+      data-inventory-revision={inventory.revision}
       data-overflow-owner="inventory"
       data-position={position}
       onFocus={handleFocus}
@@ -145,6 +164,11 @@ export function PermanentInventoryPanel({
                       textAttributeClass(item.attribute),
                     ].filter(Boolean).join(" ")}
                     data-inspect-target={`inventory:${inventory.revision}:${item.accelerator}`}
+                    data-inventory-dragging={
+                      dragController?.getState().payload?.identifier === identifier
+                        ? "true"
+                        : "false"
+                    }
                     key={`${inventory.revision}-${index}`}
                     onContextMenu={(event) => {
                       event.preventDefault();
@@ -157,6 +181,46 @@ export function PermanentInventoryPanel({
                         item.accelerator,
                         onContextItem,
                       );
+                    }}
+                    onLostPointerCapture={(event) => {
+                      dragController?.cancel(
+                        "lost-pointer-capture",
+                        event.pointerId,
+                      );
+                    }}
+                    onPointerCancel={(event) => {
+                      cancelInventoryDrag(
+                        event,
+                        dragController,
+                        "pointer-cancel",
+                      );
+                    }}
+                    onPointerDown={(event) => {
+                      if (!dragController || !dragEnabled) return;
+                      const bounds = event.currentTarget.getBoundingClientRect();
+                      if (!dragController.pointerDown({
+                        button: event.button,
+                        clientX: event.clientX,
+                        clientY: event.clientY,
+                        payload: {
+                          kind: "inventory-item",
+                          sessionId,
+                          inventoryRevision: inventory.revision,
+                          identifier,
+                          accelerator: item.accelerator,
+                          glyph: item.glyph,
+                          clientX: bounds.left,
+                          clientY: bounds.top + bounds.height / 2,
+                          text: item.text,
+                        },
+                        pointerId: event.pointerId,
+                      })) {
+                        return;
+                      }
+                      event.preventDefault();
+                      event.currentTarget.focus();
+                      event.currentTarget.setPointerCapture(event.pointerId);
+                      onInspectLeave?.();
                     }}
                     onPointerEnter={(event) =>
                       requestInventoryInspect(
@@ -171,6 +235,31 @@ export function PermanentInventoryPanel({
                       onInspectLeave?.(
                         `inventory:${inventory.revision}:${item.accelerator}`,
                       )}
+                    onPointerMove={(event) => {
+                      dragController?.pointerMove({
+                        clientX: event.clientX,
+                        clientY: event.clientY,
+                        pointerId: event.pointerId,
+                        target: inventoryDropTargetAt(
+                          event.clientX,
+                          event.clientY,
+                        ),
+                      });
+                    }}
+                    onPointerUp={(event) => {
+                      if (!dragController) return;
+                      dragController.pointerMove({
+                        clientX: event.clientX,
+                        clientY: event.clientY,
+                        pointerId: event.pointerId,
+                        target: inventoryDropTargetAt(
+                          event.clientX,
+                          event.clientY,
+                        ),
+                      });
+                      dragController.pointerUp(event.pointerId);
+                      releaseInventoryPointer(event);
+                    }}
                     tabIndex={-1}
                     type="button"
                   >
@@ -195,6 +284,54 @@ export function PermanentInventoryPanel({
       )}
     </aside>
   );
+}
+
+/**
+ * Cancel a captured inventory drag and release its browser pointer.
+ * @param event - interrupted pointer event.
+ * @param controller - active pure drag controller.
+ * @param reason - stable cancellation reason.
+ */
+function cancelInventoryDrag(
+  event: PointerEvent<HTMLButtonElement>,
+  controller: InventoryDragController | undefined,
+  reason: "pointer-cancel",
+): void {
+  controller?.cancel(reason, event.pointerId);
+  releaseInventoryPointer(event);
+}
+
+/**
+ * Release pointer capture after the pure controller has cleared its gesture.
+ * @param event - pointer event whose target owns capture.
+ */
+function releaseInventoryPointer(
+  event: PointerEvent<HTMLButtonElement>,
+): void {
+  if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+    event.currentTarget.releasePointerCapture(event.pointerId);
+  }
+}
+
+/**
+ * Resolve a viewport point to the renderer-independent map drop region.
+ * @param clientX - horizontal viewport coordinate.
+ * @param clientY - vertical viewport coordinate.
+ * @returns the player's cell while over the map, otherwise null.
+ */
+function inventoryDropTargetAt(
+  clientX: number,
+  clientY: number,
+): InventoryDropTarget | null {
+  const element = document.elementFromPoint(clientX, clientY);
+  const zone = element?.closest<HTMLElement>(
+    "[data-inventory-drop-zone='true']",
+  );
+  if (!zone) return null;
+  const playerX = Number(zone.dataset.playerX);
+  const playerY = Number(zone.dataset.playerY);
+  if (!Number.isInteger(playerX) || !Number.isInteger(playerY)) return null;
+  return { kind: "map", playerX, playerY };
 }
 
 /**

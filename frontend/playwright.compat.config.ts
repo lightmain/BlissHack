@@ -21,6 +21,10 @@ const basicFlowNames = [
   "moves real menu focus and restores the inventory trigger after Escape",
   "closes on left click outside and restores the inventory trigger",
   "prevents the native menu on right click outside and restores the inventory trigger",
+  "uses a five-pixel threshold and rejects non-map drop targets",
+  "highlights the player cell and cancels interrupted drags without commands",
+  "drops one stack once and waits for a new permanent-inventory revision",
+  "keeps worn items and shows the core drop rejection without a turn",
 ].join("|");
 
 export default defineConfig({

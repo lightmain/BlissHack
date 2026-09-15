@@ -2,6 +2,8 @@
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /*-Copyright (c) Derek S. Ray, 2015. */
 /* NetHack may be freely redistributed.  See license for details. */
+/* Modified for BlissHack by lightmain, 2026-09-15: make the native
+ * request-menu prefix open the standard drop inventory menu. */
 
 /* Contains code for 'd', 'D' (drop), '>', '<' (up, down) */
 
@@ -29,11 +31,15 @@ int
 dodrop(void)
 {
     int result;
+    boolean save_force_invmenu = iflags.force_invmenu;
 
     if (*u.ushops)
         sellobj_state(SELL_DELIBERATE);
+    if (iflags.menu_requested)
+        iflags.force_invmenu = TRUE;
     result = drop(getobj("drop", any_obj_ok,
                          GETOBJ_PROMPT | GETOBJ_ALLOWCNT));
+    iflags.force_invmenu = save_force_invmenu;
     if (*u.ushops)
         sellobj_state(SELL_NORMAL);
     if (result)
