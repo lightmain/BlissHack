@@ -16,6 +16,8 @@ const basicFlowNames = [
   "shows the core permanent-inventory item text without sending game input",
   "inspects the player cell without changing visible messages or turn count",
   "clears inspection tooltips on leave, game key input, and pause",
+  "opens an anchored core map menu and cancels it without a turn",
+  "opens itemactions from permanent inventory without flashing its selector",
 ].join("|");
 
 export default defineConfig({
