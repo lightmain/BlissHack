@@ -198,9 +198,8 @@ test("renders and collapses the core permanent inventory without a modal", async
     firstRowBox!.x + firstRowBox!.width / 2,
     firstRowBox!.y + firstRowBox!.height / 2,
   );
-  expect(await inventory.evaluate(
-    (panel) => !panel.contains(document.activeElement),
-  )).toBe(true);
+  await expect(firstInventoryRow).toBeFocused();
+  await expect(page.locator(".nh-dialog.nh-menu")).toHaveCount(0);
   await inventory.locator(".permanent-inventory-header strong").click();
   expect(await inventory.evaluate(
     (panel) => !panel.contains(document.activeElement),

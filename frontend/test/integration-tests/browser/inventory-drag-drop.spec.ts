@@ -24,8 +24,9 @@ async function startInventoryDragGame(
     name: "Enable Permanent Inventory",
     exact: true,
   }).check();
+  await page.getByRole("checkbox", { name: "Show turn count" }).check();
   await page.getByRole("button", { name: "Apply" }).click();
-  await startNewGameFromHome(page, name);
+  await startNewGameFromHome(page, `${name}-A`);
 
   const inventory = page.getByRole("region", { name: "Inventory" });
   await expect(inventory).toBeVisible();
@@ -50,6 +51,33 @@ function droppableItem(inventory: Locator): Locator {
     .last();
 }
 
+/** Return the Archeologist food-ration stack after race extras merge. */
+function droppableStack(inventory: Locator): Locator {
+  return inventoryRows(inventory)
+    .filter({ hasText: /[2-9]\d* (?:uncursed )?food rations/i })
+    .first();
+}
+
+/** Return one worn item which the core must refuse to drop. */
+function wornItem(inventory: Locator): Locator {
+  return inventoryRows(inventory).filter({ hasText: /being worn/i }).first();
+}
+
+/** Return the core-owned turn counter. */
+function turnCounter(page: Page): Locator {
+  return page.locator(
+    "[data-inspect-target='status:time'] .nh-status-value",
+  );
+}
+
+/** Read the numeric core turn counter from its status value. */
+async function readTurn(page: Page): Promise<number> {
+  const text = await turnCounter(page).textContent();
+  const match = text?.match(/\d+/);
+  expect(match).not.toBeNull();
+  return Number(match![0]);
+}
+
 /** Return the session-owned drag preview. */
 function dragPreview(page: Page): Locator {
   return page.getByRole("status", { name: "Inventory drag preview" });
@@ -64,16 +92,27 @@ function playerDropHighlight(page: Page): Locator {
 async function pointerDownOnItem(
   page: Page,
   item: Locator,
-): Promise<{ x: number; y: number }> {
+): Promise<{ pointerId: number; x: number; y: number }> {
   const bounds = await item.boundingBox();
   expect(bounds).not.toBeNull();
   const point = {
     x: bounds!.x + bounds!.width / 2,
     y: bounds!.y + bounds!.height / 2,
   };
+  await item.evaluate((element) => {
+    element.addEventListener("pointerdown", (event) => {
+      if (event instanceof PointerEvent) {
+        (element as HTMLElement).dataset.testPointerId = String(
+          event.pointerId,
+        );
+      }
+    }, { once: true });
+  });
   await page.mouse.move(point.x, point.y);
   await page.mouse.down();
-  return point;
+  const pointerId = Number(await item.getAttribute("data-test-pointer-id"));
+  expect(Number.isInteger(pointerId)).toBe(true);
+  return { ...point, pointerId };
 }
 
 /** Return one visible point inside the map drop region. */
@@ -149,7 +188,7 @@ test("highlights the player cell and cancels interrupted drags without commands"
   const mapPoint = await visibleMapPoint(page);
 
   for (const reason of ["pointercancel", "lostpointercapture"] as const) {
-    await pointerDownOnItem(page, item);
+    const pointer = await pointerDownOnItem(page, item);
     await page.mouse.move(mapPoint.x, mapPoint.y, { steps: 2 });
 
     await expect(dragPreview(page)).toContainText("Drop at your feet");
@@ -162,7 +201,7 @@ test("highlights the player cell and cancels interrupted drags without commands"
       String(player.y),
     );
     await item.dispatchEvent(reason, {
-      pointerId: 1,
+      pointerId: pointer.pointerId,
       pointerType: "mouse",
       isPrimary: true,
       button: 0,
@@ -207,24 +246,31 @@ test("drops one stack once and waits for a new permanent-inventory revision", as
     "InventoryDragDrop",
   );
   const rows = inventoryRows(inventory);
-  const item = droppableItem(inventory);
+  const item = droppableStack(inventory);
   await expect(item).toBeVisible();
   const countBefore = await rows.count();
+  const targetText = (await item.textContent())?.trim() ?? "";
+  const retainedItem = wornItem(inventory);
+  const retainedText = (await retainedItem.textContent())?.trim() ?? "";
+  const turnBefore = await readTurn(page);
   const revisionBefore = await readShellRevision(page);
+  const inventoryRevisionBefore = Number(
+    await inventory.getAttribute("data-inventory-revision"),
+  );
 
   await page.evaluate(() => {
     const initialCount = document.querySelectorAll(
       ".permanent-inventory-item:not(.permanent-inventory-heading)",
     ).length;
-    document.documentElement.dataset.testRemovalSnapshotRevision = "";
+    document.documentElement.dataset.testRemovalInventoryRevision = "";
     const observer = new MutationObserver(() => {
       const currentCount = document.querySelectorAll(
         ".permanent-inventory-item:not(.permanent-inventory-heading)",
       ).length;
       if (currentCount >= initialCount) return;
-      document.documentElement.dataset.testRemovalSnapshotRevision =
-        document.querySelector<HTMLElement>(".nh-shell")
-          ?.dataset.snapshotRevision
+      document.documentElement.dataset.testRemovalInventoryRevision =
+        document.querySelector<HTMLElement>("[data-inventory-revision]")
+          ?.dataset.inventoryRevision
           ?? "";
       observer.disconnect();
     });
@@ -243,13 +289,53 @@ test("drops one stack once and waits for a new permanent-inventory revision", as
     "ready",
   );
   await expect(page.locator(".nh-dialog.nh-menu")).toHaveCount(0);
+  const remainingTexts = (await rows.allTextContents())
+    .map((text) => text.trim());
+  expect(remainingTexts).not.toContain(targetText);
+  expect(remainingTexts).toContain(retainedText);
+  expect(await readTurn(page)).toBeGreaterThan(turnBefore);
   const revisionAfter = await readShellRevision(page);
-  const removalRevision = Number(
+  const removalInventoryRevision = Number(
     await page.locator("html").getAttribute(
-      "data-test-removal-snapshot-revision",
+      "data-test-removal-inventory-revision",
     ),
   );
   expect(revisionAfter).toBeGreaterThan(revisionBefore);
-  expect(removalRevision).toBe(revisionAfter);
+  expect(removalInventoryRevision).toBeGreaterThan(inventoryRevisionBefore);
+  expect(errors).toEqual({ console: [], page: [] });
+});
+
+test("keeps worn items and shows the core drop rejection without a turn", async ({
+  page,
+}) => {
+  const errors = captureErrors(page);
+  const inventory = await startInventoryDragGame(
+    page,
+    "InventoryDragRejected",
+  );
+  const rows = inventoryRows(inventory);
+  const item = wornItem(inventory);
+  await expect(item).toBeVisible();
+  const countBefore = await rows.count();
+  const itemText = (await item.textContent())?.trim() ?? "";
+  const turnBefore = await readTurn(page);
+
+  const mapPoint = await visibleMapPoint(page);
+  await pointerDownOnItem(page, item);
+  await page.mouse.move(mapPoint.x, mapPoint.y, { steps: 2 });
+  await expect(dragPreview(page)).toContainText("Drop at your feet");
+  await page.mouse.up();
+
+  await expect(page.getByRole("region", { name: "Messages" })).toContainText(
+    "You cannot drop something you are wearing.",
+  );
+  await expect(rows).toHaveCount(countBefore);
+  expect((await rows.allTextContents()).map((text) => text.trim()))
+    .toContain(itemText);
+  expect(await readTurn(page)).toBe(turnBefore);
+  await expect(page.locator(".nh-shell")).toHaveAttribute(
+    "data-command-input",
+    "ready",
+  );
   expect(errors).toEqual({ console: [], page: [] });
 });

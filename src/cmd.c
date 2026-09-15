@@ -3,7 +3,8 @@
 /*-Copyright (c) Robert Patrick Rankin, 2013. */
 /* NetHack may be freely redistributed.  See license for details. */
 /* Modified for BlissHack by lightmain, 2026-09-15: preserve the actual
- * mouse modifier for browser-driven therecmdmenu requests. */
+ * mouse modifier for browser-driven therecmdmenu requests and allow the
+ * native request-menu prefix to drive browser inventory drops. */
 
 #include "hack.h"
 #include "func_tab.h"
@@ -1713,7 +1714,7 @@ struct ext_func_tab extcmdlist[] = {
                  that would suppress it from dokeylist output */
               dodown, CMD_M_PREFIX, NULL },
     { 'd',    "drop", "drop an item",
-              dodrop, 0, NULL },
+              dodrop, CMD_M_PREFIX, NULL },
     { 'D',    "droptype", "drop specific item types",
               doddrop, 0, NULL },
     { 'e',    "eat", "eat something",

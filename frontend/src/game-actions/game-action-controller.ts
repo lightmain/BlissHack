@@ -105,6 +105,7 @@ export function createGameActionController(
     if (
       "inventoryRevision" in intent
       && observation.inventoryRevision !== intent.inventoryRevision
+      && !(intent.kind === "drop-item" && state.targetSelected)
     ) {
       cancel("inventory-revision-changed");
       return false;
@@ -218,6 +219,14 @@ export function createGameActionController(
     const input = observation.input;
     if (input === null) return;
     if (state.intent?.kind === "map-inspect" && input.kind === "command") {
+      complete();
+      return;
+    }
+    if (
+      state.intent?.kind === "drop-item"
+      && state.targetSelected
+      && input.kind === "command"
+    ) {
       complete();
       return;
     }

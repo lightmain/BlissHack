@@ -37,11 +37,14 @@ export async function startNewGameFromHome(
 
   const nameInput = page.getByRole("textbox", { name: "Who are you?" });
   await expect(nameInput).toBeVisible();
-  await expect(page.getByText(/Shall I pick character's/)).toHaveCount(0);
+  const selectionPrompt = page.getByText(
+    /Shall I pick (?:character's|your .+'s)/,
+  );
+  await expect(selectionPrompt).toHaveCount(0);
   await nameInput.fill(name);
   await nameInput.press("Enter");
 
-  await expect(page.getByText(/Shall I pick character's/)).toBeVisible();
+  await expect(selectionPrompt).toBeVisible();
   await page.keyboard.press("y");
 
   await expect(
