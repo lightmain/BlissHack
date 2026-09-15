@@ -47,6 +47,22 @@ const CMD_SOURCE = join(
   "src",
   "cmd.c",
 );
+const HACK_SOURCE = join(
+  __dirname,
+  "..",
+  "..",
+  "..",
+  "src",
+  "hack.c",
+);
+const LOCK_SOURCE = join(
+  __dirname,
+  "..",
+  "..",
+  "..",
+  "src",
+  "lock.c",
+);
 const DO_SOURCE = join(
   __dirname,
   "..",
@@ -402,6 +418,8 @@ async function run() {
   assert(existsSync(WINSHIM_SOURCE), "winshim.c exists");
   assert(existsSync(EXPER_SOURCE), "exper.c exists");
   assert(existsSync(CMD_SOURCE), "cmd.c exists");
+  assert(existsSync(HACK_SOURCE), "hack.c exists");
+  assert(existsSync(LOCK_SOURCE), "lock.c exists");
   assert(existsSync(DO_SOURCE), "do.c exists");
   if (
     !existsSync(WASM_JS)
@@ -409,6 +427,8 @@ async function run() {
     || !existsSync(WINSHIM_SOURCE)
     || !existsSync(EXPER_SOURCE)
     || !existsSync(CMD_SOURCE)
+    || !existsSync(HACK_SOURCE)
+    || !existsSync(LOCK_SOURCE)
     || !existsSync(DO_SOURCE)
   ) {
     console.error(
@@ -419,6 +439,8 @@ async function run() {
   const winshimSource = readFileSync(WINSHIM_SOURCE, "utf8");
   const experSource = readFileSync(EXPER_SOURCE, "utf8");
   const cmdSource = readFileSync(CMD_SOURCE, "utf8");
+  const hackSource = readFileSync(HACK_SOURCE, "utf8");
+  const lockSource = readFileSync(LOCK_SOURCE, "utf8");
   const doSource = readFileSync(DO_SOURCE, "utf8");
   const statusWrapper = cBlockAfter(
     winshimSource,
@@ -586,6 +608,36 @@ async function run() {
     cmdSource,
     /\nstaticfn\s+int\s*\ndoclicklook\s*\(\s*void\s*\)\s*/,
   );
+  const mouseAction = cBlockAfter(
+    cmdSource,
+    /\nstaticfn\s+int\s*\ndomouseaction\s*\(\s*void\s*\)\s*/,
+  );
+  const blockedMouseTarget = mouseAction === null
+    ? null
+    : cBlockAfter(
+      mouseAction,
+      /\bif\s*\(\s*!m_at\s*\(\s*u\.ux\s*\+\s*x\s*,\s*u\.uy\s*\+\s*y\s*\)\s*&&\s*!test_move\s*\(\s*u\.ux\s*,\s*u\.uy\s*,\s*x\s*,\s*y\s*,\s*TEST_MOVE\s*\)\s*\)\s*/,
+    );
+  const setMoveCommand = cBlockAfter(
+    cmdSource,
+    /\nvoid\s*\nset_move_cmd\s*\([^;{}]*\)\s*/,
+  );
+  const commandDispatcher = cBlockAfter(
+    cmdSource,
+    /\nvoid\s*\nrhack\s*\([^;{}]*\)\s*/,
+  );
+  const moveCore = cBlockAfter(
+    hackSource,
+    /\nstaticfn\s+void\s*\ndomove_core\s*\(\s*void\s*\)\s*/,
+  );
+  const testMove = cBlockAfter(
+    hackSource,
+    /\nboolean\s*\ntest_move\s*\([^;{}]*\)\s*/,
+  );
+  const openInDirection = cBlockAfter(
+    lockSource,
+    /\nint\s*\ndoopen_indir\s*\([^;{}]*\)\s*/,
+  );
   assert(
     clickToCommand !== null
       && /\bgc\.clicklook_cc\.x\s*=\s*x\s*;[\s\S]*?\bgc\.clicklook_cc\.y\s*=\s*y\s*;/.test(
@@ -624,6 +676,40 @@ async function run() {
       && clickLookReset < clickLookValidation
       && clickLookValidation < clickLookDescription,
     "clicklook clears stale coordinates before validation and uses local copies",
+  );
+  assert(
+    mouseAction !== null
+      && blockedMouseTarget !== null
+      && /\bdir\s*=\s*xytodir\s*\(\s*x\s*,\s*y\s*\)\s*;/.test(mouseAction)
+      && /\bcmdq_add_ec\s*\(\s*CQ_CANNED\s*,\s*move_funcs\[dir\]\[MV_WALK\]\s*\)\s*;/.test(
+        blockedMouseTarget,
+      )
+      && !/\bcmdq_add_ec\s*\(\s*CQ_CANNED\s*,\s*(?:dokick|doopen)\s*\)\s*;/.test(
+        blockedMouseTarget,
+      ),
+    "mouseaction queues blocked adjacent doors as directional walks"
+      + " without direct open or kick commands",
+  );
+  assert(
+    setMoveCommand !== null
+      && /\bgd\.domove_attempting\s*\|=\s*\(\s*!run\s*\?\s*DOMOVE_WALK\s*:\s*DOMOVE_RUSH\s*\)\s*;/.test(
+        setMoveCommand,
+      )
+      && commandDispatcher !== null
+      && /\bgd\.domove_attempting\s*&\s*DOMOVE_WALK\b[\s\S]*?\bdomove\s*\(\s*\)\s*;/.test(
+        commandDispatcher,
+      )
+      && moveCore !== null
+      && /\btest_move\s*\(\s*u\.ux\s*,\s*u\.uy\s*,\s*x\s*-\s*u\.ux\s*,\s*y\s*-\s*u\.uy\s*,\s*DO_MOVE\s*\)/.test(
+        moveCore,
+      )
+      && testMove !== null
+      && /\bclosed_door\s*\(\s*x\s*,\s*y\s*\)[\s\S]*?\bflags\.autoopen\b[\s\S]*?\bdoopen_indir\s*\(\s*x\s*,\s*y\s*\)/.test(
+        testMove,
+      )
+      && openInDirection !== null
+      && /\blocked\s*&&\s*flags\.autounlock\b/.test(openInDirection),
+    "directional walking reaches the core autoopen and autounlock path",
   );
   if (process.env.BLISSHACK_SOURCE_CONTRACT_ONLY === "1") {
     console.log(`\n=== Results: ${passed} passed, ${failed} failed ===`);
