@@ -12,6 +12,10 @@ React and TypeScript frontend for the NetHack WebAssembly build.
 - `src/nethack-bridge.ts` is the stable shim callback facade.
 - `src/bridge/` contains Emscripten loading, WASM decoding, save validation,
   and the single input controller.
+- `src/game-actions/` owns high-level UI intents and advances them only from
+  authoritative command, menu, snapshot, and inventory observations.
+- `src/interactions/` owns shared anchored overlays, hover inspection, and the
+  Pointer Events permanent-inventory drag controller.
 - `src/map/` contains the shared `MapViewport`, camera and right-drag hooks,
   retained ASCII renderer, Canvas tile renderer, atlas loader, and
   renderer-independent draw primitives.
@@ -19,8 +23,9 @@ React and TypeScript frontend for the NetHack WebAssembly build.
   normalized scroll-anchor calculations.
 - `src/settings/profile.ts` owns the explicit strict v1-to-v2 migration chain;
   `interface.mapRenderer` selects `tiles` or `ascii`.
-- `src/screens/settings/` and `src/screens/game/` contain screen-owned
-  presentation components.
+- `src/screens/game/` contains the fullscreen HUD layout, fixed message and
+  status regions, and the future action-bar slot. `src/screens/settings/`
+  contains the profile and in-game Settings presentation.
 - `src/styles/` contains page-scoped global styles loaded through `src/App.css`.
 
 The checked-in `public/nethack.js`, `public/nethack.wasm`, and
@@ -58,6 +63,10 @@ npm run test:integration:compat
 npm run test:performance
 npm run test:long
 ```
+
+The Chromium browser suite includes screenshot baselines for Tiles/ASCII and
+Right/Below HUD layouts at 1280x900 and 900x700. Firefox and WebKit run the
+same geometry and overflow contracts without comparing Chromium pixels.
 
 Check the pinned Node.js and Emscripten environment without building:
 

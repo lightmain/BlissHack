@@ -18,18 +18,23 @@ BlissHack 对 NetHack C 代码进行了少量有针对性的修改，主要用�
 
 ## 项目状态
 
-**alpha-1.1 已完成人工验收并合入部署分支。**
+**alpha-2.0 实现已进入发布验证，正在等待人工验收。**
 
-alpha-1.1 包含官方经典 16×16 tiles 和 Canvas 2D 地图，并
-完善了地图 camera、右键拖动、Follow player、profile 迁移和 WASM 工具链。
-GitHub Pages 反映最近一次完成的部署，实际线上版本以页面显示为准。后续
-alpha-2.0 将专注于全屏 HUD、图形化状态和核心驱动的鼠标交互。
+alpha-2.0 增加全屏桌面 HUD、图形化状态、统一检查浮层、核心驱动的右键菜单和
+永久背包拖放。人工验收完成前，部署分支与 GitHub Pages 仍保留最近一次已验收
+版本；实际线上版本以页面显示为准。
 
 当前里程碑已经实现：
 
 - 默认使用官方 tiles 的 80×21 Canvas 地图，并长期保留 ASCII renderer。
-- 地图隐藏原生 scrollbar 但保留滚动能力；右键拖动平移，右键短按保留原有
-  格子操作。
+- viewport 全屏 HUD 固定消息区和状态区，并支持永久背包 Right 与 Below 布局。
+- HP、Energy、XP、属性、状态、地点和回合由核心结构化字段驱动显示。
+- 状态、背包和地图共用延迟 Tooltip；地图说明来自核心且不写入消息历史。
+- 地图和背包右键菜单完全由核心生成，鼠标动作由高层动作控制器安全编排。
+- 永久背包使用 Pointer Events 拖到玩家当前格，通过核心原生 drop 流程执行，
+  并以背包 revision 防止过期操作。
+- 地图隐藏原生 scrollbar 但保留滚动能力；右键拖动平移，普通右键打开核心
+  操作菜单，显式位置输入仍保留原有鼠标目标语义。
 - Follow 开启时允许手动浏览；右键查看和同坐标回合不会抢回视角，有效 Follow
   target 的坐标变化后重新居中。
 - WASM 提供权威 `tileIndex`；Canvas 绘制背景、前景、宠物/物品堆标记和光标。
@@ -37,7 +42,6 @@ alpha-2.0 将专注于全屏 HUD、图形化状态和核心驱动的鼠标交互
 - Settings 可即时切换 Tiles/ASCII；旧 profile v1 迁移后保持 ASCII。
 - 消息历史、文本窗口、菜单、提示、扩展命令和位置输入。
 - 先输入角色名字，再进入原版职业、种族、性别和阵营选择流程。
-- 多行状态栏，以及位于角色名字和称号背景上的彩色生命值条。
 - 准确的 ASCII、Ctrl、Alt/Meta、方向键和数字小键盘输入。
 - 通过 Emscripten IDBFS 在浏览器本地保存和恢复游戏。
 - 单元、WASM、Chromium、Firefox、WebKit、性能和长流程测试。
@@ -114,7 +118,8 @@ npm run test:long
 集成测试会运行真实 WASM 回调链和生产浏览器构建，覆盖启动、键盘输入、状态栏、
 Tiles/ASCII、存档和恢复流程。跨浏览器基础组覆盖 Firefox 和 WebKit 的发布
 关键路径，性能测试记录 Canvas 全图绘制与永久背包表现。长流程测试用于发布前
-重复验证游戏会话、继续保存和存档传输。
+重复验证游戏会话、继续保存和存档传输。Chromium 视觉基线覆盖
+Tiles/ASCII、Right/Below 在 1280×900 和 900×700 下的 HUD 组合。
 
 ## 仓库文档
 
@@ -129,6 +134,7 @@ Tiles/ASCII、存档和恢复流程。跨浏览器基础组覆盖 Firefox 和 We
 - [alpha-1 profile v2](doc/BlissHack/plans/in-alpha-1/profile-v2.md)
 - [alpha-1 发布验收](doc/BlissHack/plans/in-alpha-1/release-acceptance.md)
 - [alpha-1.1 发布验收](doc/BlissHack/plans/in-alpha-1.1/release-acceptance.md)
+- [alpha-2.0 发布验收](doc/BlissHack/plans/in-alpha-2.0/release-acceptance.md)
 - [prealpha-3 发布验收](doc/BlissHack/plans/in-prealpha-3/release-acceptance.md)
 - [上游修改清单](doc/BlissHack/upstream-modifications.md)
 - [存档存储与读取方案评审](doc/BlissHack/plans/in-prealpha-2/save-format-review.md)

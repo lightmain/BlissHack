@@ -10,8 +10,9 @@
 1. 完整阅读仓库根目录的 `AGENTS.md` 和 `AGENTS-cn.md`。
 2. 阅读 `README-cn.md`，确认当前产品定位、运行方式、测试入口和许可证说明。
 3. `BlissHack` 已包含完成人工验收的 alpha-1.1 Tileset、地图交互和定向基建；
-   GitHub Pages 可能在部署期间短暂落后，应以页面版本为准。alpha-2.0 当前只有
-   交互式 HUD 计划，尚未开始开发。维护当前架构时阅读
+   alpha-2.0 的交互式 HUD 实现和自动发布门禁已完成，当前停在人工验收，
+   尚未合入、push 或部署。GitHub Pages 可能落后，应以页面版本为准。维护当前
+   架构时阅读
    `doc/BlissHack/plans/prealpha-4.md`；进行 tileset、Canvas 地图、
    `TILES_IN_GLYPHMAP` 或 profile v2 工作时完整阅读
    `doc/BlissHack/plans/alpha-1.md`、`doc/BlissHack/plans/alpha-1.1.md` 及
@@ -41,8 +42,16 @@
 - `frontend/src/map/` 同时保留 ASCII renderer 和 Canvas tile renderer；
   `MapCell` 与核心提供的 `tileIndex` 是两条渲染路径的共同输入。
 - `frontend/src/map/MapViewport.tsx` 是地图 scroll container、camera 和
-  pointer 生命周期的唯一 owner；右键短按保留原有地图位置输入，达到
-  5 CSS px 后切换为 viewport drag。
+  pointer 生命周期的唯一 owner；普通命令下左右短按产生核心动作 intent，
+  右键达到 5 CSS px 后切换为 viewport drag，显式位置输入仍优先。
+- `frontend/src/game-actions/game-action-controller.ts` 是地图检查、地图/背包右键
+  菜单和背包 drop 等高层 `ActionIntent` 的唯一 owner；它只根据核心实际
+  command/menu/snapshot/inventory 观察推进，不使用盲目按键宏。
+- `frontend/src/interactions/` 统一管理 anchored overlay、hover inspect 和
+  永久背包 Pointer Events 拖动。拖放目标只接受地图区域，最终动作仍由核心
+  原生 drop 流程决定。
+- `frontend/src/screens/game/GameHudLayout.tsx` 拥有 viewport HUD Grid；
+  消息、地图、状态和永久背包分别拥有自己的区域和 overflow。
 - 当前个人配置是严格 profile schema v2，持久 key 为
   `blisshack.profile.v2`；仅在没有 v2 时读取 v1，并迁移为 ASCII 显示。
 - `frontend/src/session/session-manager.ts` 是稳定 façade；
