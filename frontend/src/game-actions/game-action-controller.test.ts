@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { MenuItem } from "../game-state";
+import { PICK_ONE, type MenuItem } from "../game-state";
 import {
   createGameActionController,
   type ActionControllerObservation,
@@ -10,6 +10,12 @@ import {
 const ITEM_ACCELERATOR = "a".charCodeAt(0);
 const INVENTORY_REVISION = 4;
 const MAP_REVISION = 7;
+const INVALID_MENU_METADATA = [
+  { label: "missing how", metadata: { windowId: 23 } },
+  { label: "non-PICK_ONE how", metadata: { how: 2, windowId: 23 } },
+  { label: "missing windowId", metadata: { how: PICK_ONE } },
+  { label: "negative windowId", metadata: { how: PICK_ONE, windowId: -1 } },
+] as const;
 
 function createInventoryIntent(): Extract<
   ActionIntent,
@@ -202,6 +208,39 @@ describe("GameActionController", () => {
     expect(releaseInputToUi).not.toHaveBeenCalled();
   });
 
+  it("[defect-probing] cancels and releases a menu received during map inspection", () => {
+    const {
+      controller,
+      onCancel,
+      releaseInputToUi,
+      submitMenuSelection,
+    } = createHarness();
+    const unexpectedMenu = {
+      kind: "menu" as const,
+      items: [menuItem(17, "l".charCodeAt(0), "l - unrelated action")],
+      windowId: 23,
+      how: PICK_ONE,
+    };
+
+    controller.request(createMapInspectIntent());
+    controller.observe(createObservation({ input: { kind: "command" } }));
+    controller.observe(createObservation({ input: unexpectedMenu }));
+
+    expect(submitMenuSelection).not.toHaveBeenCalled();
+    expect(onCancel).toHaveBeenCalledOnce();
+    expect(onCancel).toHaveBeenCalledWith("unexpected-input");
+    expect(releaseInputToUi).toHaveBeenCalledOnce();
+    expect(releaseInputToUi).toHaveBeenCalledWith(unexpectedMenu);
+    expect(onCancel.mock.invocationCallOrder[0])
+      .toBeLessThan(releaseInputToUi.mock.invocationCallOrder[0]);
+    expect(controller.getState()).toMatchObject({
+      status: "idle",
+      intent: null,
+      contextMenu: null,
+      lastCancellationReason: "unexpected-input",
+    });
+  });
+
   it("freezes bridge typeahead for the complete active-intent lifetime", () => {
     const { controller, setActionIntentActive } = createHarness();
 
@@ -223,7 +262,7 @@ describe("GameActionController", () => {
         kind: "menu",
         items: [menuItem(17, "o".charCodeAt(0), "o - open")],
         windowId: 23,
-        how: 2,
+        how: PICK_ONE,
       },
     }));
 
@@ -232,7 +271,7 @@ describe("GameActionController", () => {
       intent,
       contextMenu: {
         windowId: 23,
-        how: 2,
+        how: PICK_ONE,
         origin: intent.origin,
       },
     });
@@ -251,6 +290,39 @@ describe("GameActionController", () => {
     expect(setActionIntentActive.mock.calls).toEqual([[true], [false]]);
   });
 
+  it.each(INVALID_MENU_METADATA)(
+    "[defect-probing] rejects a map context menu with $label",
+    ({ metadata }) => {
+      const {
+        controller,
+        onCancel,
+        releaseInputToUi,
+        submitMenuSelection,
+      } = createHarness();
+      const invalidMenu = {
+        kind: "menu" as const,
+        items: [menuItem(17, "o".charCodeAt(0), "o - open")],
+        ...metadata,
+      };
+
+      controller.request(createMapContextIntent());
+      controller.observe(createObservation({ input: { kind: "command" } }));
+      controller.observe(createObservation({ input: invalidMenu }));
+
+      expect(submitMenuSelection).not.toHaveBeenCalled();
+      expect(onCancel).toHaveBeenCalledWith("unexpected-input");
+      expect(releaseInputToUi).toHaveBeenCalledWith(invalidMenu);
+      expect(onCancel.mock.invocationCallOrder[0])
+        .toBeLessThan(releaseInputToUi.mock.invocationCallOrder[0]);
+      expect(controller.getState()).toMatchObject({
+        status: "idle",
+        intent: null,
+        contextMenu: null,
+        lastCancellationReason: "unexpected-input",
+      });
+    },
+  );
+
   it("matches the accelerator in the newly generated menu", () => {
     const { controller, submitMenuSelection } = createHarness();
     controller.request(createInventoryIntent());
@@ -263,6 +335,8 @@ describe("GameActionController", () => {
           menuItem(41, "b".charCodeAt(0), "b - a changed first item"),
           menuItem(99, ITEM_ACCELERATOR, "a - the current target"),
         ],
+        windowId: 30,
+        how: PICK_ONE,
       },
     }));
 
@@ -271,6 +345,42 @@ describe("GameActionController", () => {
       { itemIndex: 1, count: 1 },
     ]);
   });
+
+  it.each(INVALID_MENU_METADATA)(
+    "[defect-probing] rejects an inventory selector with $label without selecting",
+    ({ metadata }) => {
+      const {
+        controller,
+        onCancel,
+        releaseInputToUi,
+        submitMenuSelection,
+      } = createHarness();
+      const invalidMenu = {
+        kind: "menu" as const,
+        items: [
+          menuItem(7002, ITEM_ACCELERATOR, "opaque target row"),
+        ],
+        ...metadata,
+      };
+
+      controller.request(createInventoryIntent());
+      controller.observe(createObservation({ input: { kind: "command" } }));
+      controller.observe(createObservation({ input: invalidMenu }));
+
+      expect(submitMenuSelection).not.toHaveBeenCalled();
+      expect(onCancel).toHaveBeenCalledWith("unexpected-input");
+      expect(releaseInputToUi).toHaveBeenCalledWith(invalidMenu);
+      expect(onCancel.mock.invocationCallOrder[0])
+        .toBeLessThan(releaseInputToUi.mock.invocationCallOrder[0]);
+      expect(controller.getState()).toMatchObject({
+        status: "idle",
+        intent: null,
+        targetSelected: false,
+        contextMenu: null,
+        lastCancellationReason: "unexpected-input",
+      });
+    },
+  );
 
   it("hides the inventory selector and presents only the resulting itemactions menu", () => {
     const { controller, submitMenuSelection } = createHarness();
@@ -286,7 +396,7 @@ describe("GameActionController", () => {
           menuItem(7002, ITEM_ACCELERATOR, "opaque row two"),
         ],
         windowId: 31,
-        how: 1,
+        how: PICK_ONE,
       },
     }));
 
@@ -306,7 +416,7 @@ describe("GameActionController", () => {
           menuItem(8101, 0, "opaque core action"),
         ],
         windowId: 32,
-        how: 1,
+        how: PICK_ONE,
       },
     }));
 
@@ -315,11 +425,58 @@ describe("GameActionController", () => {
       status: "presenting-context-menu",
       contextMenu: {
         windowId: 32,
-        how: 1,
+        how: PICK_ONE,
         origin: intent.origin,
       },
     });
   });
+
+  it.each(INVALID_MENU_METADATA)(
+    "[defect-probing] rejects an itemactions menu with $label after selecting the target",
+    ({ metadata }) => {
+      const {
+        controller,
+        onCancel,
+        releaseInputToUi,
+        submitMenuSelection,
+      } = createHarness();
+      const invalidMenu = {
+        kind: "menu" as const,
+        items: [menuItem(8101, 0, "opaque core action")],
+        ...metadata,
+      };
+
+      controller.request(createInventoryIntent());
+      controller.observe(createObservation({ input: { kind: "command" } }));
+      controller.observe(createObservation({
+        input: {
+          kind: "menu",
+          items: [
+            menuItem(7002, ITEM_ACCELERATOR, "opaque target row"),
+          ],
+          windowId: 31,
+          how: PICK_ONE,
+        },
+      }));
+      controller.observe(createObservation({ input: invalidMenu }));
+
+      expect(submitMenuSelection).toHaveBeenCalledTimes(1);
+      expect(submitMenuSelection).toHaveBeenCalledWith([
+        { itemIndex: 0, count: 1 },
+      ]);
+      expect(onCancel).toHaveBeenCalledWith("unexpected-input");
+      expect(releaseInputToUi).toHaveBeenCalledWith(invalidMenu);
+      expect(onCancel.mock.invocationCallOrder[0])
+        .toBeLessThan(releaseInputToUi.mock.invocationCallOrder[0]);
+      expect(controller.getState()).toMatchObject({
+        status: "idle",
+        intent: null,
+        targetSelected: false,
+        contextMenu: null,
+        lastCancellationReason: "unexpected-input",
+      });
+    },
+  );
 
   it("cancels safely when the newly generated inventory menu lacks the accelerator", () => {
     const {
@@ -336,6 +493,8 @@ describe("GameActionController", () => {
         items: [
           menuItem(7001, "b".charCodeAt(0), "opaque non-target row"),
         ],
+        windowId: 31,
+        how: PICK_ONE,
       },
     }));
 
@@ -362,6 +521,8 @@ describe("GameActionController", () => {
         items: [
           menuItem(7002, ITEM_ACCELERATOR, "opaque target row"),
         ],
+        windowId: 31,
+        how: PICK_ONE,
       },
     }));
 
