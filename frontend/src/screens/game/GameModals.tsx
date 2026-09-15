@@ -572,17 +572,23 @@ function parsedCount(value: string): number {
 }
 
 /**
- * Resolve the permanent-inventory control which opened an anchored menu.
+ * Resolve the programmatic focus target which opened an anchored menu.
  * @param contextMenu - active serializable menu presentation.
- * @returns the connected trigger, when the origin has one.
+ * @returns the connected map or inventory trigger, when one exists.
  */
 function findContextMenuTrigger(
   contextMenu: ContextMenuPresentation,
 ): HTMLElement | null {
   const origin = contextMenu.origin;
-  if (origin.kind !== "inventory" || typeof document === "undefined") {
+  if (typeof document === "undefined") {
     return null;
   }
+  if (origin.kind === "map") {
+    return document.querySelector<HTMLElement>(
+      '[data-context-menu-trigger="map"]',
+    );
+  }
+  if (origin.kind !== "inventory") return null;
   return document.querySelector<HTMLElement>(
     `[data-inspect-target="inventory:${origin.inventoryRevision}:${origin.accelerator}"]`,
   );

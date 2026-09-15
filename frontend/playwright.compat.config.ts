@@ -17,6 +17,7 @@ const basicFlowNames = [
   "inspects the player cell without changing visible messages or turn count",
   "clears inspection tooltips on leave, game key input, and pause",
   "opens an anchored core map menu and cancels it without a turn",
+  "restores the map trigger after every anchored-menu dismissal",
   "opens itemactions from permanent inventory without flashing its selector",
   "moves real menu focus and restores the inventory trigger after Escape",
   "closes on left click outside and restores the inventory trigger",
@@ -25,6 +26,7 @@ const basicFlowNames = [
   "highlights the player cell and cancels interrupted drags without commands",
   "drops one stack once and waits for a new permanent-inventory revision",
   "keeps worn items and shows the core drop rejection without a turn",
+  "HUD visual regression:",
 ].join("|");
 
 export default defineConfig({

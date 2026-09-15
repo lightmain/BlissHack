@@ -33,6 +33,7 @@ const gameCss = readFileSync(
 interface GameRenderOptions {
   collapsed?: boolean;
   historyLines?: MessageHistoryLines;
+  inventoryEnabled?: boolean;
   position?: PermanentInventoryPosition;
   renderer?: MapRenderer;
 }
@@ -41,6 +42,7 @@ interface GameRenderOptions {
 function renderGame({
   collapsed = false,
   historyLines = 5,
+  inventoryEnabled = true,
   position = "right",
   renderer = "tiles",
 }: GameRenderOptions = {}): string {
@@ -49,8 +51,8 @@ function renderGame({
   profile.interface.messageHistoryLines = historyLines;
   profile.interface.permanentInventoryPosition = position;
   profile.interface.permanentInventoryCollapsed = collapsed;
-  profile.nethack.permInvent = true;
-  seedPermanentInventory();
+  profile.nethack.permInvent = inventoryEnabled;
+  if (inventoryEnabled) seedPermanentInventory();
   return renderGameScreen(profile);
 }
 
@@ -197,7 +199,7 @@ describe("GameHudLayout contract", () => {
     expect(cssFor(".nh-hud-action-slot:empty"))
       .toMatch(/\bdisplay\s*:\s*none\s*;/);
     expect(cssFor(
-      '.nh-hud-layout-below[data-inventory-collapsed="true"]',
+      '.nh-hud-layout-below[data-has-inventory="true"][data-inventory-collapsed="true"]',
     )).toContain("42px");
     expect(cssFor(".nh-messages-3")).toContain("3.45em + 13px");
     expect(cssFor(".nh-messages-5")).toContain("5.75em + 13px");
@@ -213,6 +215,22 @@ describe("GameHudLayout contract", () => {
       expect(cssFor(selector))
         .toMatch(/\boverflow\s*:\s*(?:auto|hidden)\s*;/);
     }
+  });
+
+  it("does not reserve a collapsed track when permanent inventory is disabled", () => {
+    resetGameState();
+    const html = renderGame({
+      collapsed: true,
+      inventoryEnabled: false,
+      position: "below",
+    });
+
+    expect(html).toContain('data-has-inventory="false"');
+    expect(html).toContain('data-inventory-collapsed="true"');
+    expect(html).not.toContain('data-hud-region="inventory"');
+    expect(cssFor(
+      '.nh-hud-layout-below[data-has-inventory="false"]',
+    )).toContain("auto minmax(0, 1fr) auto 0 0");
   });
 
   it("uses the fixed overlay layer instead of revealing inline status tooltips", () => {

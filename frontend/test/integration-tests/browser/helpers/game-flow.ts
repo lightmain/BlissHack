@@ -25,7 +25,7 @@ export async function openHome(page: Page, marker: string): Promise<void> {
 }
 
 /**
- * Start a new game through the real askname and random role-selection flow.
+ * Start a new game through askname and either random or name-specified roles.
  * @param page - page currently showing the prepared Home screen.
  * @param name - unique player name.
  */
@@ -44,25 +44,25 @@ export async function startNewGameFromHome(
   await nameInput.fill(name);
   await nameInput.press("Enter");
 
-  await expect(selectionPrompt).toBeVisible();
-  await page.keyboard.press("y");
+  const confirmation = page.getByRole("dialog", { name: "Is this ok? [ynq]" });
+  const introduction = page.locator(".nh-text-dialog");
+  await expect(selectionPrompt.or(confirmation).or(introduction)).toBeVisible();
+  if (await selectionPrompt.isVisible()) {
+    await page.keyboard.press("y");
+    await expect(confirmation).toBeVisible();
+  }
+  if (await confirmation.isVisible()) await page.keyboard.press("y");
 
-  await expect(
-    page.getByRole("dialog", { name: "Is this ok? [ynq]" }),
-  ).toBeVisible();
-  await page.keyboard.press("y");
-
-  await expect(page.locator(".nh-text-dialog")).toBeVisible();
+  await expect(introduction).toBeVisible();
   await page.keyboard.press("Enter");
 
-  await expect(
-    page.getByRole("dialog", { name: "Do you want a tutorial?" }),
-  ).toBeVisible();
+  const tutorial = page.getByRole("dialog", {
+    name: "Do you want a tutorial?",
+  });
+  const hitPoints = page.getByRole("progressbar", { name: /^Hit points:/ });
+  await expect(tutorial).toBeVisible();
   await page.keyboard.press("n");
-
-  await expect(
-    page.getByRole("progressbar", { name: /^Hit points:/ }),
-  ).toBeVisible();
+  await expect(hitPoints).toBeVisible();
 }
 
 /**
