@@ -195,12 +195,27 @@ describe("GameHudLayout contract", () => {
       }
     }
     expect(right).toContain("minmax(0, 1fr)");
-    expect(below).toContain("minmax(0, 1fr)");
+    expect(right).toContain('"messages inventory"');
+    expect(right).toContain('"map inventory"');
+    expect(right).toContain('"status inventory"');
+    expect(below).toContain('"messages messages"');
+    expect(below).toContain('"map map"');
+    expect(below).toContain('"status inventory"');
+    expect(below).toMatch(
+      /\bgrid-template-rows\s*:\s*auto\s+max-content\s+minmax\(11rem,\s*1fr\)\s+0\s*;/,
+    );
+    expect(below).toMatch(
+      /\bgrid-template-columns\s*:\s*minmax\([^)]+\)\s+minmax\([^)]+\)\s*;/,
+    );
+    expect(cssFor(".nh-hud-layout-below .nh-map-scroll"))
+      .toMatch(/\bjustify-items\s*:\s*safe center\s*;/);
     expect(cssFor(".nh-hud-action-slot:empty"))
       .toMatch(/\bdisplay\s*:\s*none\s*;/);
     expect(cssFor(
       '.nh-hud-layout-below[data-has-inventory="true"][data-inventory-collapsed="true"]',
-    )).toContain("42px");
+    )).toMatch(
+      /\bgrid-template-columns\s*:\s*minmax\(0,\s*1fr\)\s+42px\s*;/,
+    );
     expect(cssFor(".nh-messages-3")).toContain("3.45em + 13px");
     expect(cssFor(".nh-messages-5")).toContain("5.75em + 13px");
 
@@ -230,7 +245,12 @@ describe("GameHudLayout contract", () => {
     expect(html).not.toContain('data-hud-region="inventory"');
     expect(cssFor(
       '.nh-hud-layout-below[data-has-inventory="false"]',
-    )).toContain("auto minmax(0, 1fr) 0 auto 0");
+    )).toMatch(/\bgrid-template-columns\s*:\s*minmax\(0,\s*1fr\)\s*;/);
+  });
+
+  it("suppresses the browser outline on the programmatic map focus target", () => {
+    expect(cssFor(".nh-map-interaction"))
+      .toMatch(/\boutline\s*:\s*(?:0|none)\s*;/);
   });
 
   it("uses the fixed overlay layer instead of revealing inline status tooltips", () => {

@@ -57,8 +57,8 @@ describe("PermanentInventoryPanel", () => {
 
     expect(html).toContain('role="region"');
     expect(html).toContain('aria-label="Inventory"');
-    expect(html).toContain("data-browser-keyboard");
-    expect(html).toContain('tabindex="0"');
+    expect(html).not.toContain("data-browser-keyboard");
+    expect(html).not.toContain('tabindex="0"');
     expect(html).toMatch(/1 item/);
     expect(html).toContain('aria-label="Collapse inventory"');
     expect(html).toContain('title="Collapse inventory"');
@@ -72,7 +72,7 @@ describe("PermanentInventoryPanel", () => {
     expect(html).toContain("nh-menu-mark");
     expect(html).toMatch(/selected/);
     expect((html.match(/<button\b/g) ?? [])).toHaveLength(2);
-    expect((html.match(/tabindex="-1"/g) ?? [])).toHaveLength(1);
+    expect((html.match(/tabindex="-1"/g) ?? [])).toHaveLength(3);
   });
 
   it("marks only concrete snapshot items as local inventory inspect targets", () => {
@@ -113,6 +113,8 @@ describe("PermanentInventoryPanel", () => {
     expect(html).not.toContain("a blessed long sword");
     expect(html).toMatch(/right/);
     expect(html).not.toContain("data-width");
-    expect(html).toContain('tabindex="-1"');
+    expect((html.match(/tabindex="-1"/g) ?? [])).toHaveLength(2);
+    expect(html).not.toContain('tabindex="0"');
+    expect(html).not.toContain("data-browser-keyboard");
   });
 });
