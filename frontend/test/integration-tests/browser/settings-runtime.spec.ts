@@ -191,25 +191,6 @@ test("renders and collapses the core permanent inventory without a modal", async
   }
   await page.setViewportSize({ width: 1280, height: 900 });
 
-  await inventory.focus();
-  await page.keyboard.press("Tab");
-  await expect(
-    page.getByRole("button", { name: "Collapse inventory" }),
-  ).toBeFocused();
-  await inventory.focus();
-  await page.evaluate(() => {
-    document.documentElement.dataset.lastKeyDefaultPrevented = "";
-    globalThis.addEventListener("keydown", (event) => {
-      document.documentElement.dataset.lastKeyDefaultPrevented =
-        String(event.defaultPrevented);
-    }, { once: true });
-  });
-  await page.keyboard.press("PageDown");
-  await expect(page.locator("html")).toHaveAttribute(
-    "data-last-key-default-prevented",
-    "false",
-  );
-
   const permanentHeading = inventory.locator(".nh-menu-heading").first();
   await expect(permanentHeading).toHaveCSS("font-weight", "700");
   await expect(permanentHeading).toHaveCSS("margin-top", "4px");
@@ -218,6 +199,36 @@ test("renders and collapses the core permanent inventory without a modal", async
     ".permanent-inventory-item:not(.permanent-inventory-heading)",
   );
   const firstInventoryRow = inventoryRows.first();
+  const collapseInventory = page.getByRole("button", {
+    name: "Collapse inventory",
+  });
+  for (const target of [inventory, firstInventoryRow, collapseInventory]) {
+    await target.focus();
+    await expect(target).toBeFocused();
+    await page.evaluate(() => {
+      document.documentElement.dataset.lastKeyDefaultPrevented = "";
+      globalThis.addEventListener("keydown", (event) => {
+        queueMicrotask(() => {
+          document.documentElement.dataset.lastKeyDefaultPrevented =
+            String(event.defaultPrevented);
+        });
+      }, { once: true });
+    });
+    await page.keyboard.press("j");
+    await expect(page.locator("html")).toHaveAttribute(
+      "data-last-key-default-prevented",
+      "true",
+    );
+    await expect(page.locator(".nh-shell")).toHaveAttribute(
+      "data-command-input",
+      "ready",
+    );
+    await expect(page.locator(".nh-context-menu")).toHaveCount(0);
+  }
+  expect(await inventory.evaluate((panel) =>
+    [panel, ...panel.querySelectorAll("button")]
+      .every((element) => (element as HTMLElement).tabIndex === -1)
+  )).toBe(true);
   const [firstRowBox, firstTextBox] = await Promise.all([
     firstInventoryRow.boundingBox(),
     firstInventoryRow.locator(".nh-menu-text").boundingBox(),
@@ -382,12 +393,21 @@ test("renders and collapses the core permanent inventory without a modal", async
   await expect(
     ordinaryInventory.locator(".nh-menu-glyph").first(),
   ).toHaveText(/\S/);
+  const ordinaryAccelerator = (
+    await ordinaryInventory.locator(".nh-menu-accelerator").first().textContent()
+  )?.trim();
+  expect(ordinaryAccelerator).toMatch(/^[a-zA-Z]$/);
   await expect(page.locator(".nh-terminal")).toHaveAttribute("inert", "");
   await page.keyboard.press("Tab");
   expect(await page.locator(".nh-terminal").evaluate(
     (terminal) => !terminal.contains(document.activeElement),
   )).toBe(true);
-  await page.keyboard.press("Escape");
+  await page.keyboard.press(ordinaryAccelerator!);
+  await expect(ordinaryInventory).toHaveCount(0);
+  await expect(page.locator(".nh-shell")).toHaveAttribute(
+    "data-command-input",
+    "ready",
+  );
   expect(errors).toEqual({ console: [], page: [] });
 });
 

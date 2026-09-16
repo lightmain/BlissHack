@@ -46,7 +46,9 @@ interface HudGeometry {
     scrollWidth: number;
   };
   hud: Rectangle;
+  mapContent: Rectangle;
   overflowOwners: OverflowOwner[];
+  rootRem: number;
   regions: Record<RegionName, Rectangle>;
   viewport: ViewportSize;
 }
@@ -166,7 +168,8 @@ async function expectRendererContent(
 ): Promise<void> {
   if (renderer === "tiles") {
     const pixels = await page.locator("canvas.nh-map-tiles").evaluate(
-      (canvas) => {
+      (element) => {
+        const canvas = element as HTMLCanvasElement;
         const context = canvas.getContext("2d");
         if (!context) return { colors: 0, opaque: 0 };
         const data = context.getImageData(
@@ -242,6 +245,8 @@ async function readHudGeometry(page: Page): Promise<HudGeometry> {
 
     const root = document.documentElement;
     const body = document.body;
+    const mapContent = hud.querySelector<HTMLElement>(".nh-map-interaction");
+    if (!mapContent) throw new Error("Expected one map interaction surface");
     const overflowOwners = [
       ...hud.querySelectorAll<HTMLElement>("[data-overflow-owner]"),
     ].map((element) => {
@@ -267,7 +272,9 @@ async function readHudGeometry(page: Page): Promise<HudGeometry> {
         scrollWidth: root.scrollWidth,
       },
       hud: rectangle(hud),
+      mapContent: rectangle(mapContent),
       overflowOwners,
+      rootRem: Number.parseFloat(getComputedStyle(root).fontSize),
       regions: {
         messages: rectangle(region("messages")),
         map: rectangle(region("map")),
@@ -312,6 +319,8 @@ function expectValidHudGeometry(
   geometry: HudGeometry,
   expectedViewport: ViewportSize,
   position: InventoryPosition,
+  inventoryCollapsed = false,
+  intrinsicMapHeight?: number,
 ): void {
   expect(geometry.viewport).toEqual(expectedViewport);
   expect(geometry.hud).toEqual({
@@ -365,11 +374,37 @@ function expectValidHudGeometry(
       expect(region.x + region.width).toBeLessThanOrEqual(inventory.x);
     }
   } else {
-    expect(map.y + map.height).toBeCloseTo(inventory.y, 0);
-    expect(inventory.y + inventory.height).toBeCloseTo(status.y, 0);
-    expect(inventory.height).toBeGreaterThanOrEqual(
-      Math.min(240, expectedViewport.height * 0.25),
+    expect(messages.y + messages.height).toBeCloseTo(map.y, 0);
+    expect(Math.abs(
+      map.height - geometry.mapContent.height,
+    )).toBeLessThanOrEqual(2);
+    expect(geometry.mapContent.height).toBeCloseTo(
+      intrinsicMapHeight ?? geometry.mapContent.height,
+      0,
     );
+    if (geometry.mapContent.width <= map.width) {
+      const expectedMapX =
+        map.x + (map.width - geometry.mapContent.width) / 2;
+      expect(Math.abs(geometry.mapContent.x - expectedMapX))
+        .toBeLessThanOrEqual(2);
+    }
+
+    expect(map.y + map.height).toBeCloseTo(status.y, 0);
+    expect(inventory.y).toBeCloseTo(status.y, 0);
+    expect(inventory.height).toBeCloseTo(status.height, 0);
+    expect(status.x + status.width).toBeCloseTo(inventory.x, 0);
+    expect(inventory.x + inventory.width).toBeCloseTo(
+      expectedViewport.width,
+      0,
+    );
+    expect(status.y + status.height).toBeCloseTo(expectedViewport.height, 0);
+    expect(status.height).toBeGreaterThanOrEqual(geometry.rootRem * 11 - 2);
+    if (inventoryCollapsed) {
+      expect(inventory.width).toBeLessThanOrEqual(44);
+      expect(status.width).toBeGreaterThan(inventory.width);
+    } else {
+      expect(status.width).toBeLessThan(inventory.width);
+    }
   }
   expect(status.y + status.height).toBeCloseTo(expectedViewport.height, 0);
 
@@ -403,6 +438,9 @@ for (const { renderer, position } of HUD_VARIANTS) {
     const readyRevision = await expectReadyHud(page, renderer, position);
     await expectRendererContent(page, renderer);
     await freezeInventoryPresentation(page);
+    const intrinsicMapHeight = await page.locator(
+      ".nh-map-interaction",
+    ).evaluate((element) => element.getBoundingClientRect().height);
 
     for (const viewport of VIEWPORTS) {
       await test.step(`${viewport.width}x${viewport.height}`, async () => {
@@ -418,6 +456,8 @@ for (const { renderer, position } of HUD_VARIANTS) {
           await readHudGeometry(page),
           viewport,
           position,
+          false,
+          intrinsicMapHeight,
         );
 
         if (!["firefox", "webkit"].includes(testInfo.project.name)) {
@@ -438,6 +478,20 @@ for (const { renderer, position } of HUD_VARIANTS) {
           );
         }
       });
+    }
+
+    if (position === "below") {
+      await page.getByRole("button", { name: "Collapse inventory" }).click();
+      await expect(
+        page.getByRole("button", { name: "Expand inventory" }),
+      ).toBeVisible();
+      expectValidHudGeometry(
+        await readHudGeometry(page),
+        VIEWPORTS[1],
+        position,
+        true,
+        intrinsicMapHeight,
+      );
     }
 
     expect(errors).toEqual({ console: [], page: [] });
@@ -469,18 +523,64 @@ test("HUD visual regression: disabled below inventory reserves no collapsed trac
   await expect(hud).toHaveAttribute("data-inventory-collapsed", "true");
   await expect(page.getByRole("region", { name: "Inventory" })).toHaveCount(0);
   const layout = await hud.evaluate((element) => {
+    const messages = element.querySelector<HTMLElement>(
+      '[data-hud-region="messages"]',
+    );
+    const map = element.querySelector<HTMLElement>('[data-hud-region="map"]');
+    const mapContent = element.querySelector<HTMLElement>(
+      ".nh-map-interaction",
+    );
     const status = element.querySelector<HTMLElement>(
       '[data-hud-region="status"]',
     );
+    const messagesBounds = messages?.getBoundingClientRect();
+    const mapBounds = map?.getBoundingClientRect();
+    const mapContentBounds = mapContent?.getBoundingClientRect();
     const statusBounds = status?.getBoundingClientRect();
     return {
-      gridRows: getComputedStyle(element).gridTemplateRows.split(/\s+/),
+      gridColumns: getComputedStyle(element).gridTemplateColumns.split(/\s+/),
+      map: mapBounds
+        ? { height: mapBounds.height, width: mapBounds.width, x: mapBounds.x, y: mapBounds.y }
+        : null,
+      mapContent: mapContentBounds
+        ? {
+            height: mapContentBounds.height,
+            width: mapContentBounds.width,
+            x: mapContentBounds.x,
+            y: mapContentBounds.y,
+          }
+        : null,
+      messagesBottom: messagesBounds
+        ? messagesBounds.y + messagesBounds.height
+        : -1,
+      rootRem: Number.parseFloat(getComputedStyle(document.documentElement).fontSize),
+      statusHeight: statusBounds?.height ?? -1,
+      statusLeft: statusBounds?.x ?? -1,
       statusBottom: statusBounds
         ? statusBounds.y + statusBounds.height
         : -1,
+      statusTop: statusBounds?.y ?? -1,
+      statusWidth: statusBounds?.width ?? -1,
     };
   });
-  expect([layout.gridRows[2], layout.gridRows[4]]).toEqual(["0px", "0px"]);
+  expect(layout.map).not.toBeNull();
+  expect(layout.mapContent).not.toBeNull();
+  expect(layout.gridColumns).toHaveLength(1);
+  expect(layout.messagesBottom).toBeCloseTo(layout.map!.y, 0);
+  expect(Math.abs(
+    layout.map!.height - layout.mapContent!.height,
+  )).toBeLessThanOrEqual(2);
+  expect(Math.abs(
+    layout.mapContent!.x
+      - (layout.map!.x + (layout.map!.width - layout.mapContent!.width) / 2),
+  )).toBeLessThanOrEqual(2);
+  expect(layout.statusTop).toBeCloseTo(
+    layout.map!.y + layout.map!.height,
+    0,
+  );
+  expect(layout.statusLeft).toBeCloseTo(0, 0);
+  expect(layout.statusWidth).toBeCloseTo(VIEWPORTS[1].width, 0);
+  expect(layout.statusHeight).toBeGreaterThanOrEqual(layout.rootRem * 11 - 2);
   expect(layout.statusBottom).toBeCloseTo(VIEWPORTS[1].height, 0);
   expect(errors).toEqual({ console: [], page: [] });
 });
