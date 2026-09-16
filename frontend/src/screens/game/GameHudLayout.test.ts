@@ -202,11 +202,12 @@ describe("GameHudLayout contract", () => {
     expect(below).toContain('"map map"');
     expect(below).toContain('"status inventory"');
     expect(below).toMatch(
-      /\bgrid-template-rows\s*:\s*auto\s+max-content\s+minmax\(11rem,\s*1fr\)\s+0\s*;/,
+      /\bgrid-template-rows\s*:\s*auto\s+minmax\(0,\s*max-content\)\s+minmax\(11rem,\s*1fr\)\s+0\s*;/,
     );
     expect(below).toMatch(
-      /\bgrid-template-columns\s*:\s*minmax\([^)]+\)\s+minmax\([^)]+\)\s*;/,
+      /\bgrid-template-columns\s*:\s*clamp\(10rem,\s*28%,\s*22rem\)\s+minmax\(0,\s*1fr\)\s*;/,
     );
+    expect(below).toMatch(/\boverflow-y\s*:\s*auto\s*;/);
     expect(cssFor(".nh-hud-layout-below .nh-map-scroll"))
       .toMatch(/\bjustify-items\s*:\s*safe center\s*;/);
     expect(cssFor(".nh-hud-action-slot:empty"))

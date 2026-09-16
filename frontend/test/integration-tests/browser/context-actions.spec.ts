@@ -141,7 +141,9 @@ test("opens an anchored core map menu and cancels it without a turn", async ({
     "data-command-input",
     "ready",
   );
-  await expect(page.locator("[data-context-menu-trigger='map']")).toBeFocused();
+  const map = page.locator("[data-context-menu-trigger='map']");
+  await expect(map).toBeFocused();
+  await expect(map).toHaveCSS("outline-style", "none");
   expect(await turn.textContent()).toBe(turnBefore);
 
   await page.keyboard.press("i");

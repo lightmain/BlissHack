@@ -47,6 +47,13 @@ interface HudGeometry {
   };
   hud: Rectangle;
   mapContent: Rectangle;
+  mapViewport: {
+    borderLeft: number;
+    borderTop: number;
+    clientWidth: number;
+    scrollLeft: number;
+    scrollWidth: number;
+  };
   overflowOwners: OverflowOwner[];
   rootRem: number;
   regions: Record<RegionName, Rectangle>;
@@ -247,6 +254,8 @@ async function readHudGeometry(page: Page): Promise<HudGeometry> {
     const body = document.body;
     const mapContent = hud.querySelector<HTMLElement>(".nh-map-interaction");
     if (!mapContent) throw new Error("Expected one map interaction surface");
+    const mapViewport = region("map");
+    const mapViewportStyle = getComputedStyle(mapViewport);
     const overflowOwners = [
       ...hud.querySelectorAll<HTMLElement>("[data-overflow-owner]"),
     ].map((element) => {
@@ -273,11 +282,18 @@ async function readHudGeometry(page: Page): Promise<HudGeometry> {
       },
       hud: rectangle(hud),
       mapContent: rectangle(mapContent),
+      mapViewport: {
+        borderLeft: Number.parseFloat(mapViewportStyle.borderLeftWidth),
+        borderTop: Number.parseFloat(mapViewportStyle.borderTopWidth),
+        clientWidth: mapViewport.clientWidth,
+        scrollLeft: mapViewport.scrollLeft,
+        scrollWidth: mapViewport.scrollWidth,
+      },
       overflowOwners,
       rootRem: Number.parseFloat(getComputedStyle(root).fontSize),
       regions: {
         messages: rectangle(region("messages")),
-        map: rectangle(region("map")),
+        map: rectangle(mapViewport),
         inventory: rectangle(region("inventory")),
         status: rectangle(region("status")),
       },
@@ -382,11 +398,22 @@ function expectValidHudGeometry(
       intrinsicMapHeight ?? geometry.mapContent.height,
       0,
     );
+    expect(Math.abs(
+      geometry.mapContent.y - (map.y + geometry.mapViewport.borderTop),
+    )).toBeLessThanOrEqual(2);
     if (geometry.mapContent.width <= map.width) {
       const expectedMapX =
         map.x + (map.width - geometry.mapContent.width) / 2;
       expect(Math.abs(geometry.mapContent.x - expectedMapX))
         .toBeLessThanOrEqual(2);
+    } else {
+      expect(geometry.mapViewport.scrollWidth).toBeGreaterThan(
+        geometry.mapViewport.clientWidth,
+      );
+      expect(Math.abs(
+        geometry.mapContent.x + geometry.mapViewport.scrollLeft
+          - (map.x + geometry.mapViewport.borderLeft),
+      )).toBeLessThanOrEqual(2);
     }
 
     expect(map.y + map.height).toBeCloseTo(status.y, 0);
@@ -413,9 +440,9 @@ function expectValidHudGeometry(
     geometry.overflowOwners.map(({ name }) => name).sort(),
   ).toEqual(Object.keys(EXPECTED_OVERFLOW).sort());
   for (const owner of geometry.overflowOwners) {
-    const expected = EXPECTED_OVERFLOW[
-      owner.name as keyof typeof EXPECTED_OVERFLOW
-    ];
+    const expected = owner.name === "inventory" && inventoryCollapsed
+      ? "hidden"
+      : EXPECTED_OVERFLOW[owner.name as keyof typeof EXPECTED_OVERFLOW];
     expect(owner.overflowX, `${owner.name} overflow-x`).toBe(expected);
     expect(owner.overflowY, `${owner.name} overflow-y`).toBe(expected);
   }
@@ -570,10 +597,12 @@ test("HUD visual regression: disabled below inventory reserves no collapsed trac
   expect(Math.abs(
     layout.map!.height - layout.mapContent!.height,
   )).toBeLessThanOrEqual(2);
-  expect(Math.abs(
-    layout.mapContent!.x
-      - (layout.map!.x + (layout.map!.width - layout.mapContent!.width) / 2),
-  )).toBeLessThanOrEqual(2);
+  if (layout.mapContent!.width <= layout.map!.width) {
+    expect(Math.abs(
+      layout.mapContent!.x
+        - (layout.map!.x + (layout.map!.width - layout.mapContent!.width) / 2),
+    )).toBeLessThanOrEqual(2);
+  }
   expect(layout.statusTop).toBeCloseTo(
     layout.map!.y + layout.map!.height,
     0,
@@ -582,5 +611,73 @@ test("HUD visual regression: disabled below inventory reserves no collapsed trac
   expect(layout.statusWidth).toBeCloseTo(VIEWPORTS[1].width, 0);
   expect(layout.statusHeight).toBeGreaterThanOrEqual(layout.rootRem * 11 - 2);
   expect(layout.statusBottom).toBeCloseTo(VIEWPORTS[1].height, 0);
+  expect(errors).toEqual({ console: [], page: [] });
+});
+
+test("HUD visual regression: below remains recoverable in a short minimum-width viewport", async ({
+  page,
+}) => {
+  const errors = captureErrors(page);
+  await page.setViewportSize(VIEWPORTS[1]);
+  await configureHud(page, "ascii", "below");
+  await startNewGameFromHome(
+    page,
+    "HudBelowCompact-Arc-Hum-Mal-Law",
+  );
+  await expectReadyHud(page, "ascii", "below");
+
+  await page.setViewportSize({ width: 320, height: 240 });
+  const hud = page.locator(".nh-hud-layout");
+  const compact = await hud.evaluate((element) => {
+    const inventory = element.querySelector<HTMLElement>(
+      '[data-hud-region="inventory"]',
+    );
+    const status = element.querySelector<HTMLElement>(
+      '[data-hud-region="status"]',
+    );
+    const inventoryBounds = inventory?.getBoundingClientRect();
+    const statusBounds = status?.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    return {
+      clientHeight: element.clientHeight,
+      clientWidth: element.clientWidth,
+      inventoryWidth: inventoryBounds?.width ?? 0,
+      overflowY: style.overflowY,
+      scrollHeight: element.scrollHeight,
+      scrollWidth: element.scrollWidth,
+      statusWidth: statusBounds?.width ?? 0,
+    };
+  });
+  expect(compact.overflowY).toBe("auto");
+  expect(compact.scrollHeight).toBeGreaterThan(compact.clientHeight);
+  expect(compact.scrollWidth).toBeLessThanOrEqual(compact.clientWidth);
+  expect(compact.statusWidth).toBeGreaterThanOrEqual(160);
+  expect(compact.inventoryWidth).toBeGreaterThanOrEqual(160);
+
+  await hud.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
+  await expect.poll(() => hud.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(0);
+  const bottom = await hud.evaluate((element) => {
+    const inventory = element.querySelector<HTMLElement>(
+      '[data-hud-region="inventory"]',
+    );
+    const status = element.querySelector<HTMLElement>(
+      '[data-hud-region="status"]',
+    );
+    const inventoryBounds = inventory?.getBoundingClientRect();
+    const statusBounds = status?.getBoundingClientRect();
+    return {
+      inventoryBottom: inventoryBounds
+        ? inventoryBounds.y + inventoryBounds.height
+        : Number.POSITIVE_INFINITY,
+      statusBottom: statusBounds
+        ? statusBounds.y + statusBounds.height
+        : Number.POSITIVE_INFINITY,
+    };
+  });
+  expect(bottom.inventoryBottom).toBeLessThanOrEqual(241);
+  expect(bottom.statusBottom).toBeLessThanOrEqual(241);
   expect(errors).toEqual({ console: [], page: [] });
 });
