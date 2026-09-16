@@ -18,10 +18,11 @@ BlissHack 对 NetHack C 代码进行了少量有针对性的修改，主要用�
 
 ## 项目状态
 
-**alpha-2.0 实现已进入发布验证，正在等待人工验收。**
+**alpha-2.1 实现已进入发布验证，正在等待人工验收。**
 
-alpha-2.0 增加全屏桌面 HUD、图形化状态、统一检查浮层、核心驱动的右键菜单和
-永久背包拖放。人工验收完成前，部署分支与 GitHub Pages 仍保留最近一次已验收
+alpha-2.1 在 alpha-2.0 的全屏桌面 HUD 上收敛键盘焦点与 Below 布局：永久
+背包改为纯鼠标操作，Below 将固定尺寸地图置于顶部，并让状态栏与永久背包在
+下方左右分栏。人工验收完成前，部署分支与 GitHub Pages 仍保留最近一次已验收
 版本；实际线上版本以页面显示为准。
 
 当前里程碑已经实现：
@@ -130,11 +131,13 @@ Tiles/ASCII、Right/Below 在 1280×900 和 900×700 下的 HUD 组合。
 - [alpha-1 Tileset 引入计划](doc/BlissHack/plans/alpha-1.md)
 - [alpha-1.1 地图交互与基建计划](doc/BlissHack/plans/alpha-1.1.md)
 - [alpha-2.0 交互式 HUD 计划](doc/BlissHack/plans/alpha-2.0.md)
+- [alpha-2.1 焦点与 Below HUD 计划](doc/BlissHack/plans/alpha-2.1.md)
 - [alpha-1 渲染架构](doc/BlissHack/plans/in-alpha-1/rendering-architecture.md)
 - [alpha-1 profile v2](doc/BlissHack/plans/in-alpha-1/profile-v2.md)
 - [alpha-1 发布验收](doc/BlissHack/plans/in-alpha-1/release-acceptance.md)
 - [alpha-1.1 发布验收](doc/BlissHack/plans/in-alpha-1.1/release-acceptance.md)
 - [alpha-2.0 发布验收](doc/BlissHack/plans/in-alpha-2.0/release-acceptance.md)
+- [alpha-2.1 发布验收](doc/BlissHack/plans/in-alpha-2.1/release-acceptance.md)
 - [prealpha-3 发布验收](doc/BlissHack/plans/in-prealpha-3/release-acceptance.md)
 - [上游修改清单](doc/BlissHack/upstream-modifications.md)
 - [存档存储与读取方案评审](doc/BlissHack/plans/in-prealpha-2/save-format-review.md)

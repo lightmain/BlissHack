@@ -21,14 +21,15 @@ frontend. These changes are documented in
 
 ## Project Status
 
-**Alpha-2.0 implementation is in release validation and awaiting manual
+**Alpha-2.1 implementation is in release validation and awaiting manual
 acceptance.**
 
-Alpha-2.0 adds the fullscreen desktop HUD, graphical status display, shared
-inspection overlays, core-driven context menus, and permanent-inventory drag
-and drop. The deployment branch and GitHub Pages remain on the last accepted
-release until manual acceptance is complete; use the version displayed by the
-site as the authority.
+Alpha-2.1 refines keyboard focus and the Below layout on top of the alpha-2.0
+fullscreen desktop HUD. Permanent inventory is mouse-only, while Below places
+the fixed-size map above a split status and permanent-inventory workspace. The
+deployment branch and GitHub Pages remain on the last accepted release until
+manual acceptance is complete; use the version displayed by the site as the
+authority.
 
 The current milestone provides:
 
@@ -151,11 +152,13 @@ combinations at 1280x900 and 900x700.
 - [alpha-1 tileset plan](doc/BlissHack/plans/alpha-1.md)
 - [alpha-1.1 map interaction and infrastructure plan](doc/BlissHack/plans/alpha-1.1.md)
 - [alpha-2.0 interactive HUD plan](doc/BlissHack/plans/alpha-2.0.md)
+- [alpha-2.1 focus and Below HUD plan](doc/BlissHack/plans/alpha-2.1.md)
 - [alpha-1 rendering architecture](doc/BlissHack/plans/in-alpha-1/rendering-architecture.md)
 - [alpha-1 profile v2](doc/BlissHack/plans/in-alpha-1/profile-v2.md)
 - [alpha-1 release acceptance](doc/BlissHack/plans/in-alpha-1/release-acceptance.md)
 - [alpha-1.1 release acceptance](doc/BlissHack/plans/in-alpha-1.1/release-acceptance.md)
 - [alpha-2.0 release acceptance](doc/BlissHack/plans/in-alpha-2.0/release-acceptance.md)
+- [alpha-2.1 release acceptance](doc/BlissHack/plans/in-alpha-2.1/release-acceptance.md)
 - [Upstream modification inventory](doc/BlissHack/upstream-modifications.md)
 - [Fatal errors and diagnostic log design](doc/BlissHack/plans/in-prealpha-2/fatal-errors-and-diagnostics.md)
 - [Browser end-to-end test design](doc/BlissHack/plans/in-prealpha-2/browser-end-to-end-tests.md)

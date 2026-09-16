@@ -65,21 +65,26 @@
 
 .nh-hud-layout-below {
   grid-template-areas:
-    "messages"
-    "map"
-    "inventory"
-    "status"
-    "actions";
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: auto minmax(0, 1fr) clamp(11rem, 28svh, 15rem) auto 0;
+    "messages messages"
+    "map map"
+    "status inventory"
+    "actions actions";
+  grid-template-columns: clamp(10rem, 28%, 22rem) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, max-content) minmax(11rem, 1fr) 0;
+  overflow-y: auto;
 }
 
 .nh-hud-layout-below[data-has-inventory="false"] {
-  grid-template-rows: auto minmax(0, 1fr) 0 auto 0;
+  grid-template-areas:
+    "messages"
+    "map"
+    "status"
+    "actions";
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .nh-hud-layout-below[data-has-inventory="true"][data-inventory-collapsed="true"] {
-  grid-template-rows: auto minmax(0, 1fr) 42px auto 0;
+  grid-template-columns: minmax(0, 1fr) 42px;
 }
 
 .nh-hud-action-slot {
@@ -130,7 +135,7 @@
 
 .permanent-inventory-below.permanent-inventory-collapsed {
   width: 100%;
-  height: 42px;
+  height: 100%;
 }
 
 .permanent-inventory-header {
@@ -251,6 +256,14 @@
   position: relative;
   width: fit-content;
   height: fit-content;
+  outline: none;
+}
+
+.nh-hud-layout-below .nh-map-scroll {
+  height: auto;
+  display: grid;
+  align-items: start;
+  justify-items: safe center;
 }
 
 .nh-map-interaction[data-dragging="true"] {

@@ -110,6 +110,69 @@ test("removes the XP progress bar when Experience is disabled at runtime", async
   expect(errors).toEqual({ console: [], page: [] });
 });
 
+test("keeps permanent inventory mouse-only while core inventory accepts accelerators", async ({
+  page,
+}) => {
+  const errors = captureErrors(page);
+  await openHome(page, "permanent-inventory-keyboard");
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("checkbox", {
+    name: "Offer tutorial for new games",
+  }).uncheck();
+  await page.getByRole("checkbox", {
+    name: "Enable Permanent Inventory",
+    exact: true,
+  }).check();
+  await page.getByRole("button", { name: "Apply" }).click();
+  await startWithoutTutorial(page, "PermInventoryKeys");
+
+  const inventory = page.getByRole("region", { name: "Inventory" });
+  const item = inventory.locator(
+    ".permanent-inventory-item:not(.permanent-inventory-heading)",
+  ).first();
+  await expect(item).toBeVisible();
+  await item.focus();
+  await expect(item).toBeFocused();
+  const revisionBeforeMove = await readShellRevision(page);
+  await page.evaluate(() => {
+    document.documentElement.dataset.lastKeyDefaultPrevented = "";
+    globalThis.addEventListener("keydown", (event) => {
+      queueMicrotask(() => {
+        document.documentElement.dataset.lastKeyDefaultPrevented =
+          String(event.defaultPrevented);
+      });
+    }, { once: true });
+  });
+
+  await page.keyboard.press("j");
+
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-last-key-default-prevented",
+    "true",
+  );
+  await expect(page.locator(".nh-shell")).toHaveAttribute(
+    "data-command-input",
+    "ready",
+  );
+  await expect(page.locator(".nh-dialog.nh-menu")).toHaveCount(0);
+  await expect.poll(() => readShellRevision(page)).toBeGreaterThan(
+    revisionBeforeMove,
+  );
+
+  await page.keyboard.press("i");
+  const coreInventory = page.locator(".nh-dialog.nh-menu");
+  await expect(coreInventory).toBeVisible();
+  const accelerator = (
+    await coreInventory.locator(".nh-menu-accelerator").first().textContent()
+  )?.trim();
+  expect(accelerator).toMatch(/^[a-zA-Z]$/);
+  await page.keyboard.press(accelerator!);
+  await expect(coreInventory).toContainText(/Do what with/);
+  await page.keyboard.press("Escape");
+  await expect(coreInventory).toHaveCount(0);
+  expect(errors).toEqual({ console: [], page: [] });
+});
+
 test("renders and collapses the core permanent inventory without a modal", async ({
   page,
 }) => {
@@ -403,6 +466,8 @@ test("renders and collapses the core permanent inventory without a modal", async
     (terminal) => !terminal.contains(document.activeElement),
   )).toBe(true);
   await page.keyboard.press(ordinaryAccelerator!);
+  await expect(ordinaryInventory).toContainText(/Do what with/);
+  await page.keyboard.press("Escape");
   await expect(ordinaryInventory).toHaveCount(0);
   await expect(page.locator(".nh-shell")).toHaveAttribute(
     "data-command-input",

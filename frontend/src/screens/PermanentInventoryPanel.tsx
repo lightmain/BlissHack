@@ -101,17 +101,17 @@ export function PermanentInventoryPanel({
     <aside
       aria-label="Inventory"
       className={`permanent-inventory permanent-inventory-${position}${collapsed ? " permanent-inventory-collapsed" : ""}`}
-      data-browser-keyboard
       data-hud-region="inventory"
       data-inventory-revision={inventory.revision}
       data-overflow-owner="inventory"
       data-position={position}
+      data-game-keyboard-pass-through
       onFocus={handleFocus}
       onMouseDown={handleMouseDown}
       onMouseLeave={handleMouseEnd}
       onMouseUp={handleMouseEnd}
       role="region"
-      tabIndex={collapsed ? -1 : 0}
+      tabIndex={-1}
     >
       <header className="permanent-inventory-header">
         <div>
@@ -124,7 +124,7 @@ export function PermanentInventoryPanel({
             event.currentTarget.blur();
             onCollapsedChange(!collapsed);
           }}
-          tabIndex={0}
+          tabIndex={-1}
           title={toggleLabel}
           type="button"
         >

@@ -417,7 +417,9 @@ export function GameScreen({
     const active = document.activeElement;
     if (
       active instanceof HTMLElement
-      && active.closest("[data-browser-keyboard]")
+      && active.closest(
+        "[data-browser-keyboard], [data-game-keyboard-pass-through]",
+      )
     ) {
       active.blur();
     }

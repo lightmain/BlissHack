@@ -19,6 +19,7 @@ const basicFlowNames = [
   "opens an anchored core map menu and cancels it without a turn",
   "restores the map trigger after every anchored-menu dismissal",
   "opens itemactions from permanent inventory without flashing its selector",
+  "keeps permanent inventory mouse-only while core inventory accepts accelerators",
   "moves real menu focus and restores the inventory trigger after Escape",
   "closes on left click outside and restores the inventory trigger",
   "prevents the native menu on right click outside and restores the inventory trigger",
