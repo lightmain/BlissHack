@@ -147,10 +147,43 @@ describe("alpha-2.2 EndgameSummaryScreen contract", () => {
     expect(attributeCount(html, 'role="tab"')).toBe(4);
     expect(attributeCount(html, 'role="tabpanel"')).toBe(4);
     expect(attributeCount(html, 'aria-selected="true"')).toBe(1);
-    expect(attributeCount(html, 'tabindex="0"')).toBe(1);
+    expect(attributeCount(html, 'tabindex="0"')).toBe(2);
     expect(attributeCount(html, 'data-end-summary-scroll="true"')).toBe(4);
     expect(html).toMatch(/role="tab"[^>]+aria-controls="[^"]+"/);
     expect(html).toMatch(/role="tabpanel"[^>]+aria-labelledby="[^"]+"/);
+  });
+
+  it("preserves core text attributes and menu colors", async () => {
+    const Screen = await requireScreen();
+    const summary = endgameSummaryFixture();
+    const html = renderToStaticMarkup(createElement(Screen, {
+      summary: {
+        ...summary,
+        sections: summary.sections.map((section) =>
+          section.kind !== "summary"
+            ? section
+            : {
+              ...section,
+              blocks: [{
+                kind: "text" as const,
+                sourceWindowId: 52,
+                lines: [
+                  { text: "Dim", attribute: 2 },
+                  { text: "Italic", attribute: 3 },
+                  { text: "Underline", attribute: 4 },
+                  { text: "Inverse", attribute: 7 },
+                ],
+              }],
+            }),
+      },
+      onConfirm: vi.fn(),
+    }));
+
+    expect(html).toContain("nh-dim");
+    expect(html).toContain("nh-italic");
+    expect(html).toContain("nh-underline");
+    expect(html).toContain("nh-inverse");
+    expect(html).toContain("nh-color-gray");
   });
 
   it("renders core text without exposing retired session implementation details", async () => {

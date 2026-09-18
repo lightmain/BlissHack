@@ -20,6 +20,7 @@ import { downloadDiagnosticLog } from "./diagnostics/download-diagnostics";
 import { FatalScreen } from "./screens/FatalScreen";
 import { HomeScreen } from "./screens/HomeScreen";
 import { GameScreen } from "./screens/GameScreen";
+import { EndgameSummaryScreen } from "./screens/EndgameSummaryScreen";
 import { SettingsScreen } from "./screens/SettingsScreen";
 import { createSessionManager } from "./session/session-manager";
 import { useProfileSettings } from "./settings/profile-context";
@@ -62,6 +63,9 @@ function App({
     replaceProfile,
     resetProfile,
   } = useProfileSettings();
+  const diagnosticModuleId = state.phase === "end-summary"
+    ? state.nextModuleId
+    : state.moduleId;
   const [lockRetry, setLockRetry] = useState<PendingLockRetry | null>(null);
   const [homeOperationError, setHomeOperationError] = useState<string | null>(
     null,
@@ -202,6 +206,18 @@ function App({
     dispatch({ type: "SETTINGS_CLOSED", moduleId: state.moduleId });
   }
 
+  /** Release the detached result and reveal the prepared Home module. */
+  function confirmEndgameSummary(): void {
+    if (state.phase !== "end-summary") return;
+    const preparation = sessionManager.getHomePreparation();
+    if (preparation?.moduleId !== state.nextModuleId) return;
+    dispatch({
+      type: "END_SUMMARY_CONFIRMED",
+      completedSessionId: state.completedSessionId,
+      storageAvailable: preparation.storageAvailable,
+    });
+  }
+
   /** Continue one validated save with the module which enumerated it. */
   function continueGame(save: SaveListEntry): void {
     setHomeOperationError(null);
@@ -327,9 +343,9 @@ function App({
       event: result === "error"
         ? "storage.persistence_failed"
         : `storage.persistence_${result}`,
-      moduleId: state.moduleId,
+      moduleId: diagnosticModuleId,
     });
-  }, [diagnostics, state.moduleId]);
+  }, [diagnostics, diagnosticModuleId]);
 
   /** Record a non-fatal tile renderer fallback without gameplay content. */
   const recordMapRendererFallback = useCallback((
@@ -339,9 +355,9 @@ function App({
       level: "warning",
       area: "browser",
       event: `map.tiles_${reason}_fallback`,
-      moduleId: state.moduleId,
+      moduleId: diagnosticModuleId,
     });
-  }, [diagnostics, state.moduleId]);
+  }, [diagnostics, diagnosticModuleId]);
 
   /** Add the application-level conflict dialog above the current screen. */
   function withLockDialog(screen: ReactNode): ReactNode {
@@ -427,6 +443,15 @@ function App({
         onReturnHome={() => {
           void sessionManager.recoverHome().catch(() => undefined);
         }}
+      />,
+    );
+  }
+
+  if (state.phase === "end-summary") {
+    return withLockDialog(
+      <EndgameSummaryScreen
+        onConfirm={confirmEndgameSummary}
+        summary={state.summary}
       />,
     );
   }

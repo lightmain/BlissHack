@@ -30,7 +30,7 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   webServer: {
-    command: `VITE_BASE_PATH=${deploymentBasePath} npm run build && VITE_BASE_PATH=${deploymentBasePath} npm run preview -- --host 127.0.0.1 --port 4174 --strictPort`,
+    command: `VITE_E2E_FIXTURES=1 VITE_BASE_PATH=${deploymentBasePath} npm run build && VITE_BASE_PATH=${deploymentBasePath} npm run preview -- --host 127.0.0.1 --port 4174 --strictPort`,
     url: `${previewOrigin}${deploymentBasePath}`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
