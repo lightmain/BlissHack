@@ -254,6 +254,38 @@ test("uses the unified keyboard character setup flow", async ({ page }) => {
   expect(errors).toEqual({ console: [], page: [] });
 });
 
+test("activates a focused Role button with Space and advances focus", async ({
+  page,
+}) => {
+  const errors = captureErrors(page);
+  await openHome(page, "unified-character-button-keyboard");
+  await enableUnifiedSetup(page);
+  await enterCharacterName(page, "E2EUnifiedButton");
+
+  const setup = page.getByRole("region", { name: "Character setup" });
+  const role = setup.locator("[data-character-column=\"role\"]");
+  const race = setup.locator("[data-character-column=\"race\"]");
+  const gender = setup.locator("[data-character-column=\"gender\"]");
+  const firstRole = role.locator(".character-option:not(:disabled)").first();
+
+  await page.keyboard.press("Tab");
+  await expect(firstRole).toBeFocused();
+  await page.keyboard.press("Space");
+
+  await expect(firstRole).toHaveAttribute("aria-pressed", "true");
+  await expect(setup).toHaveAttribute("data-character-focus", "race");
+  await expect.soft(race).toBeFocused();
+
+  await page.keyboard.press("h");
+  await expect(race.getByRole("button", {
+    name: "h human",
+    exact: true,
+  })).toHaveAttribute("aria-pressed", "true");
+  await expect(setup).toHaveAttribute("data-character-focus", "gender");
+  await expect(gender).toBeFocused();
+  expect(errors).toEqual({ console: [], page: [] });
+});
+
 test("preserves case-sensitive core role accelerators", async ({ page }) => {
   const errors = captureErrors(page);
   await openHome(page, "unified-character-case-accelerator");
@@ -339,6 +371,34 @@ test("cancels unified setup from character selection", async ({ page }) => {
   await page.keyboard.press("Escape");
   await expect(page.getByRole("button", { name: "New Game" })).toBeVisible();
   await expect(page.locator(".nh-shell")).toHaveCount(0);
+  expect(errors).toEqual({ console: [], page: [] });
+});
+
+test("cancels an existing-save name without restoring it", async ({ page }) => {
+  const errors = captureErrors(page);
+  const name = "E2EUnifiedSavedCancel";
+  await startNewGame(page, name);
+  await saveAndReturnHome(page);
+  await enableUnifiedSetup(page);
+
+  await page.getByRole("button", { name: "New Game" }).click();
+  const input = page.getByRole("textbox", { name: "Name" });
+  await input.fill(name);
+  await expect(page.getByText(
+    "Existing save found. This character will continue.",
+    { exact: true },
+  )).toBeVisible();
+  await page.getByRole("button", {
+    name: "Cancel character setup",
+  }).click();
+
+  await expect(page.getByRole("button", { name: "New Game" })).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(page.locator(".nh-shell")).toHaveCount(0);
+  await expect(
+    page.getByRole("progressbar", { name: /^Hit points:/ }),
+  ).toHaveCount(0);
   expect(errors).toEqual({ console: [], page: [] });
 });
 
