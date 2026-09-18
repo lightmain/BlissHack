@@ -1,4 +1,5 @@
 import type { SaveListEntry } from "../storage/storage-service";
+import type { EndgameSummary } from "../nethack-bridge";
 
 /** Lifecycle statuses for a module before it is claimed by a game session. */
 export type BootStatus = "loading-module" | "loading-storage";
@@ -25,6 +26,12 @@ export type AppState =
     moduleId: string;
     sessionId: string;
     status: SessionStatus;
+  }
+  | {
+    phase: "end-summary";
+    completedSessionId: string;
+    nextModuleId: string | null;
+    summary: EndgameSummary;
   }
   | {
     phase: "fatal";
@@ -62,6 +69,17 @@ export type AppAction =
     type: "SESSION_CLEANUP_COMPLETED";
     sessionId: string;
     nextModuleId: string;
+  }
+  | {
+    type: "SESSION_COMPLETED";
+    sessionId: string;
+    nextModuleId: string | null;
+    summary: EndgameSummary;
+  }
+  | {
+    type: "END_SUMMARY_CONFIRMED";
+    completedSessionId: string;
+    storageAvailable: boolean;
   }
   | { type: "MODULE_FATAL_ERROR"; moduleId: string; errorId: string }
   | { type: "SESSION_FATAL_ERROR"; sessionId: string; errorId: string }
@@ -180,6 +198,29 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         moduleId: action.nextModuleId,
         status: "loading-module",
       };
+    case "SESSION_COMPLETED":
+      if (
+        !isCurrentSession(state, action.sessionId)
+        || !isValidEndgameSummary(action.summary, state)
+      ) return state;
+      return {
+        phase: "end-summary",
+        completedSessionId: action.sessionId,
+        nextModuleId: action.nextModuleId,
+        summary: action.summary,
+      };
+    case "END_SUMMARY_CONFIRMED":
+      if (
+        state.phase !== "end-summary"
+        || state.completedSessionId !== action.completedSessionId
+        || state.nextModuleId === null
+      ) return state;
+      return {
+        phase: "home",
+        moduleId: state.nextModuleId,
+        savePickerOpen: false,
+        storageAvailable: action.storageAvailable,
+      };
     case "MODULE_FATAL_ERROR":
       if (!isCurrentModule(state, action.moduleId)) return state;
       return {
@@ -218,9 +259,40 @@ export function appReducer(state: AppState, action: AppAction): AppState {
   }
 }
 
+/** Validate that a result is detached, current, and structurally displayable. */
+function isValidEndgameSummary(
+  summary: EndgameSummary,
+  state: Extract<AppState, { phase: "session" }>,
+): boolean {
+  return Object.isFrozen(summary)
+    && Object.isFrozen(summary.owner)
+    && Object.isFrozen(summary.sections)
+    && summary.owner.moduleId === state.moduleId
+    && summary.owner.sessionId === state.sessionId
+    && summary.sections[0]?.kind === "summary"
+    && summary.sections.every((section) =>
+      Object.isFrozen(section)
+      && Object.isFrozen(section.blocks)
+      && section.blocks.every((block) => {
+        if (!Object.isFrozen(block)) return false;
+        if (block.kind === "text") {
+          return Object.isFrozen(block.lines)
+            && block.lines.every(Object.isFrozen);
+        }
+        return Object.isFrozen(block.lines)
+          && block.lines.every(Object.isFrozen)
+          && Object.isFrozen(block.items)
+          && block.items.every((item) =>
+            Object.isFrozen(item)
+            && (item.glyph === null || Object.isFrozen(item.glyph)));
+      }));
+}
+
 /** Return whether state belongs to one module generation. */
 function isCurrentModule(state: AppState, moduleId: string): boolean {
-  return state.moduleId === moduleId;
+  return state.phase === "end-summary"
+    ? state.nextModuleId === moduleId
+    : state.moduleId === moduleId;
 }
 
 /** Return whether an event belongs to the active session. */

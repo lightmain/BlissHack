@@ -8,7 +8,10 @@ import {
   getSnapshot,
   resetGameState,
 } from "../game-state";
-import type { EmscriptenModule } from "../nethack-bridge";
+import type {
+  EmscriptenModule,
+  EndgameSummary,
+} from "../nethack-bridge";
 import {
   createSessionManager,
   type SessionHandle,
@@ -604,6 +607,60 @@ describe("session callback isolation", () => {
 });
 
 describe("session cleanup", () => {
+  it("retires the session and prepares Home before publishing its result", async () => {
+    const module = createModuleHarness("module");
+    const nextModule = createModuleHarness("next");
+    const profile = createDefaultProfile();
+    profile.interface.endgameStyle = "blisshack";
+    const { manager, callbackHost, dispatch } = createHarness(
+      [module.module, nextModule.module],
+      undefined,
+      {
+        installRuntimeConfig: vi.fn(),
+        loadProfile: () => profile,
+      },
+    );
+    const session = await manager.startSession();
+    const callback = callbackFor(callbackHost, session);
+    const globals = globalThis.nethackGlobal?.globals;
+    expect(globals).toBeDefined();
+    if (globals) {
+      globals.program_state = { gameover: true };
+    }
+
+    const message = await callback("shim_create_nhwindow", 1) as number;
+    const status = await callback("shim_create_nhwindow", 2) as number;
+    const map = await callback("shim_create_nhwindow", 3) as number;
+    await callback("shim_yn_function", "Possessions?", "ynq", 110);
+    const disclosure = await callback("shim_create_nhwindow", 5) as number;
+    await callback("shim_putstr", disclosure, 0, "Inventory");
+    await callback("shim_display_nhwindow", disclosure, true);
+    await callback("shim_destroy_nhwindow", map);
+    await callback("shim_destroy_nhwindow", status);
+    await callback("shim_destroy_nhwindow", message);
+    const summaryWindow = await callback("shim_create_nhwindow", 5) as number;
+    await callback("shim_putstr", summaryWindow, 0, "You died.");
+    await callback("shim_display_nhwindow", summaryWindow, true);
+
+    dispatch.mockClear();
+    module.resolveMain();
+
+    await vi.waitFor(() => {
+      expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({
+        type: "SESSION_COMPLETED",
+        sessionId: session.sessionId,
+        nextModuleId: "module-2",
+        summary: expect.any(Object) as EndgameSummary,
+      }));
+    });
+    const actionTypes = dispatch.mock.calls.map(([action]) => action.type);
+    expect(actionTypes.indexOf("HOME_READY")).toBeLessThan(
+      actionTypes.indexOf("SESSION_COMPLETED"),
+    );
+    expect(callbackHost[session.callbackName]).toBeUndefined();
+    expect(manager.getActiveSession()).toBeNull();
+  });
+
   it("invalidates callback and input ownership after a fatal failure", async () => {
     const module = createModuleHarness("module");
     const { manager, callbackHost, dispatch } = createHarness([module.module]);

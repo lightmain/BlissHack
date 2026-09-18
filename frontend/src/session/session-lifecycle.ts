@@ -601,12 +601,38 @@ export function createSessionManager(
       }
       if (prepareNext && !context.disposed) {
         const nextModuleId = context.createModuleId();
-        context.options.dispatch({
-          type: "SESSION_CLEANUP_COMPLETED",
-          sessionId: session.sessionId,
-          nextModuleId,
-        });
-        await prepareModule(nextModuleId);
+        if (session.endgameSummary) {
+          try {
+            await prepareModule(nextModuleId);
+          } catch (error) {
+            context.options.dispatch({
+              type: "APP_FATAL_ERROR",
+              moduleId: nextModuleId,
+              sessionId: null,
+              errorId: identifyFatal(
+                "wasm",
+                "module.loading_failed",
+                nextModuleId,
+                null,
+                error,
+              ),
+            });
+            return;
+          }
+          context.options.dispatch({
+            type: "SESSION_COMPLETED",
+            sessionId: session.sessionId,
+            nextModuleId,
+            summary: session.endgameSummary,
+          });
+        } else {
+          context.options.dispatch({
+            type: "SESSION_CLEANUP_COMPLETED",
+            sessionId: session.sessionId,
+            nextModuleId,
+          });
+          await prepareModule(nextModuleId);
+        }
       }
     });
     return session.cleanupPromise;

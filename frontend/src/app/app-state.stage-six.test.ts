@@ -130,6 +130,21 @@ describe("alpha-2.2 stage-six app state", () => {
       }),
     },
     {
+      name: "a result with mutable nested content",
+      createSummary: () => {
+        const summary = endgameSummaryFixture();
+        return Object.freeze({
+          ...summary,
+          sections: Object.freeze([Object.freeze({
+            ...summary.sections[0],
+            blocks: Object.freeze([{
+              ...summary.sections[0].blocks[0],
+            }]),
+          })]),
+        });
+      },
+    },
+    {
       name: "a result owned by another session",
       createSummary: () => Object.freeze({
         ...endgameSummaryFixture(),
@@ -253,5 +268,25 @@ describe("alpha-2.2 stage-six app state", () => {
       completedSessionId: "session-stale",
       storageAvailable: true,
     })).toBe(state);
+  });
+
+  it("surfaces failure of the prepared Home module above the result page", () => {
+    const state: StageSixEndSummaryState = {
+      phase: "end-summary",
+      completedSessionId: "session-completed",
+      nextModuleId: "module-next",
+      summary: endgameSummaryFixture(),
+    };
+
+    expect(reduce(state, {
+      type: "MODULE_FATAL_ERROR",
+      moduleId: "module-next",
+      errorId: "BH-STAGE6002",
+    })).toEqual({
+      phase: "fatal",
+      moduleId: "module-next",
+      sessionId: null,
+      errorId: "BH-STAGE6002",
+    });
   });
 });
