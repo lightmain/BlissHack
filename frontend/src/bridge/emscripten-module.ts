@@ -50,6 +50,7 @@ interface NethackGlobals {
 }
 
 interface NethackGlobal {
+  characterCatalog?: unknown;
   globals?: NethackGlobals;
   pointers?: { extcmdlist?: number };
 }

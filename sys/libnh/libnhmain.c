@@ -5,8 +5,9 @@
 
 /* main.c - Unix NetHack */
 
-/* Modified for BlissHack by lightmain, 2026-09-12:
- * expose glyph_info ABI metadata to the WebAssembly client. */
+/* Modified for BlissHack by lightmain, 2026-09-12 and 2026-09-18:
+ * expose glyph_info ABI metadata and a copied, versioned character catalog
+ * to the WebAssembly client. */
 
 #include "hack.h"
 #include "dlb.h"
@@ -25,6 +26,7 @@
 void js_helpers_init();
 void js_constants_init();
 void js_globals_init();
+void js_character_catalog_init();
 #endif
 
 #if !defined(_BULL_SOURCE) && !defined(__sgi) && !defined(_M_UNIX)
@@ -185,6 +187,9 @@ nhmain(int argc, char *argv[])
     check_linux_console();
 #endif
     initoptions();
+#ifdef __EMSCRIPTEN__
+    js_character_catalog_init();
+#endif
 #ifdef PANICTRACE
     ARGV0 = gh.hname; /* save for possible stack trace */
 #ifndef NO_SIGNAL
@@ -955,6 +960,110 @@ EM_JS(void, js_helpers_init, (), {
         globalThis.nethackGlobal.helpers[name] = fn;
     }
 })
+
+/***
+ * Character catalog
+ ***/
+EM_JS(void, js_character_catalog_begin,
+      (int race_mask, int gender_mask, int alignment_mask,
+       int legal_tuple_count), {
+    globalThis.nethackGlobal = globalThis.nethackGlobal || {};
+    globalThis.nethackGlobal.characterCatalog = {
+        schemaVersion: 1,
+        masks: {
+            race: race_mask,
+            gender: gender_mask,
+            alignment: alignment_mask
+        },
+        roles: [],
+        races: [],
+        genders: [],
+        alignments: [],
+        legalTupleCount: legal_tuple_count
+    };
+})
+
+EM_JS(void, js_character_catalog_add,
+      (int kind, int index, const char *name_ptr,
+       const char *female_name_ptr, const char *file_code_ptr,
+       int accelerator, int allow, int male_glyph, int female_glyph,
+       int male_tile_index, int female_tile_index), {
+    const catalog = globalThis.nethackGlobal.characterCatalog;
+    const lists = [
+        catalog.roles,
+        catalog.races,
+        catalog.genders,
+        catalog.alignments
+    ];
+    const option = {
+        index,
+        name: UTF8ToString(name_ptr),
+        fileCode: UTF8ToString(file_code_ptr),
+        accelerator: String.fromCharCode(accelerator),
+        allow
+    };
+    if (female_name_ptr) option.femaleName = UTF8ToString(female_name_ptr);
+    if (male_glyph >= 0) option.maleGlyph = male_glyph;
+    if (female_glyph >= 0) option.femaleGlyph = female_glyph;
+    if (male_tile_index >= 0) option.maleTileIndex = male_tile_index;
+    if (female_tile_index >= 0) option.femaleTileIndex = female_tile_index;
+    lists[kind].push(option);
+})
+
+/*
+ * Copy character metadata after initoptions() has initialized glyph mapping.
+ * The browser receives values, never struct addresses or layout assumptions.
+ */
+void
+js_character_catalog_init(void)
+{
+    int i, role, race, gender, alignment, legal_tuple_count = 0;
+    char accelerator, last_role_accelerator = '\0';
+    int male_glyph, female_glyph;
+    glyph_info male_glyphinfo, female_glyphinfo;
+
+    for (role = 0; roles[role].name.m; ++role)
+        for (race = 0; races[race].noun; ++race)
+            if (validrace(role, race))
+                for (gender = 0; gender < ROLE_GENDERS; ++gender)
+                    if (validgend(role, race, gender))
+                        for (alignment = 0; alignment < ROLE_ALIGNS;
+                             ++alignment)
+                            if (validalign(role, race, alignment))
+                                ++legal_tuple_count;
+
+    js_character_catalog_begin(ROLE_RACEMASK, ROLE_GENDMASK,
+                               ROLE_ALIGNMASK, legal_tuple_count);
+
+    for (i = 0; roles[i].name.m; ++i) {
+        accelerator = lowc(*roles[i].name.m);
+        if (accelerator == last_role_accelerator)
+            accelerator = highc(accelerator);
+        last_role_accelerator = accelerator;
+        male_glyph = monnum_to_glyph(roles[i].mnum, MALE);
+        female_glyph = monnum_to_glyph(roles[i].mnum, FEMALE);
+        map_glyphinfo(0, 0, male_glyph, MG_FLAG_NOOVERRIDE,
+                      &male_glyphinfo);
+        map_glyphinfo(0, 0, female_glyph, MG_FLAG_NOOVERRIDE,
+                      &female_glyphinfo);
+        js_character_catalog_add(
+            0, i, roles[i].name.m, roles[i].name.f, roles[i].filecode,
+            accelerator, roles[i].allow, male_glyph, female_glyph,
+            male_glyphinfo.gm.tileidx, female_glyphinfo.gm.tileidx);
+    }
+    for (i = 0; races[i].noun; ++i)
+        js_character_catalog_add(
+            1, i, races[i].noun, (const char *) 0, races[i].filecode,
+            lowc(*races[i].noun), races[i].allow, -1, -1, -1, -1);
+    for (i = 0; i < ROLE_GENDERS; ++i)
+        js_character_catalog_add(
+            2, i, genders[i].adj, (const char *) 0, genders[i].filecode,
+            lowc(*genders[i].adj), genders[i].allow, -1, -1, -1, -1);
+    for (i = 0; i < ROLE_ALIGNS; ++i)
+        js_character_catalog_add(
+            3, i, aligns[i].adj, (const char *) 0, aligns[i].filecode,
+            lowc(*aligns[i].adj), aligns[i].allow, -1, -1, -1, -1);
+}
 
 /***
  * Constants

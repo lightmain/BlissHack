@@ -32,9 +32,11 @@ import type { EmscriptenModule } from "./bridge/emscripten-module";
 import {
   acceptCoreCommandResult,
   acceptRuntimeSettingsResult,
+  cancelCharacterSelection,
   dismissDisplay,
   displayHistory,
   displayWindow,
+  getCharacterSetupContext,
   isWaitingForInput,
   messageMenu,
   normalizePlayerNameInput,
@@ -46,7 +48,9 @@ import {
   sendKey,
   sendPosition,
   setActionIntentActive,
+  setCharacterSetupContext,
   setKnownSaveNames,
+  submitCharacterSelection,
   submitExtendedCommand,
   submitLine,
   submitMenuSelection,
@@ -56,6 +60,7 @@ import {
   waitForExtendedCommand,
   waitForKey,
   waitForLine,
+  waitForPlayerSelection,
   waitForYn,
 } from "./bridge/input-controller";
 import {
@@ -69,6 +74,21 @@ import {
   updateDecodedStatus,
 } from "./bridge/shim-decoders";
 
+export {
+  buildLegalCharacterTuples,
+  decodeCharacterCatalog,
+  filterCharacterTuples,
+  updateCharacterSelection,
+} from "./bridge/character-setup";
+export type {
+  CharacterAspect,
+  CharacterCatalog,
+  CharacterOption,
+  CharacterSelection,
+  CharacterSetupContext,
+  CharacterSetupOwnerToken,
+  CharacterTuple,
+} from "./bridge/character-setup";
 export {
   createGameModule,
   preparePlayerNamePrompt,
@@ -84,7 +104,9 @@ export {
   validateSaveMetadata,
 } from "./bridge/save-validation";
 export {
+  cancelCharacterSelection,
   dismissDisplay,
+  getCharacterSetupContext,
   isWaitingForInput,
   normalizePlayerNameInput,
   queueRuntimeSettings,
@@ -93,7 +115,9 @@ export {
   sendKey,
   sendPosition,
   setActionIntentActive,
+  setCharacterSetupContext,
   setKnownSaveNames,
+  submitCharacterSelection,
   submitExtendedCommand,
   submitLine,
   submitMenuSelection,
@@ -182,7 +206,7 @@ async function dispatchShimCallback(
       return undefined;
     }
     case "shim_player_selection_or_tty":
-      return true;
+      return waitForPlayerSelection();
     case "shim_askname":
       return waitForLine(module, "name", "Who are you?", 0);
     case "shim_get_nh_event":

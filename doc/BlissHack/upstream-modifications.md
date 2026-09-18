@@ -220,6 +220,26 @@ M win/shim/winshim.c
   - `frontend/test/integration-tests/browser/context-actions.spec.ts`
   - `frontend/test/integration-tests/browser/inventory-drag-drop.spec.ts`
 
+### 2.10 WASM 角色目录快照
+
+- **文件**：`sys/libnh/libnhmain.c`
+- **引入提交**：alpha-2.2 阶段三提交
+  `feat: expose wasm character metadata`
+- **目的**：
+  - 在 `initoptions()` 完成后把当前构建的职业、种族、性别和阵营表复制为
+    版本化的普通 JavaScript 数据。
+  - 提供显示名、file code、accelerator、compatibility mask 以及职业预览
+    glyph/tile，不要求前端读取 C 结构体地址或猜测 WASM32 偏移。
+  - 由核心 `validrace()`、`validgend()`、`validalign()` 计算合法 tuple
+    总数，供前端 mask 枚举做一致性校验。
+- **ABI 范围**：不改变 `struct window_procs`、shim callback 或导出函数；
+  只增加 `globalThis.nethackGlobal.characterCatalog` 的值快照。
+- **行为依据**：
+  `doc/BlissHack/shim-interface-reference.md` 第 6.6 节。
+- **回归测试**：
+  - `frontend/src/bridge/character-setup.stage-three.test.ts`
+  - `frontend/test/integration-tests/wasm-test.mjs`
+
 ## 3. 上游合并检查
 
 每次从 `upstream/NetHack-5.0` 合并后必须：

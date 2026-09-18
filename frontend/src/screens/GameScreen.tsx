@@ -942,6 +942,7 @@ function actionInputFromSnapshot(
   if (snapshot.modal !== null) return { kind: "display" };
   const request = snapshot.inputRequest;
   if (request === null) return null;
+  if (request.kind === "player-selection") return null;
   if (request.kind === "message") return { kind: "display" };
   return request;
 }
