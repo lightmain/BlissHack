@@ -240,6 +240,32 @@ M win/shim/winshim.c
   - `frontend/src/bridge/character-setup.stage-three.test.ts`
   - `frontend/test/integration-tests/wasm-test.mjs`
 
+### 2.11 Pending askname 的恢复保护绑定
+
+- **文件**：
+  - `win/shim/winshim.c`
+  - `sys/libnh/libnhmain.c`
+- **引入提交**：alpha-2.2 阶段四提交
+  `feat: add unified character setup`
+- **目的**：
+  - 将已有的 `shim_restore_required` 从文件私有变量改为 WASM 构建内可绑定
+    的全局变量。
+  - 通过 `js_globals_init()` 暴露 boolean getter/setter，使统一角色界面在
+    `shim_askname` Asyncify callback pending 时可以对精确匹配的
+    `SaveIdentity` 启用只恢复保护。
+  - 避免在 pending callback 中调用
+    `shim_graphics_set_restore_required()`，同时防止恢复失败后静默创建同名
+    新角色。
+- **ABI 范围**：不改变 `struct window_procs`、shim callback 或已有导出函数；
+  只增加 `globalThis.nethackGlobal.globals.shim_restore_required` 的 typed
+  global 绑定。
+- **行为依据**：
+  `doc/BlissHack/shim-interface-reference.md` 第 5.4 节和第 6.2 节。
+- **回归测试**：
+  - `frontend/src/bridge/character-setup.stage-four.test.ts`
+  - `frontend/test/integration-tests/wasm-test.mjs`
+  - 阶段四真实 WASM 浏览器测试
+
 ## 3. 上游合并检查
 
 每次从 `upstream/NetHack-5.0` 合并后必须：

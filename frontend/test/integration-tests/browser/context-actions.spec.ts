@@ -114,8 +114,8 @@ test("opens an anchored core map menu and cancels it without a turn", async ({
   const cursor = await readCursorPosition(page);
   const anchor = await mapCellPoint(page, cursor.x, cursor.y);
   const turn = page.locator(
-    "[data-inspect-target='status:time'] .nh-status-value",
-  );
+    "[data-status-group='world'] .nh-status-value",
+  ).filter({ hasText: /^T:\d+$/ });
   const turnBefore = await turn.textContent();
 
   await page.mouse.click(anchor.x, anchor.y, { button: "right" });

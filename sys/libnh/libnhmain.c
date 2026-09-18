@@ -6,8 +6,8 @@
 /* main.c - Unix NetHack */
 
 /* Modified for BlissHack by lightmain, 2026-09-12 and 2026-09-18:
- * expose glyph_info ABI metadata and a copied, versioned character catalog
- * to the WebAssembly client. */
+ * expose glyph_info ABI metadata, a copied versioned character catalog, and
+ * the restore-only startup guard to the WebAssembly client. */
 
 #include "hack.h"
 #include "dlb.h"
@@ -1368,6 +1368,7 @@ void js_constants_init() {
     }
 
 void create_global (char *name, void *ptr, char *type);
+extern boolean shim_restore_required;
 
 void js_globals_init() {
     // int i;
@@ -1380,6 +1381,7 @@ void js_globals_init() {
 
     /* globals */
     CREATE_GLOBAL(svp.plname, "s");
+    CREATE_GLOBAL(shim_restore_required, "b");
 
     /* window globals */
     CREATE_GLOBAL(WIN_MAP, "i");

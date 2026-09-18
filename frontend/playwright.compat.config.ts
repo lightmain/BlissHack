@@ -3,6 +3,7 @@ import { defineConfig, devices } from "@playwright/test";
 const deploymentBasePath = "/BlissHack/";
 const previewOrigin = "http://127.0.0.1:4176";
 const basicFlowNames = [
+  "uses the unified keyboard character setup flow",
   "renders default Tiles pixels and switches renderers without restarting",
   "plays through startup and routes terminal UI input",
   "enumerates a persisted save after returning home and refreshing",
