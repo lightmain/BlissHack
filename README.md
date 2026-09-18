@@ -21,15 +21,15 @@ frontend. These changes are documented in
 
 ## Project Status
 
-**Alpha-2.1 implementation is in release validation and awaiting manual
-acceptance.**
+**Alpha-2.2 development has started with its settings and information-level
+foundation.**
 
 Alpha-2.1 refines keyboard focus and the Below layout on top of the alpha-2.0
 fullscreen desktop HUD. Permanent inventory is mouse-only, while Below places
-the fixed-size map above a split status and permanent-inventory workspace. The
-deployment branch and GitHub Pages remain on the last accepted release until
-manual acceptance is complete; use the version displayed by the site as the
-authority.
+the fixed-size map above a split status and permanent-inventory workspace; that
+release has passed manual acceptance. Alpha-2.2 character setup and end-game
+work remain in later phases. The deployment branch and GitHub Pages may lag;
+use the version displayed by the site as the authority.
 
 The current milestone provides:
 
