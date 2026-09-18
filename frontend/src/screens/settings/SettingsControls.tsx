@@ -1,4 +1,5 @@
 interface SegmentedFieldProps<T extends string> {
+  description?: string;
   disabled?: boolean;
   label: string;
   name: string;
@@ -9,6 +10,7 @@ interface SegmentedFieldProps<T extends string> {
 
 /** Render a labelled radio-button segment group. */
 export function SegmentedField<T extends string>({
+  description,
   disabled = false,
   label,
   name,
@@ -34,6 +36,7 @@ export function SegmentedField<T extends string>({
           </label>
         ))}
       </div>
+      {description && <small className="settings-field-note">{description}</small>}
     </fieldset>
   );
 }

@@ -39,6 +39,10 @@ function fieldsetMarkup(html: string, legend: string): string {
   return match ?? "";
 }
 
+function visibleText(markup: string): string {
+  return markup.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+}
+
 describe("SettingsScreen", () => {
   it("renders all reviewed fields and keeps the prepared module identity", () => {
     const html = renderSettings();
@@ -50,6 +54,9 @@ describe("SettingsScreen", () => {
     expect(html).toMatch(/<h2[^>]*>Profile<\/h2>/);
     expect(html).toMatch(/<h2[^>]*>Data<\/h2>/);
     expect(html).toContain("Map display");
+    expect(html).toContain("Information level");
+    expect(html).toContain("Endgame style");
+    expect(html).toContain("Character setup style");
     expect(html).toContain("Terminal font size");
     expect(html).toContain("Message history");
     expect(html).toContain("Follow player on the map");
@@ -105,6 +112,29 @@ describe("SettingsScreen", () => {
     expect(buttonMarkup(html, "Apply")).toMatch(/\sdisabled(?:=""|>)/i);
   });
 
+  it("renders all three presentation settings as segmented controls defaulting to Original", () => {
+    const html = renderSettings();
+
+    for (const legend of [
+      "Information level",
+      "Endgame style",
+      "Character setup style",
+    ]) {
+      const fieldset = fieldsetMarkup(html, legend);
+      expect(fieldset).toContain(">Original</span>");
+      expect(fieldset).toMatch(
+        /<input(?=[^>]*checked="")(?=[^>]*value="original")[^>]*>/,
+      );
+    }
+
+    expect(fieldsetMarkup(html, "Information level"))
+      .toContain(">Detailed</span>");
+    expect(fieldsetMarkup(html, "Endgame style"))
+      .toContain(">BlissHack</span>");
+    expect(fieldsetMarkup(html, "Character setup style"))
+      .toContain(">BlissHack</span>");
+  });
+
   it("disables persistence actions and shows a warning when storage is unavailable", () => {
     const html = renderSettings("unavailable");
 
@@ -147,5 +177,28 @@ describe("SettingsScreen", () => {
     expect(html).not.toContain("Clear Local Data");
     expect(html).toContain("Enable Permanent Inventory");
     expect(html).toContain("Contents");
+  });
+
+  it("explains each presentation setting's game-session scope", () => {
+    const html = renderToStaticMarkup(createElement(SettingsScreen, {
+      context: "game",
+      loadStatus: "loaded",
+      moduleId: "module-1",
+      onApply: async (profile) => profile,
+      onBack: vi.fn(),
+      profile: createDefaultProfile(),
+    }));
+    const information = visibleText(fieldsetMarkup(html, "Information level"));
+    const endgame = visibleText(fieldsetMarkup(html, "Endgame style"));
+    const character = visibleText(fieldsetMarkup(
+      html,
+      "Character setup style",
+    ));
+
+    expect(information).toMatch(/immediate(?:ly)?.*current game/i);
+    expect(endgame).toMatch(
+      /(?:current|this) game(?:'s)?(?: ending)?.*future defaults/i,
+    );
+    expect(character).toMatch(/next new game/i);
   });
 });

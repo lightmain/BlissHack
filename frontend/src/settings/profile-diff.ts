@@ -28,6 +28,24 @@ const PROFILE_FIELDS: readonly FieldDefinition[] = [
     format: (value) => value === "tiles" ? "Tiles" : "ASCII",
   },
   {
+    path: "interface.informationLevel",
+    label: "Information level",
+    value: (profile) => profile.interface.informationLevel,
+    format: (value) => value === "detailed" ? "Detailed" : "Original",
+  },
+  {
+    path: "interface.endgameStyle",
+    label: "Endgame style",
+    value: (profile) => profile.interface.endgameStyle,
+    format: (value) => value === "blisshack" ? "BlissHack" : "Original",
+  },
+  {
+    path: "interface.characterSetupStyle",
+    label: "Character setup style",
+    value: (profile) => profile.interface.characterSetupStyle,
+    format: (value) => value === "blisshack" ? "BlissHack" : "Original",
+  },
+  {
     path: "interface.terminalFontSize",
     label: "Terminal font size",
     value: (profile) => profile.interface.terminalFontSize,

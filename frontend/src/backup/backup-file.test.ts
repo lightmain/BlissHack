@@ -37,9 +37,12 @@ describe("full backup format", () => {
     expect(document.format).toBe("blisshack-backup");
     expect(document.schemaVersion).toBe(1);
     expect(document.profile).toMatchObject({
-      schemaVersion: 2,
+      schemaVersion: 3,
       interface: {
         mapRenderer: "tiles",
+        informationLevel: "original",
+        endgameStyle: "original",
+        characterSetupStyle: "original",
       },
     });
     expect(document.saves.map((save) => save.fileName)).toEqual(["0Ada", "0Bob"]);
@@ -90,8 +93,13 @@ describe("full backup format", () => {
       .resolves.toMatchObject({ saves: [] });
   });
 
-  it("round-trips every permanent inventory profile field", async () => {
+  it("round-trips every presentation and permanent inventory profile field", async () => {
     const profile = createDefaultProfile();
+    const interfaceSettings = profile.interface as unknown as
+      Record<string, unknown>;
+    interfaceSettings.informationLevel = "detailed";
+    interfaceSettings.endgameStyle = "blisshack";
+    interfaceSettings.characterSetupStyle = "blisshack";
     profile.interface.permanentInventoryPosition = "below";
     profile.interface.permanentInventoryCollapsed = true;
     profile.nethack.permInvent = true;
@@ -109,16 +117,42 @@ describe("full backup format", () => {
       .resolves.toMatchObject({ profile });
   });
 
-  it("imports a backup with a strict v1 profile as v2 with ASCII display", async () => {
+  it("imports a backup with a strict v1 profile as v3 with ASCII display", async () => {
     const document = await exportedDocument();
     document.profile.schemaVersion = 1;
     delete document.profile.interface.mapRenderer;
+    delete document.profile.interface.informationLevel;
+    delete document.profile.interface.endgameStyle;
+    delete document.profile.interface.characterSetupStyle;
 
     await expect(parseDocument(document)).resolves.toMatchObject({
       profile: {
-        schemaVersion: 2,
+        schemaVersion: 3,
         interface: {
           mapRenderer: "ascii",
+          informationLevel: "original",
+          endgameStyle: "original",
+          characterSetupStyle: "original",
+        },
+      },
+    });
+  });
+
+  it("imports a backup with a strict v2 profile as v3", async () => {
+    const document = await exportedDocument();
+    document.profile.schemaVersion = 2;
+    delete document.profile.interface.informationLevel;
+    delete document.profile.interface.endgameStyle;
+    delete document.profile.interface.characterSetupStyle;
+
+    await expect(parseDocument(document)).resolves.toMatchObject({
+      profile: {
+        schemaVersion: 3,
+        interface: {
+          mapRenderer: "tiles",
+          informationLevel: "original",
+          endgameStyle: "original",
+          characterSetupStyle: "original",
         },
       },
     });
@@ -128,6 +162,9 @@ describe("full backup format", () => {
     const document = await exportedDocument();
     document.profile.schemaVersion = 1;
     delete document.profile.interface.mapRenderer;
+    delete document.profile.interface.informationLevel;
+    delete document.profile.interface.endgameStyle;
+    delete document.profile.interface.characterSetupStyle;
     delete document.profile.interface.permanentInventoryPosition;
     delete document.profile.interface.permanentInventoryCollapsed;
     delete document.profile.nethack.permInvent;

@@ -16,6 +16,10 @@ interface SettingsSectionProps {
   onNetHackChange(patch: Partial<NetHackSettingsV1>): void;
 }
 
+interface InterfaceSettingsSectionProps extends SettingsSectionProps {
+  isGameSettings?: boolean;
+}
+
 const PICKUP_CLASSES: ReadonlyArray<{
   label: string;
   symbol: PickupClassSymbol;
@@ -52,9 +56,10 @@ const NUMBER_PAD_OPTIONS: ReadonlyArray<{
 /** Render display and status-related profile fields. */
 export function InterfaceSettingsSection({
   draft,
+  isGameSettings = false,
   onInterfaceChange,
   onNetHackChange,
-}: SettingsSectionProps) {
+}: InterfaceSettingsSectionProps) {
   return (
     <section className="settings-section" aria-labelledby="interface-title">
       <header>
@@ -72,6 +77,51 @@ export function InterfaceSettingsSection({
             { value: "ascii", label: "ASCII" },
           ]}
           value={draft.interface.mapRenderer}
+        />
+        <SegmentedField
+          description={isGameSettings
+            ? "Applies immediately to the current game."
+            : undefined}
+          label="Information level"
+          name="information-level"
+          onChange={(informationLevel) => {
+            onInterfaceChange({ informationLevel });
+          }}
+          options={[
+            { value: "original", label: "Original" },
+            { value: "detailed", label: "Detailed" },
+          ]}
+          value={draft.interface.informationLevel}
+        />
+        <SegmentedField
+          description={isGameSettings
+            ? "Applies to this game's ending and future defaults."
+            : undefined}
+          label="Endgame style"
+          name="endgame-style"
+          onChange={(endgameStyle) => {
+            onInterfaceChange({ endgameStyle });
+          }}
+          options={[
+            { value: "original", label: "Original" },
+            { value: "blisshack", label: "BlissHack" },
+          ]}
+          value={draft.interface.endgameStyle}
+        />
+        <SegmentedField
+          description={isGameSettings
+            ? "Applies to the next new game."
+            : undefined}
+          label="Character setup style"
+          name="character-setup-style"
+          onChange={(characterSetupStyle) => {
+            onInterfaceChange({ characterSetupStyle });
+          }}
+          options={[
+            { value: "original", label: "Original" },
+            { value: "blisshack", label: "BlissHack" },
+          ]}
+          value={draft.interface.characterSetupStyle}
         />
         <SegmentedField
           label="Terminal font size"

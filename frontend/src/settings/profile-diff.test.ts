@@ -26,6 +26,50 @@ describe("profile differences", () => {
     });
   });
 
+  it("reports all presentation settings with user-facing labels", () => {
+    const current = createDefaultProfile();
+    const incoming = createDefaultProfile();
+    const incomingInterface = incoming.interface as unknown as
+      Record<string, unknown>;
+    incomingInterface.informationLevel = "detailed";
+    incomingInterface.endgameStyle = "blisshack";
+    incomingInterface.characterSetupStyle = "blisshack";
+
+    expect(diffProfiles(current, incoming)).toEqual(expect.arrayContaining([
+      {
+        path: "interface.informationLevel",
+        label: "Information level",
+        current: "Original",
+        incoming: "Detailed",
+      },
+      {
+        path: "interface.endgameStyle",
+        label: "Endgame style",
+        current: "Original",
+        incoming: "BlissHack",
+      },
+      {
+        path: "interface.characterSetupStyle",
+        label: "Character setup style",
+        current: "Original",
+        incoming: "BlissHack",
+      },
+    ]));
+  });
+
+  it("reports information level independently from Show experience", () => {
+    const current = createDefaultProfile();
+    const incoming = createDefaultProfile();
+    (incoming.interface as unknown as Record<string, unknown>)
+      .informationLevel = "detailed";
+    incoming.nethack.showExperience = true;
+
+    expect(diffProfiles(current, incoming)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: "interface.informationLevel" }),
+      expect.objectContaining({ path: "nethack.showExperience" }),
+    ]));
+  });
+
   it("reports changed fields in stable Settings order", () => {
     const current = createDefaultProfile();
     const incoming = createDefaultProfile();

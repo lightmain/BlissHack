@@ -6,9 +6,11 @@ import {
   type BlissHackProfile,
 } from "./profile";
 
-/** The only browser-local key used for persisted BlissHack settings. */
-export const PROFILE_STORAGE_KEY = "blisshack.profile.v2";
-/** Previous profile key retained for in-memory migration and explicit cleanup. */
+/** Current browser-local key used for persisted BlissHack settings. */
+export const PROFILE_STORAGE_KEY = "blisshack.profile.v3";
+/** Direct predecessor retained for in-memory migration and explicit cleanup. */
+export const PREVIOUS_PROFILE_STORAGE_KEY = "blisshack.profile.v2";
+/** Oldest profile key retained for in-memory migration and explicit cleanup. */
 export const LEGACY_PROFILE_STORAGE_KEY = "blisshack.profile.v1";
 
 /** Minimum localStorage contract used by the profile store. */
@@ -67,7 +69,12 @@ export function createProfileStore(
       let raw: string | null;
       try {
         raw = storage.getItem(PROFILE_STORAGE_KEY);
-        if (raw === null) raw = storage.getItem(LEGACY_PROFILE_STORAGE_KEY);
+        if (raw === null) {
+          raw = storage.getItem(PREVIOUS_PROFILE_STORAGE_KEY);
+        }
+        if (raw === null) {
+          raw = storage.getItem(LEGACY_PROFILE_STORAGE_KEY);
+        }
       } catch {
         return defaultResult("unavailable");
       }
@@ -106,6 +113,7 @@ export function createProfileStore(
         throw new Error("Profile storage cannot be cleared");
       }
       storage.removeItem(PROFILE_STORAGE_KEY);
+      storage.removeItem(PREVIOUS_PROFILE_STORAGE_KEY);
       storage.removeItem(LEGACY_PROFILE_STORAGE_KEY);
       return createDefaultProfile();
     },
