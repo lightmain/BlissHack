@@ -10,6 +10,7 @@ import {
   resetBridgeState,
   sendKey,
   sendPosition,
+  setCharacterSetupContext,
   setKnownSaveNames,
   setRestoreRequired,
   setStartupIdentity,
@@ -56,6 +57,8 @@ export function createSessionManager(
   options: SessionManagerOptions,
 ): SessionManager {
   const context: SessionManagerContext = {
+    applyCharacterSetupContext:
+      options.setCharacterSetupContext ?? setCharacterSetupContext,
     applyRestoreRequired: options.setRestoreRequired ?? setRestoreRequired,
     applyStartupIdentity: options.setStartupIdentity ?? setStartupIdentity,
     callbackHost: options.callbackHost
@@ -259,7 +262,8 @@ export function createSessionManager(
       const owner = homeOperations.currentHomeOwnerForSession();
       if (context.gameLock.supported) await homeOperations.refreshHomeStorage(owner);
 
-      const settings = context.options.loadProfile?.().nethack ?? request.settings;
+      const profile = context.options.loadProfile?.();
+      const settings = profile?.nethack ?? request.settings;
       if (settings) {
         try {
           const installRuntimeConfig = context.options.installRuntimeConfig
@@ -334,8 +338,18 @@ export function createSessionManager(
         ? owner.preparation.saves.flatMap((save) =>
           save.status === "ready" ? [save.identity.playerName] : [])
         : [];
+      const saveIdentities = request.kind === "new"
+        ? owner.preparation.saves.flatMap((save) =>
+          save.status === "ready" ? [save.identity] : [])
+        : [];
       resetBridgeState();
       setKnownSaveNames(knownSaveNames);
+      context.applyCharacterSetupContext({
+        moduleId: owner.moduleId,
+        sessionId,
+        style: profile?.interface.characterSetupStyle ?? "original",
+        saveIdentities,
+      });
       context.options.dispatch({
         type: "SESSION_CREATED",
         moduleId: owner.moduleId,

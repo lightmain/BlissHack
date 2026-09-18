@@ -7,7 +7,10 @@ import type {
   DiagnosticArea,
   DiagnosticLog,
 } from "../diagnostics/diagnostic-log";
-import type { EmscriptenModule } from "../nethack-bridge";
+import type {
+  CharacterSetupContext,
+  EmscriptenModule,
+} from "../nethack-bridge";
 import type {
   BlissHackProfile,
   NetHackSettingsV1,
@@ -159,6 +162,7 @@ export interface SessionManagerOptions {
     module: EmscriptenModule,
     required: boolean,
   ) => void;
+  setCharacterSetupContext?: (context: CharacterSetupContext) => void;
   setStartupIdentity?: (
     module: EmscriptenModule,
     identity: SaveIdentity,
@@ -197,6 +201,7 @@ export interface SessionManagerContext {
     module: EmscriptenModule,
     required: boolean,
   ): void;
+  applyCharacterSetupContext(context: CharacterSetupContext): void;
   applyStartupIdentity(
     module: EmscriptenModule,
     identity: SaveIdentity,

@@ -1805,6 +1805,16 @@ globalThis.nethackGlobal = {
         iflags: { window_inited: true, ... },
         flags: { initrole: -1, initrace: -1, ... },
     },
+
+    characterCatalog: {
+        schemaVersion: 1,
+        masks: { race: number, gender: number, alignment: number },
+        roles: [{ index, name, fileCode, accelerator, allow, ... }],
+        races: [{ index, name, fileCode, accelerator, allow }],
+        genders: [{ index, name, fileCode, accelerator, allow }],
+        alignments: [{ index, name, fileCode, accelerator, allow }],
+        legalTupleCount: number,
+    },
 };
 ```
 
@@ -2022,6 +2032,27 @@ identifier 只用于验证用户看到的 snapshot，没有被解释为长期 `s
 snapshot 或永久背包 revision 都会安全取消。拖放开始后不乐观删除物品行，
 只有核心完成原生 drop/rejection 流程并发布新的永久背包 revision 后，界面才
 反映结果。这些校验不会扩展 shim ABI，也不会把 C 对象地址保存在 React 中。
+
+### 6.6 WASM 角色目录快照
+
+BlissHack 在 `sys/libnh/libnhmain.c` 的 `initoptions()` 完成后，将当前构建的
+`roles`、`races`、`genders` 和 `aligns` 表复制到版本化的
+`globalThis.nethackGlobal.characterCatalog`。每项包含稳定数组索引、显示名、
+file code、accelerator 和 `allow` compatibility mask；职业项另外包含男女
+预览 glyph 与经当前 glyph map 解析的 tile index。该快照只复制值，不向
+TypeScript 暴露或持有 C 结构体地址，也不改变 shim callback ABI。
+
+职业 accelerator 与核心 `setup_rolemenu()` 使用相同的连续重名首字母规则；
+其余三组使用核心菜单的首字母。目录同时包含三个 mask 和由核心
+`validrace()`、`validgend()`、`validalign()` 计算的合法 tuple 数量。前端用
+mask 枚举完整 tuple 后必须与该数量一致，否则拒绝进入自定义角色选择，而不是
+使用手写角色表或例外规则。
+
+初始化发生在 `initoptions_finish()` 已调用 `reset_glyphmap()` 之后。职业预览
+通过 `monnum_to_glyph()` 和 `map_glyphinfo(..., MG_FLAG_NOOVERRIDE, ...)`
+取得男女 glyph/tile；未生成角色 HP、Energy 和属性，也不提前调用
+`newgame()`。真实 WASM 集成测试验证目录字段、连续索引、tile 范围以及
+mask 枚举结果与核心计数一致。
 
 ---
 

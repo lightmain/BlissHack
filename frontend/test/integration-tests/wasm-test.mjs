@@ -63,6 +63,15 @@ const DO_SOURCE = join(
   "src",
   "do.c",
 );
+const LIBNH_MAIN_SOURCE = join(
+  __dirname,
+  "..",
+  "..",
+  "..",
+  "sys",
+  "libnh",
+  "libnhmain.c",
+);
 
 /* ------------------------------------------------------------------ */
 /*  Test harness                                                       */
@@ -101,6 +110,45 @@ function cBlockAfter(source, marker) {
     if (depth === 0) return source.slice(start, index + 1);
   }
   return null;
+}
+
+/**
+ * Enumerate character tuples using only the copied compatibility masks.
+ * @param {object} catalog - versioned metadata supplied by the WASM build.
+ * @returns {object[]} complete legal tuples in stable table order.
+ */
+function buildCharacterTuples(catalog) {
+  const tuples = [];
+  for (const role of catalog.roles) {
+    for (const race of catalog.races) {
+      if ((role.allow & race.allow & catalog.masks.race) === 0) continue;
+      for (const gender of catalog.genders) {
+        if (
+          (role.allow & race.allow & gender.allow & catalog.masks.gender) === 0
+        ) {
+          continue;
+        }
+        for (const alignment of catalog.alignments) {
+          if (
+            (
+              role.allow
+              & race.allow
+              & alignment.allow
+              & catalog.masks.alignment
+            ) !== 0
+          ) {
+            tuples.push({
+              role: role.index,
+              race: race.index,
+              gender: gender.index,
+              alignment: alignment.index,
+            });
+          }
+        }
+      }
+    }
+  }
+  return tuples;
 }
 
 /* ------------------------------------------------------------------ */
@@ -412,6 +460,7 @@ async function run() {
   assert(existsSync(HACK_SOURCE), "hack.c exists");
   assert(existsSync(LOCK_SOURCE), "lock.c exists");
   assert(existsSync(DO_SOURCE), "do.c exists");
+  assert(existsSync(LIBNH_MAIN_SOURCE), "libnhmain.c exists");
   if (
     !existsSync(WASM_JS)
     || !existsSync(WASM_BIN)
@@ -420,6 +469,7 @@ async function run() {
     || !existsSync(HACK_SOURCE)
     || !existsSync(LOCK_SOURCE)
     || !existsSync(DO_SOURCE)
+    || !existsSync(LIBNH_MAIN_SOURCE)
   ) {
     console.error(
       "\nMissing WASM or source files. Build with `make CROSS_TO_WASM=1` first.",
@@ -431,6 +481,33 @@ async function run() {
   const hackSource = readFileSync(HACK_SOURCE, "utf8");
   const lockSource = readFileSync(LOCK_SOURCE, "utf8");
   const doSource = readFileSync(DO_SOURCE, "utf8");
+  const libnhMainSource = readFileSync(LIBNH_MAIN_SOURCE, "utf8");
+  const characterCatalogInit = cBlockAfter(
+    libnhMainSource,
+    /\njs_character_catalog_init\s*\(\s*void\s*\)\s*/,
+  );
+  assert(
+    /\binitoptions\s*\(\s*\)\s*;\s*#ifdef __EMSCRIPTEN__\s*js_character_catalog_init\s*\(\s*\)\s*;/.test(
+      libnhMainSource,
+    )
+      && characterCatalogInit !== null
+      && /\bvalidrace\s*\(/.test(characterCatalogInit)
+      && /\bvalidgend\s*\(/.test(characterCatalogInit)
+      && /\bvalidalign\s*\(/.test(characterCatalogInit),
+    "character catalog is copied after options and counts core-valid tuples",
+  );
+  assert(
+    characterCatalogInit !== null
+      && /\bmonnum_to_glyph\s*\([^,]+,\s*MALE\s*\)/.test(
+        characterCatalogInit,
+      )
+      && /\bmonnum_to_glyph\s*\([^,]+,\s*FEMALE\s*\)/.test(
+        characterCatalogInit,
+      )
+      && [...characterCatalogInit.matchAll(/\bmap_glyphinfo\s*\(/g)].length
+        === 2,
+    "character previews use the initialized authoritative glyph map",
+  );
   const statusWrapper = cBlockAfter(
     winshimSource,
     /\bshim_status_enablefield\s*\([^;{}]*\)\s*/,
@@ -948,6 +1025,66 @@ async function run() {
       && permanentInventoryUpdates.some((event) => event.kind === "item")
       && permanentInventoryUpdates.some((event) => event.kind === "commit"),
     "perm_invent creates, populates, and commits a persistent inventory menu",
+  );
+
+  // --- Character catalog ---
+  console.log("\n--- Character catalog ---");
+  const characterCatalog = globalThis.nethackGlobal.characterCatalog;
+  assert(
+    characterCatalog?.schemaVersion === 1
+      && characterCatalog.roles.length > 0
+      && characterCatalog.races.length > 0
+      && characterCatalog.genders.length > 0
+      && characterCatalog.alignments.length > 0,
+    "WASM exposes a non-empty versioned character catalog",
+  );
+  const characterOptions = [
+    ...characterCatalog.roles,
+    ...characterCatalog.races,
+    ...characterCatalog.genders,
+    ...characterCatalog.alignments,
+  ];
+  assert(
+    characterOptions.every(
+      (option) =>
+        Number.isInteger(option.index)
+        && typeof option.name === "string"
+        && option.name.length > 0
+        && typeof option.fileCode === "string"
+        && option.fileCode.length > 0
+        && [...option.accelerator].length === 1
+        && Number.isInteger(option.allow),
+    )
+      && [
+        characterCatalog.roles,
+        characterCatalog.races,
+        characterCatalog.genders,
+        characterCatalog.alignments,
+      ].every((options) =>
+        options.every((option, index) => option.index === index)),
+    "character options have complete fields and contiguous indices",
+  );
+  assert(
+    characterCatalog.roles.every(
+      (role) =>
+        Number.isInteger(role.maleGlyph)
+        && Number.isInteger(role.femaleGlyph)
+        && Number.isInteger(role.maleTileIndex)
+        && Number.isInteger(role.femaleTileIndex)
+        && role.maleTileIndex >= 0
+        && role.maleTileIndex <= MAX_ATLAS_TILE_INDEX
+        && role.femaleTileIndex >= 0
+        && role.femaleTileIndex <= MAX_ATLAS_TILE_INDEX,
+    ),
+    "every role preview uses valid male and female glyph and tile indices",
+  );
+  const characterTuples = buildCharacterTuples(characterCatalog);
+  assert(
+    characterTuples.length === characterCatalog.legalTupleCount
+      && new Set(characterTuples.map((tuple) =>
+        `${tuple.role}:${tuple.race}:${tuple.gender}:${tuple.alignment}`))
+        .size === characterTuples.length,
+    "compatibility masks enumerate every core-counted legal tuple once",
   );
 
   // --- glyph_info ABI and tile mapping ---

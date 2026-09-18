@@ -125,6 +125,7 @@ export type GameModal =
 export type InputRequest =
   | { kind: "key" }
   | { kind: "position" }
+  | { kind: "player-selection" }
   | { kind: "yn"; query: string; choices: string | null; defaultCode: number }
   | {
     kind: "line";

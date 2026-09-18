@@ -32,6 +32,13 @@ import {
   encodeCoreCommandRequest,
   type CoreCommandRequest,
 } from "../game-actions/core-command-protocol";
+import {
+  buildLegalCharacterTuples,
+  decodeCharacterCatalog,
+  type CharacterSetupContext,
+  type CharacterSetupOwnerToken,
+  type CharacterTuple,
+} from "./character-setup";
 
 interface MenuSelection {
   itemIndex: number;
@@ -76,6 +83,10 @@ type PendingAction =
     kind: "display";
     resolve: () => void;
   }
+  | {
+    kind: "player-selection";
+    resolve: (useNativeSelection: boolean) => void;
+  }
   | { kind: "extcmd"; resolve: (value: number) => void };
 
 const MENU_ITEM_SIZE = 16;
@@ -97,6 +108,13 @@ let knownSaveNames: string[] = [];
 let pendingRuntimeSettings: RuntimeNetHackSettings | null = null;
 let pendingCoreCommand: number | null = null;
 let activeCoreCommand: number | null = null;
+let characterSetupContext: CharacterSetupContext = {
+  moduleId: "",
+  sessionId: "",
+  style: "original",
+  saveIdentities: [],
+};
+let characterSelectionResponse: number | null = null;
 
 /** Queue one complete dynamic settings update for the next safe boundary. */
 export function queueRuntimeSettings(settings: NetHackSettingsV1): void {
@@ -107,6 +125,105 @@ export function queueRuntimeSettings(settings: NetHackSettingsV1): void {
 /** Supply names which askname may resolve to an existing save. */
 export function setKnownSaveNames(names: string[]): void {
   knownSaveNames = [...new Set(names)];
+}
+
+/**
+ * Install the immutable startup inputs for the session's character flow.
+ * @param context - presentation style and ready save identities.
+ */
+export function setCharacterSetupContext(
+  context: CharacterSetupContext,
+): void {
+  characterSetupContext = {
+    ...context,
+    saveIdentities: context.saveIdentities.map((identity) => ({ ...identity })),
+  };
+}
+
+/**
+ * Read the startup context currently owned by the input controller.
+ * @returns a defensive copy suitable for the character setup UI.
+ */
+export function getCharacterSetupContext(): CharacterSetupContext {
+  return {
+    ...characterSetupContext,
+    saveIdentities: characterSetupContext.saveIdentities.map(
+      (identity) => ({ ...identity }),
+    ),
+  };
+}
+
+/**
+ * Resolve the pending BlissHack selection with four authoritative indices.
+ * @param selection - complete role, race, gender, and alignment tuple.
+ */
+export function submitCharacterSelection(
+  selection: CharacterTuple,
+  owner: CharacterSetupOwnerToken,
+): void {
+  const pending = pendingAction;
+  if (
+    pending?.kind !== "player-selection"
+    || !matchesCharacterSetupOwner(owner)
+  ) {
+    return;
+  }
+  const values = [
+    selection.role,
+    selection.race,
+    selection.gender,
+    selection.alignment,
+  ];
+  if (values.some((value) => !Number.isInteger(value) || value < 0)) {
+    throw new Error("Character selection must contain four valid indices");
+  }
+  const catalog = decodeCharacterCatalog(
+    globalThis.nethackGlobal?.characterCatalog,
+  );
+  const legal = buildLegalCharacterTuples(catalog).some((tuple) =>
+    tuple.role === selection.role
+    && tuple.race === selection.race
+    && tuple.gender === selection.gender
+    && tuple.alignment === selection.alignment);
+  if (!legal) throw new Error("Character selection is not a legal tuple");
+  const flags = globalThis.nethackGlobal?.globals?.flags;
+  if (!flags) throw new Error("NetHack character flags are unavailable");
+  flags.initrole = selection.role;
+  flags.initrace = selection.race;
+  flags.initgend = selection.gender;
+  flags.initalign = selection.alignment;
+
+  pendingAction = null;
+  characterSelectionResponse = null;
+  setInputRequest(null);
+  pending.resolve(false);
+}
+
+/**
+ * Leave BlissHack setup and preserve the core's native q/quit path.
+ */
+export function cancelCharacterSelection(owner: CharacterSetupOwnerToken): void {
+  const pending = pendingAction;
+  if (
+    pending?.kind !== "player-selection"
+    || !matchesCharacterSetupOwner(owner)
+  ) {
+    return;
+  }
+  pendingAction = null;
+  characterSelectionResponse = "q".charCodeAt(0);
+  setInputRequest(null);
+  pending.resolve(true);
+}
+
+/**
+ * Check whether a UI command still belongs to the active setup session.
+ * @param owner - module and session identity supplied by the UI.
+ * @returns whether both identities match the installed context.
+ */
+function matchesCharacterSetupOwner(owner: CharacterSetupOwnerToken): boolean {
+  return owner.moduleId === characterSetupContext.moduleId
+    && owner.sessionId === characterSetupContext.sessionId;
 }
 
 /** Apply exactly the same cleanup used when a player name is submitted. */
@@ -331,6 +448,13 @@ export function resetInputController(): void {
   actionIntentActive = false;
   saveExitAutomation = null;
   knownSaveNames = [];
+  characterSetupContext = {
+    moduleId: "",
+    sessionId: "",
+    style: "original",
+    saveIdentities: [],
+  };
+  characterSelectionResponse = null;
 }
 
 /** Publish the core snapshot and return one queued, versioned update. */
@@ -505,6 +629,11 @@ export function waitForYn(
   choices: string | null,
   defaultCode: number,
 ): Promise<number> {
+  if (characterSelectionResponse !== null) {
+    const response = characterSelectionResponse;
+    characterSelectionResponse = null;
+    return Promise.resolve(response);
+  }
   const normalizedQuery = query ?? "";
   if (saveExitAutomation === "confirm") {
     if (normalizedQuery === SAVE_CONFIRM_QUERY && choices === "yn") {
@@ -523,6 +652,18 @@ export function waitForYn(
   });
   return new Promise<number>((resolve) => {
     setPending({ kind: "yn", resolve, choices, defaultCode });
+  });
+}
+
+/**
+ * Let original setup use native menus or wait for one BlissHack selection.
+ * @returns true for native setup and false after a complete custom selection.
+ */
+export function waitForPlayerSelection(): Promise<boolean> | boolean {
+  if (characterSetupContext.style === "original") return true;
+  setInputRequest({ kind: "player-selection" });
+  return new Promise<boolean>((resolve) => {
+    setPending({ kind: "player-selection", resolve });
   });
 }
 

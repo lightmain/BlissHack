@@ -24,6 +24,7 @@ interface CharacterCatalog {
   races: CharacterOption[];
   genders: CharacterOption[];
   alignments: CharacterOption[];
+  legalTupleCount: number;
 }
 
 interface CharacterTuple {
@@ -43,14 +44,25 @@ interface CharacterSelection {
 type CharacterAspect = keyof CharacterSelection;
 
 interface CharacterSetupContext {
+  moduleId: string;
+  sessionId: string;
   style: "original" | "blisshack";
   saveIdentities: readonly [];
 }
 
+interface CharacterSetupOwnerToken {
+  moduleId: string;
+  sessionId: string;
+}
+
 interface StageThreeBridgeApi {
   setCharacterSetupContext(context: CharacterSetupContext): void;
-  submitCharacterSelection(selection: CharacterTuple): void;
-  cancelCharacterSelection(): void;
+  getCharacterSetupContext(): CharacterSetupContext;
+  submitCharacterSelection(
+    selection: CharacterTuple,
+    owner: CharacterSetupOwnerToken,
+  ): void;
+  cancelCharacterSelection(owner: CharacterSetupOwnerToken): void;
   decodeCharacterCatalog(value: unknown): CharacterCatalog;
   buildLegalCharacterTuples(catalog: CharacterCatalog): CharacterTuple[];
   filterCharacterTuples(
@@ -66,6 +78,14 @@ interface StageThreeBridgeApi {
 }
 
 const stageThreeApi = nethackBridge as unknown as Partial<StageThreeBridgeApi>;
+const CURRENT_OWNER: CharacterSetupOwnerToken = {
+  moduleId: "module-current",
+  sessionId: "session-current",
+};
+const STALE_OWNER: CharacterSetupOwnerToken = {
+  moduleId: "module-stale",
+  sessionId: "session-stale",
+};
 
 /**
  * Require one planned stage-three façade export without breaking test loading.
@@ -192,6 +212,7 @@ function metadataFixture(): CharacterCatalog {
         allow: 0x0020,
       },
     ],
+    legalTupleCount: 5,
   };
 }
 
@@ -208,6 +229,7 @@ beforeEach(() => {
       iflags: {},
       svp: { plname: "" },
     },
+    characterCatalog: metadataFixture(),
     pointers: {},
   };
 });
@@ -235,6 +257,7 @@ describe("stage-three character setup callback contract", () => {
   it("returns false after a complete BlissHack selection", async () => {
     const module = createModule();
     requireStageThreeApi("setCharacterSetupContext")({
+      ...CURRENT_OWNER,
       style: "blisshack",
       saveIdentities: [],
     });
@@ -244,12 +267,15 @@ describe("stage-three character setup callback contract", () => {
     );
     await expectPending(result);
 
-    requireStageThreeApi("submitCharacterSelection")({
-      role: 1,
-      race: 1,
-      gender: 0,
-      alignment: 1,
-    });
+    requireStageThreeApi("submitCharacterSelection")(
+      {
+        role: 1,
+        race: 1,
+        gender: 0,
+        alignment: 1,
+      },
+      CURRENT_OWNER,
+    );
 
     await expect(result).resolves.toBe(false);
     expect(globalThis.nethackGlobal?.globals?.flags).toEqual({
@@ -266,6 +292,7 @@ describe("stage-three character setup callback contract", () => {
   it("preserves native quit semantics when BlissHack setup is cancelled", async () => {
     const module = createModule();
     requireStageThreeApi("setCharacterSetupContext")({
+      ...CURRENT_OWNER,
       style: "blisshack",
       saveIdentities: [],
     });
@@ -275,14 +302,14 @@ describe("stage-three character setup callback contract", () => {
     );
     await expectPending(selection);
 
-    requireStageThreeApi("cancelCharacterSelection")();
+    requireStageThreeApi("cancelCharacterSelection")(CURRENT_OWNER);
 
     await expect(selection).resolves.toBe(true);
     await expect(nethackBridge.shimCallbackForModule(
       module,
       "shim_yn_function",
       "Shall I pick character's race, role, gender and alignment for you?",
-      "ynaq",
+      null,
       "n".charCodeAt(0),
     )).resolves.toBe("q".charCodeAt(0));
     expect(nethackBridge.isWaitingForInput()).toBe(false);
@@ -294,6 +321,7 @@ describe("stage-three character setup callback contract", () => {
   it("does not call into C while the character callback is pending", async () => {
     const module = createModule();
     requireStageThreeApi("setCharacterSetupContext")({
+      ...CURRENT_OWNER,
       style: "blisshack",
       saveIdentities: [],
     });
@@ -304,14 +332,202 @@ describe("stage-three character setup callback contract", () => {
     await expectPending(selection);
     expect(module.ccall).not.toHaveBeenCalled();
 
-    requireStageThreeApi("submitCharacterSelection")({
-      role: 0,
-      race: 0,
-      gender: 1,
-      alignment: 0,
-    });
+    requireStageThreeApi("submitCharacterSelection")(
+      {
+        role: 0,
+        race: 0,
+        gender: 1,
+        alignment: 0,
+      },
+      CURRENT_OWNER,
+    );
     await expect(selection).resolves.toBe(false);
     expect(module.ccall).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Verify that the UI receives the exact module and session ownership token.
+   */
+  it("keeps module and session ownership in the setup context", () => {
+    requireStageThreeApi("setCharacterSetupContext")({
+      ...CURRENT_OWNER,
+      style: "blisshack",
+      saveIdentities: [],
+    });
+
+    expect(requireStageThreeApi("getCharacterSetupContext")()).toEqual({
+      ...CURRENT_OWNER,
+      style: "blisshack",
+      saveIdentities: [],
+    });
+  });
+
+  /**
+   * Verify that an old session cannot write globals or resolve current setup.
+   */
+  it("ignores a stale owner token when submitting a selection", async () => {
+    const module = createModule();
+    requireStageThreeApi("setCharacterSetupContext")({
+      ...CURRENT_OWNER,
+      style: "blisshack",
+      saveIdentities: [],
+    });
+    const selection = nethackBridge.shimCallbackForModule(
+      module,
+      "shim_player_selection_or_tty",
+    );
+    await expectPending(selection);
+
+    expect(() => requireStageThreeApi("submitCharacterSelection")(
+      { role: 1, race: 1, gender: 0, alignment: 1 },
+      STALE_OWNER,
+    )).not.toThrow();
+    expect(globalThis.nethackGlobal?.globals?.flags).toEqual({
+      initrole: -1,
+      initrace: -1,
+      initgend: -1,
+      initalign: -1,
+    });
+    await expectPending(selection);
+
+    requireStageThreeApi("submitCharacterSelection")(
+      { role: 1, race: 1, gender: 0, alignment: 1 },
+      CURRENT_OWNER,
+    );
+    await expect(selection).resolves.toBe(false);
+  });
+
+  /**
+   * Verify that an old session cannot cancel current character setup.
+   */
+  it("ignores a stale owner token when cancelling a selection", async () => {
+    const module = createModule();
+    requireStageThreeApi("setCharacterSetupContext")({
+      ...CURRENT_OWNER,
+      style: "blisshack",
+      saveIdentities: [],
+    });
+    const selection = nethackBridge.shimCallbackForModule(
+      module,
+      "shim_player_selection_or_tty",
+    );
+    await expectPending(selection);
+
+    requireStageThreeApi("cancelCharacterSelection")(STALE_OWNER);
+    await expectPending(selection);
+    expect(nethackBridge.isWaitingForInput()).toBe(true);
+
+    requireStageThreeApi("cancelCharacterSelection")(CURRENT_OWNER);
+    await expect(selection).resolves.toBe(true);
+  });
+
+  /**
+   * Verify that complete selections are members of the authoritative catalog.
+   */
+  it.each([
+    {
+      label: "out-of-range",
+      tuple: { role: 2, race: 0, gender: 0, alignment: 0 },
+    },
+    {
+      label: "catalog-illegal",
+      tuple: { role: 1, race: 0, gender: 0, alignment: 0 },
+    },
+  ] as const)("rejects a $label complete selection", async ({ tuple }) => {
+    const module = createModule();
+    requireStageThreeApi("setCharacterSetupContext")({
+      ...CURRENT_OWNER,
+      style: "blisshack",
+      saveIdentities: [],
+    });
+    const selection = nethackBridge.shimCallbackForModule(
+      module,
+      "shim_player_selection_or_tty",
+    );
+    await expectPending(selection);
+
+    expect(() => requireStageThreeApi("submitCharacterSelection")(
+      tuple,
+      CURRENT_OWNER,
+    )).toThrow(/character selection/i);
+    expect(globalThis.nethackGlobal?.globals?.flags).toEqual({
+      initrole: -1,
+      initrace: -1,
+      initgend: -1,
+      initalign: -1,
+    });
+    await expectPending(selection);
+  });
+
+  /**
+   * Verify that reset drops old pending work and one-shot cancel automation.
+   */
+  it("clears stale pending selection and cancel automation on reset", async () => {
+    const module = createModule();
+    requireStageThreeApi("setCharacterSetupContext")({
+      ...STALE_OWNER,
+      style: "blisshack",
+      saveIdentities: [],
+    });
+    const staleSelection = nethackBridge.shimCallbackForModule(
+      module,
+      "shim_player_selection_or_tty",
+    );
+    await expectPending(staleSelection);
+
+    nethackBridge.resetBridgeState();
+    requireStageThreeApi("setCharacterSetupContext")({
+      ...CURRENT_OWNER,
+      style: "blisshack",
+      saveIdentities: [],
+    });
+    const currentSelection = nethackBridge.shimCallbackForModule(
+      module,
+      "shim_player_selection_or_tty",
+    );
+    await expectPending(currentSelection);
+    requireStageThreeApi("cancelCharacterSelection")(CURRENT_OWNER);
+    await expect(currentSelection).resolves.toBe(true);
+    await expectPending(staleSelection);
+
+    nethackBridge.resetBridgeState();
+    const yn = nethackBridge.shimCallbackForModule(
+      module,
+      "shim_yn_function",
+      "A real core question?",
+      null,
+      "n".charCodeAt(0),
+    );
+    await expectPending(yn);
+    nethackBridge.sendKey("n".charCodeAt(0));
+    await expect(yn).resolves.toBe("n".charCodeAt(0));
+  });
+
+  /**
+   * Verify that a second callback cannot replace an unresolved pending action.
+   */
+  it("rejects a second player-selection pending action", async () => {
+    const module = createModule();
+    requireStageThreeApi("setCharacterSetupContext")({
+      ...CURRENT_OWNER,
+      style: "blisshack",
+      saveIdentities: [],
+    });
+    const first = nethackBridge.shimCallbackForModule(
+      module,
+      "shim_player_selection_or_tty",
+    );
+    await expectPending(first);
+
+    await expect(nethackBridge.shimCallbackForModule(
+      module,
+      "shim_player_selection_or_tty",
+    )).resolves.toBe(true);
+    expect(getSnapshot().error).toMatch(/player-selection is still pending/i);
+    await expectPending(first);
+
+    requireStageThreeApi("cancelCharacterSelection")(CURRENT_OWNER);
+    await expect(first).resolves.toBe(true);
   });
 });
 
@@ -329,6 +545,20 @@ describe("stage-three character metadata contract", () => {
     expect(() => decodeCharacterCatalog(undefined)).toThrow(
       /character metadata/i,
     );
+  });
+
+  /**
+   * Verify that schema version 1 always carries the core tuple count.
+   */
+  it("rejects schema version 1 metadata without legalTupleCount", () => {
+    const decodeCharacterCatalog = requireStageThreeApi(
+      "decodeCharacterCatalog",
+    );
+
+    expect(() => decodeCharacterCatalog({
+      ...metadataFixture(),
+      legalTupleCount: undefined,
+    })).toThrow(/legal tuple count/i);
   });
 
   /**
@@ -353,6 +583,20 @@ describe("stage-three character metadata contract", () => {
     })).toEqual([
       { role: 1, race: 1, gender: 0, alignment: 1 },
     ]);
+  });
+
+  /**
+   * Verify that frontend mask enumeration agrees with the authoritative core.
+   */
+  it("fails closed when the enumerated tuple count disagrees with the core", () => {
+    const catalog = {
+      ...metadataFixture(),
+      legalTupleCount: 4,
+    };
+
+    expect(() =>
+      requireStageThreeApi("buildLegalCharacterTuples")(catalog)
+    ).toThrow(/compatibility masks disagree with the core/i);
   });
 
   /**
