@@ -77,12 +77,13 @@ test("removes the XP progress bar when Experience is disabled at runtime", async
   await page.getByRole("button", { name: "Apply" }).click();
   await startWithoutTutorial(page, "ExperienceRuntime");
 
-  const experienceLevel = page.locator(
-    "[data-inspect-target='status:experience-level']",
-  );
-  const experiencePoints = page.locator(
-    "[data-inspect-target='status:experience']",
-  );
+  const status = page.getByRole("region", { name: "Character status" });
+  const experienceLevel = status.locator(
+    ".nh-status-resource-value, .nh-status-value",
+  )
+    .filter({ hasText: /^Xp:\d+$/ });
+  const experiencePoints = status.locator(".nh-status-value")
+    .filter({ hasText: /^\/\d+$/ });
   await expect(experienceLevel).toBeVisible();
   await expect(experiencePoints).toBeVisible();
   await expect(
@@ -106,7 +107,10 @@ test("removes the XP progress bar when Experience is disabled at runtime", async
   ).toHaveCount(0);
   await expect(experiencePoints).toHaveCount(0);
   await expect(experienceLevel).toBeVisible();
-  await expect(experienceLevel.getByRole("progressbar")).toHaveCount(0);
+  await expect(status.getByRole(
+    "progressbar",
+    { name: /^Experience:/ },
+  )).toHaveCount(0);
   expect(errors).toEqual({ console: [], page: [] });
 });
 
@@ -488,6 +492,9 @@ test("leaves status tooltip Tab navigation to the browser", async ({ page }) => 
     name: "Enable Permanent Inventory",
     exact: true,
   }).check();
+  await page.getByRole("group", { name: "Information level" })
+    .getByRole("radio", { name: "Detailed" })
+    .check();
   await page.getByRole("button", { name: "Apply" }).click();
 
   await startWithoutTutorial(page, "StatusTooltipTab");

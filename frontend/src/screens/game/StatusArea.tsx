@@ -18,6 +18,7 @@ import {
   type StatusMetricGroup,
   type StatusTooltip,
 } from "../../status-metrics";
+import type { InformationLevel } from "../../settings/profile";
 import { colorClass } from "../../text-styling";
 
 const GROUP_ORDER: readonly StatusMetricGroup[] = [
@@ -76,10 +77,12 @@ const METRIC_DISPLAY_INDEX: ReadonlyMap<string, number> = new Map(
  * @returns the graphical character status area.
  */
 export const StatusArea = memo(function StatusArea({
+  informationLevel,
   metrics,
   onInspect,
   onInspectLeave,
 }: {
+  informationLevel: InformationLevel;
   metrics: readonly StatusMetric[];
   onInspect?(request: LocalInspectRequest): void;
   onInspectLeave?(key?: string): void;
@@ -98,7 +101,12 @@ export const StatusArea = memo(function StatusArea({
             key={group}
           >
             {groupedMetrics.map((metric) =>
-              renderStatusMetric(metric, onInspect, onInspectLeave))}
+              renderStatusMetric(
+                metric,
+                informationLevel,
+                onInspect,
+                onInspectLeave,
+              ))}
           </div>
         );
       })}
@@ -113,6 +121,7 @@ export const StatusArea = memo(function StatusArea({
  */
 function renderStatusMetric(
   metric: StatusMetric,
+  informationLevel: InformationLevel,
   onInspect?: (request: LocalInspectRequest) => void,
   onInspectLeave?: (key?: string) => void,
 ) {
@@ -124,15 +133,32 @@ function renderStatusMetric(
         key={metric.field}
       >
         {metric.conditions.map((condition) =>
-          renderCondition(metric, condition, onInspect, onInspectLeave))}
+          renderCondition(
+            metric,
+            condition,
+            informationLevel,
+            onInspect,
+            onInspectLeave,
+          ))}
       </span>
     );
   }
 
   const barKind = RESOURCE_BARS[metric.id];
   return barKind && metric.percent !== undefined
-    ? renderResourceMetric(metric, barKind, onInspect, onInspectLeave)
-    : renderCompactMetric(metric, onInspect, onInspectLeave);
+    ? renderResourceMetric(
+      metric,
+      barKind,
+      informationLevel,
+      onInspect,
+      onInspectLeave,
+    )
+    : renderCompactMetric(
+      metric,
+      informationLevel,
+      onInspect,
+      onInspectLeave,
+    );
 }
 
 /**
@@ -144,19 +170,21 @@ function renderStatusMetric(
 function renderResourceMetric(
   metric: StatusMetric,
   barKind: "primary" | "secondary",
+  informationLevel: InformationLevel,
   onInspect?: (request: LocalInspectRequest) => void,
   onInspectLeave?: (key?: string) => void,
 ) {
   const tooltipId = `status-tooltip-${metric.id}`;
   return (
-    <InspectableStatus
+    <StatusEntry
       className={`nh-status-metric nh-status-resource ${statusClasses(metric)}`}
       dataChange={metric.change}
-      describedBy={tooltipId}
+      informationLevel={informationLevel}
       key={metric.field}
       inspectKey={`status:${metric.id}`}
       onInspect={onInspect}
       onInspectLeave={onInspectLeave}
+      tooltipId={tooltipId}
       tooltip={metric.tooltip}
     >
       <span className="nh-status-resource-value">{metric.text}</span>
@@ -175,8 +203,7 @@ function renderResourceMetric(
           style={{ "--status-percent": `${metric.percent}%` } as CSSProperties}
         />
       </span>
-      <StatusTooltipContent id={tooltipId} tooltip={metric.tooltip} />
-    </InspectableStatus>
+    </StatusEntry>
   );
 }
 
@@ -187,24 +214,25 @@ function renderResourceMetric(
  */
 function renderCompactMetric(
   metric: StatusMetric,
+  informationLevel: InformationLevel,
   onInspect?: (request: LocalInspectRequest) => void,
   onInspectLeave?: (key?: string) => void,
 ) {
   const tooltipId = `status-tooltip-${metric.id}`;
   return (
-    <InspectableStatus
+    <StatusEntry
       className={`nh-status-metric ${statusClasses(metric)}`}
       dataChange={metric.change}
-      describedBy={tooltipId}
+      informationLevel={informationLevel}
       key={metric.field}
       inspectKey={`status:${metric.id}`}
       onInspect={onInspect}
       onInspectLeave={onInspectLeave}
+      tooltipId={tooltipId}
       tooltip={metric.tooltip}
     >
       <span className="nh-status-value">{metric.text}</span>
-      <StatusTooltipContent id={tooltipId} tooltip={metric.tooltip} />
-    </InspectableStatus>
+    </StatusEntry>
   );
 }
 
@@ -217,19 +245,21 @@ function renderCompactMetric(
 function renderCondition(
   metric: StatusMetric,
   condition: StatusCondition,
+  informationLevel: InformationLevel,
   onInspect?: (request: LocalInspectRequest) => void,
   onInspectLeave?: (key?: string) => void,
 ) {
   const tooltipId = `status-tooltip-condition-${condition.id}`;
   return (
-    <InspectableStatus
+    <StatusEntry
       className="nh-status-condition-entry"
       dataChange={metric.change}
-      describedBy={tooltipId}
+      informationLevel={informationLevel}
       key={condition.id}
       inspectKey={`status:condition:${condition.id}`}
       onInspect={onInspect}
       onInspectLeave={onInspectLeave}
+      tooltipId={tooltipId}
       tooltip={condition.tooltip}
     >
       <span
@@ -237,7 +267,55 @@ function renderCondition(
       >
         {condition.label}
       </span>
-      <StatusTooltipContent id={tooltipId} tooltip={condition.tooltip} />
+    </StatusEntry>
+  );
+}
+
+/**
+ * Add explanatory inspection behavior only for the detailed information level.
+ * @param props - status content, semantic change, and optional inspect callbacks.
+ * @returns a plain status value or a focusable detailed-inspection target.
+ */
+function StatusEntry({
+  children,
+  className,
+  dataChange,
+  informationLevel,
+  inspectKey,
+  onInspect,
+  onInspectLeave,
+  tooltip,
+  tooltipId,
+}: {
+  children: ReactNode;
+  className: string;
+  dataChange: number;
+  informationLevel: InformationLevel;
+  inspectKey: string;
+  onInspect?: (request: LocalInspectRequest) => void;
+  onInspectLeave?: (key?: string) => void;
+  tooltip: StatusTooltip;
+  tooltipId: string;
+}) {
+  if (informationLevel === "original") {
+    return (
+      <span className={className} data-change={dataChange}>
+        {children}
+      </span>
+    );
+  }
+  return (
+    <InspectableStatus
+      className={className}
+      dataChange={dataChange}
+      describedBy={tooltipId}
+      inspectKey={inspectKey}
+      onInspect={onInspect}
+      onInspectLeave={onInspectLeave}
+      tooltip={tooltip}
+    >
+      {children}
+      <StatusTooltipContent id={tooltipId} tooltip={tooltip} />
     </InspectableStatus>
   );
 }

@@ -104,8 +104,12 @@ describe("StatusArea", () => {
   });
 
   it("statically renders compact semantic status groups and tooltips", () => {
-    const html = renderToStaticMarkup(createElement(StatusArea, { metrics }));
-    const progressbars = html.match(/<[^>]+role="progressbar"[^>]*>/g) ?? [];
+    const html = renderToStaticMarkup(createElement(StatusArea, {
+      informationLevel: "detailed",
+      metrics,
+    }));
+    const progressbars: string[] =
+      html.match(/<[^>]+role="progressbar"[^>]*>/g) ?? [];
     const primaryBars = progressbars.filter((tag) =>
       tag.includes('data-status-bar="primary"')
     );
@@ -143,8 +147,11 @@ describe("StatusArea", () => {
   });
 
   it("leaves Tab navigation on every focusable tooltip to the browser", () => {
-    const html = renderToStaticMarkup(createElement(StatusArea, { metrics }));
-    const focusableEntries = html.match(
+    const html = renderToStaticMarkup(createElement(StatusArea, {
+      informationLevel: "detailed",
+      metrics,
+    }));
+    const focusableEntries: string[] = html.match(
       /<span[^>]*tabindex="0"[^>]*>/g,
     ) ?? [];
 
@@ -156,6 +163,7 @@ describe("StatusArea", () => {
 
   it("exposes local inspect targets while retaining hidden described-by text", () => {
     const html = renderToStaticMarkup(createElement(StatusArea, {
+      informationLevel: "detailed",
       metrics,
       onInspect: vi.fn(),
       onInspectLeave: vi.fn(),
@@ -188,8 +196,62 @@ describe("StatusArea", () => {
     expect(html).not.toContain("nh-overlay-root");
   });
 
+  it("[defect-probing] omits explanatory inspection in original mode without changing status semantics", () => {
+    const experience = {
+      id: "experience",
+      field: 21,
+      label: "Experience points",
+      description: "Experience points earned toward advancement.",
+      text: "Exp:123",
+      change: 0,
+      color: 7,
+      attributes: 0,
+      group: "resource",
+      tooltip: {
+        currentValue: "Exp:123",
+        description: "Experience points earned toward advancement.",
+      },
+    } satisfies StatusMetric;
+    const original = renderToStaticMarkup(createElement(StatusArea, {
+      informationLevel: "original",
+      metrics: [...metrics, experience],
+      onInspect: vi.fn(),
+      onInspectLeave: vi.fn(),
+    }));
+    const detailed = renderToStaticMarkup(createElement(StatusArea, {
+      informationLevel: "detailed",
+      metrics: [...metrics, experience],
+      onInspect: vi.fn(),
+      onInspectLeave: vi.fn(),
+    }));
+    const progressSemantics = (html: string) =>
+      [...html.matchAll(/<span(?=[^>]*role="progressbar")[^>]*>/g)]
+        .map((match) => ({
+          label: match[0].match(/aria-label="([^"]+)"/)?.[1],
+          max: match[0].match(/aria-valuemax="([^"]+)"/)?.[1],
+          min: match[0].match(/aria-valuemin="([^"]+)"/)?.[1],
+          now: match[0].match(/aria-valuenow="([^"]+)"/)?.[1],
+        }));
+
+    expect(original).not.toContain('role="tooltip"');
+    expect(original).not.toContain("aria-describedby");
+    expect(original).not.toContain("data-inspect-target");
+    expect(original).not.toContain("tabindex");
+    expect(original).toContain('aria-label="Character status"');
+    expect(original).toContain("HP:42");
+    expect(original).toContain("Pw:18");
+    expect(original).toContain("Xp:4");
+    expect(original).toContain("Exp:123");
+    expect(original).toContain("Blind");
+    expect(progressSemantics(original)).toEqual(progressSemantics(detailed));
+    expect(detailed).toContain('role="tooltip"');
+    expect(detailed).toContain("Exp:123");
+    expect(detailed).toContain("Experience points earned toward advancement.");
+  });
+
   it("keeps maximum-level XP text without rendering a progressbar", () => {
     const html = renderToStaticMarkup(createElement(StatusArea, {
+      informationLevel: "detailed",
       metrics: [{
         ...metrics[2],
         text: "Xp:30",
@@ -207,6 +269,7 @@ describe("StatusArea", () => {
 
   it("renders HP, Energy, and XP in semantic order regardless of input order", () => {
     const html = renderToStaticMarkup(createElement(StatusArea, {
+      informationLevel: "detailed",
       metrics: [metrics[1], metrics[2], metrics[0]],
     }));
     const progressbarLabels = [
@@ -222,6 +285,7 @@ describe("StatusArea", () => {
 
   it("inherits the HUD color for NetHack NO_COLOR metrics", () => {
     const html = renderToStaticMarkup(createElement(StatusArea, {
+      informationLevel: "detailed",
       metrics: [{ ...metrics[1], color: 8 }],
     }));
     const metricTag = html.match(
