@@ -7,7 +7,27 @@ import {
   type ProfileStorage,
 } from "./profile-store";
 
-const LEGACY_PROFILE_STORAGE_KEY = "blisshack.profile.v1";
+const V2_PROFILE_STORAGE_KEY = "blisshack.profile.v2";
+const V1_PROFILE_STORAGE_KEY = "blisshack.profile.v1";
+
+function profileDocument(schemaVersion: 1 | 2 | 3): Record<string, unknown> {
+  const profile = createDefaultProfile() as unknown as {
+    schemaVersion: number;
+    interface: Record<string, unknown>;
+  };
+  profile.schemaVersion = schemaVersion;
+  if (schemaVersion === 1) delete profile.interface.mapRenderer;
+  if (schemaVersion <= 2) {
+    delete profile.interface.informationLevel;
+    delete profile.interface.endgameStyle;
+    delete profile.interface.characterSetupStyle;
+  } else {
+    profile.interface.informationLevel = "original";
+    profile.interface.endgameStyle = "original";
+    profile.interface.characterSetupStyle = "original";
+  }
+  return profile as unknown as Record<string, unknown>;
+}
 
 function memoryStorage(
   initial: Readonly<Record<string, string>> = {},
@@ -28,8 +48,8 @@ function memoryStorage(
 }
 
 describe("profile store loading", () => {
-  it("uses the v2 profile key", () => {
-    expect(PROFILE_STORAGE_KEY).toBe("blisshack.profile.v2");
+  it("uses the v3 profile key", () => {
+    expect(PROFILE_STORAGE_KEY).toBe("blisshack.profile.v3");
   });
 
   it("returns fresh defaults without writing when the key is missing", () => {
@@ -46,8 +66,8 @@ describe("profile store loading", () => {
   });
 
   it("loads and detaches a valid persisted profile", () => {
-    const persisted = createDefaultProfile();
-    persisted.interface.terminalFontSize = "large";
+    const persisted = profileDocument(3);
+    (persisted.interface as Record<string, unknown>).terminalFontSize = "large";
     const storage = memoryStorage({
       [PROFILE_STORAGE_KEY]: JSON.stringify(persisted),
     });
@@ -61,58 +81,102 @@ describe("profile store loading", () => {
     expect(second.profile.interface.terminalFontSize).toBe("large");
   });
 
-  it("prefers the v2 key when both profile versions are present", () => {
-    const current = createDefaultProfile() as unknown as {
-      schemaVersion: number;
-      interface: Record<string, unknown>;
-    };
-    current.schemaVersion = 2;
-    current.interface.mapRenderer = "tiles";
-    current.interface.terminalFontSize = "large";
-    const legacy = createDefaultProfile() as unknown as {
-      schemaVersion: number;
-      interface: Record<string, unknown>;
-    };
-    legacy.schemaVersion = 1;
-    delete legacy.interface.mapRenderer;
-    legacy.interface.terminalFontSize = "small";
+  it("prefers v3 and does not inspect v2 or v1 when all keys exist", () => {
+    const current = profileDocument(3);
+    (current.interface as Record<string, unknown>).terminalFontSize = "large";
+    const v2 = profileDocument(2);
+    (v2.interface as Record<string, unknown>).terminalFontSize = "medium";
+    const v1 = profileDocument(1);
+    (v1.interface as Record<string, unknown>).terminalFontSize = "small";
     const storage = memoryStorage({
-      "blisshack.profile.v2": JSON.stringify(current),
-      [LEGACY_PROFILE_STORAGE_KEY]: JSON.stringify(legacy),
+      "blisshack.profile.v3": JSON.stringify(current),
+      [V2_PROFILE_STORAGE_KEY]: JSON.stringify(v2),
+      [V1_PROFILE_STORAGE_KEY]: JSON.stringify(v1),
     });
 
     const result = createProfileStore(storage).load();
 
     expect(result.status).toBe("loaded");
     expect(result.profile).toMatchObject({
-      schemaVersion: 2,
+      schemaVersion: 3,
       interface: {
         mapRenderer: "tiles",
         terminalFontSize: "large",
       },
     });
+    expect(storage.getItem).toHaveBeenCalledTimes(1);
+    expect(storage.getItem).toHaveBeenCalledWith("blisshack.profile.v3");
   });
 
-  it("loads and migrates the v1 fallback as a v2 ASCII profile", () => {
-    const legacy = createDefaultProfile() as unknown as {
-      schemaVersion: number;
-      interface: Record<string, unknown>;
-    };
-    legacy.schemaVersion = 1;
-    delete legacy.interface.mapRenderer;
+  it("loads and migrates the v2 fallback before consulting v1", () => {
+    const v2 = profileDocument(2);
+    (v2.interface as Record<string, unknown>).terminalFontSize = "large";
     const storage = memoryStorage({
-      [LEGACY_PROFILE_STORAGE_KEY]: JSON.stringify(legacy),
+      [V2_PROFILE_STORAGE_KEY]: JSON.stringify(v2),
+      [V1_PROFILE_STORAGE_KEY]: JSON.stringify(profileDocument(1)),
     });
 
     expect(createProfileStore(storage).load()).toMatchObject({
       status: "loaded",
       profile: {
-        schemaVersion: 2,
+        schemaVersion: 3,
         interface: {
-          mapRenderer: "ascii",
+          mapRenderer: "tiles",
+          terminalFontSize: "large",
+          informationLevel: "original",
+          endgameStyle: "original",
+          characterSetupStyle: "original",
         },
       },
     });
+    expect(storage.getItem).toHaveBeenNthCalledWith(1, "blisshack.profile.v3");
+    expect(storage.getItem).toHaveBeenNthCalledWith(2, V2_PROFILE_STORAGE_KEY);
+    expect(storage.getItem).toHaveBeenCalledTimes(2);
+  });
+
+  it("loads and migrates the v1 fallback only when v3 and v2 are absent", () => {
+    const storage = memoryStorage({
+      [V1_PROFILE_STORAGE_KEY]: JSON.stringify(profileDocument(1)),
+    });
+
+    expect(createProfileStore(storage).load()).toMatchObject({
+      status: "loaded",
+      profile: {
+        schemaVersion: 3,
+        interface: {
+          mapRenderer: "ascii",
+          informationLevel: "original",
+          endgameStyle: "original",
+          characterSetupStyle: "original",
+        },
+      },
+    });
+    expect(storage.getItem).toHaveBeenNthCalledWith(1, "blisshack.profile.v3");
+    expect(storage.getItem).toHaveBeenNthCalledWith(2, V2_PROFILE_STORAGE_KEY);
+    expect(storage.getItem).toHaveBeenNthCalledWith(3, V1_PROFILE_STORAGE_KEY);
+  });
+
+  it("does not fall back when the v3 key exists but is invalid", () => {
+    const storage = memoryStorage({
+      "blisshack.profile.v3": "{bad",
+      [V2_PROFILE_STORAGE_KEY]: JSON.stringify(profileDocument(2)),
+      [V1_PROFILE_STORAGE_KEY]: JSON.stringify(profileDocument(1)),
+    });
+
+    expect(createProfileStore(storage).load().status).toBe("invalid");
+    expect(storage.getItem).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not fall back to v1 when the v2 key exists but is invalid", () => {
+    const storage = memoryStorage({
+      [V2_PROFILE_STORAGE_KEY]: "{bad",
+      [V1_PROFILE_STORAGE_KEY]: JSON.stringify(profileDocument(1)),
+    });
+
+    expect(createProfileStore(storage).load().status).toBe("invalid");
+    expect(storage.getItem).toHaveBeenNthCalledWith(1, "blisshack.profile.v3");
+    expect(storage.getItem).toHaveBeenNthCalledWith(2, V2_PROFILE_STORAGE_KEY);
+    expect(storage.getItem).toHaveBeenCalledTimes(2);
   });
 
   it("falls back without overwriting malformed or unsupported data", () => {
@@ -122,7 +186,7 @@ describe("profile store loading", () => {
     const unsupported = memoryStorage({
       [PROFILE_STORAGE_KEY]: JSON.stringify({
         ...createDefaultProfile(),
-        schemaVersion: 3,
+        schemaVersion: 4,
       }),
     });
 
@@ -148,24 +212,34 @@ describe("profile store loading", () => {
 });
 
 describe("profile store replacement", () => {
-  it("clears both profile keys and returns fresh defaults", () => {
+  it("clears all profile version keys and returns fresh defaults", () => {
     const storage = memoryStorage({
-      "blisshack.profile.v2": JSON.stringify(createDefaultProfile()),
-      [LEGACY_PROFILE_STORAGE_KEY]: JSON.stringify(createDefaultProfile()),
+      "blisshack.profile.v3": JSON.stringify(profileDocument(3)),
+      [V2_PROFILE_STORAGE_KEY]: JSON.stringify(profileDocument(2)),
+      [V1_PROFILE_STORAGE_KEY]: JSON.stringify(profileDocument(1)),
     });
     storage.values.set("unrelated", "keep");
     const store = createProfileStore(storage);
 
     expect(store.clear()).toEqual(createDefaultProfile());
-    expect(storage.values.has("blisshack.profile.v2")).toBe(false);
-    expect(storage.values.has(LEGACY_PROFILE_STORAGE_KEY)).toBe(false);
+    expect(storage.values.has("blisshack.profile.v3")).toBe(false);
+    expect(storage.values.has(V2_PROFILE_STORAGE_KEY)).toBe(false);
+    expect(storage.values.has(V1_PROFILE_STORAGE_KEY)).toBe(false);
     expect(storage.values.get("unrelated")).toBe("keep");
   });
 
-  it("validates and replaces the complete record with one setItem", () => {
+  it("validates and saves a complete v3 record with one setItem", () => {
     const storage = memoryStorage();
     const store = createProfileStore(storage);
     const profile = createDefaultProfile();
+    const profileRecord = profile as unknown as {
+      schemaVersion: number;
+      interface: Record<string, unknown>;
+    };
+    profileRecord.schemaVersion = 3;
+    profileRecord.interface.informationLevel = "detailed";
+    profileRecord.interface.endgameStyle = "blisshack";
+    profileRecord.interface.characterSetupStyle = "blisshack";
     profile.nethack.showTime = true;
 
     const saved = store.replace(profile);
@@ -177,6 +251,15 @@ describe("profile store replacement", () => {
       PROFILE_STORAGE_KEY,
       JSON.stringify(profile),
     );
+    expect(JSON.parse(storage.values.get(PROFILE_STORAGE_KEY) ?? "{}"))
+      .toMatchObject({
+        schemaVersion: 3,
+        interface: {
+          informationLevel: "detailed",
+          endgameStyle: "blisshack",
+          characterSetupStyle: "blisshack",
+        },
+      });
   });
 
   it("rejects an invalid record before touching storage", () => {

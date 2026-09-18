@@ -157,6 +157,14 @@
   margin-bottom: 7px;
 }
 
+.settings-field-note {
+  margin-top: 7px;
+  display: block;
+  color: #8f989d;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
 .settings-field.settings-subsection > legend {
   padding-right: 1ch;
   color: #8f989d;

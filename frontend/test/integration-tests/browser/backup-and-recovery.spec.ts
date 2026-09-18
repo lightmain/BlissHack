@@ -53,10 +53,13 @@ test("exports, clears, and restores a complete BlissHack backup", async ({
     format: "blisshack-backup",
     schemaVersion: 1,
     profile: {
-      schemaVersion: 2,
+      schemaVersion: 3,
       interface: {
         mapRenderer: "tiles",
         terminalFontSize: "large",
+        informationLevel: "original",
+        endgameStyle: "original",
+        characterSetupStyle: "original",
       },
     },
   });
@@ -73,6 +76,7 @@ test("exports, clears, and restores a complete BlissHack backup", async ({
     return (JSON.parse(raw) as { events?: unknown[] }).events?.length ?? 0;
   });
   await page.evaluate(() => {
+    localStorage.setItem("blisshack.profile.v2", "previous-profile-marker");
     localStorage.setItem("blisshack.profile.v1", "legacy-profile-marker");
   });
   await page.getByRole("button", { name: "Clear Local Data" }).click();
@@ -86,6 +90,8 @@ test("exports, clears, and restores a complete BlissHack backup", async ({
     localStorage.getItem("blisshack.profile.v1"))).toBeNull();
   expect(await page.evaluate(() =>
     localStorage.getItem("blisshack.profile.v2"))).toBeNull();
+  expect(await page.evaluate(() =>
+    localStorage.getItem("blisshack.profile.v3"))).toBeNull();
 
   const emptyPicker = await openSavePicker(page);
   await expect(emptyPicker.getByText("No saved games")).toBeVisible();

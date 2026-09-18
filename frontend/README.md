@@ -21,8 +21,9 @@ React and TypeScript frontend for the NetHack WebAssembly build.
   renderer-independent draw primitives.
 - `src/map-rendering.ts` owns pure pointer-coordinate, follow-offset, and
   normalized scroll-anchor calculations.
-- `src/settings/profile.ts` owns the explicit strict v1-to-v2 migration chain;
-  `interface.mapRenderer` selects `tiles` or `ascii`.
+- `src/settings/profile.ts` owns the explicit strict v1-to-v2-to-v3 migration
+  chain; `interface` contains map, information, endgame, and character-setup
+  presentation preferences.
 - `src/screens/game/` contains the fullscreen HUD layout, fixed message and
   status regions, and the future action-bar slot. `src/screens/settings/`
   contains the profile and in-game Settings presentation.

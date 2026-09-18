@@ -1,12 +1,23 @@
 /** Current browser and export schema version for BlissHack settings. */
-export const PROFILE_SCHEMA_VERSION = 2;
-/** Previous profile schema accepted for migration. */
+export const PROFILE_SCHEMA_VERSION = 3;
+/** Oldest profile schema accepted for migration. */
 export const LEGACY_PROFILE_SCHEMA_VERSION = 1;
+/** Direct predecessor accepted for migration. */
+export const PREVIOUS_PROFILE_SCHEMA_VERSION = 2;
 /** Maximum accepted size of an imported profile document. */
 export const PROFILE_IMPORT_MAX_BYTES = 1024 * 1024;
 
 export const MAP_RENDERERS = ["tiles", "ascii"] as const;
 export type MapRenderer = (typeof MAP_RENDERERS)[number];
+
+export const INFORMATION_LEVELS = ["original", "detailed"] as const;
+export type InformationLevel = (typeof INFORMATION_LEVELS)[number];
+
+export const ENDGAME_STYLES = ["original", "blisshack"] as const;
+export type EndgameStyle = (typeof ENDGAME_STYLES)[number];
+
+export const CHARACTER_SETUP_STYLES = ["original", "blisshack"] as const;
+export type CharacterSetupStyle = (typeof CHARACTER_SETUP_STYLES)[number];
 
 export const TERMINAL_FONT_SIZES = ["small", "medium", "large"] as const;
 export type TerminalFontSize = (typeof TERMINAL_FONT_SIZES)[number];
@@ -59,7 +70,13 @@ export interface InterfaceSettingsV2 extends InterfaceSettingsV1 {
   mapRenderer: MapRenderer;
 }
 
-export type InterfaceSettings = InterfaceSettingsV2;
+export interface InterfaceSettingsV3 extends InterfaceSettingsV2 {
+  informationLevel: InformationLevel;
+  endgameStyle: EndgameStyle;
+  characterSetupStyle: CharacterSetupStyle;
+}
+
+export type InterfaceSettings = InterfaceSettingsV3;
 
 export type PickupTypesV1 =
   | { mode: "all" }
@@ -90,14 +107,20 @@ export interface BlissHackProfileV2 {
   nethack: NetHackSettingsV1;
 }
 
-export type BlissHackProfile = BlissHackProfileV2;
+export interface BlissHackProfileV3 {
+  schemaVersion: 3;
+  interface: InterfaceSettingsV3;
+  nethack: NetHackSettingsV1;
+}
 
-export interface BlissHackProfileExportV2 extends BlissHackProfileV2 {
+export type BlissHackProfile = BlissHackProfileV3;
+
+export interface BlissHackProfileExportV3 extends BlissHackProfileV3 {
   productVersion: string;
   exportedAt: string;
 }
 
-export type BlissHackProfileExport = BlissHackProfileExportV2;
+export type BlissHackProfileExport = BlissHackProfileExportV3;
 
 export type ProfileFormatErrorCode =
   | "invalid-json"
@@ -119,6 +142,7 @@ export class ProfileFormatError extends Error {
 
 type SupportedProfileSchemaVersion =
   | typeof LEGACY_PROFILE_SCHEMA_VERSION
+  | typeof PREVIOUS_PROFILE_SCHEMA_VERSION
   | typeof PROFILE_SCHEMA_VERSION;
 
 type ProfileDocumentMigrator = (
@@ -130,7 +154,8 @@ const PROFILE_DOCUMENT_MIGRATORS: Record<
   ProfileDocumentMigrator
 > = {
   [LEGACY_PROFILE_SCHEMA_VERSION]: migrateProfileV1Document,
-  [PROFILE_SCHEMA_VERSION]: validateProfileV2Document,
+  [PREVIOUS_PROFILE_SCHEMA_VERSION]: migrateProfileV2Document,
+  [PROFILE_SCHEMA_VERSION]: validateProfileV3Document,
 };
 
 /** Return a fresh profile so callers cannot mutate shared defaults. */
@@ -144,6 +169,9 @@ export function createDefaultProfile(): BlissHackProfile {
       followPlayer: true,
       permanentInventoryPosition: "right",
       permanentInventoryCollapsed: false,
+      informationLevel: "original",
+      endgameStyle: "original",
+      characterSetupStyle: "original",
     },
     nethack: {
       tutorial: true,
@@ -184,15 +212,27 @@ export function validateProfile(value: unknown): BlissHackProfile {
 function migrateProfileV1Document(
   profile: Record<string, unknown>,
 ): BlissHackProfile {
+  const v2: BlissHackProfileV2 = {
+    schemaVersion: PREVIOUS_PROFILE_SCHEMA_VERSION,
+    interface: migrateInterfaceSettingsV1(profile.interface),
+    nethack: validateNetHackSettings(profile.nethack),
+  };
+  return migrateProfileV2Document(v2 as unknown as Record<string, unknown>);
+}
+
+/** Migrate one strict schema v2 document by adding v3 presentation defaults. */
+function migrateProfileV2Document(
+  profile: Record<string, unknown>,
+): BlissHackProfile {
   return {
     schemaVersion: PROFILE_SCHEMA_VERSION,
-    interface: migrateInterfaceSettingsV1(profile.interface),
+    interface: migrateInterfaceSettingsV2(profile.interface),
     nethack: validateNetHackSettings(profile.nethack),
   };
 }
 
 /** Validate a strict current-schema document and detach nested values. */
-function validateProfileV2Document(
+function validateProfileV3Document(
   profile: Record<string, unknown>,
 ): BlissHackProfile {
   return {
@@ -321,6 +361,109 @@ export function validateInterfaceSettings(
       "followPlayer",
       "permanentInventoryPosition",
       "permanentInventoryCollapsed",
+      "informationLevel",
+      "endgameStyle",
+      "characterSetupStyle",
+    ],
+    "interface",
+  );
+  if (!isOneOf(settings.mapRenderer, MAP_RENDERERS)) {
+    throw invalidProfile("interface.mapRenderer is invalid");
+  }
+  if (!isOneOf(settings.terminalFontSize, TERMINAL_FONT_SIZES)) {
+    throw invalidProfile("interface.terminalFontSize is invalid");
+  }
+  if (!isOneOf(settings.messageHistoryLines, MESSAGE_HISTORY_LINES)) {
+    throw invalidProfile("interface.messageHistoryLines is invalid");
+  }
+  assertBoolean(settings.followPlayer, "interface.followPlayer");
+  if (!isOneOf(
+    settings.permanentInventoryPosition,
+    PERMANENT_INVENTORY_POSITIONS,
+  )) {
+    throw invalidProfile("interface.permanentInventoryPosition is invalid");
+  }
+  assertBoolean(
+    settings.permanentInventoryCollapsed,
+    "interface.permanentInventoryCollapsed",
+  );
+  if (!isOneOf(settings.informationLevel, INFORMATION_LEVELS)) {
+    throw invalidProfile("interface.informationLevel is invalid");
+  }
+  if (!isOneOf(settings.endgameStyle, ENDGAME_STYLES)) {
+    throw invalidProfile("interface.endgameStyle is invalid");
+  }
+  if (!isOneOf(settings.characterSetupStyle, CHARACTER_SETUP_STYLES)) {
+    throw invalidProfile("interface.characterSetupStyle is invalid");
+  }
+
+  return {
+    mapRenderer: settings.mapRenderer,
+    terminalFontSize: settings.terminalFontSize,
+    messageHistoryLines: settings.messageHistoryLines,
+    followPlayer: settings.followPlayer,
+    permanentInventoryPosition: settings.permanentInventoryPosition,
+    permanentInventoryCollapsed: settings.permanentInventoryCollapsed,
+    informationLevel: settings.informationLevel,
+    endgameStyle: settings.endgameStyle,
+    characterSetupStyle: settings.characterSetupStyle,
+  };
+}
+
+/**
+ * Validate the strict v1 interface and add its compatibility renderer.
+ * @param value - persisted or imported v1 interface.
+ * @returns migrated v2 interface settings.
+ */
+function migrateInterfaceSettingsV1(value: unknown): InterfaceSettingsV2 {
+  const settings = requireRecord(value, "interface");
+  assertExactKeys(
+    settings,
+    [
+      "terminalFontSize",
+      "messageHistoryLines",
+      "followPlayer",
+      "permanentInventoryPosition",
+      "permanentInventoryCollapsed",
+    ],
+    "interface",
+  );
+  return validateInterfaceSettingsV2({
+    ...settings,
+    mapRenderer: "ascii",
+  });
+}
+
+/**
+ * Validate a strict v2 interface and add v3 presentation defaults.
+ * @param value - persisted or imported v2 interface.
+ * @returns migrated v3 interface settings.
+ */
+function migrateInterfaceSettingsV2(value: unknown): InterfaceSettings {
+  return {
+    ...validateInterfaceSettingsV2(value),
+    informationLevel: "original",
+    endgameStyle: "original",
+    characterSetupStyle: "original",
+  };
+}
+
+/**
+ * Validate and detach the historical v2 interface shape.
+ * @param value - unknown v2 interface value.
+ * @returns detached v2 interface settings.
+ */
+function validateInterfaceSettingsV2(value: unknown): InterfaceSettingsV2 {
+  const settings = requireRecord(value, "interface");
+  assertExactKeys(
+    settings,
+    [
+      "mapRenderer",
+      "terminalFontSize",
+      "messageHistoryLines",
+      "followPlayer",
+      "permanentInventoryPosition",
+      "permanentInventoryCollapsed",
     ],
     "interface",
   );
@@ -353,30 +496,6 @@ export function validateInterfaceSettings(
     permanentInventoryPosition: settings.permanentInventoryPosition,
     permanentInventoryCollapsed: settings.permanentInventoryCollapsed,
   };
-}
-
-/**
- * Validate the strict v1 interface and add its compatibility renderer.
- * @param value - persisted or imported v1 interface.
- * @returns migrated v2 interface settings.
- */
-function migrateInterfaceSettingsV1(value: unknown): InterfaceSettings {
-  const settings = requireRecord(value, "interface");
-  assertExactKeys(
-    settings,
-    [
-      "terminalFontSize",
-      "messageHistoryLines",
-      "followPlayer",
-      "permanentInventoryPosition",
-      "permanentInventoryCollapsed",
-    ],
-    "interface",
-  );
-  return validateInterfaceSettings({
-    ...settings,
-    mapRenderer: "ascii",
-  });
 }
 
 /** Validate and normalize the NetHack section independently. */
@@ -475,6 +594,7 @@ function parseJson(json: string): unknown {
 function profileSchemaVersion(value: unknown): SupportedProfileSchemaVersion {
   if (
     value !== LEGACY_PROFILE_SCHEMA_VERSION
+    && value !== PREVIOUS_PROFILE_SCHEMA_VERSION
     && value !== PROFILE_SCHEMA_VERSION
   ) {
     throw new ProfileFormatError(

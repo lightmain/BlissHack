@@ -342,6 +342,7 @@ export function SettingsScreen({
 
         <InterfaceSettingsSection
           draft={draft}
+          isGameSettings={isGameSettings}
           onInterfaceChange={(patch) => updateInterface(setDraft, patch)}
           onNetHackChange={(patch) => updateNetHack(setDraft, patch)}
         />
