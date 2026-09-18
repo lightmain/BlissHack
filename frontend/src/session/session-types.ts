@@ -10,6 +10,7 @@ import type {
 import type {
   CharacterSetupContext,
   EmscriptenModule,
+  EndgameSummary,
 } from "../nethack-bridge";
 import type {
   BlissHackProfile,
@@ -192,6 +193,7 @@ export interface SessionRecord {
     originalBytes: Uint8Array;
     restoreFailed: boolean;
   } | null;
+  endgameSummary: EndgameSummary | null;
   exitFlushed: boolean;
   closed: boolean;
 }

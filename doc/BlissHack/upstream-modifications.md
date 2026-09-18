@@ -266,6 +266,25 @@ M win/shim/winshim.c
   - `frontend/test/integration-tests/wasm-test.mjs`
   - 阶段四真实 WASM 浏览器测试
 
+### 2.12 WASM 终局状态只读绑定
+
+- **文件**：`sys/libnh/libnhmain.c`
+- **引入提交**：alpha-2.2 阶段五提交
+  `feat: collect blisshack endgame output`
+- **目的**：
+  - 将 `program_state.gameover` 暴露为只读 typed global。
+  - 让前端只在核心已经进入 `really_done()` 的终局流程后自动处理 disclosure，
+    避免把普通游戏中的同类 `yn`、menu 或 text 输入误判为终局。
+- **ABI 范围**：不改变 `struct window_procs`、shim callback 或导出函数；
+  只增加
+  `globalThis.nethackGlobal.globals.program_state.gameover` 的 getter。
+- **行为依据**：
+  `doc/BlissHack/shim-interface-reference.md` 第 5.4 节和第 6.7 节。
+- **回归测试**：
+  - `frontend/src/bridge/endgame-collector.stage-five.test.ts`
+  - `frontend/src/nethack-bridge.test.ts`
+  - `frontend/test/integration-tests/wasm-test.mjs`
+
 ## 3. 上游合并检查
 
 每次从 `upstream/NetHack-5.0` 合并后必须：

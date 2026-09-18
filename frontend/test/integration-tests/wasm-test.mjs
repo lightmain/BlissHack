@@ -508,6 +508,15 @@ async function run() {
         === 2,
     "character previews use the initialized authoritative glyph map",
   );
+  assert(
+    /\bCREATE_READONLY_GLOBAL\s*\(\s*program_state\.gameover\s*,\s*"b"\s*\)\s*;/.test(
+      libnhMainSource,
+    )
+      && /\bObject\.defineProperty\s*\(\s*obj\s*,\s*prop\s*,\s*\{[\s\S]*?\bget\s*:[\s\S]*?\benumerable\s*:\s*true[\s\S]*?\}\s*\)\s*;/.test(
+        libnhMainSource,
+      ),
+    "game-over state is exposed through a read-only typed global",
+  );
   const statusWrapper = cBlockAfter(
     winshimSource,
     /\bshim_status_enablefield\s*\([^;{}]*\)\s*/,
@@ -1023,6 +1032,16 @@ async function run() {
   assert(
     globalThis.nethackGlobal?.globals?.shim_restore_required === false,
     "restore-only guard is exposed as a typed global",
+  );
+  const gameoverDescriptor = Object.getOwnPropertyDescriptor(
+    globalThis.nethackGlobal?.globals?.program_state ?? {},
+    "gameover",
+  );
+  assert(
+    globalThis.nethackGlobal?.globals?.program_state?.gameover === false
+      && typeof gameoverDescriptor?.get === "function"
+      && gameoverDescriptor?.set === undefined,
+    "game-over state is exposed as a read-only live boolean",
   );
   globalThis.nethackGlobal.globals.shim_restore_required = true;
   assert(

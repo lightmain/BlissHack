@@ -5,9 +5,10 @@
 
 /* main.c - Unix NetHack */
 
-/* Modified for BlissHack by lightmain, 2026-09-12 and 2026-09-18:
+/* Modified for BlissHack by lightmain, 2026-09-12, 2026-09-18, and 2026-09-19:
  * expose glyph_info ABI metadata, a copied versioned character catalog, and
- * the restore-only startup guard to the WebAssembly client. */
+ * read-only game-over state plus the restore-only startup guard to the
+ * WebAssembly client. */
 
 #include "hack.h"
 #include "dlb.h"
@@ -1361,6 +1362,8 @@ void js_constants_init() {
  * Globals
  ***/
 #define CREATE_GLOBAL(var, type) create_global(#var, (void *)&var, type);
+#define CREATE_READONLY_GLOBAL(var, type) \
+    create_readonly_global(#var, (void *)&var, type);
 #define CREATE_GLOBAL_FROM_ARRAY(base, iter, path, end_expr, type) \
     for(iter = 0; end_expr; iter++) { \
         snprintf(buf, BUFSZ, #base ".%d." #path, iter); \
@@ -1368,6 +1371,7 @@ void js_constants_init() {
     }
 
 void create_global (char *name, void *ptr, char *type);
+void create_readonly_global(char *name, void *ptr, char *type);
 extern boolean shim_restore_required;
 
 void js_globals_init() {
@@ -1382,6 +1386,7 @@ void js_globals_init() {
     /* globals */
     CREATE_GLOBAL(svp.plname, "s");
     CREATE_GLOBAL(shim_restore_required, "b");
+    CREATE_READONLY_GLOBAL(program_state.gameover, "b");
 
     /* window globals */
     CREATE_GLOBAL(WIN_MAP, "i");
@@ -1427,6 +1432,33 @@ EM_JS(void, create_global, (char *name_str, void *ptr, char *type_str), {
         let i;
         for (i = 0; i < path.length - 1; i++) {
             // obj[path[i]] = obj[path[i]] || {};
+            if (obj[path[i]] === undefined) {
+                obj[path[i]] = {};
+            }
+            obj = obj[path[i]];
+        }
+
+        return { obj, prop: path[i] };
+    }
+})
+
+EM_JS(void, create_readonly_global,
+      (char *name_str, void *ptr, char *type_str), {
+    let name = UTF8ToString(name_str);
+    let type = UTF8ToString(type_str);
+    let getPointerValue = globalThis.nethackGlobal.helpers.getPointerValue;
+    let { obj, prop } = createPath(globalThis.nethackGlobal.globals, name);
+
+    Object.defineProperty(obj, prop, {
+        get: getPointerValue.bind(null, name, ptr, type),
+        configurable: true,
+        enumerable: true
+    });
+
+    function createPath(obj, path) {
+        path = path.split(".");
+        let i;
+        for (i = 0; i < path.length - 1; i++) {
             if (obj[path[i]] === undefined) {
                 obj[path[i]] = {};
             }

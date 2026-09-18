@@ -1750,6 +1750,7 @@ setter 自动保护边界。
 |---------|--------|------|------|
 | `globals.svp.plname` | `svp.plname` | string | 玩家名称 |
 | `globals.shim_restore_required` | `shim_restore_required` | boolean | 当前启动只允许恢复已有存档 |
+| `globals.program_state.gameover` | `program_state.gameover` | readonly boolean | 核心是否已进入终局结算 |
 | `globals.WIN_MAP` | `WIN_MAP` | int | 地图窗口 ID |
 | `globals.WIN_MESSAGE` | `WIN_MESSAGE` | int | 消息窗口 ID |
 | `globals.WIN_INVEN` | `WIN_INVEN` | int | 背包窗口 ID |
@@ -2061,6 +2062,19 @@ mask 枚举完整 tuple 后必须与该数量一致，否则拒绝进入自定�
 取得男女 glyph/tile；未生成角色 HP、Energy 和属性，也不提前调用
 `newgame()`。真实 WASM 集成测试验证目录字段、连续索引、tile 范围以及
 mask 枚举结果与核心计数一致。
+
+### 6.7 WASM 终局状态只读绑定
+
+BlissHack 在 `sys/libnh/libnhmain.c` 中将
+`program_state.gameover` 暴露为
+`globalThis.nethackGlobal.globals.program_state.gameover`。该属性只有 getter，
+没有 setter；前端只用它确认当前 `yn`、menu 和 text 回调属于核心已经进入的
+终局流程，不修改任何核心状态。
+
+绑定不改变 `struct window_procs`、shim callback 参数或导出函数。终局采集器
+只消费现有回调并复制窗口数据；Asyncify callback pending 期间不会通过
+`ccall()` 重入核心。真实 WASM 集成测试验证该值初始为 `false`、实时读取 C
+内存且 JavaScript 属性不可写。
 
 ---
 

@@ -43,6 +43,7 @@ import {
   sendPosition,
   setActionIntentActive,
   submitMenuSelection,
+  updateEndgameCollectionStyle,
 } from "../nethack-bridge";
 import type { TileRendererFallbackReason } from "../map/TileMapRenderer";
 import type { MapInteractionOrigin } from "../map/MapViewport";
@@ -411,6 +412,7 @@ export function GameScreen({
     candidate: BlissHackProfile,
   ): Promise<BlissHackProfile> {
     const saved = await onApplyProfile(candidate);
+    updateEndgameCollectionStyle(saved.interface.endgameStyle);
     if (
       JSON.stringify(runtimeSettingsFromProfile(saved.nethack))
       !== JSON.stringify(runtimeSettingsFromProfile(gameProfile.nethack))
