@@ -108,6 +108,115 @@ async function overwritePersistentSave(
   }, { savePath: path, contents: [...bytes] });
 }
 
+test("submits a non-empty character name on blur", async ({ page }) => {
+  const errors = captureErrors(page);
+  await openHome(page, "unified-character-name-blur");
+  await enableUnifiedSetup(page);
+
+  await page.getByRole("button", { name: "New Game" }).click();
+  const setup = page.getByRole("region", { name: "Character setup" });
+  const input = page.getByRole("textbox", { name: "Name" });
+  const auto = page.getByRole("button", { name: "Auto", exact: true });
+  const autoAndStart = page.getByRole("button", { name: "Auto & Start" });
+
+  await setup.locator(".character-setup-header").click();
+  await expect(setup).toHaveAttribute(
+    "data-character-phase",
+    "entering-name",
+  );
+  await expect(auto).toBeDisabled();
+  await expect(autoAndStart).toBeDisabled();
+
+  await input.fill("E2EUnifiedBlur");
+  await setup.locator(".character-setup-header").click();
+  await expect(setup).toHaveAttribute("data-character-phase", "selecting");
+  await expect(page.locator("[data-character-column=\"role\"]")).toBeFocused();
+  await expect(auto).toBeEnabled();
+  await expect(autoAndStart).toBeEnabled();
+  expect(errors).toEqual({ console: [], page: [] });
+});
+
+test("shows column focus only after keyboard character choices", async ({
+  page,
+}) => {
+  const errors = captureErrors(page);
+  await openHome(page, "unified-character-pointer-focus");
+  await enableUnifiedSetup(page);
+  await enterCharacterName(page, "E2EUnifiedPointer");
+
+  const setup = page.getByRole("region", { name: "Character setup" });
+  const focusedColumns = setup.locator(".character-option-column:focus");
+  const role = setup.locator("[data-character-column=\"role\"]");
+  const race = setup.locator("[data-character-column=\"race\"]");
+  const gender = setup.locator("[data-character-column=\"gender\"]");
+  const alignment = setup.locator("[data-character-column=\"alignment\"]");
+
+  await role.locator(".character-option:not(:disabled)").first().click();
+  await expect.soft(focusedColumns).toHaveCount(0);
+  await page.keyboard.press("h");
+  await expect(gender).toBeFocused();
+
+  await race.getByRole("button", { pressed: true }).click();
+  await expect.soft(focusedColumns).toHaveCount(0);
+  await page.keyboard.press("m");
+  await expect(alignment).toBeFocused();
+
+  await gender.getByRole("button", { pressed: true }).click();
+  await expect.soft(focusedColumns).toHaveCount(0);
+  await page.keyboard.press("l");
+  await expect(page.getByRole("button", { name: "Confirm" })).toBeFocused();
+
+  await alignment.getByRole("button", { pressed: true }).click();
+  await expect.soft(focusedColumns).toHaveCount(0);
+  expect(errors).toEqual({ console: [], page: [] });
+});
+
+test("shows the complete Role column without desktop scrolling", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await openHome(page, "unified-character-desktop-layout");
+  await enableUnifiedSetup(page);
+  await enterCharacterName(page, "E2EUnifiedDesktop");
+
+  const dimensions = await page
+    .locator("[data-character-column=\"role\"]")
+    .evaluate((column) => ({
+      clientHeight: column.clientHeight,
+      scrollHeight: column.scrollHeight,
+    }));
+  expect(dimensions.scrollHeight).toBeLessThanOrEqual(
+    dimensions.clientHeight,
+  );
+});
+
+test("uses controlled vertical scrolling without small-screen overflow", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 700 });
+  await openHome(page, "unified-character-small-layout");
+  await enableUnifiedSetup(page);
+  await page.getByRole("button", { name: "New Game" }).click();
+
+  const dimensions = await page
+    .getByRole("region", { name: "Character setup" })
+    .evaluate((setup) => ({
+      clientHeight: setup.clientHeight,
+      clientWidth: setup.clientWidth,
+      documentWidth: document.documentElement.scrollWidth,
+      overflowY: getComputedStyle(setup).overflowY,
+      scrollHeight: setup.scrollHeight,
+      scrollWidth: setup.scrollWidth,
+      viewportWidth: window.innerWidth,
+    }));
+  expect(dimensions.overflowY).toBe("auto");
+  expect(dimensions.scrollHeight).toBeGreaterThan(dimensions.clientHeight);
+  expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth);
+  expect(dimensions.documentWidth).toBeLessThanOrEqual(
+    dimensions.viewportWidth,
+  );
+});
+
 test("uses the unified keyboard character setup flow", async ({ page }) => {
   const errors = captureErrors(page);
   const name = "E2EUnifiedKeys";
