@@ -66,8 +66,8 @@ function wornItem(inventory: Locator): Locator {
 /** Return the core-owned turn counter. */
 function turnCounter(page: Page): Locator {
   return page.locator(
-    "[data-inspect-target='status:time'] .nh-status-value",
-  );
+    "[data-status-group='world'] .nh-status-value",
+  ).filter({ hasText: /^T:\d+$/ });
 }
 
 /** Read the numeric core turn counter from its status value. */

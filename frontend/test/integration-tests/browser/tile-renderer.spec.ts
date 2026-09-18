@@ -270,7 +270,7 @@ async function switchMapRenderer(
   await expect(pause).toBeVisible();
   await expect(page.locator(".nh-shell")).toHaveAttribute(
     "data-settings-status",
-    "applied",
+    "idle",
   );
   await pause.getByRole("button", { name: "Resume" }).click();
   await expect(pause).toHaveCount(0);

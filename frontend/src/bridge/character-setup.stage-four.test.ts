@@ -86,7 +86,7 @@ interface CharacterSetupControllerOptions {
   onNativeChoice(
     choice: "y" | "a",
     owner: CharacterSetupOwnerToken,
-  ): void;
+  ): boolean;
   onNativeConfirm(owner: CharacterSetupOwnerToken): void;
   onCancel(owner: CharacterSetupOwnerToken): void;
 }
@@ -241,7 +241,7 @@ function createHarness(options: {
   >();
   const onNativeChoice = vi.fn<
     CharacterSetupControllerOptions["onNativeChoice"]
-  >();
+  >(() => true);
   const onNativeConfirm = vi.fn<
     CharacterSetupControllerOptions["onNativeConfirm"]
   >();
@@ -312,6 +312,25 @@ describe("stage-four CharacterSetupController contract", () => {
     });
   });
 
+  it("normalizes core name suffixes before matching an existing save", () => {
+    const { controller, onSubmitName } = createHarness({
+      saveIdentities: [saveFixture()],
+    });
+
+    expect(controller.setName(" Ada-Chronomancer ", CURRENT_OWNER)).toBe(true);
+    expect(controller.getState()).toMatchObject({
+      normalizedName: "Ada-Chronomancer",
+      matchedSave: saveFixture(),
+      locked: true,
+      focus: "name",
+    });
+    expect(controller.pressEnter(CURRENT_OWNER)).toBe(true);
+    expect(onSubmitName).toHaveBeenCalledWith(
+      "Ada-Chronomancer",
+      CURRENT_OWNER,
+    );
+  });
+
   it("uses current catalog accelerators through all four columns and submits on Enter", () => {
     const { controller, onSubmitSelection } = createHarness();
     enterNewName(controller);
@@ -341,6 +360,27 @@ describe("stage-four CharacterSetupController contract", () => {
       CURRENT_OWNER,
     );
     expect(controller.getState().phase).toBe("starting");
+  });
+
+  it("preserves case-sensitive core accelerators for duplicate role initials", () => {
+    const catalog = catalogFixture();
+    catalog.roles[0].accelerator = "r";
+    catalog.roles[1].accelerator = "R";
+    const controller = requireControllerFactory()({
+      scope: CURRENT_OWNER,
+      catalog,
+      mapRenderer: "tiles",
+      saveIdentities: [],
+      onSubmitName: vi.fn(),
+      onSubmitSelection: vi.fn(),
+      onNativeChoice: vi.fn(() => true),
+      onNativeConfirm: vi.fn(),
+      onCancel: vi.fn(),
+    });
+    enterNewName(controller);
+
+    expect(controller.pressAccelerator("R", CURRENT_OWNER)).toBe(true);
+    expect(controller.getState().selection.role).toBe(1);
   });
 
   it("produces the same selection and focus for mouse and keyboard choices", () => {
@@ -405,7 +445,7 @@ describe("stage-four CharacterSetupController contract", () => {
         gender: 0,
         alignment: 1,
       },
-      focus: "confirm",
+      focus: "name",
       locked: true,
       canConfirm: true,
       canAuto: false,
@@ -452,7 +492,10 @@ describe("stage-four CharacterSetupController contract", () => {
       phase: "ready",
       focus: "confirm",
       selection: { role: 1, race: 1, gender: 0, alignment: 1 },
+      canAuto: false,
     });
+    expect(controller.requestAutoAndStart(CURRENT_OWNER)).toBe(false);
+    expect(onNativeChoice).toHaveBeenCalledOnce();
     expect(onSubmitSelection).not.toHaveBeenCalled();
     expect(onNativeConfirm).not.toHaveBeenCalled();
 
@@ -474,6 +517,18 @@ describe("stage-four CharacterSetupController contract", () => {
     expect(controller.getState().phase).toBe("starting");
     expect(onNativeConfirm).not.toHaveBeenCalled();
     expect(onSubmitSelection).not.toHaveBeenCalled();
+  });
+
+  it("does not change phase when the native selection handoff is rejected", () => {
+    const { controller, onNativeChoice } = createHarness();
+    enterNewName(controller);
+    onNativeChoice.mockReturnValue(false);
+
+    expect(controller.requestAuto(CURRENT_OWNER)).toBe(false);
+    expect(controller.getState()).toMatchObject({
+      phase: "selecting",
+      canAuto: true,
+    });
   });
 
   it("makes Escape and explicit cancel owner-safe exits", () => {

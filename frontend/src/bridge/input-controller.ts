@@ -35,6 +35,8 @@ import {
 import {
   buildLegalCharacterTuples,
   decodeCharacterCatalog,
+  normalizeCharacterNameInput,
+  playerNameForSaveLookup,
   type CharacterSetupContext,
   type CharacterSetupOwnerToken,
   type CharacterTuple,
@@ -93,7 +95,6 @@ const MENU_ITEM_SIZE = 16;
 const MENU_ITEM_COUNT_OFFSET = 8;
 const MENU_ITEM_FLAGS_OFFSET = 12;
 const GETLIN_BUFFER_SIZE = 256;
-const PLAYER_NAME_BUFFER_SIZE = 32;
 const KEY_QUEUE_LIMIT = 2;
 const SAVE_COMMAND = "S".charCodeAt(0);
 const SAVE_CONFIRM_QUERY = "Really save?";
@@ -115,6 +116,17 @@ let characterSetupContext: CharacterSetupContext = {
   saveIdentities: [],
 };
 let characterSelectionResponse: number | null = null;
+let characterSelectionAutomation:
+  | {
+    owner: CharacterSetupOwnerToken;
+    stage:
+      | "initial-response"
+      | "awaiting-confirmation"
+      | "cancel-confirmation"
+      | "confirmation";
+  }
+  | null = null;
+let cancelAfterName = false;
 
 /** Queue one complete dynamic settings update for the next safe boundary. */
 export function queueRuntimeSettings(settings: NetHackSettingsV1): void {
@@ -168,33 +180,11 @@ export function submitCharacterSelection(
   ) {
     return;
   }
-  const values = [
-    selection.role,
-    selection.race,
-    selection.gender,
-    selection.alignment,
-  ];
-  if (values.some((value) => !Number.isInteger(value) || value < 0)) {
-    throw new Error("Character selection must contain four valid indices");
-  }
-  const catalog = decodeCharacterCatalog(
-    globalThis.nethackGlobal?.characterCatalog,
-  );
-  const legal = buildLegalCharacterTuples(catalog).some((tuple) =>
-    tuple.role === selection.role
-    && tuple.race === selection.race
-    && tuple.gender === selection.gender
-    && tuple.alignment === selection.alignment);
-  if (!legal) throw new Error("Character selection is not a legal tuple");
-  const flags = globalThis.nethackGlobal?.globals?.flags;
-  if (!flags) throw new Error("NetHack character flags are unavailable");
-  flags.initrole = selection.role;
-  flags.initrace = selection.race;
-  flags.initgend = selection.gender;
-  flags.initalign = selection.alignment;
+  writeCharacterSelection(selection);
 
   pendingAction = null;
   characterSelectionResponse = null;
+  characterSelectionAutomation = null;
   setInputRequest(null);
   pending.resolve(false);
 }
@@ -212,8 +202,179 @@ export function cancelCharacterSelection(owner: CharacterSetupOwnerToken): void 
   }
   pendingAction = null;
   characterSelectionResponse = "q".charCodeAt(0);
+  characterSelectionAutomation = null;
   setInputRequest(null);
   pending.resolve(true);
+}
+
+/**
+ * Submit a unified-screen name only for its active session.
+ * @param value - editable name after UI normalization.
+ * @param owner - module and session which own the setup screen.
+ */
+export function submitCharacterName(
+  value: string,
+  owner: CharacterSetupOwnerToken,
+): void {
+  const pending = pendingAction;
+  if (
+    pending?.kind !== "line"
+    || pending.purpose !== "name"
+    || !matchesCharacterSetupOwner(owner)
+  ) {
+    return;
+  }
+  const name = normalizePlayerNameInput(value);
+  const lookupName = playerNameForSaveLookup(name);
+  const continuesSave = characterSetupContext.saveIdentities.some(
+    (identity) => identity.playerName === lookupName,
+  );
+  if (continuesSave) {
+    const globals = globalThis.nethackGlobal?.globals;
+    if (!globals || !("shim_restore_required" in globals)) {
+      throw new Error("NetHack restore guard is unavailable");
+    }
+    globals.shim_restore_required = true;
+  }
+  submitLine(name);
+}
+
+/**
+ * Return to native setup for one core-owned random choice.
+ * @param choice - y pauses at confirmation; a starts immediately.
+ * @param owner - module and session which own the setup screen.
+ * @returns whether the active player-selection resolver was transferred.
+ */
+export function requestNativeCharacterSelection(
+  choice: "y" | "a",
+  owner: CharacterSetupOwnerToken,
+): boolean {
+  const pending = pendingAction;
+  if (
+    pending?.kind !== "player-selection"
+    || !matchesCharacterSetupOwner(owner)
+  ) {
+    return false;
+  }
+  pendingAction = null;
+  characterSelectionResponse = choice.charCodeAt(0);
+  characterSelectionAutomation = {
+    owner: { ...owner },
+    stage: "initial-response",
+  };
+  setInputRequest(null);
+  pending.resolve(true);
+  return true;
+}
+
+/**
+ * Confirm one intercepted native random selection without re-entering C.
+ * @param selection - possibly edited legal tuple shown by the unified screen.
+ * @param owner - module and session which own the setup screen.
+ */
+export function confirmNativeCharacterSelection(
+  selection: CharacterTuple,
+  owner: CharacterSetupOwnerToken,
+): void {
+  const automation = characterSelectionAutomation;
+  if (
+    pendingAction?.kind !== "menu"
+    || automation?.stage !== "confirmation"
+    || !matchesCharacterSetupOwner(owner)
+    || !matchesOwner(automation.owner, owner)
+  ) {
+    return;
+  }
+  writeCharacterSelection(selection);
+  const yesIndex = findMenuAccelerator(pendingAction.windowId, "y");
+  if (yesIndex === null) {
+    throw new Error("Native character confirmation has no yes choice");
+  }
+  characterSelectionAutomation = null;
+  setInputRequest(null);
+  submitMenuSelection([{ itemIndex: yesIndex, count: 1 }]);
+}
+
+/**
+ * Cancel setup from name entry, manual selection, or native confirmation.
+ * @param owner - module and session which own the setup screen.
+ */
+export function cancelCharacterSetup(owner: CharacterSetupOwnerToken): void {
+  if (!matchesCharacterSetupOwner(owner)) return;
+  const pending = pendingAction;
+  if (pending?.kind === "line" && pending.purpose === "name") {
+    const cancelName = unusedCancellationName();
+    cancelAfterName = true;
+    submitLine(cancelName);
+    return;
+  }
+  if (pending?.kind === "player-selection") {
+    cancelCharacterSelection(owner);
+    return;
+  }
+  const automation = characterSelectionAutomation;
+  if (!automation || !matchesOwner(automation.owner, owner)) return;
+  if (pending?.kind === "menu" && automation.stage === "confirmation") {
+    const quitIndex = findMenuAccelerator(pending.windowId, "q");
+    if (quitIndex === null) {
+      throw new Error("Native character confirmation has no quit choice");
+    }
+    characterSelectionAutomation = null;
+    setInputRequest(null);
+    submitMenuSelection([{ itemIndex: quitIndex, count: 1 }]);
+    return;
+  }
+  if (
+    automation.stage === "initial-response"
+    && characterSelectionResponse !== null
+  ) {
+    characterSelectionResponse = "q".charCodeAt(0);
+    characterSelectionAutomation = null;
+    return;
+  }
+  if (automation.stage === "awaiting-confirmation") {
+    characterSelectionAutomation = {
+      ...automation,
+      stage: "cancel-confirmation",
+    };
+  }
+}
+
+/**
+ * Read a complete legal tuple from the four core-owned flag bindings.
+ * @returns the current tuple, or null before all flags are legal.
+ */
+export function getCurrentCharacterSelection(): CharacterTuple | null {
+  const flags = globalThis.nethackGlobal?.globals?.flags;
+  if (!flags) return null;
+  const selection = {
+    role: flags.initrole,
+    race: flags.initrace,
+    gender: flags.initgend,
+    alignment: flags.initalign,
+  };
+  if (
+    !Number.isInteger(selection.role)
+    || !Number.isInteger(selection.race)
+    || !Number.isInteger(selection.gender)
+    || !Number.isInteger(selection.alignment)
+  ) {
+    return null;
+  }
+  try {
+    const catalog = decodeCharacterCatalog(
+      globalThis.nethackGlobal?.characterCatalog,
+    );
+    return buildLegalCharacterTuples(catalog).some((tuple) =>
+      tuple.role === selection.role
+      && tuple.race === selection.race
+      && tuple.gender === selection.gender
+      && tuple.alignment === selection.alignment)
+      ? selection as CharacterTuple
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -228,7 +389,7 @@ function matchesCharacterSetupOwner(owner: CharacterSetupOwnerToken): boolean {
 
 /** Apply exactly the same cleanup used when a player name is submitted. */
 export function normalizePlayerNameInput(value: string): string {
-  return truncateUtf8(value.trim(), PLAYER_NAME_BUFFER_SIZE - 1);
+  return normalizeCharacterNameInput(value);
 }
 
 /** Resolve the active keyboard-facing callback with one NetHack byte. */
@@ -455,6 +616,8 @@ export function resetInputController(): void {
     saveIdentities: [],
   };
   characterSelectionResponse = null;
+  characterSelectionAutomation = null;
+  cancelAfterName = false;
 }
 
 /** Publish the core snapshot and return one queued, versioned update. */
@@ -569,6 +732,43 @@ export function selectMenu(
     return 0;
   }
 
+  if (
+    (
+      characterSelectionAutomation?.stage === "awaiting-confirmation"
+      || characterSelectionAutomation?.stage === "cancel-confirmation"
+    )
+    && how === 1
+    && isNativeCharacterConfirmation(winid)
+  ) {
+    const cancel = characterSelectionAutomation.stage === "cancel-confirmation";
+    const selection = getCurrentCharacterSelection();
+    if (selection || cancel) {
+      characterSelectionAutomation = {
+        ...characterSelectionAutomation,
+        stage: "confirmation",
+      };
+      return new Promise<number>((resolve) => {
+        setPending({
+          kind: "menu",
+          resolve,
+          windowId: winid,
+          how,
+          menuListPtr,
+          module,
+        });
+        if (cancel) {
+          const quitIndex = findMenuAccelerator(winid, "q");
+          characterSelectionAutomation = null;
+          submitMenuSelection(
+            quitIndex === null ? null : [{ itemIndex: quitIndex, count: 1 }],
+          );
+        } else {
+          setInputRequest({ kind: "player-selection" });
+        }
+      });
+    }
+  }
+  characterSelectionAutomation = null;
   showMenu(winid, how);
   return new Promise<number>((resolve) => {
     setPending({
@@ -630,9 +830,30 @@ export function waitForYn(
   defaultCode: number,
 ): Promise<number> {
   if (characterSelectionResponse !== null) {
-    const response = characterSelectionResponse;
+    if (
+      characterSelectionAutomation?.stage === "initial-response"
+      && choices === null
+    ) {
+      const response = characterSelectionResponse;
+      characterSelectionResponse = null;
+      characterSelectionAutomation = response === "y".charCodeAt(0)
+        ? {
+          ...characterSelectionAutomation,
+          stage: "awaiting-confirmation",
+        }
+        : null;
+      return Promise.resolve(response);
+    }
+    if (
+      characterSelectionAutomation === null
+      && choices === null
+    ) {
+      const response = characterSelectionResponse;
+      characterSelectionResponse = null;
+      return Promise.resolve(response);
+    }
     characterSelectionResponse = null;
-    return Promise.resolve(response);
+    characterSelectionAutomation = null;
   }
   const normalizedQuery = query ?? "";
   if (saveExitAutomation === "confirm") {
@@ -661,6 +882,11 @@ export function waitForYn(
  */
 export function waitForPlayerSelection(): Promise<boolean> | boolean {
   if (characterSetupContext.style === "original") return true;
+  if (cancelAfterName) {
+    cancelAfterName = false;
+    characterSelectionResponse = "q".charCodeAt(0);
+    return true;
+  }
   setInputRequest({ kind: "player-selection" });
   return new Promise<boolean>((resolve) => {
     setPending({ kind: "player-selection", resolve });
@@ -737,6 +963,103 @@ function normalizeYnResponse(
   return choices.includes(lower) ? lower.charCodeAt(0) : null;
 }
 
+/**
+ * Validate and write all four character globals as one logical operation.
+ * @param selection - complete tuple supplied by the setup controller.
+ */
+function writeCharacterSelection(selection: CharacterTuple): void {
+  const values = [
+    selection.role,
+    selection.race,
+    selection.gender,
+    selection.alignment,
+  ];
+  if (values.some((value) => !Number.isInteger(value) || value < 0)) {
+    throw new Error("Character selection must contain four valid indices");
+  }
+  const catalog = decodeCharacterCatalog(
+    globalThis.nethackGlobal?.characterCatalog,
+  );
+  const legal = buildLegalCharacterTuples(catalog).some((tuple) =>
+    tuple.role === selection.role
+    && tuple.race === selection.race
+    && tuple.gender === selection.gender
+    && tuple.alignment === selection.alignment);
+  if (!legal) throw new Error("Character selection is not a legal tuple");
+  const flags = globalThis.nethackGlobal?.globals?.flags;
+  if (!flags) throw new Error("NetHack character flags are unavailable");
+  flags.initrole = selection.role;
+  flags.initrace = selection.race;
+  flags.initgend = selection.gender;
+  flags.initalign = selection.alignment;
+}
+
+/**
+ * Recognize the one native confirmation menu reached after core auto-picking.
+ * @param windowId - active native menu window.
+ * @returns whether its accelerator set is the expected y/n/q confirmation.
+ */
+function isNativeCharacterConfirmation(windowId: number): boolean {
+  const window = getWindow(windowId);
+  if (!window) return false;
+  const accelerators = new Set(
+    window.menuItems
+      .filter((item) => item.identifier !== null)
+      .map((item) => String.fromCharCode(item.accelerator).toLowerCase()),
+  );
+  return accelerators.has("y")
+    && accelerators.has("n")
+    && accelerators.has("q");
+}
+
+/**
+ * Find one selectable row by its native accelerator.
+ * @param windowId - active native menu window.
+ * @param accelerator - expected one-character accelerator.
+ * @returns item index, or null when the menu does not contain it.
+ */
+function findMenuAccelerator(
+  windowId: number,
+  accelerator: string,
+): number | null {
+  const window = getWindow(windowId);
+  const index = window?.menuItems.findIndex(
+    (item) =>
+      item.identifier !== null
+      && String.fromCharCode(item.accelerator).toLowerCase()
+        === accelerator.toLowerCase(),
+  ) ?? -1;
+  return index >= 0 ? index : null;
+}
+
+/**
+ * Produce a non-save player name used only to reach native q cancellation.
+ * @returns normalized name not present in the enumerated ready saves.
+ */
+function unusedCancellationName(): string {
+  const existing = new Set(
+    characterSetupContext.saveIdentities.map((identity) => identity.playerName),
+  );
+  for (let suffix = 0; suffix < 10_000; suffix += 1) {
+    const candidate = normalizePlayerNameInput(`BlissHackCancel${suffix}`);
+    if (!existing.has(candidate)) return candidate;
+  }
+  throw new Error("Unable to allocate character cancellation name");
+}
+
+/**
+ * Compare two setup owner tokens.
+ * @param left - first owner.
+ * @param right - second owner.
+ * @returns whether both identify the same module and session.
+ */
+function matchesOwner(
+  left: CharacterSetupOwnerToken,
+  right: CharacterSetupOwnerToken,
+): boolean {
+  return left.moduleId === right.moduleId && left.sessionId === right.sessionId;
+}
+
 function setPending(action: PendingAction): void {
   if (pendingAction !== null) {
     throw new Error(
@@ -748,17 +1071,4 @@ function setPending(action: PendingAction): void {
     typeaheadEnabled = false;
   }
   pendingAction = action;
-}
-
-function truncateUtf8(value: string, maxBytes: number): string {
-  const encoder = new TextEncoder();
-  let result = "";
-  let used = 0;
-  for (const character of value) {
-    const bytes = encoder.encode(character).length;
-    if (used + bytes > maxBytes) break;
-    result += character;
-    used += bytes;
-  }
-  return result;
 }

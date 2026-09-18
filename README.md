@@ -21,15 +21,16 @@ frontend. These changes are documented in
 
 ## Project Status
 
-**Alpha-2.2 development has started with its settings and information-level
-foundation.**
+**Alpha-2.2 phases zero through four are complete and awaiting interim manual
+acceptance.**
 
 Alpha-2.1 refines keyboard focus and the Below layout on top of the alpha-2.0
 fullscreen desktop HUD. Permanent inventory is mouse-only, while Below places
 the fixed-size map above a split status and permanent-inventory workspace; that
-release has passed manual acceptance. Alpha-2.2 character setup and end-game
-work remain in later phases. The deployment branch and GitHub Pages may lag;
-use the version displayed by the site as the authority.
+release has passed manual acceptance. Alpha-2.2 now includes its unified
+character setup; end-game work remains in phase five and later. The deployment
+branch and GitHub Pages may lag; use the version displayed by the site as the
+authority.
 
 The current milestone provides:
 
@@ -58,8 +59,8 @@ The current milestone provides:
 - Immediate Tiles/ASCII switching in Settings and v1-to-v2 profile migration.
 - Message history, text windows, menus, prompts, extended commands, and
   position input.
-- Character naming followed by the original role, race, gender, and alignment
-  selection flow.
+- A choice of the original sequential character flow or a unified name, role,
+  race, gender, and alignment screen with direct same-name save continuation.
 - Accurate ASCII, Control, Alt/Meta, direction, and numeric keypad input.
 - Browser-local save and restore through Emscripten IDBFS.
 - Unit, WASM, Chromium, Firefox, WebKit, performance, and long-flow tests.

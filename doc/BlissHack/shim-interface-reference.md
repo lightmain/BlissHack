@@ -1749,6 +1749,7 @@ setter 自动保护边界。
 | JS 路径 | C 变量 | 类型 | 用途 |
 |---------|--------|------|------|
 | `globals.svp.plname` | `svp.plname` | string | 玩家名称 |
+| `globals.shim_restore_required` | `shim_restore_required` | boolean | 当前启动只允许恢复已有存档 |
 | `globals.WIN_MAP` | `WIN_MAP` | int | 地图窗口 ID |
 | `globals.WIN_MESSAGE` | `WIN_MESSAGE` | int | 消息窗口 ID |
 | `globals.WIN_INVEN` | `WIN_INVEN` | int | 背包窗口 ID |
@@ -1895,6 +1896,13 @@ int shim_graphics_get_save_fingerprint(uchar *outbuf, int outbufsz);
 原版恢复失败并进入 `shim_player_selection()`，shim 在调用
 `genl_player_setup()` 前执行 `nh_terminate(EXIT_FAILURE)`。前端据此恢复
 预先复制的原始 save bytes，防止静默开始同名新游戏。
+
+BlissHack 统一角色界面允许玩家在 `shim_askname` 正在 Asyncify 等待时输入
+已枚举存档名。该路径不能调用上述 C helper，因此同一个
+`shim_restore_required` 另通过 `js_globals_init()` 暴露为带 setter 的
+`globals.shim_restore_required`。前端只在姓名与启动前完整
+`SaveIdentity` 精确匹配时写入 `true`；这只是等价地设置已有保护标志，不会
+在 pending callback 中重入 C。
 
 `shim_graphics_get_save_fingerprint()` 不读取存档。它调用幂等的
 `runtime_info_init()`，把当前构建的 historical 格式标志、critical sizes

@@ -1021,6 +1021,16 @@ async function run() {
     "time from runtime .nethackrc reached NetHack globals",
   );
   assert(
+    globalThis.nethackGlobal?.globals?.shim_restore_required === false,
+    "restore-only guard is exposed as a typed global",
+  );
+  globalThis.nethackGlobal.globals.shim_restore_required = true;
+  assert(
+    globalThis.nethackGlobal.globals.shim_restore_required === true,
+    "restore-only guard typed global accepts pending-safe writes",
+  );
+  globalThis.nethackGlobal.globals.shim_restore_required = false;
+  assert(
     permanentInventoryUpdates.some((event) => event.kind === "start")
       && permanentInventoryUpdates.some((event) => event.kind === "item")
       && permanentInventoryUpdates.some((event) => event.kind === "commit"),

@@ -35,6 +35,7 @@ import { runtimeSettingsFromProfile } from "../settings/runtime-settings-protoco
 import type { ProfileLoadStatus } from "../settings/profile-store";
 import {
   dismissDisplay,
+  getCharacterSetupContext,
   queueRuntimeSettings,
   requestCoreCommand,
   requestSaveAndExit,
@@ -61,6 +62,7 @@ import {
   type InventoryDragPayload,
 } from "../interactions/inventory-drag-controller";
 import { SettingsScreen } from "./SettingsScreen";
+import { CharacterSetupScreen } from "./CharacterSetupScreen";
 import { GameModalRenderer } from "./game/GameModals";
 import { GameTerminal } from "./game/GameTerminal";
 import { PauseOverlay } from "./game/PauseOverlay";
@@ -123,6 +125,29 @@ export function GameScreen({
   const [pauseView, setPauseView] = useState<"pause" | "settings" | null>(null);
   const previousRuntimeSettings = useRef<string | null>(null);
   const settings = profile.interface;
+  const characterSetupContext = getCharacterSetupContext();
+  const ownsCharacterSetup =
+    characterSetupContext.style === "blisshack"
+    && characterSetupContext.moduleId === moduleId
+    && characterSetupContext.sessionId === sessionId;
+  const setupInput = snapshot.inputRequest?.kind === "player-selection"
+    || (
+      snapshot.inputRequest?.kind === "line"
+      && snapshot.inputRequest.purpose === "name"
+    );
+  const showCharacterSetup = ownsCharacterSetup
+    && snapshot.phase !== "error"
+    && (
+      setupInput
+      || (
+        snapshot.inputRequest === null
+        &&
+        snapshot.mapRevision === 0
+        && Object.keys(snapshot.status).length === 0
+        && !snapshot.commandInput
+        && snapshot.modal === null
+      )
+    );
   const gameProfile = useMemo(
     () => profileWithRuntimeSettings(profile, snapshot.runtimeSettings),
     [profile, snapshot.runtimeSettings],
@@ -603,6 +628,13 @@ export function GameScreen({
         <section className="nh-fatal" role="alert">
           {snapshot.error}
         </section>
+      ) : showCharacterSetup ? (
+        <CharacterSetupScreen
+          inputRequest={snapshot.inputRequest}
+          mapRenderer={settings.mapRenderer}
+          moduleId={moduleId}
+          sessionId={sessionId}
+        />
       ) : (
         <GameTerminal
           clipCenter={snapshot.clipCenter}

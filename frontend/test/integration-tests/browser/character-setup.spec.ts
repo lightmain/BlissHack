@@ -1,0 +1,333 @@
+import type { Page } from "@playwright/test";
+import { expect, test } from "./fixtures";
+import { captureErrors } from "./helpers/browser-errors";
+import {
+  openHome,
+  saveAndReturnHome,
+  startNewGame,
+} from "./helpers/game-flow";
+import {
+  exportDiagnosticLog,
+} from "./helpers/diagnostic-artifact";
+import {
+  exportSave,
+  openSavePicker,
+} from "./helpers/save-flow";
+
+/**
+ * Persist the unified character setup style and return to Home.
+ * @param page - page showing a prepared Home screen.
+ * @param mapRenderer - preview renderer to persist with the setup style.
+ */
+async function enableUnifiedSetup(
+  page: Page,
+  mapRenderer: "tiles" | "ascii" = "tiles",
+): Promise<void> {
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("group", { name: "Character setup style" })
+    .getByRole("radio", { name: "BlissHack" })
+    .check();
+  await page.getByRole("radio", {
+    name: mapRenderer === "tiles" ? "Tiles" : "ASCII",
+  }).check();
+  await page.getByRole("button", { name: "Apply" }).click();
+  await expect(page.getByRole("button", { name: "New Game" })).toBeVisible();
+}
+
+/**
+ * Enter a new name and wait for the core-owned selection boundary.
+ * @param page - page showing Home with unified setup enabled.
+ * @param name - unique player name for the new game.
+ */
+async function enterCharacterName(page: Page, name: string): Promise<void> {
+  await page.getByRole("button", { name: "New Game" }).click();
+  const input = page.getByRole("textbox", { name: "Name" });
+  await expect(input).toBeFocused();
+  await input.fill(name);
+  await input.press("Enter");
+  await expect(page.locator("[data-character-column=\"role\"]")).toBeFocused();
+  await expect(page.getByRole("button", { name: "Auto", exact: true }))
+    .toBeEnabled();
+}
+
+/**
+ * Dismiss the introduction and tutorial to reach the initialized game HUD.
+ * @param page - page waiting at the post-selection introduction.
+ */
+async function finishStartup(page: Page): Promise<void> {
+  await expect(page.locator(".nh-text-dialog")).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("dialog", {
+    name: "Do you want a tutorial?",
+  })).toBeVisible();
+  await page.keyboard.press("n");
+  await expect(
+    page.getByRole("progressbar", { name: /^Hit points:/ }),
+  ).toBeVisible();
+}
+
+/**
+ * Replace one durable IDBFS save without refreshing the mounted Home module.
+ * @param page - page whose origin owns the save database.
+ * @param path - formal Emscripten save path.
+ * @param bytes - replacement bytes to persist.
+ */
+async function overwritePersistentSave(
+  page: Page,
+  path: string,
+  bytes: Uint8Array,
+): Promise<void> {
+  await page.evaluate(async ({ savePath, contents }) => {
+    await new Promise<void>((resolve, reject) => {
+      const request = indexedDB.open("/save", 21);
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        const database = request.result;
+        const transaction = database.transaction("FILE_DATA", "readwrite");
+        const store = transaction.objectStore("FILE_DATA");
+        const getRequest = store.get(savePath);
+        getRequest.onerror = () => reject(getRequest.error);
+        getRequest.onsuccess = () => {
+          const source = getRequest.result as {
+            mode: number;
+            timestamp: Date;
+          };
+          store.put({
+            mode: source.mode,
+            timestamp: new Date(),
+            contents: new Uint8Array(contents),
+          }, savePath);
+        };
+        transaction.oncomplete = () => {
+          database.close();
+          resolve();
+        };
+        transaction.onerror = () => reject(transaction.error);
+      };
+    });
+  }, { savePath: path, contents: [...bytes] });
+}
+
+test("uses the unified keyboard character setup flow", async ({ page }) => {
+  const errors = captureErrors(page);
+  const name = "E2EUnifiedKeys";
+  await openHome(page, "unified-character-keyboard");
+  await enableUnifiedSetup(page);
+
+  await page.getByRole("button", { name: "New Game" }).click();
+  const input = page.getByRole("textbox", { name: "Name" });
+  await expect(input).toBeFocused();
+  await input.press("Enter");
+  await expect(input).toBeFocused();
+  await expect(page.getByRole("button", { name: "Confirm" })).toBeDisabled();
+
+  await input.fill(`  ${name}  `);
+  await input.press("Enter");
+  await expect(page.locator("[data-character-column=\"role\"]")).toBeFocused();
+  await page.keyboard.press("a");
+  await expect(page.locator("[data-character-column=\"race\"]")).toBeFocused();
+  await page.keyboard.press("h");
+  await expect(page.locator("[data-character-column=\"gender\"]")).toBeFocused();
+  await page.keyboard.press("m");
+  await expect(
+    page.locator("[data-character-column=\"alignment\"]"),
+  ).toBeFocused();
+  await page.keyboard.press("l");
+  await expect(page.getByRole("button", { name: "Confirm" })).toBeFocused();
+  await page.keyboard.press("Enter");
+
+  await finishStartup(page);
+  await expect(
+    page.getByRole("region", { name: "Character status" })
+      .locator(".nh-status-value")
+      .filter({ hasText: new RegExp(`^${name} the `) }),
+  ).toBeVisible();
+  expect(errors).toEqual({ console: [], page: [] });
+});
+
+test("preserves case-sensitive core role accelerators", async ({ page }) => {
+  const errors = captureErrors(page);
+  await openHome(page, "unified-character-case-accelerator");
+  await enableUnifiedSetup(page);
+  await enterCharacterName(page, "E2EUnifiedCase");
+
+  await expect(page.getByRole("button", {
+    name: "r Rogue",
+    exact: true,
+  })).toHaveAttribute("aria-pressed", "false");
+  await page.keyboard.press("Shift+KeyR");
+  await expect(page.getByRole("button", {
+    name: "R Ranger",
+    exact: true,
+  })).toHaveAttribute("aria-pressed", "true");
+  const preview = page.locator(".character-preview-tile");
+  await expect(preview).toBeVisible();
+  expect(await preview.evaluate((element) => {
+    if (!(element instanceof HTMLCanvasElement)) return 0;
+    return element.getContext("2d")
+      ?.getImageData(0, 0, element.width, element.height)
+      .data.some((value, index) => index % 4 === 3 && value > 0)
+      ? 1
+      : 0;
+  })).toBe(1);
+  expect(errors).toEqual({ console: [], page: [] });
+});
+
+test("uses core Auto and returns to unified confirmation", async ({ page }) => {
+  const errors = captureErrors(page);
+  await openHome(page, "unified-character-auto");
+  await enableUnifiedSetup(page);
+  await enterCharacterName(page, "E2EUnifiedAuto");
+
+  await page.getByRole("button", { name: "Auto", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Confirm" })).toBeEnabled();
+  await expect(page.getByRole("button", { pressed: true })).toHaveCount(4);
+  await expect(page.getByRole("button", { name: "Auto", exact: true }))
+    .toBeDisabled();
+  await expect(page.getByRole("button", { name: "Auto & Start" }))
+    .toBeDisabled();
+  await expect(page.getByRole("dialog", {
+    name: "Is this ok? [ynq]",
+  })).toHaveCount(0);
+  await page.getByRole("button", { name: "Confirm" }).click();
+
+  await finishStartup(page);
+  expect(errors).toEqual({ console: [], page: [] });
+});
+
+test("uses core Auto and Start without stopping for confirmation", async ({
+  page,
+}) => {
+  const errors = captureErrors(page);
+  await openHome(page, "unified-character-auto-start");
+  await enableUnifiedSetup(page);
+  await enterCharacterName(page, "E2EUnifiedStart");
+
+  await page.getByRole("button", { name: "Auto & Start" }).click();
+
+  await finishStartup(page);
+  await expect(page.getByRole("button", { name: "Confirm" })).toHaveCount(0);
+  expect(errors).toEqual({ console: [], page: [] });
+});
+
+test("cancels unified setup from name", async ({ page }) => {
+  const errors = captureErrors(page);
+  await openHome(page, "unified-character-name-cancel");
+  await enableUnifiedSetup(page);
+
+  await page.getByRole("button", { name: "New Game" }).click();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("button", { name: "New Game" })).toBeVisible();
+  await expect(page.locator(".nh-shell")).toHaveCount(0);
+  expect(errors).toEqual({ console: [], page: [] });
+});
+
+test("cancels unified setup from character selection", async ({ page }) => {
+  const errors = captureErrors(page);
+  await openHome(page, "unified-character-selection-cancel");
+  await enableUnifiedSetup(page);
+  await enterCharacterName(page, "E2EUnifiedCancel");
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("button", { name: "New Game" })).toBeVisible();
+  await expect(page.locator(".nh-shell")).toHaveCount(0);
+  expect(errors).toEqual({ console: [], page: [] });
+});
+
+test("locks an existing save identity and restores it by name", async ({
+  page,
+}) => {
+  const errors = captureErrors(page);
+  const name = "E2EUnifiedSave";
+  await openHome(page, "unified-character-save");
+  await enableUnifiedSetup(page);
+  await enterCharacterName(page, name);
+  await page.keyboard.press("a");
+  await page.keyboard.press("h");
+  await page.keyboard.press("m");
+  await page.keyboard.press("l");
+  await page.keyboard.press("Enter");
+  await finishStartup(page);
+  await saveAndReturnHome(page);
+
+  await page.getByRole("button", { name: "New Game" }).click();
+  const input = page.getByRole("textbox", { name: "Name" });
+  await input.fill(`${name}-Archeologist`);
+  await expect(page.getByText(
+    "Existing save found. This character will continue.",
+    { exact: true },
+  )).toBeVisible();
+  await expect(input).toBeFocused();
+  await expect(page.getByRole("button", { pressed: true })).toHaveCount(4);
+  await expect(page.getByRole("button", { name: "Auto", exact: true }))
+    .toBeDisabled();
+  await expect(page.getByRole("button", { name: "Auto & Start" }))
+    .toBeDisabled();
+  await expect(page.getByRole("button", { name: "Confirm" })).toBeEnabled();
+  await input.press("Enter");
+
+  await expect(
+    page.getByRole("region", { name: "Character status" })
+      .locator(".nh-status-value")
+      .filter({ hasText: new RegExp(`^${name} the `) }),
+  ).toBeVisible({ timeout: 15_000 });
+  expect(errors).toEqual({ console: [], page: [] });
+});
+
+test("does not create a new game when same-name restore fails", async ({
+  page,
+}) => {
+  const name = "E2EUnifiedGuard";
+  await startNewGame(page, name);
+  await saveAndReturnHome(page);
+  await enableUnifiedSetup(page);
+  await openSavePicker(page);
+  const rawBytes = await exportSave(page, name);
+  await page.keyboard.press("Escape");
+  const identityOffset = rawBytes.indexOf(new TextEncoder().encode(name));
+  expect(identityOffset).toBeGreaterThan(0);
+  const truncated = rawBytes.subarray(0, identityOffset + 49);
+  await overwritePersistentSave(page, `/save/0${name}`, truncated);
+
+  await page.reload();
+  const damagedPicker = await openSavePicker(page);
+  await expect(damagedPicker.getByRole("button", {
+    name: new RegExp(`^${name}\\b`),
+  })).toBeEnabled();
+  await page.keyboard.press("Escape");
+
+  await page.getByRole("button", { name: "New Game" }).click();
+  const input = page.getByRole("textbox", { name: "Name" });
+  await input.fill(name);
+  await expect(page.getByText(
+    "Existing save found. This character will continue.",
+    { exact: true },
+  )).toBeVisible();
+  await input.press("Enter");
+
+  await expect(page.getByText("Read 0 instead of 4 bytes.")).toBeVisible();
+  await expect(page.getByText("--More--", { exact: true })).toBeVisible();
+  await page.keyboard.press("Space");
+  await expect(page.getByRole("button", { name: "New Game" })).toBeVisible();
+  await expect(page.getByRole("img", { name: "Dungeon map" })).toHaveCount(0);
+  const { diagnostic } = await exportDiagnosticLog(page);
+  expect(diagnostic.events).toContainEqual(expect.objectContaining({
+    level: "info",
+    event: "session.cleaned",
+  }));
+});
+
+test("shows a stable ASCII preview without uninitialized status", async ({
+  page,
+}) => {
+  const errors = captureErrors(page);
+  await openHome(page, "unified-character-ascii");
+  await enableUnifiedSetup(page, "ascii");
+  await page.getByRole("button", { name: "New Game" }).click();
+
+  const setup = page.getByRole("region", { name: "Character setup" });
+  await expect(setup.locator("[data-preview-renderer=\"ascii\"]")).toHaveText(
+    "@",
+  );
+  await expect(setup.getByText(/\bHP\b|\bEnergy\b|\bStrength\b/)).toHaveCount(0);
+  expect(errors).toEqual({ console: [], page: [] });
+});

@@ -2,13 +2,14 @@
 /* Copyright (c) Adam Powers, 2020                                */
 /* NetHack may be freely redistributed.  See license for details. */
 /* Modified for BlissHack by lightmain, 2026-09-02, 2026-09-06, 2026-09-07,
- * 2026-09-14, and 2026-09-15:
+ * 2026-09-14, 2026-09-15, and 2026-09-18:
  * preserve character selection quit semantics, expose narrow browser save
  * helpers, and synchronize a fixed set of in-game options at command
  * boundaries, including the permanent inventory capability and settings;
  * forward status field metadata while preserving generic bookkeeping, and
  * provide authoritative resource percentages to the graphical status HUD;
- * consume allowlisted browser commands at the main command boundary. */
+ * consume allowlisted browser commands at the main command boundary; expose
+ * the restore-only guard as a typed WASM global for pending askname flows. */
 
 /* not an actual windowing port, but a fake win port for libnethack */
 
@@ -42,7 +43,7 @@
  ************/
 EMSCRIPTEN_KEEPALIVE
 static char *shim_callback_name = NULL;
-static boolean shim_restore_required = FALSE;
+boolean shim_restore_required = FALSE;
 struct shim_critical_size_with_name {
     uchar ucsize;
     const char *name;
