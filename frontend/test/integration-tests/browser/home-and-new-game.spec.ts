@@ -64,6 +64,73 @@ test("q quits character selection and returns home", async ({ page }) => {
   expect(errors).toEqual({ console: [], page: [] });
 });
 
+test("keeps the original manual character selection sequence", async ({
+  page,
+}) => {
+  const errors = captureErrors(page);
+  const name = "E2EManual";
+  await openHome(page, "manual-character-selection");
+  await page.getByRole("button", { name: "New Game" }).click();
+
+  const nameInput = page.getByRole("textbox", { name: "Who are you?" });
+  await expect(nameInput).toBeVisible();
+  await nameInput.fill(name);
+  await nameInput.press("Enter");
+
+  await expect(page.getByText(/Shall I pick character's/)).toBeVisible();
+  await page.keyboard.press("n");
+
+  const role = page.getByRole("dialog", {
+    name: "Pick a role or profession",
+  });
+  await expect(role).toBeVisible();
+  await expect(role).toContainText("an Archeologist");
+  await page.keyboard.press("a");
+
+  const race = page.getByRole("dialog", {
+    name: "Pick a race or species",
+  });
+  await expect(race).toBeVisible();
+  await expect(race).toContainText("human");
+  await page.keyboard.press("h");
+
+  const gender = page.getByRole("dialog", {
+    name: "Pick a gender or sex",
+  });
+  await expect(gender).toBeVisible();
+  await expect(gender).toContainText("male");
+  await page.keyboard.press("m");
+
+  const alignment = page.getByRole("dialog", {
+    name: "Pick an alignment or creed",
+  });
+  await expect(alignment).toBeVisible();
+  await expect(alignment).toContainText("lawful");
+  await page.keyboard.press("l");
+
+  const confirmation = page.getByRole("dialog", {
+    name: "Is this ok? [ynq]",
+  });
+  await expect(confirmation).toBeVisible();
+  await expect(confirmation).toContainText(
+    `${name} the lawful male human Archeologist`,
+  );
+  await page.keyboard.press("y");
+
+  await expect(page.locator(".nh-text-dialog")).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("dialog", {
+    name: "Do you want a tutorial?",
+  })).toBeVisible();
+  await page.keyboard.press("n");
+  await expect(
+    page.getByRole("region", { name: "Character status" })
+      .locator(".nh-status-value")
+      .filter({ hasText: `${name} the Digger` }),
+  ).toBeVisible();
+  expect(errors).toEqual({ console: [], page: [] });
+});
+
 test("plays through startup and routes terminal UI input", async ({ page }) => {
   const errors = captureErrors(page);
   await startNewGame(page, "E2E_Ada");
