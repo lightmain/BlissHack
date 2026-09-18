@@ -166,11 +166,14 @@ test("keeps permanent inventory mouse-only while core inventory accepts accelera
   await page.keyboard.press("i");
   const coreInventory = page.locator(".nh-dialog.nh-menu");
   await expect(coreInventory).toBeVisible();
-  const accelerator = (
-    await coreInventory.locator(".nh-menu-accelerator").first().textContent()
-  )?.trim();
-  expect(accelerator).toMatch(/^[a-zA-Z]$/);
-  await page.keyboard.press(accelerator!);
+  const accelerators = await coreInventory
+    .locator(".nh-menu-accelerator")
+    .allTextContents();
+  const accelerator = accelerators
+    .map((value) => value.trim())
+    .find((value) => /^[a-zA-Z]$/.test(value));
+  expect(accelerator).toBeDefined();
+  await page.keyboard.press(accelerator as string);
   await expect(coreInventory).toContainText(/Do what with/);
   await page.keyboard.press("Escape");
   await expect(coreInventory).toHaveCount(0);
