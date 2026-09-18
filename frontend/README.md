@@ -24,6 +24,8 @@ React and TypeScript frontend for the NetHack WebAssembly build.
 - `src/settings/profile.ts` owns the explicit strict v1-to-v2-to-v3 migration
   chain; `interface` contains map, information, endgame, and character-setup
   presentation preferences.
+- `interface.informationLevel` controls only explanatory status inspection;
+  map and inventory inspection remain available in both modes.
 - `src/screens/game/` contains the fullscreen HUD layout, fixed message and
   status regions, and the future action-bar slot. `src/screens/settings/`
   contains the profile and in-game Settings presentation.

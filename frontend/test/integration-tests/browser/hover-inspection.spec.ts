@@ -18,7 +18,9 @@ const COLNO = 80;
 const ROWNO = 21;
 
 interface NewGameSettings {
+  informationLevel?: "original" | "detailed";
   permanentInventory?: boolean;
+  showExperience?: boolean;
   showTime?: boolean;
 }
 
@@ -62,11 +64,19 @@ async function startConfiguredGame(
 ): Promise<void> {
   await openHome(page, marker);
   await page.getByRole("button", { name: "Settings" }).click();
+  if (settings.informationLevel === "detailed") {
+    await page.getByRole("group", { name: "Information level" })
+      .getByRole("radio", { name: "Detailed" })
+      .check();
+  }
   if (settings.permanentInventory) {
     await page.getByRole("checkbox", {
       name: "Enable Permanent Inventory",
       exact: true,
     }).check();
+  }
+  if (settings.showExperience) {
+    await page.getByRole("checkbox", { name: "Show experience" }).check();
   }
   if (settings.showTime) {
     await page.getByRole("checkbox", { name: "Show turn count" }).check();
@@ -199,7 +209,9 @@ test("delays status inspection and keeps pointer and focus tooltips in the share
 }) => {
   const errors = captureErrors(page);
   await page.setViewportSize({ width: 900, height: 700 });
-  await startNewGame(page, "StatusHover");
+  await startConfiguredGame(page, "StatusHover", {
+    informationLevel: "detailed",
+  });
   const shell = await expectCommandReady(page);
   const tooltip = inspectTooltip(page);
   const statusTargets = page.locator(".nh-status [data-inspect-target]");
@@ -231,6 +243,64 @@ test("delays status inspection and keeps pointer and focus tooltips in the share
   expect(await readShellRevision(page)).toBe(revisionBeforeInspect);
   await expect(shell).toHaveAttribute("data-command-input", "ready");
   expect(errors).toEqual({ console: [], page: [] });
+});
+
+test("applies status information level immediately without changing other inspection or XP", async ({
+  page,
+}) => {
+  const errors = captureErrors(page);
+  await startConfiguredGame(page, "StatusInformationLevel", {
+    permanentInventory: true,
+    showExperience: true,
+  });
+  const shell = await expectCommandReady(page);
+  const tooltip = inspectTooltip(page);
+  const status = page.getByRole("region", { name: "Character status" });
+  const experiencePoints = status.locator(".nh-status-value")
+    .filter({ hasText: /^\/\d+$/ });
+  const hitPoints = page.getByRole("progressbar", { name: /^Hit points:/ });
+
+  await expect(experiencePoints).toBeVisible();
+  await hitPoints.hover();
+  await waitPastHoverDelay(page);
+  expect.soft(await tooltip.count()).toBe(0);
+  expect.soft(await status.locator("[data-inspect-target]").count()).toBe(0);
+
+  const inventoryItem = page.getByRole("region", { name: "Inventory" })
+    .locator(
+      ".permanent-inventory-item:not(.permanent-inventory-heading)",
+    )
+    .first();
+  await inventoryItem.hover();
+  await expect(tooltip).toBeVisible();
+  await expect(tooltip).toHaveAttribute("id", "inspect-inventory-tooltip");
+  await page.mouse.move(1, 1);
+  await expect(tooltip).toHaveCount(0);
+
+  const revisionBeforeSwitch = await readShellRevision(page);
+  await page.keyboard.press("Escape");
+  const pause = page.getByRole("dialog", { name: "Game paused" });
+  await expect(pause).toBeVisible();
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("group", { name: "Information level" })
+    .getByRole("radio", { name: "Detailed" })
+    .check();
+  await page.getByRole("button", { name: "Apply" }).click();
+  await expect(pause).toBeVisible();
+  expect.soft(await readShellRevision(page)).toBe(revisionBeforeSwitch);
+  await page.getByRole("button", { name: "Resume" }).click();
+
+  const detailedHitPoints = page.locator(
+    "[data-inspect-target='status:hitpoints']",
+  );
+  await detailedHitPoints.hover();
+  await expect(tooltip).toBeVisible();
+  await expect(tooltip).toHaveAttribute("id", "inspect-status-tooltip");
+  await expect(tooltip.locator("strong")).toHaveText(/\S/);
+  await expect(experiencePoints).toBeVisible();
+  expect.soft(await readShellRevision(page)).toBe(revisionBeforeSwitch);
+  await expect(shell).toHaveAttribute("data-command-input", "ready");
+  expect.soft(errors).toEqual({ console: [], page: [] });
 });
 
 test("shows the core permanent-inventory item text without sending game input", async ({
@@ -276,7 +346,10 @@ test("inspects the player cell without changing visible messages or turn count",
   page,
 }) => {
   const errors = captureErrors(page);
-  await startConfiguredGame(page, "PlayerClicklook", { showTime: true });
+  await startConfiguredGame(page, "PlayerClicklook", {
+    informationLevel: "detailed",
+    showTime: true,
+  });
   const shell = await expectCommandReady(page);
   const messages = page.locator(".nh-messages");
   const turn = page.locator(
@@ -327,7 +400,9 @@ test("clears inspection tooltips on leave, game key input, and pause", async ({
   page,
 }) => {
   const errors = captureErrors(page);
-  await startNewGame(page, "HoverCleanup");
+  await startConfiguredGame(page, "HoverCleanup", {
+    informationLevel: "detailed",
+  });
   const shell = await expectCommandReady(page);
   const statusTarget = page.locator(
     "[data-inspect-target='status:hitpoints']",

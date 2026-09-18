@@ -10,9 +10,9 @@
 1. 完整阅读仓库根目录的 `AGENTS.md` 和 `AGENTS-cn.md`。
 2. 阅读 `README-cn.md`，确认当前产品定位、运行方式、测试入口和许可证说明。
 3. `BlissHack` 已包含完成人工验收的 alpha-1.1 Tileset、地图交互和定向基建；
-   alpha-2.1 的焦点与 Below HUD 调整已完成人工验收；alpha-2.2 已开始开发，
-   当前实施信息量与设置基础，尚未合入、push 或部署。GitHub Pages 可能落后，
-   应以页面版本为准。维护当前架构时阅读
+   alpha-2.1 的焦点与 Below HUD 调整已完成人工验收；alpha-2.2 阶段零至二
+   已完成并等待阶段性人工验收，角色选择和终局流程阶段尚未开始，当前分支尚未
+   合入、push 或部署。GitHub Pages 可能落后，应以页面版本为准。维护当前架构时阅读
    `doc/BlissHack/plans/prealpha-4.md`；进行 tileset、Canvas 地图、
    `TILES_IN_GLYPHMAP` 或 profile v2 工作时完整阅读
    `doc/BlissHack/plans/alpha-1.md`、`doc/BlissHack/plans/alpha-1.1.md` 及
@@ -53,8 +53,11 @@
   原生 drop 流程决定。
 - `frontend/src/screens/game/GameHudLayout.tsx` 拥有 viewport HUD Grid；
   消息、地图、状态和永久背包分别拥有自己的区域和 overflow。
-- 当前个人配置是严格 profile schema v2，持久 key 为
-  `blisshack.profile.v2`；仅在没有 v2 时读取 v1，并迁移为 ASCII 显示。
+- 当前个人配置是严格 profile schema v3，持久 key 为
+  `blisshack.profile.v3`；仅在没有 v3 时依次读取 v2、v1，v1 迁移后保持
+  ASCII 显示，两个旧版本的新展示设置均迁移为 `original`。
+- `interface.informationLevel` 只控制状态栏的解释性 Tooltip；地图、背包和
+  `nethack.showExperience` 不受其影响。
 - `frontend/src/session/session-manager.ts` 是稳定 façade；
   `session-lifecycle.ts` 管理唯一活动 WASM session、module、callback 和清理，
   `home-operations.ts` 管理 Home 数据操作，两者共享一个显式 context。

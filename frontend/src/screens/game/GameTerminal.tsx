@@ -40,6 +40,7 @@ interface GameTerminalProps {
   cursor: GameSnapshot["cursor"];
   followPlayer: boolean;
   historyLines: InterfaceSettings["messageHistoryLines"];
+  informationLevel: InterfaceSettings["informationLevel"];
   inert: boolean;
   inputRequest: GameSnapshot["inputRequest"];
   inventoryDragController: InventoryDragController;
@@ -74,6 +75,7 @@ export function GameTerminal({
   cursor,
   followPlayer,
   historyLines,
+  informationLevel,
   inert,
   inputRequest,
   inventoryDragController,
@@ -161,6 +163,7 @@ export function GameTerminal({
             data-overflow-owner="status"
           >
             <StatusArea
+              informationLevel={informationLevel}
               metrics={statusMetrics}
               onInspect={onInspect}
               onInspectLeave={onInspectLeave}

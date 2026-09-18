@@ -31,6 +31,7 @@ import {
   validateProfile,
   type BlissHackProfile,
 } from "../settings/profile";
+import { runtimeSettingsFromProfile } from "../settings/runtime-settings-protocol";
 import type { ProfileLoadStatus } from "../settings/profile-store";
 import {
   dismissDisplay,
@@ -385,8 +386,13 @@ export function GameScreen({
     candidate: BlissHackProfile,
   ): Promise<BlissHackProfile> {
     const saved = await onApplyProfile(candidate);
-    queueRuntimeSettings(saved.nethack);
-    sendKey(27);
+    if (
+      JSON.stringify(runtimeSettingsFromProfile(saved.nethack))
+      !== JSON.stringify(runtimeSettingsFromProfile(gameProfile.nethack))
+    ) {
+      queueRuntimeSettings(saved.nethack);
+      sendKey(27);
+    }
     return saved;
   }
 
@@ -604,6 +610,7 @@ export function GameScreen({
           cursor={snapshot.cursor}
           followPlayer={settings.followPlayer}
           historyLines={settings.messageHistoryLines}
+          informationLevel={settings.informationLevel}
           inert={snapshot.modal !== null || pauseView !== null}
           inputRequest={snapshot.inputRequest}
           inventoryDragController={inventoryDragController}
