@@ -4,7 +4,9 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
+  type FocusEvent as ReactFocusEvent,
   type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
   type SyntheticEvent,
 } from "react";
 import { Play, Shuffle, X } from "lucide-react";
@@ -105,6 +107,8 @@ export function CharacterSetupScreen({
   const genderRef = useRef<HTMLElement>(null);
   const alignmentRef = useRef<HTMLElement>(null);
   const confirmRef = useRef<HTMLButtonElement>(null);
+  const skipNextNameBlurRef = useRef(false);
+  const suppressNextColumnFocusRef = useRef(false);
   const isNameRequest = inputRequest?.kind === "line"
     && inputRequest.purpose === "name";
   const isSelectionRequest = inputRequest?.kind === "player-selection";
@@ -127,6 +131,10 @@ export function CharacterSetupScreen({
   }, [controller, isSelectionRequest, owner]);
 
   useEffect(() => {
+    if (suppressNextColumnFocusRef.current) {
+      suppressNextColumnFocusRef.current = false;
+      return;
+    }
     if (state.focus === "name") {
       nameInputRef.current?.focus({ preventScroll: true });
     } else if (state.focus === "confirm") {
@@ -154,10 +162,55 @@ export function CharacterSetupScreen({
   }
 
   /**
+   * Treat leaving a non-empty name editor as Enter unless Cancel owns the click.
+   * @param event - focus transition leaving the name editor.
+   */
+  function handleNameBlur(event: ReactFocusEvent<HTMLInputElement>): void {
+    const explicitCancel = skipNextNameBlurRef.current
+      || (
+        event.relatedTarget instanceof Element
+        && event.relatedTarget.closest("[data-character-cancel]") !== null
+      );
+    skipNextNameBlurRef.current = false;
+    if (explicitCancel) return;
+    if (isNameRequest) controller.pressEnter(owner);
+  }
+
+  /**
+   * Select an option while preserving the activation method's focus behavior.
+   * @param event - click synthesized by a pointer or keyboard activation.
+   * @param aspect - option column being activated.
+   * @param index - authoritative catalog index being selected.
+   */
+  function handleOptionActivation(
+    event: ReactMouseEvent<HTMLButtonElement>,
+    aspect: CharacterAspect,
+    index: number,
+  ): void {
+    suppressNextColumnFocusRef.current = event.detail > 0;
+    if (!controller.selectOption(aspect, index, owner)) {
+      suppressNextColumnFocusRef.current = false;
+    }
+  }
+
+  /** Let an explicit pointer Cancel take precedence over the input blur. */
+  function handleCancelPointerDown(): void {
+    skipNextNameBlurRef.current =
+      document.activeElement === nameInputRef.current;
+  }
+
+  /** Clear transient blur ownership and cancel the active setup flow. */
+  function handleCancel(): void {
+    skipNextNameBlurRef.current = false;
+    controller.cancel(owner);
+  }
+
+  /**
    * Own setup accelerators and Escape before the game keyboard layer sees them.
    * @param event - keyboard event within the setup surface.
    */
   function handleKeyDown(event: ReactKeyboardEvent<HTMLElement>): void {
+    suppressNextColumnFocusRef.current = false;
     if (event.key === "Escape") {
       event.preventDefault();
       event.stopPropagation();
@@ -213,6 +266,7 @@ export function CharacterSetupScreen({
               autoFocus
               disabled={state.phase !== "entering-name"}
               id="character-name"
+              onBlur={handleNameBlur}
               onChange={(event) => controller.setName(event.target.value, owner)}
               ref={nameInputRef}
               spellCheck={false}
@@ -253,8 +307,8 @@ export function CharacterSetupScreen({
                     data-character-option={`${aspect}:${option.index}`}
                     disabled={!candidate?.enabled}
                     key={option.index}
-                    onClick={() =>
-                      controller.selectOption(aspect, option.index, owner)}
+                    onClick={(event) =>
+                      handleOptionActivation(event, aspect, option.index)}
                     type="button"
                   >
                     <kbd>{option.accelerator}</kbd>
@@ -305,7 +359,9 @@ export function CharacterSetupScreen({
           <button
             aria-label="Cancel character setup"
             className="character-cancel"
-            onClick={() => controller.cancel(owner)}
+            data-character-cancel
+            onClick={handleCancel}
+            onPointerDown={handleCancelPointerDown}
             title="Cancel"
             type="button"
           >

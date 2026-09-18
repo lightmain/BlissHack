@@ -268,7 +268,7 @@ test("activates a focused Role button with Space and advances focus", async ({
   const gender = setup.locator("[data-character-column=\"gender\"]");
   const firstRole = role.locator(".character-option:not(:disabled)").first();
 
-  await page.keyboard.press("Tab");
+  await firstRole.focus();
   await expect(firstRole).toBeFocused();
   await page.keyboard.press("Space");
 

@@ -3,6 +3,9 @@ import { defineConfig, devices } from "@playwright/test";
 const deploymentBasePath = "/BlissHack/";
 const previewOrigin = "http://127.0.0.1:4176";
 const basicFlowNames = [
+  "submits a non-empty character name on blur",
+  "activates a focused Role button with Space and advances focus",
+  "cancels an existing-save name without restoring it",
   "uses the unified keyboard character setup flow",
   "renders default Tiles pixels and switches renderers without restarting",
   "plays through startup and routes terminal UI input",
