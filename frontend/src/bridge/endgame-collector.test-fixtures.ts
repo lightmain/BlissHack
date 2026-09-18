@@ -107,6 +107,7 @@ export interface EndgameCollector {
   handle(event: EndgameCollectorEvent): EndgameCollectorDecision;
   getState(): Readonly<EndgameCollectorState>;
   complete(): EndgameSummary | null;
+  setStyle(style: EndgameStyle): void;
   reset(reason: EndgameCollectorResetReason): void;
 }
 

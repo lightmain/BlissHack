@@ -10,6 +10,7 @@ import {
   NHW_MAP,
   NHW_MENU,
   NHW_MESSAGE,
+  NHW_STATUS,
   NHW_TEXT,
   PICK_ANY,
   PICK_NONE,
@@ -19,6 +20,7 @@ import {
 } from "./game-state";
 import {
   dismissDisplay,
+  completeEndgameCollection,
   isWaitingForInput,
   normalizePlayerNameInput,
   preparePlayerNamePrompt,
@@ -29,6 +31,7 @@ import {
   sendKey,
   sendPosition,
   setActionIntentActive,
+  setEndgameCollectorContext,
   setKnownSaveNames,
   setRestoreRequired,
   setStartupIdentity,
@@ -241,6 +244,7 @@ beforeEach(() => {
     globals: {
       flags: {},
       iflags: { wc2_hitpointbar: false, window_inited: false },
+      program_state: { gameover: false },
       svp: { plname: "" },
     },
     pointers: {},
@@ -337,6 +341,166 @@ describe("window lifecycle and text", () => {
 
     await shimCallback("shim_destroy_nhwindow", first);
     expect(getWindow(first)).toBeUndefined();
+  });
+});
+
+describe("endgame collection bridge", () => {
+  it("auto-confirms verified disclosure callbacks and preserves copied output", async () => {
+    setEndgameCollectorContext({
+      owner: { moduleId: "module-1", sessionId: "session-1" },
+      style: "blisshack",
+      isGameOver: () =>
+        globalThis.nethackGlobal?.globals?.program_state?.gameover === true,
+    });
+    const message = await shimCallback(
+      "shim_create_nhwindow",
+      NHW_MESSAGE,
+    ) as number;
+    const status = await shimCallback(
+      "shim_create_nhwindow",
+      NHW_STATUS,
+    ) as number;
+    const map = await shimCallback("shim_create_nhwindow", NHW_MAP) as number;
+    if (globalThis.nethackGlobal?.globals?.program_state) {
+      globalThis.nethackGlobal.globals.program_state = { gameover: true };
+    }
+
+    await expect(shimCallback(
+      "shim_yn_function",
+      "Do you want to see your attributes?",
+      "ynq",
+      "n".charCodeAt(0),
+    )).resolves.toBe("y".charCodeAt(0));
+    const attributes = await shimCallback(
+      "shim_create_nhwindow",
+      NHW_TEXT,
+    ) as number;
+    await shimCallback(
+      "shim_putstr",
+      attributes,
+      1,
+      "Final Attributes:",
+    );
+    await expect(shimCallback(
+      "shim_display_nhwindow",
+      attributes,
+      true,
+    )).resolves.toBeUndefined();
+    expect(isWaitingForInput()).toBe(false);
+    expect(getSnapshot().modal).toBeNull();
+
+    const inventory = await shimCallback(
+      "shim_create_nhwindow",
+      NHW_MENU,
+    ) as number;
+    await shimCallback("shim_end_menu", inventory, "Inventory");
+    harness.writeI32(0x700, 1234);
+    await expect(shimCallback(
+      "shim_select_menu",
+      inventory,
+      PICK_NONE,
+      0x700,
+    )).resolves.toBe(0);
+    expect(harness.readI32(0x700)).toBe(0);
+
+    await shimCallback("shim_destroy_nhwindow", map);
+    await shimCallback("shim_destroy_nhwindow", status);
+    await shimCallback("shim_destroy_nhwindow", message);
+    const summaryWindow = await shimCallback(
+      "shim_create_nhwindow",
+      NHW_TEXT,
+    ) as number;
+    await shimCallback(
+      "shim_putstr",
+      summaryWindow,
+      0,
+      "You died with 42 points.",
+    );
+    await shimCallback("shim_display_nhwindow", summaryWindow, true);
+    await shimCallback("shim_destroy_nhwindow", summaryWindow);
+    await shimCallback("shim_raw_print_bold", " No  Points     Name");
+
+    expect(completeEndgameCollection()).toMatchObject({
+      owner: { moduleId: "module-1", sessionId: "session-1" },
+      sections: [
+        {
+          kind: "summary",
+          blocks: [{
+            kind: "text",
+            lines: [{ text: "You died with 42 points.", attribute: 0 }],
+          }],
+        },
+        {
+          kind: "disclosure",
+          title: "Do you want to see your attributes?",
+          blocks: [{
+            kind: "text",
+            lines: [{ text: "Final Attributes:", attribute: 1 }],
+          }, {
+            kind: "menu",
+            prompt: "Inventory",
+            items: [],
+          }],
+        },
+        {
+          kind: "ranking",
+          blocks: [{
+            kind: "text",
+            lines: [{ text: " No  Points     Name", attribute: 1 }],
+          }],
+        },
+      ],
+    });
+  });
+
+  it("leaves ordinary yn prompts pending when game-over is not verified", async () => {
+    setEndgameCollectorContext({
+      owner: { moduleId: "module-1", sessionId: "session-1" },
+      style: "blisshack",
+      isGameOver: () => false,
+    });
+
+    const prompt = shimCallback(
+      "shim_yn_function",
+      "Do you want to see your attributes?",
+      "ynq",
+      "n".charCodeAt(0),
+    );
+
+    await expectPending(prompt);
+    sendKey("n".charCodeAt(0));
+    await expect(prompt).resolves.toBe("n".charCodeAt(0));
+    expect(completeEndgameCollection()).toBeNull();
+  });
+
+  it("falls back permanently when endgame requests unsupported key input", async () => {
+    setEndgameCollectorContext({
+      owner: { moduleId: "module-1", sessionId: "session-1" },
+      style: "blisshack",
+      isGameOver: () => true,
+    });
+    await expect(shimCallback(
+      "shim_yn_function",
+      "Possessions?",
+      "ynq",
+      "n".charCodeAt(0),
+    )).resolves.toBe("y".charCodeAt(0));
+
+    const keyRequest = shimCallback("shim_nhgetch", 0);
+    await expectPending(keyRequest);
+    sendKey(" ".charCodeAt(0));
+    await expect(keyRequest).resolves.toBe(" ".charCodeAt(0));
+
+    const laterPrompt = shimCallback(
+      "shim_yn_function",
+      "Attributes?",
+      "ynq",
+      "n".charCodeAt(0),
+    );
+    await expectPending(laterPrompt);
+    sendKey("n".charCodeAt(0));
+    await expect(laterPrompt).resolves.toBe("n".charCodeAt(0));
+    expect(completeEndgameCollection()).toBeNull();
   });
 });
 

@@ -5,6 +5,7 @@
 
 import {
   ATR_BOLD,
+  PICK_NONE,
   appendWindowText,
   beginMenu,
   clearWindow,
@@ -12,6 +13,7 @@ import {
   destroyWindow,
   endMenu,
   flushDisplay,
+  getWindow,
   putMessageHistory,
   resetGameState,
   resetStatus,
@@ -78,6 +80,11 @@ import {
   safeCallbackResult,
   updateDecodedStatus,
 } from "./bridge/shim-decoders";
+import {
+  handleEndgameCollectorEvent,
+  resetEndgameCollection,
+  snapshotEndgameWindow,
+} from "./bridge/endgame-collector";
 
 export {
   buildLegalCharacterTuples,
@@ -105,6 +112,33 @@ export type {
   CharacterSetupState,
   CharacterTuple,
 } from "./bridge/character-setup";
+export {
+  clearEndgameCollectionExclusion,
+  createEndgameCollector,
+  completeEndgameCollection,
+  excludeEndgameCollection,
+  getEndgameCollectorState,
+  handleEndgameCollectorEvent,
+  resetEndgameCollection,
+  setEndgameCollectorContext,
+  snapshotEndgameWindow,
+  updateEndgameCollectionStyle,
+} from "./bridge/endgame-collector";
+export type {
+  EndgameCollector,
+  EndgameCollectorDecision,
+  EndgameCollectorEvent,
+  EndgameCollectorOptions,
+  EndgameCollectorOwner,
+  EndgameCollectorPhase,
+  EndgameCollectorResetReason,
+  EndgameCollectorState,
+  EndgameContentBlock,
+  EndgameSection,
+  EndgameStyle,
+  EndgameSummary,
+  EndgameWindowSnapshot,
+} from "./bridge/endgame-collector";
 export {
   createGameModule,
   preparePlayerNamePrompt,
@@ -180,6 +214,7 @@ export function setRestoreRequired(
 
 /** Reset bridge and frontend state for tests or a future fresh game. */
 export function resetBridgeState(): void {
+  resetEndgameCollection("bridge-reset");
   resetInputController();
   resetGameState();
 }
@@ -250,16 +285,40 @@ async function dispatchShimCallback(
     case "shim_exit_nhwindows":
       setExitReason(asString(args[0]));
       return undefined;
-    case "shim_create_nhwindow":
-      return createWindow(asNumber(args[0]));
+    case "shim_create_nhwindow": {
+      const windowType = asNumber(args[0]);
+      const windowId = createWindow(windowType);
+      handleEndgameCollectorEvent({
+        type: "window-created",
+        windowId,
+        windowType,
+      });
+      return windowId;
+    }
     case "shim_clear_nhwindow":
       clearWindow(asNumber(args[0]));
       return undefined;
-    case "shim_display_nhwindow":
-      return displayWindow(asNumber(args[0]), Boolean(args[1]));
-    case "shim_destroy_nhwindow":
-      destroyWindow(asNumber(args[0]));
+    case "shim_display_nhwindow": {
+      const windowId = asNumber(args[0]);
+      const window = getWindow(windowId);
+      const decision = window
+        ? handleEndgameCollectorEvent({
+          type: "display-window",
+          window: snapshotEndgameWindow(window),
+          blocking: Boolean(args[1]),
+        })
+        : { kind: "pass" as const };
+      if (decision.kind === "resolve") flushDisplay();
+      return decision.kind === "resolve"
+        ? undefined
+        : displayWindow(windowId, Boolean(args[1]));
+    }
+    case "shim_destroy_nhwindow": {
+      const windowId = asNumber(args[0]);
+      handleEndgameCollectorEvent({ type: "window-destroyed", windowId });
+      destroyWindow(windowId);
       return undefined;
+    }
     case "shim_curs":
       setCursor(asNumber(args[0]), asNumber(args[1]), asNumber(args[2]));
       return undefined;
@@ -271,6 +330,10 @@ async function dispatchShimCallback(
       );
       return undefined;
     case "shim_display_file":
+      handleEndgameCollectorEvent({
+        type: "input-request",
+        inputKind: "display-file",
+      });
       return displayFile(module, asString(args[0]), Boolean(args[1]));
     case "shim_start_menu":
       beginMenu(asNumber(args[0]), asNumber(args[1]));
@@ -281,14 +344,31 @@ async function dispatchShimCallback(
     case "shim_end_menu":
       endMenu(asNumber(args[0]), asString(args[1]));
       return undefined;
-    case "shim_select_menu":
-      return selectMenu(
-        module,
-        asNumber(args[0]),
-        asNumber(args[1]),
-        asNumber(args[2]),
-      );
+    case "shim_select_menu": {
+      const windowId = asNumber(args[0]);
+      const how = asNumber(args[1]);
+      const window = getWindow(windowId);
+      const decision = window
+        ? handleEndgameCollectorEvent({
+          type: "select-menu",
+          window: snapshotEndgameWindow(window),
+          how,
+        })
+        : { kind: "pass" as const };
+      if (decision.kind === "resolve") {
+        const menuListPtr = asNumber(args[2]);
+        if (menuListPtr !== 0) module.setValue(menuListPtr, 0, "*");
+        return decision.value ?? 0;
+      }
+      return selectMenu(module, windowId, how, asNumber(args[2]));
+    }
     case "shim_message_menu":
+      if (asNumber(args[1]) !== PICK_NONE) {
+        handleEndgameCollectorEvent({
+          type: "input-request",
+          inputKind: "message-menu",
+        });
+      }
       return messageMenu(
         asNumber(args[0]) & 0xff,
         asNumber(args[1]),
@@ -306,15 +386,29 @@ async function dispatchShimCallback(
     case "shim_print_glyph":
       printGlyph(module, args);
       return undefined;
-    case "shim_raw_print":
-      appendWindowText(-1, 0, asString(args[0]));
+    case "shim_raw_print": {
+      const line = { text: asString(args[0]), attribute: 0 };
+      handleEndgameCollectorEvent({ type: "raw-print", line });
+      appendWindowText(-1, line.attribute, line.text);
       return undefined;
-    case "shim_raw_print_bold":
-      appendWindowText(-1, ATR_BOLD, asString(args[0]));
+    }
+    case "shim_raw_print_bold": {
+      const line = { text: asString(args[0]), attribute: ATR_BOLD };
+      handleEndgameCollectorEvent({ type: "raw-print", line });
+      appendWindowText(-1, line.attribute, line.text);
       return undefined;
+    }
     case "shim_nhgetch":
+      handleEndgameCollectorEvent({
+        type: "input-request",
+        inputKind: "key",
+      });
       return waitForKey(module, null, asNumber(args[0]) === 1);
     case "shim_nh_poskey":
+      handleEndgameCollectorEvent({
+        type: "input-request",
+        inputKind: "position",
+      });
       return waitForKey(module, {
         x: asNumber(args[0]),
         y: asNumber(args[1]),
@@ -324,14 +418,30 @@ async function dispatchShimCallback(
       ringBell();
       return undefined;
     case "shim_doprev_message":
+      handleEndgameCollectorEvent({
+        type: "input-request",
+        inputKind: "history",
+      });
       return displayHistory();
-    case "shim_yn_function":
-      return waitForYn(
-        asString(args[0]) || null,
-        asString(args[1]) || null,
-        asNumber(args[2]),
-      );
+    case "shim_yn_function": {
+      const query = asString(args[0]) || "";
+      const choices = asString(args[1]) || null;
+      const defaultCode = asNumber(args[2]);
+      const decision = handleEndgameCollectorEvent({
+        type: "yn",
+        query,
+        choices,
+        defaultCode,
+      });
+      return decision.kind === "resolve"
+        ? decision.value
+        : waitForYn(query || null, choices, defaultCode);
+    }
     case "shim_getlin":
+      handleEndgameCollectorEvent({
+        type: "input-request",
+        inputKind: "getlin",
+      });
       return waitForLine(
         module,
         "getlin",
@@ -339,6 +449,10 @@ async function dispatchShimCallback(
         asNumber(args[1]),
       );
     case "shim_get_ext_cmd":
+      handleEndgameCollectorEvent({
+        type: "input-request",
+        inputKind: "extended-command",
+      });
       return waitForExtendedCommand(module);
     case "shim_number_pad":
       setNumberPad(asNumber(args[0]) !== 0);

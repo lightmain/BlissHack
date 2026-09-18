@@ -4,6 +4,7 @@ import type {
 } from "../diagnostics/diagnostic-log";
 import { getSnapshot } from "../game-state";
 import {
+  completeEndgameCollection,
   createGameModule,
   dismissDisplay,
   isWaitingForInput,
@@ -11,6 +12,7 @@ import {
   sendKey,
   sendPosition,
   setCharacterSetupContext,
+  setEndgameCollectorContext,
   setKnownSaveNames,
   setRestoreRequired,
   setStartupIdentity,
@@ -321,6 +323,7 @@ export function createSessionManager(
         mainPromise: Promise.resolve(),
         cleanupPromise: null,
         continuation,
+        endgameSummary: null,
         exitFlushed: false,
         closed: false,
       };
@@ -344,6 +347,12 @@ export function createSessionManager(
         : [];
       resetBridgeState();
       setKnownSaveNames(knownSaveNames);
+      setEndgameCollectorContext({
+        owner: { moduleId: owner.moduleId, sessionId },
+        style: profile?.interface.endgameStyle ?? "original",
+        isGameOver: () =>
+          globalThis.nethackGlobal?.globals?.program_state?.gameover === true,
+      });
       context.applyCharacterSetupContext({
         moduleId: owner.moduleId,
         sessionId,
@@ -491,6 +500,7 @@ export function createSessionManager(
     session: SessionRecord,
   ): Promise<void> {
     if (!isCurrentSession(owner, session)) return;
+    session.endgameSummary = completeEndgameCollection();
     if (!session.exitFlushed) {
       recordDiagnostic({
         level: "info",

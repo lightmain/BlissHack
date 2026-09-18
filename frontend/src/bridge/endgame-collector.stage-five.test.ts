@@ -41,13 +41,17 @@ function createCollector(options: EndgameCollectorOptions): EndgameCollector {
 /**
  * Build one ordinary endgame disclosure event.
  * @param query - user-visible prompt used as the section title.
+ * @param choices - exact core response contract.
  * @returns a standard ynq disclosure request.
  */
-function disclosure(query = DISCLOSURE_QUERY): EndgameCollectorEvent {
+function disclosure(
+  query = DISCLOSURE_QUERY,
+  choices = "ynq",
+): EndgameCollectorEvent {
   return {
     type: "yn",
     query,
-    choices: "ynq",
+    choices,
     defaultCode: "n".charCodeAt(0),
   };
 }
@@ -125,6 +129,63 @@ describe("alpha-2.2 EndgameCollector contract", () => {
       value: YES,
     });
     expect(endgame.getState().phase).toBe("collecting-disclosure");
+  });
+
+  it.each(["ynaq", "ynq\u001ba"])(
+    "accepts the core's %j disclosure choice contract",
+    (choices) => {
+      const collector = createCollector({
+        owner: OWNER,
+        style: "blisshack",
+        isGameOver: () => true,
+      });
+
+      expect(collector.handle(disclosure(
+        "Do you want an account of creatures vanquished?",
+        choices,
+      ))).toEqual({
+        kind: "resolve",
+        value: YES,
+      });
+    },
+  );
+
+  it("applies endgame style changes while the current session is idle", () => {
+    const collector = createCollector({
+      owner: OWNER,
+      style: "original",
+      isGameOver: () => true,
+    });
+    registerHudWindows(collector);
+    expect(collector.handle(disclosure())).toEqual({ kind: "pass" });
+
+    collector.setStyle("blisshack");
+
+    expect(collector.handle(disclosure())).toEqual({
+      kind: "resolve",
+      value: YES,
+    });
+    collector.handle({
+      type: "display-window",
+      window: endgameWindowFixture({
+        id: 10,
+        type: NHW_TEXT,
+        lines: [{ text: "Possessions", attribute: 0 }],
+      }),
+      blocking: true,
+    });
+    destroyHudWindows(collector);
+    collector.handle({
+      type: "display-window",
+      window: endgameWindowFixture({
+        id: 20,
+        type: NHW_TEXT,
+        lines: [{ text: "You died.", attribute: 0 }],
+      }),
+      blocking: true,
+    });
+    expect(collector.complete()?.sections.map((section) => section.kind))
+      .toEqual(["summary", "disclosure"]);
   });
 
   it("groups multiple windows under one disclosure and omits an empty one", () => {
@@ -238,6 +299,47 @@ describe("alpha-2.2 EndgameCollector contract", () => {
         lines: [{ text: " No  Points     Name", attribute: 1 }],
       },
     ]);
+  });
+
+  it("preserves putstr lines from NHW_MENU disclosure windows", () => {
+    const collector = createCollector({
+      owner: OWNER,
+      style: "blisshack",
+      isGameOver: () => true,
+    });
+    registerHudWindows(collector);
+    collector.handle(disclosure(
+      "Do you want an account of creatures vanquished?",
+      "ynaq",
+    ));
+    collector.handle({
+      type: "display-window",
+      window: endgameWindowFixture({
+        id: 42,
+        type: NHW_MENU,
+        lines: [{ text: "Vanquished creatures:", attribute: 1 }],
+      }),
+      blocking: true,
+    });
+    destroyHudWindows(collector);
+    const summaryWindow = endgameWindowFixture({
+      id: 43,
+      type: NHW_TEXT,
+      lines: [{ text: "You died.", attribute: 0 }],
+    });
+    collector.handle({
+      type: "display-window",
+      window: summaryWindow,
+      blocking: true,
+    });
+
+    expect(collector.complete()?.sections[1]).toMatchObject({
+      kind: "disclosure",
+      blocks: [{
+        kind: "menu",
+        lines: [{ text: "Vanquished creatures:", attribute: 1 }],
+      }],
+    });
   });
 
   it("freezes the completed summary and all captured nested values", () => {

@@ -37,6 +37,9 @@ export interface EmscriptenModule {
 
 interface NethackGlobals {
   shim_restore_required?: boolean;
+  program_state?: {
+    readonly gameover?: boolean;
+  };
   svp?: { plname?: string };
   iflags?: {
     wc2_hitpointbar?: boolean;
