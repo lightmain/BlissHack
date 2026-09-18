@@ -24,6 +24,9 @@ const basicFlowNames = [
   "restores the map trigger after every anchored-menu dismissal",
   "opens itemactions from permanent inventory without flashing its selector",
   "keeps permanent inventory mouse-only while core inventory accepts accelerators",
+  "navigates result tabs by mouse and keyboard without moving Confirm",
+  "keeps long sections independently scrollable without page overflow",
+  "fits the result shell at the supported minimum width",
   "moves real menu focus and restores the inventory trigger after Escape",
   "closes on left click outside and restores the inventory trigger",
   "prevents the native menu on right click outside and restores the inventory trigger",
@@ -64,7 +67,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `VITE_BASE_PATH=${deploymentBasePath} npm run build && VITE_BASE_PATH=${deploymentBasePath} npm run preview -- --host 127.0.0.1 --port 4176 --strictPort`,
+    command: `VITE_E2E_FIXTURES=1 VITE_BASE_PATH=${deploymentBasePath} npm run build && VITE_BASE_PATH=${deploymentBasePath} npm run preview -- --host 127.0.0.1 --port 4176 --strictPort`,
     url: `${previewOrigin}${deploymentBasePath}`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
