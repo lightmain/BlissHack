@@ -153,6 +153,7 @@ combinations at 1280x900 and 900x700.
 - [alpha-1.1 map interaction and infrastructure plan](doc/BlissHack/plans/alpha-1.1.md)
 - [alpha-2.0 interactive HUD plan](doc/BlissHack/plans/alpha-2.0.md)
 - [alpha-2.1 focus and Below HUD plan](doc/BlissHack/plans/alpha-2.1.md)
+- [alpha-2.2 information and workflow plan](doc/BlissHack/plans/alpha-2.2.md)
 - [alpha-1 rendering architecture](doc/BlissHack/plans/in-alpha-1/rendering-architecture.md)
 - [alpha-1 profile v2](doc/BlissHack/plans/in-alpha-1/profile-v2.md)
 - [alpha-1 release acceptance](doc/BlissHack/plans/in-alpha-1/release-acceptance.md)
