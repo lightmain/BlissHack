@@ -19,6 +19,7 @@ export interface DiagnosticDetail {
   buildId?: string;
   callback?: string;
   errorName?: string;
+  fallbackReason?: string;
   failedCount?: number;
   importedCount?: number;
   inputKind?: string | null;
@@ -347,6 +348,13 @@ function normalizeDetail(value: DiagnosticDetail | undefined):
   }
   if (typeof value.errorName === "string") {
     detail.errorName = normalizeToken(value.errorName, 80, "Error");
+  }
+  if (typeof value.fallbackReason === "string") {
+    detail.fallbackReason = normalizeToken(
+      value.fallbackReason,
+      80,
+      "unknown",
+    );
   }
   if (value.inputKind === null) detail.inputKind = null;
   else if (typeof value.inputKind === "string") {

@@ -17,7 +17,6 @@ import {
   showHistory,
   showMenu,
   showText,
-  type ExtendedCommand,
   type MenuItem,
 } from "../game-state";
 import type { NetHackSettingsV1 } from "../settings/profile";
@@ -42,11 +41,6 @@ import {
   type CharacterSetupOwnerToken,
   type CharacterTuple,
 } from "./character-setup";
-import {
-  clearEndgameCollectionExclusion,
-  excludeEndgameCollection,
-} from "./endgame-collector";
-
 interface MenuSelection {
   itemIndex: number;
   count: number;
@@ -94,11 +88,7 @@ type PendingAction =
     kind: "player-selection";
     resolve: (useNativeSelection: boolean) => void;
   }
-  | {
-    kind: "extcmd";
-    resolve: (value: number) => void;
-    commands: readonly ExtendedCommand[];
-  };
+  | { kind: "extcmd"; resolve: (value: number) => void };
 
 const MENU_ITEM_SIZE = 16;
 const MENU_ITEM_COUNT_OFFSET = 8;
@@ -573,13 +563,6 @@ export function submitExtendedCommand(sourceIndex: number | null): void {
   if (pending?.kind !== "extcmd") return;
   pendingAction = null;
   clearModal();
-  if (
-    sourceIndex !== null
-    && pending.commands.some((command) =>
-      command.sourceIndex === sourceIndex && command.name === "quit")
-  ) {
-    excludeEndgameCollection();
-  }
   pending.resolve(sourceIndex ?? -1);
 }
 
@@ -818,7 +801,6 @@ export function waitForKey(
   positionPointers: { x: number; y: number; modifier: number } | null,
   commandInput: boolean,
 ): Promise<number> {
-  if (commandInput) clearEndgameCollectionExclusion();
   if (commandInput && saveExitAutomation !== null) {
     saveExitAutomation = null;
   }
@@ -948,7 +930,7 @@ export function waitForExtendedCommand(
   if (commands.length === 0) return -1;
   showExtendedCommands(commands);
   return new Promise<number>((resolve) => {
-    setPending({ kind: "extcmd", resolve, commands });
+    setPending({ kind: "extcmd", resolve });
   });
 }
 
