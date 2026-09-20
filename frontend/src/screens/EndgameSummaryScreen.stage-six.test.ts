@@ -52,22 +52,44 @@ function endgameSummaryFixture(): EndgameSummary {
     sections: [
       {
         kind: "disclosure",
-        title: "Possessions identified",
+        title: "Identified Possessions",
         blocks: [{
           kind: "menu",
           sourceWindowId: 41,
           lines: [{ text: "Inventory:", attribute: 1 }],
           prompt: "Inventory",
-          items: [{
-            glyph: null,
-            identifier: 1,
-            accelerator: "a".charCodeAt(0),
-            groupAccelerator: 0,
-            attribute: 0,
-            color: 7,
-            text: "a - a blessed +1 long sword",
-            itemFlags: 0,
-          }],
+          items: [
+            {
+              glyph: null,
+              identifier: null,
+              accelerator: 0,
+              groupAccelerator: 0,
+              attribute: 1,
+              color: 7,
+              text: "Weapons",
+              itemFlags: 0,
+            },
+            {
+              glyph: {
+                glyph: 12,
+                ttyChar: ")".charCodeAt(0),
+                frameColor: 0,
+                glyphFlags: 0,
+                color: 2,
+                symbolIndex: 0,
+                customColor: 0,
+                color256: 0,
+                tileIndex: 0,
+              },
+              identifier: 1,
+              accelerator: "a".charCodeAt(0),
+              groupAccelerator: 0,
+              attribute: 0,
+              color: 2,
+              text: "a - a blessed +1 long sword",
+              itemFlags: 1,
+            },
+          ],
         }],
       },
       {
@@ -123,7 +145,7 @@ describe("alpha-2.2 EndgameSummaryScreen contract", () => {
     }));
 
     const summaryIndex = html.indexOf(">Summary<");
-    const possessionsIndex = html.indexOf(">Possessions identified<");
+    const possessionsIndex = html.indexOf(">Identified Possessions<");
     const overviewIndex = html.indexOf(">Dungeon overview<");
     const rankingIndex = html.indexOf(">Ranking<");
 
@@ -132,6 +154,27 @@ describe("alpha-2.2 EndgameSummaryScreen contract", () => {
     expect(overviewIndex).toBeGreaterThan(possessionsIndex);
     expect(rankingIndex).toBeGreaterThan(overviewIndex);
     expect(html).not.toContain("Empty disclosure");
+  });
+
+  it("[defect-probing] reuses permanent-inventory structure for possession rows", async () => {
+    const Screen = await requireScreen();
+    const html = renderToStaticMarkup(createElement(Screen, {
+      summary: endgameSummaryFixture(),
+      onConfirm: vi.fn(),
+    }));
+
+    expect(html).toContain("nh-menu-items permanent-inventory-items");
+    expect(html).toMatch(
+      /class="[^"]*nh-menu-heading[^"]*permanent-inventory-heading[^"]*"[^>]*>Weapons<\/div>/,
+    );
+    expect(html).toMatch(
+      /class="[^"]*nh-menu-item[^"]*permanent-inventory-item[^"]*selected[^"]*"/,
+    );
+    expect(html).toContain('class="nh-menu-glyph">)</span>');
+    expect(html).toContain('class="nh-menu-accelerator">a</span>');
+    expect(html).toContain(
+      'class="nh-menu-text">a - a blessed +1 long sword</span>',
+    );
   });
 
   it("exposes a horizontal tablist with complete tab and panel relationships", async () => {
