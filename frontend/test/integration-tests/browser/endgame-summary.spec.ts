@@ -67,6 +67,57 @@ test("[defect-probing] uses the game dialog palette and Home primary button desi
   expect(appearance.buttonMinHeight).toBe(46);
 });
 
+test("[defect-probing] uses the Home and game monospace font throughout the result", async ({
+  page,
+}) => {
+  const fonts = await page.evaluate(() => {
+    const home = document.createElement("div");
+    const game = document.createElement("div");
+    home.className = "home-screen";
+    game.className = "nh-shell";
+    home.style.cssText = "position: fixed; visibility: hidden;";
+    game.style.cssText = "position: fixed; visibility: hidden;";
+    document.body.append(home, game);
+
+    const screen = document.querySelector<HTMLElement>(".end-summary-screen");
+    const heading = screen?.querySelector<HTMLElement>("h1");
+    const tab = screen?.querySelector<HTMLElement>("[role='tab']");
+    const panel = screen?.querySelector<HTMLElement>("[role='tabpanel']");
+    const confirm = screen?.querySelector<HTMLElement>(
+      "[data-end-summary-confirm='true']",
+    );
+    if (!screen || !heading || !tab || !panel || !confirm) {
+      throw new Error("Endgame font targets are incomplete");
+    }
+
+    const fontFamily = (element: Element): string =>
+      getComputedStyle(element).fontFamily;
+    const result = {
+      home: fontFamily(home),
+      game: fontFamily(game),
+      screen: fontFamily(screen),
+      heading: fontFamily(heading),
+      tab: fontFamily(tab),
+      panel: fontFamily(panel),
+      confirm: fontFamily(confirm),
+    };
+    home.remove();
+    game.remove();
+    return result;
+  });
+
+  expect(fonts.home).toContain("monospace");
+  expect(fonts).toEqual({
+    home: fonts.home,
+    game: fonts.home,
+    screen: fonts.home,
+    heading: fonts.home,
+    tab: fonts.home,
+    panel: fonts.home,
+    confirm: fonts.home,
+  });
+});
+
 test("navigates result tabs by mouse and keyboard without moving Confirm", async ({
   page,
 }) => {
