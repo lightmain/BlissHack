@@ -20,7 +20,7 @@
   display: grid;
   place-items: center;
   padding: clamp(10px, 4vw, 32px);
-  background: rgb(0 0 0 / 72%);
+  background: rgb(0 0 0 / 82%);
 }
 
 .end-summary-screen {
@@ -30,22 +30,22 @@
   height: min(760px, 100%);
   min-height: 0;
   overflow: hidden;
-  border: 1px solid #5d9b72;
-  border-radius: 6px;
+  border: 1px solid #5a6268;
+  border-radius: 4px;
   color: #e7e7df;
-  background: #080a0b;
-  box-shadow: 0 22px 70px rgb(0 0 0 / 72%);
+  background: #0d1011;
+  box-shadow: 0 18px 60px rgb(0 0 0 / 65%);
 }
 
 .end-summary-header {
   padding: 16px 20px 12px;
-  border-bottom: 1px solid #31543b;
-  background: #111713;
+  border-bottom: 1px solid #30363a;
+  background: #15191b;
 }
 
 .end-summary-header h1 {
   margin: 0;
-  color: #7ddc8c;
+  color: #fff;
   font-size: 1.35rem;
   font-weight: 650;
   letter-spacing: 0;
@@ -58,7 +58,7 @@
   padding: 8px 20px 0;
   overflow-x: auto;
   overflow-y: hidden;
-  border-bottom: 1px solid #31543b;
+  border-bottom: 1px solid #30363a;
   background: #0d1011;
   scrollbar-width: thin;
 }
@@ -81,8 +81,8 @@
 }
 
 .end-summary-tab[aria-selected="true"] {
-  border-bottom-color: #7ddc8c;
-  color: #effff2;
+  border-bottom-color: #d8d8d2;
+  color: #fff;
 }
 
 .end-summary-tab:focus-visible {
@@ -95,7 +95,7 @@
   min-height: 0;
   padding: 0 20px;
   overflow: hidden;
-  background: #080a0b;
+  background: #0d1011;
 }
 
 .end-summary-panel {
@@ -129,7 +129,7 @@
 
 .end-summary-menu-prompt {
   margin-bottom: 6px;
-  color: #7ddc8c;
+  color: #fff;
   font-weight: 700;
 }
 
@@ -146,18 +146,18 @@
   display: flex;
   justify-content: flex-end;
   padding: 12px 20px;
-  border-top: 1px solid #31543b;
-  background: #111713;
+  border-top: 1px solid #30363a;
+  background: #15191b;
 }
 
 .end-summary-confirm {
   min-width: 112px;
-  min-height: 40px;
-  padding: 8px 14px;
-  border: 1px solid #64c67a;
+  min-height: 46px;
+  padding: 10px 14px;
+  border: 1px solid #5a6268;
   border-radius: 3px;
-  background: #1b5331;
-  color: #f5fff7;
+  background: #111416;
+  color: #f0f0e8;
   font: inherit;
   font-weight: 650;
   letter-spacing: 0;
@@ -166,8 +166,7 @@
 
 .end-summary-confirm:hover,
 .end-summary-confirm:focus-visible {
-  border-color: #7ddc8c;
-  background: #246a40;
+  background: #19201c;
   outline: 2px solid #7ddc8c;
   outline-offset: 2px;
 }
