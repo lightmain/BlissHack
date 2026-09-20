@@ -447,7 +447,7 @@ describe("endgame collection bridge", () => {
         },
         {
           kind: "disclosure",
-          title: "Do you want to see your attributes?",
+          title: "Final Attributes",
           blocks: [{
             kind: "text",
             lines: [{ text: "Final Attributes:", attribute: 1 }],

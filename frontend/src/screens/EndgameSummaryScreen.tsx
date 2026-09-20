@@ -1,4 +1,5 @@
 import {
+  useEffect,
   useId,
   useMemo,
   useRef,
@@ -11,6 +12,7 @@ import type {
   EndgameSummary,
 } from "../nethack-bridge";
 import { colorClass, textAttributeClass } from "../text-styling";
+import { InventoryItemContent } from "./PermanentInventoryPanel";
 import "../styles/endgame-summary.css";
 
 interface EndgameSummaryScreenProps {
@@ -33,7 +35,36 @@ export function EndgameSummaryScreen({
     [summary.sections],
   );
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const dialogRef = useRef<HTMLElement>(null);
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return undefined;
+    tabRefs.current[0]?.focus();
+
+    /** Keep forward and reverse Tab navigation inside the result dialog. */
+    function containFocus(event: globalThis.KeyboardEvent): void {
+      if (event.key !== "Tab") return;
+      const focusable = Array.from(dialog!.querySelectorAll<HTMLElement>(
+        "button:not([disabled]), [tabindex]:not([tabindex='-1'])",
+      )).filter((element) =>
+        element.tabIndex >= 0 && element.closest("[hidden]") === null);
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable.at(-1) as HTMLElement;
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    dialog.addEventListener("keydown", containFocus);
+    return () => dialog.removeEventListener("keydown", containFocus);
+  }, []);
 
   /**
    * Select and focus one tab after keyboard navigation.
@@ -69,77 +100,88 @@ export function EndgameSummaryScreen({
   }
 
   return (
-    <main className="end-summary-screen">
-      <header className="end-summary-header">
-        <h1>Game Over</h1>
-      </header>
-      <div
-        aria-label="Endgame results"
-        aria-orientation="horizontal"
-        className="end-summary-tabs"
-        data-browser-tab-navigation="true"
-        role="tablist"
+    <div className="end-summary-backdrop">
+      <main
+        aria-labelledby={`${instanceId}-end-summary-title`}
+        aria-modal="true"
+        className="end-summary-screen"
+        ref={dialogRef}
+        role="dialog"
       >
-        {sections.map((section, index) => {
-          const tabId = `${instanceId}-end-tab-${index}`;
-          const panelId = `${instanceId}-end-panel-${index}`;
-          return (
-            <button
-              role="tab"
-              aria-controls={panelId}
-              aria-selected={selectedIndex === index}
-              className="end-summary-tab"
-              id={tabId}
-              key={`${section.kind}-${section.title}-${index}`}
-              onClick={() => setSelectedIndex(index)}
-              onKeyDown={(event) => handleTabKeyDown(event, index)}
-              ref={(node) => {
-                tabRefs.current[index] = node;
-              }}
-              tabIndex={selectedIndex === index ? 0 : -1}
-              type="button"
-            >
-              {section.title}
-            </button>
-          );
-        })}
-      </div>
-      <section className="end-summary-content">
-        {sections.map((section, index) => {
-          const tabId = `${instanceId}-end-tab-${index}`;
-          const panelId = `${instanceId}-end-panel-${index}`;
-          return (
-            <div
-              role="tabpanel"
-              aria-labelledby={tabId}
-              className="end-summary-panel"
-              data-end-summary-scroll="true"
-              hidden={selectedIndex !== index}
-              id={panelId}
-              key={`${section.kind}-${section.title}-${index}`}
-              tabIndex={selectedIndex === index ? 0 : -1}
-            >
-              {section.blocks.map((block, blockIndex) => (
-                <EndgameBlock
-                  block={block}
-                  key={`${block.kind}-${blockIndex}`}
-                />
-              ))}
-            </div>
-          );
-        })}
-      </section>
-      <footer className="end-summary-footer">
-        <button
-          className="primary-button"
-          data-end-summary-confirm="true"
-          onClick={onConfirm}
-          type="button"
+        <header className="end-summary-header">
+          <h1 id={`${instanceId}-end-summary-title`}>Game Over</h1>
+        </header>
+        <div
+          aria-label="Endgame results"
+          aria-orientation="horizontal"
+          className="end-summary-tabs"
+          data-browser-tab-navigation="true"
+          role="tablist"
         >
-          Confirm
-        </button>
-      </footer>
-    </main>
+          {sections.map((section, index) => {
+            const tabId = `${instanceId}-end-tab-${index}`;
+            const panelId = `${instanceId}-end-panel-${index}`;
+            return (
+              <button
+                role="tab"
+                aria-controls={panelId}
+                aria-selected={selectedIndex === index}
+                className="end-summary-tab"
+                id={tabId}
+                key={`${section.kind}-${section.title}-${index}`}
+                onClick={() => setSelectedIndex(index)}
+                onKeyDown={(event) => handleTabKeyDown(event, index)}
+                ref={(node) => {
+                  tabRefs.current[index] = node;
+                }}
+                tabIndex={selectedIndex === index ? 0 : -1}
+                type="button"
+              >
+                {section.title}
+              </button>
+            );
+          })}
+        </div>
+        <section className="end-summary-content">
+          {sections.map((section, index) => {
+            const tabId = `${instanceId}-end-tab-${index}`;
+            const panelId = `${instanceId}-end-panel-${index}`;
+            const inventory = section.kind === "disclosure"
+              && section.title === "Identified Possessions";
+            return (
+              <div
+                role="tabpanel"
+                aria-labelledby={tabId}
+                className="end-summary-panel"
+                data-end-summary-scroll="true"
+                hidden={selectedIndex !== index}
+                id={panelId}
+                key={`${section.kind}-${section.title}-${index}`}
+                tabIndex={selectedIndex === index ? 0 : -1}
+              >
+                {section.blocks.map((block, blockIndex) => (
+                  <EndgameBlock
+                    block={block}
+                    inventory={inventory}
+                    key={`${block.kind}-${blockIndex}`}
+                  />
+                ))}
+              </div>
+            );
+          })}
+        </section>
+        <footer className="end-summary-footer">
+          <button
+            className="end-summary-confirm"
+            data-end-summary-confirm="true"
+            onClick={onConfirm}
+            type="button"
+          >
+            Confirm
+          </button>
+        </footer>
+      </main>
+    </div>
   );
 }
 
@@ -160,10 +202,57 @@ function orderedSections(
   ];
 }
 
-/** Render one copied text or menu block without its retired window identity. */
-function EndgameBlock({ block }: { block: EndgameContentBlock }) {
+/**
+ * Render one copied block without retaining its retired window identity.
+ * @param props - immutable content and whether it uses inventory presentation.
+ * @returns one text, generic menu, or inventory block.
+ */
+function EndgameBlock({
+  block,
+  inventory,
+}: {
+  block: EndgameContentBlock;
+  inventory: boolean;
+}) {
   if (block.kind === "text") {
     return <EndgameLines lines={block.lines} />;
+  }
+  if (inventory) {
+    return (
+      <div className="end-summary-block end-summary-inventory">
+        <EndgameLines lines={block.lines} />
+        {block.prompt && (
+          <div className="end-summary-menu-prompt">{block.prompt}</div>
+        )}
+        <div className="nh-menu-items permanent-inventory-items">
+          {block.items.map((item, index) =>
+            item.identifier === null
+              ? (
+                <div
+                  className={`nh-menu-heading permanent-inventory-heading ${textAttributeClass(item.attribute)}`}
+                  key={`${index}:${item.text}`}
+                >
+                  {item.text || "\u00a0"}
+                </div>
+              )
+              : (
+                <div
+                  className={[
+                    "nh-menu-item",
+                    "permanent-inventory-item",
+                    item.itemFlags !== 0 ? "selected" : "",
+                    colorClass(item.color),
+                    textAttributeClass(item.attribute),
+                  ].filter(Boolean).join(" ")}
+                  key={`${item.identifier}:${index}`}
+                >
+                  <InventoryItemContent item={item} />
+                </div>
+              )
+          )}
+        </div>
+      </div>
+    );
   }
   return (
     <div className="end-summary-block">

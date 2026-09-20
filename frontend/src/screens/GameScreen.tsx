@@ -76,6 +76,7 @@ interface GameScreenProps {
   onMapRendererFallback?(reason: TileRendererFallbackReason): void;
   onApplyProfile(profile: BlissHackProfile): Promise<BlissHackProfile>;
   profile: BlissHackProfile;
+  readOnly?: boolean;
 }
 
 interface ActiveInspectTooltip {
@@ -114,6 +115,7 @@ export function GameScreen({
   onMapRendererFallback,
   onApplyProfile,
   profile,
+  readOnly = false,
 }: GameScreenProps) {
   const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
   const snapshotRef = useRef(snapshot);
@@ -252,6 +254,7 @@ export function GameScreen({
   }, [actionController, hoverController, inventoryDragController]);
 
   useEffect(() => {
+    if (readOnly) return;
     actionController.observe({
       moduleId,
       sessionId,
@@ -261,9 +264,10 @@ export function GameScreen({
       input: actionInputFromSnapshot(snapshot),
       fatal: snapshot.phase === "error",
     });
-  }, [actionController, moduleId, sessionId, snapshot]);
+  }, [actionController, moduleId, readOnly, sessionId, snapshot]);
 
   useEffect(() => {
+    if (readOnly) return;
     const payload = inventoryDragController.getState().payload;
     const inventory = snapshot.permanentInventory;
     const target = payload
@@ -286,11 +290,13 @@ export function GameScreen({
   }, [
     inventoryDragController,
     inventoryDragState.payload,
+    readOnly,
     sessionId,
     snapshot.permanentInventory,
   ]);
 
   useEffect(() => {
+    if (readOnly) return;
     hoverController.observe({
       commandBoundary: snapshot.commandInput,
       dragging: inventoryDragState.status === "dragging",
@@ -305,6 +311,7 @@ export function GameScreen({
     inventoryDragState.status,
     moduleId,
     pauseView,
+    readOnly,
     sessionId,
     snapshot.commandInput,
     snapshot.mapRevision,
@@ -312,6 +319,7 @@ export function GameScreen({
   ]);
 
   useEffect(() => {
+    if (readOnly) return;
     const current = snapshot.runtimeSettings;
     if (!current) return;
     const serialized = JSON.stringify(current);
@@ -331,11 +339,13 @@ export function GameScreen({
   }, [
     onApplyProfile,
     profile,
+    readOnly,
     snapshot.runtimeSettings,
     snapshot.runtimeSettingsStatus,
   ]);
 
   useEffect(() => {
+    if (readOnly) return;
     /**
      * Route a browser key to the active NetHack callback.
      * @param event - browser keyboard event.
@@ -401,6 +411,7 @@ export function GameScreen({
     hoverController,
     inventoryDragController,
     inventoryDragState.status,
+    readOnly,
     snapshot.commandInput,
     snapshot.inputRequest,
     snapshot.modal,
@@ -621,6 +632,7 @@ export function GameScreen({
       className={`nh-shell nh-font-${settings.terminalFontSize}`}
       data-command-input={snapshot.commandInput ? "ready" : "busy"}
       data-number-pad={snapshot.numberPad ? "on" : "off"}
+      data-read-only={readOnly ? "true" : "false"}
       data-snapshot-revision={snapshot.revision}
       data-settings-status={snapshot.runtimeSettingsStatus}
       aria-label="BlissHack"
@@ -645,7 +657,7 @@ export function GameScreen({
           followPlayer={settings.followPlayer}
           historyLines={settings.messageHistoryLines}
           informationLevel={settings.informationLevel}
-          inert={snapshot.modal !== null || pauseView !== null}
+          inert={readOnly || snapshot.modal !== null || pauseView !== null}
           inputRequest={snapshot.inputRequest}
           inventoryDragController={inventoryDragController}
           inventoryDragState={inventoryDragState}
@@ -686,7 +698,8 @@ export function GameScreen({
             id={inspectTooltip.id}
           />
         )}
-        {snapshot.modal?.kind === "menu"
+        {!readOnly
+          && snapshot.modal?.kind === "menu"
           && actionState.contextMenu?.windowId === snapshot.modal.windowId
           && (
             <GameModalRenderer
@@ -695,13 +708,14 @@ export function GameScreen({
             />
           )}
       </OverlayRoot>
-      {snapshot.modal
+      {!readOnly
+        && snapshot.modal
         && !(
           snapshot.modal.kind === "menu"
           && actionState.intent !== null
         )
         && <GameModalRenderer modal={snapshot.modal} />}
-      {pauseView === "pause" && (
+      {!readOnly && pauseView === "pause" && (
         <PauseOverlay
           ready={
             snapshot.commandInput
@@ -715,7 +729,7 @@ export function GameScreen({
           onSettings={() => setPauseView("settings")}
         />
       )}
-      {pauseView === "settings" && (
+      {!readOnly && pauseView === "settings" && (
         <SettingsScreen
           context="game"
           loadStatus={loadStatus}

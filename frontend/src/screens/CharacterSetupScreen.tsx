@@ -109,6 +109,7 @@ export function CharacterSetupScreen({
   const confirmRef = useRef<HTMLButtonElement>(null);
   const skipNextNameBlurRef = useRef(false);
   const suppressNextColumnFocusRef = useRef(false);
+  const pendingAutoChoiceRef = useRef<"y" | "a" | null>(null);
   const isNameRequest = inputRequest?.kind === "line"
     && inputRequest.purpose === "name";
   const isSelectionRequest = inputRequest?.kind === "player-selection";
@@ -117,7 +118,12 @@ export function CharacterSetupScreen({
       (state.locked && isNameRequest)
       || (!state.locked && isSelectionRequest)
     );
-  const autoAvailable = state.canAuto && isSelectionRequest;
+  const autoAvailable = !state.locked
+    && state.normalizedName.length > 0
+    && (
+      (state.phase === "entering-name" && isNameRequest)
+      || (state.canAuto && isSelectionRequest)
+    );
 
   useEffect(() => {
     if (!isSelectionRequest) return;
@@ -128,6 +134,15 @@ export function CharacterSetupScreen({
     } else if (controller.getState().phase === "selecting") {
       controller.applyCoreSelection(current, owner);
     }
+  }, [controller, isSelectionRequest, owner]);
+
+  useEffect(() => {
+    if (!isSelectionRequest) return;
+    const choice = pendingAutoChoiceRef.current;
+    if (!choice) return;
+    pendingAutoChoiceRef.current = null;
+    if (choice === "y") controller.requestAuto(owner);
+    else controller.requestAutoAndStart(owner);
   }, [controller, isSelectionRequest, owner]);
 
   useEffect(() => {
@@ -193,10 +208,26 @@ export function CharacterSetupScreen({
     }
   }
 
-  /** Let an explicit pointer Cancel take precedence over the input blur. */
-  function handleCancelPointerDown(): void {
+  /** Let a setup action own the focused name before its click fires. */
+  function handleNameActionPointerDown(): void {
     skipNextNameBlurRef.current =
       document.activeElement === nameInputRef.current;
+  }
+
+  /**
+   * Submit a valid new name, then continue the selected native Auto flow.
+   * @param choice - native y or a response requested by the player.
+   */
+  function handleAuto(choice: "y" | "a"): void {
+    if (!autoAvailable) return;
+    if (isNameRequest) {
+      pendingAutoChoiceRef.current = choice;
+      controller.pressEnter(owner);
+      return;
+    }
+    if (!isSelectionRequest) return;
+    if (choice === "y") controller.requestAuto(owner);
+    else controller.requestAutoAndStart(owner);
   }
 
   /** Clear transient blur ownership and cancel the active setup flow. */
@@ -333,7 +364,8 @@ export function CharacterSetupScreen({
         <div className="character-setup-actions">
           <button
             disabled={!autoAvailable}
-            onClick={() => controller.requestAuto(owner)}
+            onClick={() => handleAuto("y")}
+            onPointerDown={handleNameActionPointerDown}
             type="button"
           >
             <Shuffle aria-hidden="true" size={16} />
@@ -341,7 +373,8 @@ export function CharacterSetupScreen({
           </button>
           <button
             disabled={!autoAvailable}
-            onClick={() => controller.requestAutoAndStart(owner)}
+            onClick={() => handleAuto("a")}
+            onPointerDown={handleNameActionPointerDown}
             type="button"
           >
             <Play aria-hidden="true" size={16} />
@@ -361,7 +394,7 @@ export function CharacterSetupScreen({
             className="character-cancel"
             data-character-cancel
             onClick={handleCancel}
-            onPointerDown={handleCancelPointerDown}
+            onPointerDown={handleNameActionPointerDown}
             title="Cancel"
             type="button"
           >

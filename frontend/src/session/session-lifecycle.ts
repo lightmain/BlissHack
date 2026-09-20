@@ -589,7 +589,9 @@ export function createSessionManager(
       session.closed = true;
       owner.closed = true;
       delete context.callbackHost[session.callbackName];
-      resetBridgeState();
+      resetBridgeState({
+        preserveGameState: session.endgameSummary !== null,
+      });
       recordDiagnostic({
         level: "info",
         area: "session",

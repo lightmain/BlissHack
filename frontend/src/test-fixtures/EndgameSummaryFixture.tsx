@@ -22,7 +22,7 @@ const summary: EndgameSummary = {
     },
     {
       kind: "disclosure",
-      title: "Possessions identified",
+      title: "Identified Possessions",
       blocks: [{
         kind: "menu",
         sourceWindowId: 2,
@@ -42,7 +42,7 @@ const summary: EndgameSummary = {
     },
     {
       kind: "disclosure",
-      title: "Dungeon overview",
+      title: "Dungeon Overview",
       blocks: [{
         kind: "text",
         sourceWindowId: 3,

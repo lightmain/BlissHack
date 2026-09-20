@@ -85,7 +85,7 @@ function endgameSummaryFixture(): EndgameSummary {
               accelerator: "a".charCodeAt(0),
               groupAccelerator: 0,
               attribute: 0,
-              color: 2,
+              color: 7,
               text: "a - a blessed +1 long sword",
               itemFlags: 1,
             },
@@ -117,7 +117,7 @@ function endgameSummaryFixture(): EndgameSummary {
       },
       {
         kind: "disclosure",
-        title: "Dungeon overview",
+        title: "Dungeon Overview",
         blocks: [{
           kind: "text",
           sourceWindowId: 48,
@@ -146,7 +146,7 @@ describe("alpha-2.2 EndgameSummaryScreen contract", () => {
 
     const summaryIndex = html.indexOf(">Summary<");
     const possessionsIndex = html.indexOf(">Identified Possessions<");
-    const overviewIndex = html.indexOf(">Dungeon overview<");
+    const overviewIndex = html.indexOf(">Dungeon Overview<");
     const rankingIndex = html.indexOf(">Ranking<");
 
     expect(summaryIndex).toBeGreaterThan(-1);

@@ -338,7 +338,7 @@ export function createEndgameCollector(
     commitCurrentDisclosure();
     currentDisclosure = {
       kind: "disclosure",
-      title: event.query,
+      title: disclosureTitle(event.query),
       blocks: [],
     };
     inventoryMenuPending = INVENTORY_DISCLOSURE_QUERY.test(event.query);
@@ -566,6 +566,42 @@ function isInventoryDisclosureMenu(window: EndgameWindowSnapshot): boolean {
   return window.type === NHW_MENU
     && window.menuPrompt === ""
     && window.menuItems.some((item) => item.identifier !== null);
+}
+
+/**
+ * Convert core disclosure questions into concise result-tab labels.
+ * @param query - exact question emitted by the current NetHack core.
+ * @returns a stable player-facing label, or the original query if unknown.
+ */
+function disclosureTitle(query: string): string {
+  if (INVENTORY_DISCLOSURE_QUERY.test(query)) {
+    return "Identified Possessions";
+  }
+  if (query === "Do you want to see your attributes?") {
+    return "Final Attributes";
+  }
+  if (query === "Do you want an account of creatures vanquished?") {
+    return "Vanquished Creatures";
+  }
+  if (query === "Do you want a list of species genocided?") {
+    return "Genocided Species";
+  }
+  if (query === "Do you want a list of extinct species?") {
+    return "Extinct Species";
+  }
+  if (query === "Do you want a list of species genocided and extinct?") {
+    return "Genocided and Extinct Species";
+  }
+  if (query === "Do you want to see your conduct?") {
+    return "Conduct";
+  }
+  if (query === "Do you want to see your conduct and achievements?") {
+    return "Conduct and Achievements";
+  }
+  if (query === "Do you want to see the dungeon overview?") {
+    return "Dungeon Overview";
+  }
+  return query;
 }
 
 /** Copy one styled text line. */
