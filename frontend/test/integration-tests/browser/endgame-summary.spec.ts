@@ -178,6 +178,61 @@ test("keeps long sections independently scrollable without page overflow", async
   expect(pageOverflow).toBe(false);
 });
 
+test("[defect-probing] keeps Ranking identity intact while Outcome wraps", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 600, height: 700 });
+  await page.getByRole("tab", { name: "Ranking" }).click();
+
+  const table = page.getByRole("table");
+  await expect(table).toBeVisible();
+  for (const label of ["Rank", "Points", "Character", "Outcome", "HP"]) {
+    await expect(table.getByRole("columnheader", { name: label }))
+      .toBeVisible();
+  }
+
+  const character = table.getByRole("cell", {
+    name: "TenLetters-Wiz-Hum-Fem-Neu",
+  });
+  const outcome = table.getByRole("cell", {
+    name: /died in The Dungeons of Doom on level 7.*Killed by a minotaur/,
+  });
+  const characterLayout = await character.evaluate((element) => {
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    const lineTops = new Set(
+      [...range.getClientRects()].map((rect) => Math.round(rect.top)),
+    );
+    return {
+      lineCount: lineTops.size,
+      text: element.textContent,
+      whiteSpace: getComputedStyle(element).whiteSpace,
+    };
+  });
+  const outcomeLayout = await outcome.evaluate((element) => {
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    const lineTops = new Set(
+      [...range.getClientRects()].map((rect) => Math.round(rect.top)),
+    );
+    return {
+      lineCount: lineTops.size,
+      whiteSpace: getComputedStyle(element).whiteSpace,
+    };
+  });
+
+  expect(characterLayout).toEqual({
+    lineCount: 1,
+    text: "TenLetters-Wiz-Hum-Fem-Neu",
+    whiteSpace: "nowrap",
+  });
+  expect(outcomeLayout.whiteSpace).not.toBe("nowrap");
+  expect(outcomeLayout.lineCount).toBeGreaterThan(1);
+  expect(await page.evaluate(() =>
+    document.documentElement.scrollWidth
+      === document.documentElement.clientWidth)).toBe(true);
+});
+
 test("fits the result shell at the supported minimum width", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 700 });
   await expect(page.getByRole("button", { name: "Confirm" })).toBeVisible();
