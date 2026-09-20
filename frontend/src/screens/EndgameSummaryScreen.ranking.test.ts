@@ -84,6 +84,9 @@ describe("alpha-2.2 semantic Ranking table", () => {
     const html = renderRanking(CORE_RANKING_LINES);
 
     expect(html).toMatch(/<table\b[^>]*>/);
+    expect(html).toMatch(
+      /<div(?=[^>]*\baria-label="Ranking table")(?=[^>]*\brole="region")(?=[^>]*\btabindex="0")[^>]*>/,
+    );
     for (const label of ["Rank", "Points", "Character", "Outcome", "HP"]) {
       expect(html).toMatch(
         new RegExp(
@@ -128,11 +131,15 @@ describe("alpha-2.2 semantic Ranking table", () => {
     );
   });
 
-  it("falls back atomically to original text when Ranking cannot be parsed", () => {
+  it("falls back atomically when a continuation follows parsed HP", () => {
     const unparsedLines = [
       CORE_RANKING_LINES[0],
-      { text: "not a core ranking entry", attribute: 0 },
-      { text: "                orphaned continuation data", attribute: 0 },
+      CORE_RANKING_LINES[1],
+      CORE_RANKING_LINES[2],
+      {
+        text: "                unexpected text after terminal HP",
+        attribute: 0,
+      },
     ];
     const html = renderRanking(unparsedLines);
 

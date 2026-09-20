@@ -233,6 +233,39 @@ test("[defect-probing] keeps Ranking identity intact while Outcome wraps", async
       === document.documentElement.clientWidth)).toBe(true);
 });
 
+test("keeps Ranking in a focusable horizontal scroller at 320px", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 700 });
+  const rankingTab = page.getByRole("tab", { name: "Ranking" });
+  await rankingTab.click();
+
+  const panel = page.getByRole("tabpanel", { name: "Ranking" });
+  const scrollRegion = page.getByRole("region", { name: "Ranking table" });
+  await expect(scrollRegion).toBeVisible();
+  await rankingTab.press("Tab");
+  await expect(panel).toBeFocused();
+  await panel.press("Tab");
+  await expect(scrollRegion).toBeFocused();
+
+  const scrollState = await scrollRegion.evaluate((element) => {
+    element.scrollLeft = element.scrollWidth;
+    return {
+      clientWidth: element.clientWidth,
+      scrollLeft: element.scrollLeft,
+      scrollWidth: element.scrollWidth,
+    };
+  });
+  expect(scrollState.scrollWidth).toBeGreaterThan(scrollState.clientWidth);
+  expect(scrollState.scrollLeft).toBeGreaterThan(0);
+
+  const documentWidth = await page.evaluate(() => ({
+    clientWidth: document.documentElement.clientWidth,
+    scrollWidth: document.documentElement.scrollWidth,
+  }));
+  expect(documentWidth.scrollWidth).toBe(documentWidth.clientWidth);
+});
+
 test("fits the result shell at the supported minimum width", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 700 });
   await expect(page.getByRole("button", { name: "Confirm" })).toBeVisible();
