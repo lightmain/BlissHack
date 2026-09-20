@@ -281,10 +281,21 @@ describe("Home raw save operations", () => {
 
 describe("local data clearing", () => {
   it("restores save and local snapshots when exact-key clearing fails", async () => {
-    const snapshot = [{
-      path: "/save/0Ada",
-      bytes: Uint8Array.of(1, 2, 3),
-    }];
+    const ranking = Uint8Array.of(4, 5, 6);
+    const snapshot = [
+      {
+        path: "/save/0Ada",
+        bytes: Uint8Array.of(1, 2, 3),
+      },
+      {
+        path: "/record",
+        bytes: ranking,
+      },
+      {
+        path: "/save/.ranking-record",
+        bytes: ranking,
+      },
+    ];
     const storage = {
       initialize: vi.fn(async () => true),
       listSaves: vi.fn(async () => [adaSave]),

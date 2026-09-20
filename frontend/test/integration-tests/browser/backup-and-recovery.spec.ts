@@ -42,6 +42,11 @@ test("exports, clears, and restores a complete BlissHack backup", async ({
         terminalFontSize: string;
       };
     };
+    ranking: {
+      byteLength: number;
+      sha256: string;
+      data: string;
+    };
     saves: Array<{
       fileName: string;
       byteLength: number;
@@ -51,7 +56,7 @@ test("exports, clears, and restores a complete BlissHack backup", async ({
   };
   expect(backup).toMatchObject({
     format: "blisshack-backup",
-    schemaVersion: 1,
+    schemaVersion: 2,
     profile: {
       schemaVersion: 3,
       interface: {
@@ -62,7 +67,15 @@ test("exports, clears, and restores a complete BlissHack backup", async ({
         characterSetupStyle: "original",
       },
     },
+    ranking: {
+      byteLength: expect.any(Number),
+      sha256: expect.stringMatching(/^[0-9a-f]{64}$/),
+      data: expect.any(String),
+    },
   });
+  expect(Buffer.from(backup.ranking.data, "base64")).toHaveLength(
+    backup.ranking.byteLength,
+  );
   expect(backup.saves).toHaveLength(1);
   expect(backup.saves[0].fileName).toBe(`0${name}`);
   expect(Buffer.from(backup.saves[0].data, "base64")).toHaveLength(
