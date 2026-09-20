@@ -7,7 +7,7 @@ import {
 } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { InteractionOrigin } from "../game-actions/interaction-origin";
-import type { PermanentInventoryState } from "../game-state";
+import type { MenuItem, PermanentInventoryState } from "../game-state";
 import type { LocalInspectRequest } from "../interactions/InspectTooltip";
 import type {
   InventoryDragController,
@@ -32,6 +32,34 @@ interface PermanentInventoryPanelProps {
 export interface InventoryContextRequest {
   identifier: number;
   origin: Extract<InteractionOrigin, { kind: "inventory" }>;
+}
+
+/**
+ * Render the shared glyph, marker, accelerator, and text columns for an item.
+ * @param props - one decoded core menu item.
+ * @returns the reusable visual content for inventory rows.
+ */
+export function InventoryItemContent({ item }: { item: MenuItem }) {
+  const glyph = item.glyph?.ttyChar
+    ? String.fromCodePoint(item.glyph.ttyChar)
+    : "";
+  const accelerator = item.accelerator
+    ? String.fromCodePoint(item.accelerator)
+    : "";
+  return (
+    <>
+      <span aria-hidden="true" className="nh-menu-glyph">
+        {glyph || " "}
+      </span>
+      <span aria-hidden="true" className="nh-menu-mark">
+        {" "}
+      </span>
+      <span aria-hidden="true" className="nh-menu-accelerator">
+        {accelerator || " "}
+      </span>
+      <span className="nh-menu-text">{item.text}</span>
+    </>
+  );
 }
 
 /**
@@ -138,9 +166,6 @@ export function PermanentInventoryPanel({
           {inventory.items.map((item, index) => {
             const glyph = item.glyph?.ttyChar
               ? String.fromCodePoint(item.glyph.ttyChar)
-              : "";
-            const accelerator = item.accelerator
-              ? String.fromCodePoint(item.accelerator)
               : "";
             const identifier = item.identifier;
             return (
@@ -263,19 +288,7 @@ export function PermanentInventoryPanel({
                     tabIndex={-1}
                     type="button"
                   >
-                    <span aria-hidden="true" className="nh-menu-glyph">
-                      {glyph || " "}
-                    </span>
-                    <span aria-hidden="true" className="nh-menu-mark">
-                      {" "}
-                    </span>
-                    <span
-                      aria-hidden="true"
-                      className="nh-menu-accelerator"
-                    >
-                      {accelerator || " "}
-                    </span>
-                    <span className="nh-menu-text">{item.text}</span>
+                    <InventoryItemContent item={item} />
                   </button>
                 )
             );

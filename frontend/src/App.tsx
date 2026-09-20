@@ -449,10 +449,20 @@ function App({
 
   if (state.phase === "end-summary") {
     return withLockDialog(
-      <EndgameSummaryScreen
-        onConfirm={confirmEndgameSummary}
-        summary={state.summary}
-      />,
+      <div className="end-summary-stage">
+        <GameScreen
+          loadStatus={loadStatus}
+          moduleId={state.summary.owner.moduleId}
+          onApplyProfile={applyProfile}
+          profile={profile}
+          readOnly
+          sessionId={state.summary.owner.sessionId}
+        />
+        <EndgameSummaryScreen
+          onConfirm={confirmEndgameSummary}
+          summary={state.summary}
+        />
+      </div>,
     );
   }
 

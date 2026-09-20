@@ -208,7 +208,7 @@ describe("alpha-2.2 EndgameCollector contract", () => {
       });
       expect(collector.complete()?.sections[1]).toMatchObject({
         kind: "disclosure",
-        title: DISCLOSURE_QUERY,
+        title: "Identified Possessions",
         blocks: [{
           kind: "menu",
           sourceWindowId: inventory.id,
@@ -360,7 +360,7 @@ describe("alpha-2.2 EndgameCollector contract", () => {
     );
     expect(summary?.sections[1]).toMatchObject({
       kind: "disclosure",
-      title: DISCLOSURE_QUERY,
+      title: "Identified Possessions",
       blocks: [
         {
           kind: "menu",

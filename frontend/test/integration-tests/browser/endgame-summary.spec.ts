@@ -77,6 +77,11 @@ test("navigates result tabs by mouse and keyboard without moving Confirm", async
   const confirm = page.getByRole("button", { name: "Confirm" });
   const initialConfirmBox = await confirm.boundingBox();
   expect(initialConfirmBox).not.toBeNull();
+  await expect(tabs.nth(0)).toBeFocused();
+  await tabs.nth(0).press("Shift+Tab");
+  await expect(confirm).toBeFocused();
+  await confirm.press("Tab");
+  await expect(tabs.nth(0)).toBeFocused();
 
   await tabs.nth(1).click();
   await expect(tabs.nth(1)).toHaveAttribute("aria-selected", "true");
@@ -103,11 +108,11 @@ test("navigates result tabs by mouse and keyboard without moving Confirm", async
 test("keeps long sections independently scrollable without page overflow", async ({
   page,
 }) => {
-  await page.getByRole("tab", { name: "Dungeon overview" }).click();
+  await page.getByRole("tab", { name: "Dungeon Overview" }).click();
   const panel = page.getByRole("tabpanel", {
-    name: "Dungeon overview",
+    name: "Dungeon Overview",
   });
-  await page.getByRole("tab", { name: "Dungeon overview" }).press("Tab");
+  await page.getByRole("tab", { name: "Dungeon Overview" }).press("Tab");
   await expect(panel).toBeFocused();
 
   const scrollState = await panel.evaluate((element) => ({

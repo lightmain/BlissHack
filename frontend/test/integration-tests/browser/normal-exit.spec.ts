@@ -275,9 +275,9 @@ test("collects a real unified-character quit into the BlissHack summary", async 
   )).toBeGreaterThan(inventorySelectIndex);
 
   await expect(page.getByRole("dialog", { name: "Menu" })).toHaveCount(0);
-  await expect(page.locator(".nh-prompt")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Game Over" })).toBeVisible();
-  await expect(page.locator(".nh-shell")).toBeVisible();
+  await expect(page.locator(".nh-shell"))
+    .toHaveAttribute("data-read-only", "true");
   await expect(page.getByRole("dialog", { name: "Game Over" })).toBeVisible();
   const inventoryTab = page.getByRole("tab", {
     name: "Identified Possessions",

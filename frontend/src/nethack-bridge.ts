@@ -210,11 +210,16 @@ export function setRestoreRequired(
   );
 }
 
-/** Reset bridge and frontend state for tests or a future fresh game. */
-export function resetBridgeState(): void {
+/**
+ * Reset bridge state for cleanup or a future fresh game.
+ * @param options - whether a completed session's render-only HUD may remain.
+ */
+export function resetBridgeState(
+  options: { preserveGameState?: boolean } = {},
+): void {
   resetEndgameCollection("bridge-reset");
   resetInputController();
-  resetGameState();
+  if (!options.preserveGameState) resetGameState();
 }
 
 /**
