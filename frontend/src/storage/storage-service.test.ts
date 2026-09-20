@@ -411,8 +411,11 @@ describe("managed storage clearing", () => {
     await vi.waitFor(() => expect(harness.syncRequests).toHaveLength(2));
     harness.syncRequests[1].complete();
     const snapshot = await clearing;
-    expect(harness.files.size).toBe(0);
+    expect(harness.files).toEqual(new Map([
+      ["/record", new Uint8Array()],
+    ]));
     expect(snapshot).toEqual([
+      { path: "/record", bytes: new Uint8Array() },
       { path: "/save/0Ada", bytes: Uint8Array.of(1) },
       { path: "/save/level.0", bytes: Uint8Array.of(2) },
     ]);

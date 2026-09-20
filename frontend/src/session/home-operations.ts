@@ -479,7 +479,11 @@ export function createHomeOperations(
         });
       }
       hooks.recordDiagnostic({
-        level: summary.failed > 0 || refreshFailed ? "warning" : "info",
+        level: summary.failed > 0
+            || summary.ranking === "failed"
+            || refreshFailed
+          ? "warning"
+          : "info",
         area: "storage",
         event: "backup.import_completed",
         moduleId,

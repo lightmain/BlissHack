@@ -171,6 +171,15 @@ export function createSessionManager(
           : createStorageService(module as unknown as StorageModule, {
             validateSaveBytes,
             validateSaveMetadata,
+            onRankingRecovery: (reason) => {
+              recordDiagnostic({
+                level: "warning",
+                area: "storage",
+                event: "ranking.record_recovered",
+                moduleId,
+                detail: { fallbackReason: reason },
+              });
+            },
           });
         record.storage = storage;
         context.options.dispatch({ type: "STORAGE_LOADING", moduleId });
@@ -528,26 +537,27 @@ export function createSessionManager(
         sessionId: session.sessionId,
       });
       context.options.dispatch({ type: "SESSION_EXITING", sessionId: session.sessionId });
-      try {
-        await (owner.storage as StorageService).flush();
-      } catch (error) {
-        await failSession(
-          session,
-          error,
-          "storage",
-          "storage.flush_failed",
-        );
-        return;
-      }
-      session.exitFlushed = true;
-      recordDiagnostic({
-        level: "info",
-        area: "storage",
-        event: "storage.flush_completed",
-        moduleId: owner.moduleId,
-        sessionId: session.sessionId,
-      });
     }
+    try {
+      // Original endgame mode writes /record after shim_exit_nhwindows.
+      await (owner.storage as StorageService).flush();
+    } catch (error) {
+      await failSession(
+        session,
+        error,
+        "storage",
+        "storage.flush_failed",
+      );
+      return;
+    }
+    session.exitFlushed = true;
+    recordDiagnostic({
+      level: "info",
+      area: "storage",
+      event: "storage.flush_completed",
+      moduleId: owner.moduleId,
+      sessionId: session.sessionId,
+    });
     await retireSession(owner, session, true);
   }
 

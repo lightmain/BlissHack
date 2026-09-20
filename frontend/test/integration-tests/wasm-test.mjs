@@ -899,6 +899,12 @@ async function run() {
     ) === runtimeRc,
     "runtime .nethackrc is readable before main",
   );
+  const runtimeSysconf = module.FS.readFile("/sysconf", { encoding: "utf8" });
+  assert(
+    /^PERS_IS_UID=0$/m.test(runtimeSysconf)
+      && !/^PERS_IS_UID=1$/m.test(runtimeSysconf),
+    "embedded runtime sysconf ranks browser players by name",
+  );
 
   // --- Stage-two save helpers before main ---
   console.log("\n--- Save helpers before main ---");

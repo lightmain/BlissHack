@@ -110,6 +110,31 @@ describe("local ranking hydration and persistence", () => {
     expect(harness.files.get(RANKING_PATH)).toEqual(refreshedRanking);
   });
 
+  it("resets a stale root record when refresh observes a deleted sidecar", async () => {
+    const harness = createStorageModuleHarness();
+    const ranking = createRankingRecord();
+    harness.files.set(RANKING_SIDECAR_PATH, ranking);
+    const service = await initializeService(harness);
+
+    const refresh = service.refreshFromPersistent();
+    await vi.waitFor(() => expect(harness.syncRequests).toHaveLength(2));
+    harness.files.delete(RANKING_SIDECAR_PATH);
+    harness.syncRequests[1].complete();
+    await refresh;
+
+    expect(harness.files.get(RANKING_PATH)).toEqual(new Uint8Array());
+    expect(service.getRankingStatus()).toEqual({
+      source: "packaged",
+      recovery: null,
+    });
+
+    const flushing = service.flush();
+    await vi.waitFor(() => expect(harness.syncRequests).toHaveLength(3));
+    expect(harness.files.get(RANKING_SIDECAR_PATH)).toEqual(new Uint8Array());
+    harness.syncRequests[2].complete();
+    await flushing;
+  });
+
   it("copies the current root record to the sidecar before syncfs(false)", async () => {
     const harness = createStorageModuleHarness();
     const service = await initializeService(harness);

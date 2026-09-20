@@ -438,6 +438,25 @@ idle
 
 终局结果不能依赖已退休 module、window ID、WASM 指针或全局 callback。
 
+### 6.6 本地 Ranking 持久化
+
+alpha-2.2 只实现浏览器本地 Ranking，不实现或预留全球排行榜服务。
+
+- NetHack 核心继续读写根目录 `/record`，不改变原版记录格式和
+  `SCOREPREFIX`。
+- storage service 将经过有界结构校验的原始 bytes 镜像到
+  `/save/.ranking-record`，由现有 `/save` IDBFS 和游戏锁负责持久化与并发。
+- module 初始化及跨页面 refresh 后从 sidecar 恢复 `/record`；损坏 sidecar
+  回退到构建内空记录并写入不含内容的诊断事件。
+- 原版终局会在 `shim_exit_nhwindows` 之后才调用 `topten()`，因此 `main()`
+  正常返回后必须再执行一次最终 flush，之后才能退休 module。
+- 完整备份 schema v2 增加带长度、SHA-256 和 Base64 的 Ranking payload；
+  schema v1 继续导入，并保留导入前的本地 Ranking。
+- `Clear Local Data` 同时清除存档、Ranking、profile 与 diagnostics，普通失败
+  使用同一有界快照补偿恢复。
+- WASM sysconf 使用 `PERS_IS_UID=0`。Emscripten 中所有玩家 UID 都是 0，
+  按姓名区分才能避免不同角色共享同一 `PERSMAX` 限额。
+
 ## 7. 快速再来一局
 
 “以当前角色配置快速再来一局”不作为 alpha-2.2 完成条件，作为 stretch goal。

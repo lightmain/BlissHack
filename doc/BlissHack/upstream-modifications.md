@@ -285,6 +285,21 @@ M win/shim/winshim.c
   - `frontend/src/nethack-bridge.test.ts`
   - `frontend/test/integration-tests/wasm-test.mjs`
 
+### 2.13 浏览器本地 Ranking 按姓名限额
+
+- **文件**：`sys/libnh/sysconf`
+- **引入提交**：alpha-2.2 本地 Ranking 持久化提交
+- **目的**：
+  - 显式设置 `PERS_IS_UID=0`，使 `PERSMAX` 按排行榜中的玩家名和职业限额。
+  - Emscripten 的 `getuid()` 对所有浏览器游戏返回 0；保持 UNIX 默认值 1 会
+    让不同姓名的角色错误共享同一个每职业限额。
+- **源码范围**：不修改 `topten.c`、record 文本格式、shim ABI 或 save 格式。
+- **行为依据**：
+  `doc/BlissHack/plans/alpha-2.2.md` 第 6.6 节。
+- **回归测试**：
+  - `frontend/scripts/build-wasm-toolchain.test.mjs`
+  - `frontend/test/integration-tests/browser/normal-exit.spec.ts`
+
 ## 3. 上游合并检查
 
 每次从 `upstream/NetHack-5.0` 合并后必须：

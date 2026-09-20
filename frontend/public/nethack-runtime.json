@@ -12,11 +12,11 @@
   "files": {
     "nethack.js": {
       "bytes": 96763,
-      "sha256": "f361243b3555e23d4f5c4811e9d2b4baaa04463a510cd43c20837646eecc0b76"
+      "sha256": "ccd3e0707c8773221da298eccd740854dd311760ac3758fcde44375379ca0ba1"
     },
     "nethack.wasm": {
-      "bytes": 6630658,
-      "sha256": "450ee715e1a90043ffc5bcd0975217d0284065b0ec475df79acd854592fe6c51"
+      "bytes": 6630801,
+      "sha256": "bc2e0614f6eddc774a5ddd3058933a56ddaaaf6c3951f91264966ad3e3d699a0"
     }
   }
 }

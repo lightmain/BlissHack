@@ -2,9 +2,14 @@ import {
   validateProfile,
   type BlissHackProfile,
 } from "../settings/profile";
+import {
+  MAX_RANKING_RECORD_BYTES,
+  validateRankingRecord,
+} from "../storage/ranking-record";
 
 /** Current full-backup container schema. */
-export const BACKUP_SCHEMA_VERSION = 1;
+export const BACKUP_SCHEMA_VERSION = 2;
+export { MAX_RANKING_RECORD_BYTES };
 /** Largest accepted UTF-8 JSON backup. */
 export const BACKUP_IMPORT_MAX_BYTES = 96 * 1024 * 1024;
 /** Largest number of formal saves in one backup. */
@@ -29,17 +34,35 @@ export interface BlissHackBackupV1 {
   saves: BackupSaveV1[];
 }
 
+export interface BackupRankingV2 {
+  byteLength: number;
+  sha256: string;
+  data: string;
+}
+
+export interface BlissHackBackupV2 {
+  format: "blisshack-backup";
+  schemaVersion: 2;
+  productVersion: string;
+  buildId: string;
+  exportedAt: string;
+  profile: BlissHackProfile;
+  saves: BackupSaveV1[];
+  ranking: BackupRankingV2 | null;
+}
+
 export interface BackupSaveBytes {
   fileName: string;
   bytes: Uint8Array;
 }
 
-export interface ParsedBackupV1 {
+export interface ParsedBackup {
   productVersion: string;
   buildId: string;
   exportedAt: string;
   profile: BlissHackProfile;
   saves: BackupSaveBytes[];
+  ranking: Uint8Array | null;
 }
 
 export type BackupFormatErrorCode =
@@ -67,6 +90,7 @@ export class BackupFormatError extends Error {
  * @param productVersion - player-visible product version.
  * @param buildId - diagnostic build identifier.
  * @param exportedAt - deterministic timestamp override for tests.
+ * @param ranking - exact local ranking bytes, or null when omitted.
  * @returns UTF-8 JSON text with stable save ordering.
  */
 export async function serializeBackup(
@@ -75,6 +99,7 @@ export async function serializeBackup(
   productVersion: string,
   buildId: string,
   exportedAt: Date = new Date(),
+  ranking: Uint8Array | null = null,
 ): Promise<string> {
   assertMetadataToken(productVersion, 64, "productVersion");
   assertMetadataToken(buildId, 128, "buildId");
@@ -107,7 +132,7 @@ export async function serializeBackup(
     });
   }
 
-  const document: BlissHackBackupV1 = {
+  const document: BlissHackBackupV2 = {
     format: "blisshack-backup",
     schemaVersion: BACKUP_SCHEMA_VERSION,
     productVersion,
@@ -115,6 +140,7 @@ export async function serializeBackup(
     exportedAt: exportedAt.toISOString(),
     profile: validateProfile(profile),
     saves: encodedSaves,
+    ranking: ranking === null ? null : await encodeRanking(ranking),
   };
   const json = `${JSON.stringify(document, null, 2)}\n`;
   if (new TextEncoder().encode(json).byteLength > BACKUP_IMPORT_MAX_BYTES) {
@@ -130,7 +156,7 @@ export async function serializeBackup(
  */
 export async function parseBackupImport(
   bytes: Uint8Array,
-): Promise<ParsedBackupV1> {
+): Promise<ParsedBackup> {
   if (bytes.byteLength > BACKUP_IMPORT_MAX_BYTES) {
     throw new BackupFormatError(
       "file-too-large",
@@ -169,7 +195,7 @@ export async function parseBackupImport(
   if (document.format !== "blisshack-backup") {
     throw invalidBackup("Backup format is invalid");
   }
-  if (document.schemaVersion !== BACKUP_SCHEMA_VERSION) {
+  if (document.schemaVersion !== 1 && document.schemaVersion !== 2) {
     throw new BackupFormatError(
       "unsupported-schema",
       "Backup schema version is not supported",
@@ -235,6 +261,9 @@ export async function parseBackupImport(
     }
     saves.push({ fileName: save.fileName, bytes: decoded });
   }
+  const ranking = document.schemaVersion === 1
+    ? null
+    : await parseRanking(document.ranking);
 
   return {
     productVersion: document.productVersion,
@@ -242,7 +271,66 @@ export async function parseBackupImport(
     exportedAt: document.exportedAt,
     profile,
     saves,
+    ranking,
   };
+}
+
+/** Encode one validated local ranking payload for schema v2. */
+async function encodeRanking(bytes: Uint8Array): Promise<BackupRankingV2> {
+  try {
+    validateRankingRecord(bytes);
+  } catch (error) {
+    throw invalidBackup(
+      error instanceof Error ? error.message : "Backup ranking is invalid",
+    );
+  }
+  return {
+    byteLength: bytes.byteLength,
+    sha256: await sha256Hex(bytes),
+    data: encodeBase64(bytes),
+  };
+}
+
+/** Decode and verify the optional schema-v2 ranking payload. */
+async function parseRanking(value: unknown): Promise<Uint8Array | null> {
+  if (value === null) return null;
+  const ranking = requireRecord(value, "ranking");
+  if (
+    !Number.isSafeInteger(ranking.byteLength)
+    || (ranking.byteLength as number) < 0
+    || (ranking.byteLength as number) > MAX_RANKING_RECORD_BYTES
+  ) {
+    throw invalidBackup("ranking.byteLength is invalid");
+  }
+  if (
+    typeof ranking.sha256 !== "string"
+    || !/^[0-9a-f]{64}$/.test(ranking.sha256)
+  ) {
+    throw invalidBackup("ranking.sha256 is invalid");
+  }
+  if (typeof ranking.data !== "string") {
+    throw invalidBackup("ranking.data is invalid");
+  }
+  const expectedEncodedLength = 4
+    * Math.ceil((ranking.byteLength as number) / 3);
+  if (ranking.data.length !== expectedEncodedLength) {
+    throw invalidBackup("ranking encoded length does not match");
+  }
+  const decoded = decodeCanonicalBase64(ranking.data, "Ranking");
+  if (decoded.byteLength !== ranking.byteLength) {
+    throw invalidBackup("ranking byte length does not match");
+  }
+  if (await sha256Hex(decoded) !== ranking.sha256) {
+    throw invalidBackup("ranking checksum does not match");
+  }
+  try {
+    validateRankingRecord(decoded);
+  } catch (error) {
+    throw invalidBackup(
+      error instanceof Error ? error.message : "Backup ranking is invalid",
+    );
+  }
+  return decoded;
 }
 
 /**
@@ -304,28 +392,29 @@ function encodeBase64(bytes: Uint8Array): string {
 /**
  * Decode Base64 and reject alternate or non-canonical representations.
  * @param value - untrusted Base64 text.
+ * @param label - payload label used in validation errors.
  * @returns detached decoded bytes.
  */
-function decodeCanonicalBase64(value: string): Uint8Array {
+function decodeCanonicalBase64(value: string, label = "Save"): Uint8Array {
   if (
     value.length % 4 !== 0
     || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/
       .test(value)
   ) {
-    throw invalidBackup("Save data is not canonical Base64");
+    throw invalidBackup(`${label} data is not canonical Base64`);
   }
   let binary: string;
   try {
     binary = atob(value);
   } catch {
-    throw invalidBackup("Save data is not valid Base64");
+    throw invalidBackup(`${label} data is not valid Base64`);
   }
   const bytes = new Uint8Array(binary.length);
   for (let index = 0; index < binary.length; index += 1) {
     bytes[index] = binary.charCodeAt(index);
   }
   if (encodeBase64(bytes) !== value) {
-    throw invalidBackup("Save data is not canonical Base64");
+    throw invalidBackup(`${label} data is not canonical Base64`);
   }
   return bytes;
 }

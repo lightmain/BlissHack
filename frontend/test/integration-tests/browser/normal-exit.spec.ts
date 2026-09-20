@@ -9,41 +9,115 @@ import {
   startNewGame,
   startNewGameFromHome,
 } from "./helpers/game-flow";
+import {
+  readCursorPosition,
+  readShellRevision,
+} from "./helpers/map-viewport-state";
 
-/** Capture raw ranking lines emitted by the active NetHack callback. */
-async function captureRankingOutput(page: Page): Promise<void> {
-  await page.evaluate(() => {
-    const host = globalThis as typeof globalThis & Record<string, unknown> & {
-      __blisshackRankingOutput?: string[];
-    };
-    const callbackName = Object.keys(host).find((name) =>
-      name.startsWith("blissCallback_session_")
-    );
-    const callback = callbackName ? host[callbackName] : null;
-    if (!callbackName || typeof callback !== "function") {
-      throw new Error("Active session callback was not found");
-    }
-    const output: string[] = [];
-    host.__blisshackRankingOutput = output;
-    host[callbackName] = async (...args: unknown[]) => {
-      if (
-        (args[0] === "shim_raw_print" || args[0] === "shim_raw_print_bold")
-        && typeof args[1] === "string"
-      ) {
-        output.push(args[1]);
-      }
-      return callback(...args);
-    };
-  });
+/** Return a movement key for one step from the player toward a map cell. */
+function directionKey(deltaX: number, deltaY: number): string {
+  const directions = new Map([
+    ["-1,-1", "y"],
+    ["0,-1", "k"],
+    ["1,-1", "u"],
+    ["-1,0", "h"],
+    ["1,0", "l"],
+    ["-1,1", "b"],
+    ["0,1", "j"],
+    ["1,1", "n"],
+  ]);
+  const key = directions.get(`${Math.sign(deltaX)},${Math.sign(deltaY)}`);
+  if (!key) throw new Error("Ranking score target overlaps the player");
+  return key;
 }
 
-/** Read ranking lines captured on the current page generation. */
-async function readRankingOutput(page: Page): Promise<string> {
-  return page.evaluate(() => {
-    const host = globalThis as typeof globalThis & {
-      __blisshackRankingOutput?: string[];
-    };
-    return (host.__blisshackRankingOutput ?? []).join("\n");
+/** Earn a positive core score by force-fighting the visible starting pet. */
+async function earnRankingScore(page: Page): Promise<void> {
+  const experience = page.getByRole("region", { name: "Character status" })
+    .locator(".nh-status-value")
+    .filter({ hasText: /^\/\d+$/ });
+  await expect(experience).toBeVisible();
+
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    const currentExperience = Number((await experience.textContent())?.slice(1));
+    if (currentExperience > 0) return;
+
+    const pet = page.locator(".nh-map-run.nh-pet").first();
+    await expect(pet).toBeVisible();
+    const [petX, petY, player, revision] = await Promise.all([
+      pet.getAttribute("data-start").then(Number),
+      pet.locator("..").getAttribute("data-y").then(Number),
+      readCursorPosition(page),
+      readShellRevision(page),
+    ]);
+    const deltaX = petX - player.x;
+    const deltaY = petY - player.y;
+    const adjacent = Math.abs(deltaX) <= 1 && Math.abs(deltaY) <= 1;
+    if (adjacent) await page.keyboard.press("F");
+    await page.keyboard.press(directionKey(deltaX, deltaY));
+    await page.waitForFunction((previousRevision) => {
+      const shell = document.querySelector<HTMLElement>(".nh-shell");
+      return shell !== null
+        && Number(shell.dataset.snapshotRevision) > previousRevision;
+    }, revision);
+    await expect(page.locator(".nh-shell")).toHaveAttribute(
+      "data-command-input",
+      "ready",
+    );
+  }
+
+  throw new Error("Could not earn a positive ranking score");
+}
+
+/** Read the exact durable ranking sidecar from Emscripten's IDBFS store. */
+async function readDurableRanking(page: Page): Promise<string> {
+  return page.evaluate(async () =>
+    new Promise<string>((resolve, reject) => {
+      const request = indexedDB.open("/save", 21);
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        const database = request.result;
+        const transaction = database.transaction("FILE_DATA", "readonly");
+        const entryRequest = transaction.objectStore("FILE_DATA")
+          .get("/save/.ranking-record");
+        entryRequest.onerror = () => reject(entryRequest.error);
+        entryRequest.onsuccess = () => {
+          const entry = entryRequest.result as {
+            contents?: Uint8Array;
+          } | undefined;
+          if (!(entry?.contents instanceof Uint8Array)) {
+            reject(new Error("Durable ranking sidecar was not found"));
+            return;
+          }
+          resolve(String.fromCharCode(...entry.contents));
+        };
+        transaction.oncomplete = () => database.close();
+      };
+    }));
+}
+
+/** Make this scoring scenario reproducible without changing production code. */
+async function installDeterministicRandom(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    let state = 0x6d2b79f5;
+    Object.defineProperty(globalThis.crypto, "getRandomValues", {
+      configurable: true,
+      value: <T extends ArrayBufferView | null>(array: T): T => {
+        if (array === null) throw new TypeError("Expected an array");
+        const bytes = new Uint8Array(
+          array.buffer,
+          array.byteOffset,
+          array.byteLength,
+        );
+        for (let index = 0; index < bytes.length; index += 1) {
+          state ^= state << 13;
+          state ^= state >>> 17;
+          state ^= state << 5;
+          bytes[index] = state & 0xff;
+        }
+        return array;
+      },
+    });
   });
 }
 
@@ -88,18 +162,24 @@ test("persists rankings across a reload and a second completed game", async ({
   expect(new TextEncoder().encode(firstName).byteLength).toBeLessThanOrEqual(10);
   expect(new TextEncoder().encode(secondName).byteLength).toBeLessThanOrEqual(10);
 
-  await startNewGame(page, firstName);
-  await captureRankingOutput(page);
+  await installDeterministicRandom(page);
+  await openHome(page, firstName);
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("radio", { name: "ASCII" }).check();
+  await page.getByRole("checkbox", { name: "Show experience" }).check();
+  await page.getByRole("button", { name: "Apply" }).click();
+  await startNewGameFromHome(page, `${firstName}-Bar-Hum-Mal-Neu`);
+  await earnRankingScore(page);
   await quitAndReturnHome(page);
-  expect(await readRankingOutput(page)).toContain(firstName);
+  expect(await readDurableRanking(page)).toContain(firstName);
 
   await page.reload();
   await expect(page.getByRole("button", { name: "New Game" })).toBeVisible();
-  await startNewGameFromHome(page, secondName);
-  await captureRankingOutput(page);
+  await startNewGameFromHome(page, `${secondName}-Bar-Hum-Mal-Neu`);
+  await earnRankingScore(page);
   await quitAndReturnHome(page);
 
-  const secondRanking = await readRankingOutput(page);
+  const secondRanking = await readDurableRanking(page);
   expect(secondRanking).toContain(firstName);
   expect(secondRanking).toContain(secondName);
   expect(errors).toEqual({ console: [], page: [] });
