@@ -442,6 +442,7 @@ describe("full backup import refresh", () => {
         buildId: "test",
         exportedAt: "2026-09-06T12:00:00.000Z",
         profile: createDefaultProfile(),
+        ranking: null,
       },
       entries: [{
         fileName: "0Old",

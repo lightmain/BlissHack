@@ -121,7 +121,7 @@ test("exports, clears, and restores a complete BlissHack backup", async ({
   await expect(preview.getByRole("button", { name: "Cancel" })).toBeFocused();
   await expect(preview.getByText("Terminal font size")).toBeVisible();
   await expect(preview.getByText(name, { exact: true })).toBeVisible();
-  await preview.getByRole("button", { name: "Import Saves" }).click();
+  await preview.getByRole("button", { name: "Import Backup" }).click();
 
   const results = page.getByRole("dialog", { name: "Backup import results" });
   await expect(results.getByText("1 imported")).toBeVisible();

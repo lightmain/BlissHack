@@ -46,7 +46,8 @@ alpha-2.2 已加入 profile v3 和三项界面风格设置；信息量现在控�
 - 可选择原版串行角色流程，或在统一界面完成姓名、职业、种族、性别和阵营，
   并直接继续同名存档。
 - 准确的 ASCII、Ctrl、Alt/Meta、方向键和数字小键盘输入。
-- 通过 Emscripten IDBFS 在浏览器本地保存和恢复游戏。
+- 通过 Emscripten IDBFS 在浏览器本地保存和恢复游戏及本地 Ranking；完整备份
+  schema v2 同时包含个人配置、存档和 Ranking，并继续兼容 schema v1。
 - 单元、WASM、Chromium、Firefox、WebKit、性能和长流程测试。
 - GitHub Pages 自动部署。
 

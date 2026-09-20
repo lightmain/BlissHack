@@ -3,9 +3,14 @@ import {
   assertFormalSaveFileName,
   type BackupSaveBytes,
 } from "../backup/backup-file";
+import {
+  MAX_RANKING_RECORD_BYTES,
+  validateRankingRecord,
+} from "./ranking-record";
 
 /** Largest raw save accepted before allocating or writing imported content. */
 export const MAX_RAW_SAVE_BYTES = 64 * 1024 * 1024;
+export { MAX_RANKING_RECORD_BYTES };
 /** Largest number of direct files copied for a clear rollback. */
 export const MAX_MANAGED_STORAGE_FILES = 1_000;
 /** Largest aggregate byte snapshot copied for a clear rollback. */
@@ -98,6 +103,12 @@ export interface ManagedStorageFile {
   bytes: Uint8Array;
 }
 
+/** Current source and recovery state of the module's local ranking file. */
+export interface RankingStatus {
+  source: "packaged" | "sidecar";
+  recovery: "damaged-sidecar" | null;
+}
+
 /** Import either completes or pauses before an unapproved replacement. */
 export type RawSaveImportResult =
   | { status: "imported"; path: string }
@@ -118,6 +129,9 @@ export interface StorageService {
   deleteSave(path: string): Promise<void>;
   exportSave(path: string): Promise<Uint8Array>;
   exportAllSaves(): Promise<BackupSaveBytes[]>;
+  exportRanking(): Promise<Uint8Array>;
+  importRanking(bytes: Uint8Array): Promise<void>;
+  getRankingStatus(): RankingStatus;
   validateSave(bytes: Uint8Array): Promise<SaveValidation>;
   importSave(request: RawSaveImportRequest): Promise<RawSaveImportResult>;
   clearManagedFiles(): Promise<ManagedStorageFile[]>;
@@ -129,9 +143,14 @@ export interface StorageService {
 export interface StorageServiceOptions {
   validateSaveMetadata: SaveMetadataValidator;
   validateSaveBytes?: SaveBytesValidator;
+  onRankingRecovery?: (
+    reason: Exclude<RankingStatus["recovery"], null>,
+  ) => void;
 }
 
 const SAVE_DIRECTORY = "/save";
+const RANKING_PATH = "/record";
+const RANKING_SIDECAR_PATH = `${SAVE_DIRECTORY}/.ranking-record`;
 const TEMPORARY_SUFFIX = /(?:\.tmp|\.bak|\.e|~)$/i;
 
 /**
@@ -147,14 +166,27 @@ export function createStorageService(
   let initializePromise: Promise<boolean> | null = null;
   let persistent = false;
   let syncTail: Promise<void> | null = null;
+  let packagedRanking: Uint8Array | null = null;
+  let rankingStatus: RankingStatus = {
+    source: "packaged",
+    recovery: null,
+  };
+
+  /** Queue one complete filesystem operation without poisoning later work. */
+  function enqueueOperation(operation: () => Promise<void>): Promise<void> {
+    let queued: Promise<void>;
+    try {
+      queued = syncTail === null ? operation() : syncTail.then(operation);
+    } catch (error) {
+      queued = Promise.reject(error);
+    }
+    syncTail = queued.catch(() => undefined);
+    return queued;
+  }
 
   /** Queue one syncfs call without poisoning later operations on failure. */
   function enqueueSync(populate: boolean): Promise<void> {
-    const operation = syncTail === null
-      ? syncFilesystem(module.FS, populate)
-      : syncTail.then(() => syncFilesystem(module.FS, populate));
-    syncTail = operation.catch(() => undefined);
-    return operation;
+    return enqueueOperation(() => syncFilesystem(module.FS, populate));
   }
 
   function initialize(): Promise<boolean> {
@@ -182,13 +214,13 @@ export function createStorageService(
       return initializePromise;
     }
 
-    initializePromise = enqueueSync(true).then(
-      () => {
+    initializePromise = enqueueSync(true)
+      .then(() => {
+        hydrateRanking(false);
         persistent = true;
         return true;
-      },
-      () => false,
-    );
+      })
+      .catch(() => false);
     return initializePromise;
   }
 
@@ -200,6 +232,7 @@ export function createStorageService(
     const available = await initialize();
     if (!available) return [];
     await enqueueSync(true);
+    hydrateRanking(true);
     return listSaves();
   }
 
@@ -290,6 +323,48 @@ export function createStorageService(
     return result;
   }
 
+  /** Return an exact detached copy of the current core ranking record. */
+  async function exportRanking(): Promise<Uint8Array> {
+    const available = await initialize();
+    if (!available) throw new Error("Persistent ranking storage is unavailable");
+    return readRankingFile(RANKING_PATH);
+  }
+
+  /** Transactionally replace both ranking copies and persist the sidecar. */
+  async function importRanking(bytes: Uint8Array): Promise<void> {
+    validateRankingRecord(bytes);
+    const available = await initialize();
+    if (!available) throw new Error("Persistent ranking storage is unavailable");
+    const replacement = bytes.slice();
+
+    return enqueueOperation(async () => {
+      const originalRoot = readRankingFile(RANKING_PATH);
+      const originalSidecar = readOptionalBinaryFile(RANKING_SIDECAR_PATH);
+      try {
+        writeRankingCopies(replacement);
+        await syncFilesystem(module.FS, false);
+        rankingStatus = { source: "sidecar", recovery: null };
+      } catch (importError) {
+        try {
+          module.FS.writeFile(RANKING_PATH, originalRoot);
+          restoreOptionalFile(RANKING_SIDECAR_PATH, originalSidecar);
+          await syncFilesystem(module.FS, false);
+        } catch (restoreError) {
+          throw new AggregateError(
+            [importError, restoreError],
+            "Could not import or restore local ranking data",
+          );
+        }
+        throw importError;
+      }
+    });
+  }
+
+  /** Return the latest ranking hydration state without exposing record content. */
+  function getRankingStatus(): RankingStatus {
+    return { ...rankingStatus };
+  }
+
   /** Classify detached raw bytes using the current game module. */
   function validateSave(bytes: Uint8Array): Promise<SaveValidation> {
     if (!options.validateSaveBytes) {
@@ -366,15 +441,25 @@ export function createStorageService(
   }
 
   function flush(): Promise<void> {
-    return persistent ? enqueueSync(false) : Promise.resolve();
+    if (!persistent) return Promise.resolve();
+    return enqueueOperation(async () => {
+      const ranking = readRankingFile(RANKING_PATH);
+      module.FS.writeFile(RANKING_SIDECAR_PATH, ranking);
+      await syncFilesystem(module.FS, false);
+      rankingStatus = { source: "sidecar", recovery: null };
+    });
   }
 
-  /** Remove all regular files in the dedicated mount and return a rollback copy. */
+  /** Remove all managed files and return an exact rollback copy. */
   async function clearManagedFiles(): Promise<ManagedStorageFile[]> {
     const snapshot = snapshotManagedFiles();
     try {
-      for (const file of snapshot) module.FS.unlink(file.path);
-      await flush();
+      for (const file of snapshot) {
+        if (file.path !== RANKING_PATH) module.FS.unlink(file.path);
+      }
+      module.FS.writeFile(RANKING_PATH, packagedRankingRecord());
+      await enqueueSync(false);
+      rankingStatus = { source: "packaged", recovery: null };
     } catch (clearError) {
       try {
         await restoreManagedFiles(snapshot);
@@ -389,10 +474,28 @@ export function createStorageService(
     return snapshot;
   }
 
-  /** Replace current regular mount files with an earlier exact snapshot. */
+  /** Replace current managed files with an earlier exact snapshot. */
   async function restoreManagedFiles(
     files: ManagedStorageFile[],
   ): Promise<void> {
+    const paths = new Set<string>();
+    let rootRanking: Uint8Array | null = null;
+    for (const file of files) {
+      if (
+        file.path !== RANKING_PATH
+        && !file.path.startsWith(`${SAVE_DIRECTORY}/`)
+      ) {
+        throw new Error("Managed storage snapshot contains an invalid path");
+      }
+      if (paths.has(file.path)) {
+        throw new Error("Managed storage snapshot contains a duplicate path");
+      }
+      paths.add(file.path);
+      if (file.path === RANKING_PATH) {
+        validateRankingRecord(file.bytes);
+        rootRanking = file.bytes;
+      }
+    }
     for (const fileName of module.FS.readdir(SAVE_DIRECTORY)) {
       if (fileName === "." || fileName === "..") continue;
       const path = `${SAVE_DIRECTORY}/${fileName}`;
@@ -400,18 +503,28 @@ export function createStorageService(
       if (module.FS.isFile(stat.mode)) module.FS.unlink(path);
     }
     for (const file of files) {
-      if (!file.path.startsWith(`${SAVE_DIRECTORY}/`)) {
-        throw new Error("Managed storage snapshot contains an invalid path");
+      if (file.path !== RANKING_PATH) {
+        module.FS.writeFile(file.path, file.bytes);
       }
-      module.FS.writeFile(file.path, file.bytes);
     }
-    await flush();
+    module.FS.writeFile(
+      RANKING_PATH,
+      rootRanking?.slice() ?? packagedRankingRecord(),
+    );
+    await enqueueSync(false);
+    rankingStatus = module.FS.analyzePath(RANKING_SIDECAR_PATH).exists
+      ? { source: "sidecar", recovery: null }
+      : { source: "packaged", recovery: null };
   }
 
-  /** Copy every regular direct child owned by the dedicated /save mount. */
+  /** Copy the root ranking and every regular direct child of /save. */
   function snapshotManagedFiles(): ManagedStorageFile[] {
-    const files: ManagedStorageFile[] = [];
-    let totalBytes = 0;
+    const rootRanking = readRankingFile(RANKING_PATH);
+    const files: ManagedStorageFile[] = [{
+      path: RANKING_PATH,
+      bytes: rootRanking,
+    }];
+    let totalBytes = rootRanking.byteLength;
     for (const fileName of module.FS.readdir(SAVE_DIRECTORY)) {
       if (fileName === "." || fileName === "..") continue;
       const path = `${SAVE_DIRECTORY}/${fileName}`;
@@ -442,6 +555,85 @@ export function createStorageService(
     return files;
   }
 
+  /**
+   * Restore the mounted sidecar into the root path or reset damaged data.
+   * @param resetMissing - reset a stale live record after a durable deletion.
+   */
+  function hydrateRanking(resetMissing: boolean): void {
+    const packaged = packagedRankingRecord();
+    if (!module.FS.analyzePath(RANKING_SIDECAR_PATH).exists) {
+      if (resetMissing) module.FS.writeFile(RANKING_PATH, packaged);
+      rankingStatus = { source: "packaged", recovery: null };
+      return;
+    }
+
+    try {
+      const sidecar = readRankingFile(RANKING_SIDECAR_PATH);
+      module.FS.writeFile(RANKING_PATH, sidecar);
+      rankingStatus = { source: "sidecar", recovery: null };
+    } catch {
+      writeRankingCopies(packaged);
+      rankingStatus = {
+        source: "packaged",
+        recovery: "damaged-sidecar",
+      };
+      options.onRankingRecovery?.("damaged-sidecar");
+    }
+  }
+
+  /** Capture the immutable ranking record embedded in a fresh module. */
+  function packagedRankingRecord(): Uint8Array {
+    if (packagedRanking !== null) return packagedRanking.slice();
+    if (!module.FS.analyzePath(RANKING_PATH).exists) {
+      packagedRanking = new Uint8Array();
+      return packagedRanking.slice();
+    }
+    packagedRanking = readRankingFile(RANKING_PATH);
+    return packagedRanking.slice();
+  }
+
+  /** Read and validate one binary ranking path. */
+  function readRankingFile(path: string): Uint8Array {
+    if (
+      path === RANKING_PATH
+      && !module.FS.analyzePath(RANKING_PATH).exists
+    ) {
+      return packagedRankingRecord();
+    }
+    const bytes = module.FS.readFile(path);
+    if (typeof bytes === "string") {
+      throw new Error(`Expected binary ranking data at ${path}`);
+    }
+    validateRankingRecord(bytes);
+    return bytes.slice();
+  }
+
+  /** Read one optional binary file without validating its payload. */
+  function readOptionalBinaryFile(path: string): Uint8Array | null {
+    if (!module.FS.analyzePath(path).exists) return null;
+    const bytes = module.FS.readFile(path);
+    if (typeof bytes === "string") {
+      throw new Error(`Expected binary storage data at ${path}`);
+    }
+    return bytes.slice();
+  }
+
+  /** Write one validated ranking payload to both live and persistent paths. */
+  function writeRankingCopies(bytes: Uint8Array): void {
+    validateRankingRecord(bytes);
+    module.FS.writeFile(RANKING_PATH, bytes);
+    module.FS.writeFile(RANKING_SIDECAR_PATH, bytes);
+  }
+
+  /** Restore an optional file to its exact previous existence and bytes. */
+  function restoreOptionalFile(path: string, bytes: Uint8Array | null): void {
+    if (bytes === null) {
+      if (module.FS.analyzePath(path).exists) module.FS.unlink(path);
+      return;
+    }
+    module.FS.writeFile(path, bytes);
+  }
+
   return {
     initialize,
     refreshFromPersistent,
@@ -451,6 +643,9 @@ export function createStorageService(
     deleteSave,
     exportSave,
     exportAllSaves,
+    exportRanking,
+    importRanking,
+    getRankingStatus,
     validateSave,
     importSave,
     clearManagedFiles,

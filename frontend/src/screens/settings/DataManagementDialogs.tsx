@@ -65,7 +65,9 @@ export function BackupPreviewDialog({
       </dl>
       <p>
         {profileDifferences.length} profile changes, {preview.entries.length} saved
-        games
+        games. {preview.source.ranking === null
+          ? "No ranking data; the current local ranking will be kept."
+          : "The local ranking will be replaced."}
       </p>
       {profileDifferences.length > 0 && (
         <div className="settings-differences backup-profile-differences">
@@ -119,7 +121,7 @@ export function BackupPreviewDialog({
           onClick={onImport}
           type="button"
         >
-          Import Saves
+          Import Backup
         </button>
       </div>
     </SettingsModal>
@@ -159,6 +161,11 @@ export function BackupImportResultsDialog({
         <span><strong>{completed.summary.skipped}</strong> skipped</span>
         <span><strong>{completed.summary.failed}</strong> failed</span>
       </div>
+      <p className={completed.summary.ranking === "failed"
+        ? "settings-warning"
+        : "settings-data-note"}>
+        {rankingResultLabel(completed.summary.ranking)}
+      </p>
       {completed.summary.refreshFailed && (
         <p className="settings-warning" role="alert">
           Saved games were processed, but the list could not be refreshed. Reload
@@ -257,7 +264,8 @@ export function ClearLocalDataDialog({
       <p>
         This deletes {saveCount} saved games, {profilePresent
           ? "the saved profile"
-          : "no saved profile"}, and {diagnosticCount} diagnostic events.
+          : "no saved profile"}, the local ranking, and {diagnosticCount} diagnostic
+        events.
       </p>
       <button
         aria-describedby={
@@ -339,4 +347,16 @@ function resultLabel(
     "write-failed": "write failed",
   };
   return `${status}: ${reasonText[reason]}`;
+}
+
+/** Describe the independent local-ranking result of a full backup import. */
+function rankingResultLabel(status: BackupImportSummary["ranking"]): string {
+  switch (status) {
+    case "imported":
+      return "Local ranking restored";
+    case "preserved":
+      return "Local ranking kept";
+    case "failed":
+      return "Local ranking could not be restored; the previous ranking was kept";
+  }
 }

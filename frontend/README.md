@@ -9,6 +9,8 @@ React and TypeScript frontend for the NetHack WebAssembly build.
 - `src/session/session-manager.ts` is the stable session API facade.
 - `src/session/session-lifecycle.ts` owns module and active-session lifecycle.
 - `src/session/home-operations.ts` owns Home save, backup, and data operations.
+- `src/storage/storage-service.ts` persists saves and mirrors the core `/record`
+  ranking file through the bounded `/save/.ranking-record` IDBFS sidecar.
 - `src/nethack-bridge.ts` is the stable shim callback facade.
 - `src/bridge/` contains Emscripten loading, WASM decoding, save validation,
   and the single input controller.

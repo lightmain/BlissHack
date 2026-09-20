@@ -70,6 +70,7 @@ describe("full backup operations", () => {
         buildId: "test",
         exportedAt: "2026-09-06T12:00:00.000Z",
         profile: createDefaultProfile(),
+        ranking: null,
       },
       entries: [
         entry("0Ada", 1, "conflict", ada),
@@ -108,6 +109,7 @@ describe("full backup operations", () => {
         buildId: "test",
         exportedAt: "2026-09-06T12:00:00.000Z",
         profile: createDefaultProfile(),
+        ranking: null,
       },
       entries: [
         entry("0Ada", 1, "importable", ada),
@@ -127,6 +129,7 @@ describe("full backup operations", () => {
         buildId: "test",
         exportedAt: "2026-09-06T12:00:00.000Z",
         profile: createDefaultProfile(),
+        ranking: null,
       },
       entries: [entry("0Ada", 1, "importable", ada)],
     };
@@ -188,6 +191,12 @@ function storageFake(
     restoreManagedFiles: vi.fn(async () => undefined),
     flush: vi.fn(async () => undefined),
     ...overrides,
+    exportRanking: overrides.exportRanking
+      ?? vi.fn(async () => new Uint8Array()),
+    importRanking: overrides.importRanking
+      ?? vi.fn(async () => undefined),
+    getRankingStatus: overrides.getRankingStatus
+      ?? vi.fn(() => ({ source: "packaged" as const, recovery: null })),
   };
 }
 

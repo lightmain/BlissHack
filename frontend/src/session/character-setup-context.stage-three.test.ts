@@ -60,6 +60,12 @@ function createStorage(saves: SaveListEntry[]): StorageService {
     deleteSave: vi.fn(async () => undefined),
     exportSave: vi.fn(async () => new Uint8Array()),
     exportAllSaves: vi.fn(async () => []),
+    exportRanking: vi.fn(async () => new Uint8Array()),
+    importRanking: vi.fn(async () => undefined),
+    getRankingStatus: vi.fn(() => ({
+      source: "packaged" as const,
+      recovery: null,
+    })),
     validateSave: vi.fn(async () => ({
       status: "damaged" as const,
       reason: "validation-failed" as const,

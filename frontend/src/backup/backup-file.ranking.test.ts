@@ -171,6 +171,13 @@ describe("full backup ranking schema", () => {
       name: "unterminated line",
       bytes: createRankingRecord().subarray(0, -1),
     },
+    {
+      name: "empty death field",
+      bytes: createRankingRecord(
+        new TextEncoder().encode("Ada"),
+        new Uint8Array(),
+      ),
+    },
   ])("rejects a ranking containing $name despite a valid checksum", async ({
     bytes,
   }) => {

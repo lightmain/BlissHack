@@ -176,6 +176,12 @@ function createHarness(
       deleteSave: vi.fn(async () => undefined),
       exportSave: vi.fn(async () => new Uint8Array()),
       exportAllSaves: vi.fn(async () => []),
+      exportRanking: vi.fn(async () => new Uint8Array()),
+      importRanking: vi.fn(async () => undefined),
+      getRankingStatus: vi.fn(() => ({
+        source: "packaged" as const,
+        recovery: null,
+      })),
       validateSave: vi.fn(async () => ({
         status: "damaged" as const,
         reason: "validation-failed" as const,
@@ -260,6 +266,12 @@ describe("cross-page game lock lifecycle", () => {
       deleteSave: vi.fn(async () => undefined),
       exportSave,
       exportAllSaves: vi.fn(async () => []),
+      exportRanking: vi.fn(async () => new Uint8Array()),
+      importRanking: vi.fn(async () => undefined),
+      getRankingStatus: vi.fn(() => ({
+        source: "packaged" as const,
+        recovery: null,
+      })),
       validateSave: vi.fn(async () => ({
         status: "ready" as const,
         identity: save.identity,
@@ -331,6 +343,12 @@ describe("cross-page game lock lifecycle", () => {
       deleteSave: vi.fn(async () => undefined),
       exportSave: vi.fn(async () => new Uint8Array()),
       exportAllSaves: vi.fn(async () => []),
+      exportRanking: vi.fn(async () => new Uint8Array()),
+      importRanking: vi.fn(async () => undefined),
+      getRankingStatus: vi.fn(() => ({
+        source: "packaged" as const,
+        recovery: null,
+      })),
       validateSave: vi.fn(async () => ({
         status: "damaged" as const,
         reason: "validation-failed" as const,
@@ -381,6 +399,12 @@ describe("cross-page game lock lifecycle", () => {
           deleteSave: vi.fn(async () => undefined),
           exportSave: vi.fn(async () => new Uint8Array()),
           exportAllSaves: vi.fn(async () => []),
+          exportRanking: vi.fn(async () => new Uint8Array()),
+          importRanking: vi.fn(async () => undefined),
+          getRankingStatus: vi.fn(() => ({
+            source: "packaged" as const,
+            recovery: null,
+          })),
           validateSave: vi.fn(async () => ({
             status: "damaged" as const,
             reason: "validation-failed" as const,
@@ -691,6 +715,12 @@ describe("session cleanup", () => {
       deleteSave: vi.fn(async () => undefined),
       exportSave: vi.fn(async () => new Uint8Array()),
       exportAllSaves: vi.fn(async () => []),
+      exportRanking: vi.fn(async () => new Uint8Array()),
+      importRanking: vi.fn(async () => undefined),
+      getRankingStatus: vi.fn(() => ({
+        source: "packaged" as const,
+        recovery: null,
+      })),
       validateSave: vi.fn(async () => ({
         status: "damaged" as const,
         reason: "validation-failed" as const,

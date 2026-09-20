@@ -800,3 +800,20 @@ git diff --check
 - 独立代码审查后补强了严格备份枚举、验证器错误传播、清除补偿和 fatal
   分类、内存状态重置、快照资源上限、Unicode 排序、刷新失败报告和失败焦点。
 - `git diff --check` 通过。
+
+## 19. alpha-2.2 本地 Ranking 扩展
+
+alpha-2.2 将完整备份容器升级为 schema 2：
+
+- 新增 `ranking` 字段，值为 `null` 或与 save payload 相同的
+  `byteLength`、`sha256`、规范 Base64 对象。
+- 新导出始终包含当前本地 Ranking bytes；空 Ranking 以合法的 0-byte payload
+  表示。
+- 导入继续接受 schema 1，并归一化为 `ranking: null`；这类旧备份只恢复原有
+  profile 和 saves，不清除当前本地 Ranking。
+- schema 2 的 Ranking 在写入前执行 64 KiB 上限、NUL/control byte、行数、
+  行长和 NetHack 5.0 record 结构校验。字符串字段保持 opaque bytes，不要求
+  UTF-8，以兼容核心按固定字节数截断姓名的行为。
+- Ranking 替换同时更新 `/record` 与 `/save/.ranking-record`，同步失败时恢复
+  两份旧 bytes；补偿也失败时沿用 fatal rollback 路径。
+- `Clear Local Data` 的文件快照同时包含根 `/record` 和 IDBFS sidecar。

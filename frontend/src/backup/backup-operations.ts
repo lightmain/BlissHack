@@ -2,7 +2,7 @@ import {
   BackupFormatError,
   parseBackupImport,
   serializeBackup,
-  type ParsedBackupV1,
+  type ParsedBackup,
 } from "./backup-file";
 import {
   type SaveIdentity,
@@ -28,8 +28,8 @@ export interface BackupImportPreviewEntry {
 
 export interface BackupImportPreview {
   source: Pick<
-    ParsedBackupV1,
-    "productVersion" | "buildId" | "exportedAt" | "profile"
+    ParsedBackup,
+    "productVersion" | "buildId" | "exportedAt" | "profile" | "ranking"
   >;
   entries: BackupImportPreviewEntry[];
 }
@@ -53,6 +53,7 @@ export interface BackupImportSummary {
   imported: number;
   skipped: number;
   failed: number;
+  ranking: "imported" | "preserved" | "failed";
 }
 
 /** Fatal batch failure after a save transaction could not roll back. */
@@ -90,8 +91,18 @@ export async function exportFullBackup(
   productVersion: string,
   buildId: string,
 ): Promise<string> {
-  const saves = await storage.exportAllSaves();
-  return serializeBackup(profile, saves, productVersion, buildId);
+  const [saves, ranking] = await Promise.all([
+    storage.exportAllSaves(),
+    storage.exportRanking(),
+  ]);
+  return serializeBackup(
+    profile,
+    saves,
+    productVersion,
+    buildId,
+    undefined,
+    ranking,
+  );
 }
 
 /**
@@ -140,6 +151,7 @@ export async function previewFullBackup(
       buildId: parsed.buildId,
       exportedAt: parsed.exportedAt,
       profile: parsed.profile,
+      ranking: parsed.ranking,
     },
     entries,
   };
@@ -255,7 +267,19 @@ export async function importFullBackup(
       }
     }
   }
-  return summarize(results);
+  let ranking: BackupImportSummary["ranking"] = "preserved";
+  if (preview.source.ranking !== null) {
+    try {
+      await storage.importRanking(preview.source.ranking);
+      ranking = "imported";
+    } catch (error) {
+      if (error instanceof AggregateError) {
+        throw new BackupRollbackError(results, error);
+      }
+      ranking = "failed";
+    }
+  }
+  return summarize(results, ranking);
 }
 
 /** Convert current validation and path occupancy into one preview row. */
@@ -305,12 +329,16 @@ function result(
 }
 
 /** Count each result category without discarding individual outcomes. */
-function summarize(results: BackupSaveImportResult[]): BackupImportSummary {
+function summarize(
+  results: BackupSaveImportResult[],
+  ranking: BackupImportSummary["ranking"],
+): BackupImportSummary {
   return {
     results,
     imported: results.filter((entry) => entry.status === "imported").length,
     skipped: results.filter((entry) => entry.status === "skipped").length,
     failed: results.filter((entry) => entry.status === "failed").length,
+    ranking,
   };
 }
 

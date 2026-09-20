@@ -65,6 +65,9 @@
   `home-operations.ts` 管理 Home 数据操作，两者共享一个显式 context。
 - 每局 game module 在进入首页读取存档时创建；首页没有活动 session，也不调用
   `main()`。用户开始或继续游戏时，新 session 认领同一个 module。
+- 本地 Ranking 仍由核心读写根目录 `/record`；storage service 在 module
+  初始化和最终 flush 时通过 `/save/.ranking-record` sidecar 与 IDBFS
+  双向同步。完整备份 schema v2 包含该记录，schema v1 导入时保留当前 Ranking。
 - module、session 和首页之间的权威生命周期见
   `doc/BlissHack/plans/in-prealpha-2/module-lifecycle.md`。
 - 项目主要在 TypeScript 侧开发，但允许对 C 侧 shim 做少量、经过源码验证且
