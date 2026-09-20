@@ -204,6 +204,19 @@ test("collects a real unified-character quit into the BlissHack summary", async 
   await expect(page.locator(".nh-prompt")).toContainText(
     "Really quit without saving?",
   );
+  await page.keyboard.press("n");
+  await expect(
+    page.getByRole("region", { name: "Character status" }),
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Game Over" })).toHaveCount(0);
+
+  await page.keyboard.press("#");
+  await expect(commandDialog).toBeVisible();
+  await commandDialog.locator("input").fill("quit");
+  await commandDialog.locator("input").press("Enter");
+  await expect(page.locator(".nh-prompt")).toContainText(
+    "Really quit without saving?",
+  );
   await page.keyboard.press("y");
 
   await page.waitForFunction(() => {
@@ -262,9 +275,7 @@ test("collects a real unified-character quit into the BlissHack summary", async 
   )).toBeGreaterThan(inventorySelectIndex);
 
   await expect(page.getByRole("dialog", { name: "Menu" })).toHaveCount(0);
-  await expect(page.getByText(
-    /Do you want (your possessions identified|to see)/,
-  )).toHaveCount(0);
+  await expect(page.locator(".nh-prompt")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Game Over" })).toBeVisible();
   const inventoryTab = page.getByRole("tab", {
     name: /Do you want (your possessions identified|to see what you had when you quit)/,

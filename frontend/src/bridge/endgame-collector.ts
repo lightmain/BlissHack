@@ -5,6 +5,7 @@ import {
   NHW_STATUS,
   NHW_TEXT,
   PICK_NONE,
+  PICK_ONE,
   type MenuItem,
   type TextLine,
   type WindowState,
@@ -156,8 +157,9 @@ const RESOLVE_YES: EndgameCollectorDecision = Object.freeze({
   value: "y".charCodeAt(0),
 });
 const DISCLOSURE_CHOICES = new Set(["ynq", "ynaq", "ynq\u001ba"]);
+const INVENTORY_DISCLOSURE_QUERY =
+  /^Do you want (?:your possessions identified|to see what you had when you (?:quit|died))\?$/;
 let activeCollector: EndgameCollector | null = null;
-let activeCollectionExcluded = false;
 
 /**
  * Create one session-scoped endgame event collector.
@@ -177,6 +179,7 @@ export function createEndgameCollector(
   let enabled = options.style === "blisshack";
   let phase: EndgameCollectorPhase = "idle";
   let currentDisclosure: MutableSection | null = null;
+  let inventoryMenuPending = false;
   let fallbackReason: string | null = null;
   let completedSummary: EndgameSummary | null = null;
 
@@ -277,6 +280,7 @@ export function createEndgameCollector(
     fallbackReason = null;
     completedSummary = null;
     currentDisclosure = null;
+    inventoryMenuPending = false;
     disclosures.length = 0;
     summaryBlocks.length = 0;
     rankingBlocks.length = 0;
@@ -337,6 +341,7 @@ export function createEndgameCollector(
       title: event.query,
       blocks: [],
     };
+    inventoryMenuPending = INVENTORY_DISCLOSURE_QUERY.test(event.query);
     return RESOLVE_YES;
   }
 
@@ -350,12 +355,25 @@ export function createEndgameCollector(
     return RESOLVE_DISPLAY;
   }
 
-  /** Copy and acknowledge only non-interactive endgame menus. */
+  /** Copy and acknowledge non-interactive menus plus the known inventory display. */
   function handleMenu(
     event: Extract<EndgameCollectorEvent, { type: "select-menu" }>,
   ): EndgameCollectorDecision {
     beginCollection();
-    if (event.how !== PICK_NONE) return fallBack("unexpected-menu");
+    if (event.how === PICK_ONE) {
+      if (
+        phase !== "collecting-disclosure"
+        || !inventoryMenuPending
+        || !isInventoryDisclosureMenu(event.window)
+      ) {
+        return fallBack("unexpected-menu");
+      }
+      inventoryMenuPending = false;
+    } else if (event.how !== PICK_NONE) {
+      return fallBack("unexpected-menu");
+    } else {
+      inventoryMenuPending = false;
+    }
     captureWindow(event.window);
     return RESOLVE_MENU;
   }
@@ -407,6 +425,7 @@ export function createEndgameCollector(
   function commitCurrentDisclosure(): void {
     if (currentDisclosure?.blocks.length) disclosures.push(currentDisclosure);
     currentDisclosure = null;
+    inventoryMenuPending = false;
   }
 
   /** Stop automation while leaving the current core input untouched. */
@@ -415,6 +434,7 @@ export function createEndgameCollector(
     fallbackReason = reason;
     completedSummary = null;
     currentDisclosure = null;
+    inventoryMenuPending = false;
     disclosures.length = 0;
     summaryBlocks.length = 0;
     rankingBlocks.length = 0;
@@ -444,7 +464,6 @@ export function setEndgameCollectorContext(
 ): void {
   activeCollector?.reset("session-replaced");
   activeCollector = createEndgameCollector(options);
-  activeCollectionExcluded = false;
 }
 
 /**
@@ -455,18 +474,7 @@ export function setEndgameCollectorContext(
 export function handleEndgameCollectorEvent(
   event: EndgameCollectorEvent,
 ): EndgameCollectorDecision {
-  if (activeCollectionExcluded) return PASS;
   return activeCollector?.handle(event) ?? PASS;
-}
-
-/** Exclude an explicitly requested non-result termination from collection. */
-export function excludeEndgameCollection(): void {
-  activeCollectionExcluded = true;
-}
-
-/** Re-enable collection after the core returns from a cancelled exit request. */
-export function clearEndgameCollectionExclusion(): void {
-  activeCollectionExcluded = false;
 }
 
 /**
@@ -482,7 +490,6 @@ export function updateEndgameCollectionStyle(style: EndgameStyle): void {
  * @returns detached result or null when collection was disabled or abandoned.
  */
 export function completeEndgameCollection(): EndgameSummary | null {
-  if (activeCollectionExcluded) return null;
   return activeCollector?.complete() ?? null;
 }
 
@@ -504,7 +511,6 @@ export function resetEndgameCollection(
 ): void {
   activeCollector?.reset(reason);
   activeCollector = null;
-  activeCollectionExcluded = false;
 }
 
 /**
@@ -549,6 +555,17 @@ function blockFromWindow(
     sourceWindowId: window.id,
     lines: window.lines.map(copyLine),
   };
+}
+
+/**
+ * Recognize the full-inventory menu produced by display_inventory(NULL, TRUE).
+ * @param window - copied menu at its select boundary.
+ * @returns whether the menu has the non-prompted selectable inventory shape.
+ */
+function isInventoryDisclosureMenu(window: EndgameWindowSnapshot): boolean {
+  return window.type === NHW_MENU
+    && window.menuPrompt === ""
+    && window.menuItems.some((item) => item.identifier !== null);
 }
 
 /** Copy one styled text line. */

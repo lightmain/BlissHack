@@ -7,6 +7,7 @@ import {
   completeEndgameCollection,
   createGameModule,
   dismissDisplay,
+  getEndgameCollectorState,
   isWaitingForInput,
   resetBridgeState,
   sendKey,
@@ -414,6 +415,7 @@ export function createSessionManager(
   /** Register the callback owned by one session and module. */
   function registerCallback(owner: ModuleRecord, session: SessionRecord): void {
     const module = owner.module as EmscriptenModule;
+    let endgameFallbackReported = false;
     context.callbackHost[session.callbackName] = async (
       name: string,
       ...args: unknown[]
@@ -450,6 +452,22 @@ export function createSessionManager(
           );
         }
         return result;
+      }
+      const collectorState = getEndgameCollectorState();
+      if (
+        !endgameFallbackReported
+        && collectorState?.phase === "fallback"
+        && collectorState.fallbackReason
+      ) {
+        endgameFallbackReported = true;
+        recordDiagnostic({
+          level: "warning",
+          area: "bridge",
+          event: "endgame.collection_fallback",
+          moduleId: owner.moduleId,
+          sessionId: session.sessionId,
+          detail: { fallbackReason: collectorState.fallbackReason },
+        });
       }
       if (name === "shim_init_nhwindows") {
         recordDiagnostic({

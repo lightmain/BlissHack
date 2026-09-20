@@ -113,10 +113,8 @@ export type {
   CharacterTuple,
 } from "./bridge/character-setup";
 export {
-  clearEndgameCollectionExclusion,
   createEndgameCollector,
   completeEndgameCollection,
-  excludeEndgameCollection,
   getEndgameCollectorState,
   handleEndgameCollectorEvent,
   resetEndgameCollection,
