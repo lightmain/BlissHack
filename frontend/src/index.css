@@ -1,4 +1,6 @@
 :root {
+  --blisshack-monospace-font:
+    "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
   color: #d8d8d2;
   background: #080a0b;
   font-synthesis: none;
@@ -19,6 +21,7 @@ body,
 body {
   min-height: 100svh;
   overflow: hidden;
+  font-family: var(--blisshack-monospace-font);
 }
 
 button,
