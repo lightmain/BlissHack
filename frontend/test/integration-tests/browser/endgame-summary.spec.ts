@@ -5,7 +5,7 @@ test.beforeEach(async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Game Over" })).toBeVisible();
 });
 
-test("[defect-probing] presents a bounded green modal over a dimming backdrop", async ({
+test("[defect-probing] uses the game dialog palette and Home primary button design", async ({
   page,
 }) => {
   const viewport = page.viewportSize();
@@ -22,10 +22,6 @@ test("[defect-probing] presents a bounded green modal over a dimming backdrop", 
     }
     const colorChannels = (value: string): number[] =>
       value.match(/\d+(?:\.\d+)?/g)?.map(Number) ?? [];
-    const isGreen = (value: string): boolean => {
-      const [red = 0, green = 0, blue = 0] = colorChannels(value);
-      return green > red && green > blue;
-    };
     const dialogStyle = getComputedStyle(element);
     const backdropStyle = getComputedStyle(backdrop);
     const confirmStyle = getComputedStyle(confirm);
@@ -39,8 +35,7 @@ test("[defect-probing] presents a bounded green modal over a dimming backdrop", 
         width: backdropBox.width,
       },
       backdropPosition: backdropStyle.position,
-      buttonGreen: isGreen(confirmStyle.backgroundColor)
-        || isGreen(confirmStyle.borderTopColor),
+      buttonBackground: confirmStyle.backgroundColor,
       buttonMinHeight: Number.parseFloat(confirmStyle.minHeight),
       buttonRadius: Number.parseFloat(confirmStyle.borderTopLeftRadius),
       dialogBox: {
@@ -49,7 +44,8 @@ test("[defect-probing] presents a bounded green modal over a dimming backdrop", 
         x: dialogBox.x,
         y: dialogBox.y,
       },
-      dialogGreen: isGreen(dialogStyle.borderTopColor),
+      dialogBackground: dialogStyle.backgroundColor,
+      dialogBorder: dialogStyle.borderTopColor,
       dialogRadius: Number.parseFloat(dialogStyle.borderTopLeftRadius),
     };
   });
@@ -63,11 +59,12 @@ test("[defect-probing] presents a bounded green modal over a dimming backdrop", 
   expect(appearance.dialogBox.y).toBeGreaterThan(0);
   expect(appearance.dialogBox.width).toBeLessThan(viewport?.width ?? 0);
   expect(appearance.dialogBox.height).toBeLessThan(viewport?.height ?? 0);
-  expect(appearance.dialogGreen).toBe(true);
+  expect(appearance.dialogBackground).toBe("rgb(13, 16, 17)");
+  expect(appearance.dialogBorder).toBe("rgb(90, 98, 104)");
   expect(appearance.dialogRadius).toBeGreaterThanOrEqual(3);
-  expect(appearance.buttonGreen).toBe(true);
+  expect(appearance.buttonBackground).toBe("rgb(17, 20, 22)");
   expect(appearance.buttonRadius).toBeGreaterThanOrEqual(3);
-  expect(appearance.buttonMinHeight).toBeGreaterThanOrEqual(38);
+  expect(appearance.buttonMinHeight).toBe(46);
 });
 
 test("navigates result tabs by mouse and keyboard without moving Confirm", async ({
