@@ -394,6 +394,68 @@ describe("alpha-2.2 EndgameCollector contract", () => {
     ]);
   });
 
+  it("[defect-probing] maps disclosure questions to concise player-facing labels", () => {
+    const cases = [
+      [
+        "Do you want your possessions identified?",
+        "Identified Possessions",
+      ],
+      [
+        "Do you want to see what you had when you died?",
+        "Identified Possessions",
+      ],
+      ["Do you want to see your attributes?", "Final Attributes"],
+      [
+        "Do you want an account of creatures vanquished?",
+        "Vanquished Creatures",
+      ],
+      ["Do you want a list of species genocided?", "Genocided Species"],
+      ["Do you want a list of extinct species?", "Extinct Species"],
+      [
+        "Do you want a list of species genocided and extinct?",
+        "Genocided and Extinct Species",
+      ],
+      ["Do you want to see your conduct?", "Conduct"],
+      [
+        "Do you want to see your conduct and achievements?",
+        "Conduct and Achievements",
+      ],
+      ["Do you want to see the dungeon overview?", "Dungeon Overview"],
+    ] as const;
+
+    const titles = cases.map(([query]) => {
+      const collector = createCollector({
+        owner: OWNER,
+        style: "blisshack",
+        isGameOver: () => true,
+      });
+      registerHudWindows(collector);
+      collector.handle(disclosure(query));
+      collector.handle({
+        type: "display-window",
+        window: endgameWindowFixture({
+          id: 10,
+          type: NHW_TEXT,
+          lines: [{ text: "Disclosure content", attribute: 0 }],
+        }),
+        blocking: true,
+      });
+      destroyHudWindows(collector);
+      collector.handle({
+        type: "display-window",
+        window: endgameWindowFixture({
+          id: 20,
+          type: NHW_TEXT,
+          lines: [{ text: "You died.", attribute: 0 }],
+        }),
+        blocking: true,
+      });
+      return collector.complete()?.sections[1]?.title;
+    });
+
+    expect(titles).toEqual(cases.map(([, label]) => label));
+  });
+
   it("preserves putstr lines from NHW_MENU disclosure windows", () => {
     const collector = createCollector({
       owner: OWNER,

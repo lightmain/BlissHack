@@ -5,6 +5,71 @@ test.beforeEach(async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Game Over" })).toBeVisible();
 });
 
+test("[defect-probing] presents a bounded green modal over a dimming backdrop", async ({
+  page,
+}) => {
+  const viewport = page.viewportSize();
+  expect(viewport).not.toBeNull();
+  const dialog = page.getByRole("dialog", { name: "Game Over" });
+  await expect(dialog).toBeVisible();
+  const appearance = await dialog.evaluate((element) => {
+    const backdrop = element.parentElement;
+    const confirm = element.querySelector<HTMLElement>(
+      "[data-end-summary-confirm='true']",
+    );
+    if (!backdrop || !confirm) {
+      throw new Error("Endgame modal structure is incomplete");
+    }
+    const colorChannels = (value: string): number[] =>
+      value.match(/\d+(?:\.\d+)?/g)?.map(Number) ?? [];
+    const isGreen = (value: string): boolean => {
+      const [red = 0, green = 0, blue = 0] = colorChannels(value);
+      return green > red && green > blue;
+    };
+    const dialogStyle = getComputedStyle(element);
+    const backdropStyle = getComputedStyle(backdrop);
+    const confirmStyle = getComputedStyle(confirm);
+    const dialogBox = element.getBoundingClientRect();
+    const backdropBox = backdrop.getBoundingClientRect();
+    const backdropChannels = colorChannels(backdropStyle.backgroundColor);
+    return {
+      backdropAlpha: backdropChannels[3] ?? 1,
+      backdropBox: {
+        height: backdropBox.height,
+        width: backdropBox.width,
+      },
+      backdropPosition: backdropStyle.position,
+      buttonGreen: isGreen(confirmStyle.backgroundColor)
+        || isGreen(confirmStyle.borderTopColor),
+      buttonMinHeight: Number.parseFloat(confirmStyle.minHeight),
+      buttonRadius: Number.parseFloat(confirmStyle.borderTopLeftRadius),
+      dialogBox: {
+        height: dialogBox.height,
+        width: dialogBox.width,
+        x: dialogBox.x,
+        y: dialogBox.y,
+      },
+      dialogGreen: isGreen(dialogStyle.borderTopColor),
+      dialogRadius: Number.parseFloat(dialogStyle.borderTopLeftRadius),
+    };
+  });
+
+  expect(appearance.backdropPosition).toBe("fixed");
+  expect(appearance.backdropBox.width).toBeCloseTo(viewport?.width ?? 0, 0);
+  expect(appearance.backdropBox.height).toBeCloseTo(viewport?.height ?? 0, 0);
+  expect(appearance.backdropAlpha).toBeGreaterThan(0);
+  expect(appearance.backdropAlpha).toBeLessThan(1);
+  expect(appearance.dialogBox.x).toBeGreaterThan(0);
+  expect(appearance.dialogBox.y).toBeGreaterThan(0);
+  expect(appearance.dialogBox.width).toBeLessThan(viewport?.width ?? 0);
+  expect(appearance.dialogBox.height).toBeLessThan(viewport?.height ?? 0);
+  expect(appearance.dialogGreen).toBe(true);
+  expect(appearance.dialogRadius).toBeGreaterThanOrEqual(3);
+  expect(appearance.buttonGreen).toBe(true);
+  expect(appearance.buttonRadius).toBeGreaterThanOrEqual(3);
+  expect(appearance.buttonMinHeight).toBeGreaterThanOrEqual(38);
+});
+
 test("navigates result tabs by mouse and keyboard without moving Confirm", async ({
   page,
 }) => {

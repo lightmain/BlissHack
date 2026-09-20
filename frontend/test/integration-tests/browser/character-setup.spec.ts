@@ -318,7 +318,14 @@ test("uses core Auto and returns to unified confirmation", async ({ page }) => {
   const errors = captureErrors(page);
   await openHome(page, "unified-character-auto");
   await enableUnifiedSetup(page);
-  await enterCharacterName(page, "E2EUnifiedAuto");
+  await page.getByRole("button", { name: "New Game" }).click();
+  const input = page.getByRole("textbox", { name: "Name" });
+  await input.fill("E2EUnifiedAuto");
+  await expect(input).toBeFocused();
+  await expect(page.getByRole("button", { name: "Auto", exact: true }))
+    .toBeEnabled();
+  await expect(page.getByRole("button", { name: "Auto & Start" }))
+    .toBeEnabled();
 
   await page.getByRole("button", { name: "Auto", exact: true }).click();
   await expect(page.getByRole("button", { name: "Confirm" })).toBeEnabled();
@@ -342,7 +349,14 @@ test("uses core Auto and Start without stopping for confirmation", async ({
   const errors = captureErrors(page);
   await openHome(page, "unified-character-auto-start");
   await enableUnifiedSetup(page);
-  await enterCharacterName(page, "E2EUnifiedStart");
+  await page.getByRole("button", { name: "New Game" }).click();
+  const input = page.getByRole("textbox", { name: "Name" });
+  await input.fill("E2EUnifiedStart");
+  await expect(input).toBeFocused();
+  await expect(page.getByRole("button", { name: "Auto", exact: true }))
+    .toBeEnabled();
+  await expect(page.getByRole("button", { name: "Auto & Start" }))
+    .toBeEnabled();
 
   await page.getByRole("button", { name: "Auto & Start" }).click();
 

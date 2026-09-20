@@ -277,14 +277,20 @@ test("collects a real unified-character quit into the BlissHack summary", async 
   await expect(page.getByRole("dialog", { name: "Menu" })).toHaveCount(0);
   await expect(page.locator(".nh-prompt")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Game Over" })).toBeVisible();
+  await expect(page.locator(".nh-shell")).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Game Over" })).toBeVisible();
   const inventoryTab = page.getByRole("tab", {
-    name: /Do you want (your possessions identified|to see what you had when you quit)/,
+    name: "Identified Possessions",
   });
   await expect(inventoryTab).toBeVisible();
   await inventoryTab.click();
-  await expect(page.getByRole("tabpanel", {
-    name: /Do you want (your possessions identified|to see what you had when you quit)/,
-  }).locator(".end-summary-line")).not.toHaveCount(0);
+  const inventoryPanel = page.getByRole("tabpanel", {
+    name: "Identified Possessions",
+  });
+  await expect(inventoryPanel.locator(".permanent-inventory-items"))
+    .toBeVisible();
+  await expect(inventoryPanel.locator(".permanent-inventory-item"))
+    .not.toHaveCount(0);
   expect(errors).toEqual({ console: [], page: [] });
 });
 
