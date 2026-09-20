@@ -13,6 +13,10 @@ import type {
 } from "../nethack-bridge";
 import { colorClass, textAttributeClass } from "../text-styling";
 import { InventoryItemContent } from "./PermanentInventoryPanel";
+import {
+  parseEndgameRanking,
+  type EndgameRankingTable,
+} from "./endgame-ranking";
 import "../styles/endgame-summary.css";
 
 interface EndgameSummaryScreenProps {
@@ -148,6 +152,7 @@ export function EndgameSummaryScreen({
             const panelId = `${instanceId}-end-panel-${index}`;
             const inventory = section.kind === "disclosure"
               && section.title === "Identified Possessions";
+            const ranking = parseRankingSection(section);
             return (
               <div
                 role="tabpanel"
@@ -159,13 +164,15 @@ export function EndgameSummaryScreen({
                 key={`${section.kind}-${section.title}-${index}`}
                 tabIndex={selectedIndex === index ? 0 : -1}
               >
-                {section.blocks.map((block, blockIndex) => (
-                  <EndgameBlock
-                    block={block}
-                    inventory={inventory}
-                    key={`${block.kind}-${blockIndex}`}
-                  />
-                ))}
+                {ranking
+                  ? <EndgameRanking ranking={ranking} />
+                  : section.blocks.map((block, blockIndex) => (
+                    <EndgameBlock
+                      block={block}
+                      inventory={inventory}
+                      key={`${block.kind}-${blockIndex}`}
+                    />
+                  ))}
               </div>
             );
           })}
@@ -200,6 +207,82 @@ function orderedSections(
     ...disclosures,
     ...(ranking ? [ranking] : []),
   ];
+}
+
+/**
+ * Parse a Ranking section only when every captured block is raw text.
+ * @param section - immutable endgame section selected for display.
+ * @returns semantic table data, or null to preserve the original blocks.
+ */
+function parseRankingSection(
+  section: EndgameSection,
+): EndgameRankingTable | null {
+  if (
+    section.kind !== "ranking"
+    || section.blocks.some((block) => block.kind !== "text")
+  ) {
+    return null;
+  }
+  return parseEndgameRanking(
+    section.blocks.flatMap((block) =>
+      block.kind === "text" ? block.lines : []),
+  );
+}
+
+/**
+ * Render semantic score rows reconstructed from the core's terminal output.
+ * @param props - parsed preamble and complete local ranking rows.
+ * @returns a responsive native table with the current game identified.
+ */
+function EndgameRanking({
+  ranking,
+}: {
+  ranking: EndgameRankingTable;
+}) {
+  return (
+    <div className="end-ranking">
+      {ranking.preamble.length > 0 && (
+        <EndgameLines lines={ranking.preamble} />
+      )}
+      <div
+        aria-label="Ranking table"
+        className="end-ranking-scroll"
+        role="region"
+        tabIndex={0}
+      >
+        <table aria-label="Local ranking" className="end-ranking-table">
+          <thead>
+            <tr>
+              <th scope="col">Rank</th>
+              <th scope="col">Points</th>
+              <th scope="col">Character</th>
+              <th scope="col">Outcome</th>
+              <th scope="col">HP</th>
+            </tr>
+          </thead>
+          <tbody>
+            {ranking.rows.map((row, index) => (
+              <tr
+                aria-current={row.current ? "true" : undefined}
+                className={row.current ? "end-ranking-current" : undefined}
+                key={`${row.rank ?? "current"}-${row.character}-${index}`}
+              >
+                <td className="end-ranking-number">
+                  {row.rank ?? "\u2014"}
+                </td>
+                <td className="end-ranking-number">{row.points}</td>
+                <td className="end-ranking-character">{row.character}</td>
+                <td className="end-ranking-outcome">{row.outcome}</td>
+                <td className="end-ranking-hp">
+                  {row.hitPoints} [{row.maximumHitPoints}]
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
 }
 
 /**
