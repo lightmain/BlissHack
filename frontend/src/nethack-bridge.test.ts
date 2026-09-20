@@ -222,6 +222,21 @@ async function expectPending(promise: Promise<unknown>): Promise<void> {
   expect(settled).toBe(false);
 }
 
+/**
+ * Determine whether a Promise settles during the current microtask turn.
+ * @param promise - Promise under observation.
+ * @returns true when the Promise has settled.
+ */
+async function isSettled(promise: Promise<unknown>): Promise<boolean> {
+  let settled = false;
+  void promise.finally(() => {
+    settled = true;
+  });
+  await Promise.resolve();
+  await Promise.resolve();
+  return settled;
+}
+
 let harness: MockModuleHarness;
 
 /**
@@ -451,6 +466,104 @@ describe("endgame collection bridge", () => {
         },
       ],
     });
+  });
+
+  it("auto-resolves a disclosure PICK_ONE menu and clears its output pointer", async () => {
+    setEndgameCollectorContext({
+      owner: { moduleId: "module-1", sessionId: "session-1" },
+      style: "blisshack",
+      isGameOver: () => true,
+    });
+    await expect(shimCallback(
+      "shim_yn_function",
+      "Do you want your possessions identified?",
+      "ynq",
+      "n".charCodeAt(0),
+    )).resolves.toBe("y".charCodeAt(0));
+    const inventory = await shimCallback(
+      "shim_create_nhwindow",
+      NHW_MENU,
+    ) as number;
+    await shimCallback("shim_start_menu", inventory, 0);
+    await shimCallback(
+      "shim_add_menu",
+      inventory,
+      0,
+      41,
+      "a".charCodeAt(0),
+      0,
+      0,
+      7,
+      "a - a +0 bullwhip (weapon in hand)",
+      0,
+    );
+    await shimCallback(
+      "shim_add_menu",
+      inventory,
+      0,
+      73,
+      "b".charCodeAt(0),
+      0,
+      0,
+      7,
+      "b - 3 uncursed food rations",
+      0,
+    );
+    await shimCallback("shim_end_menu", inventory, "");
+    harness.writeI32(0x700, 0x12345678);
+
+    const selection = shimCallback(
+      "shim_select_menu",
+      inventory,
+      PICK_ONE,
+      0x700,
+    );
+    const settled = await isSettled(selection);
+    const observed = {
+      modal: getSnapshot().modal,
+      outputPointer: harness.readI32(0x700),
+      settled,
+      waitingForInput: isWaitingForInput(),
+    };
+    if (!settled) {
+      submitMenuSelection(null);
+      await selection;
+    }
+
+    expect(observed).toEqual({
+      modal: null,
+      outputPointer: 0,
+      settled: true,
+      waitingForInput: false,
+    });
+    await expect(selection).resolves.toBe(0);
+  });
+
+  it("passes a game-over message_menu PICK_ONE through after fallback", async () => {
+    setEndgameCollectorContext({
+      owner: { moduleId: "module-1", sessionId: "session-1" },
+      style: "blisshack",
+      isGameOver: () => true,
+    });
+    await expect(shimCallback(
+      "shim_yn_function",
+      "Do you want your possessions identified?",
+      "ynq",
+      "n".charCodeAt(0),
+    )).resolves.toBe("y".charCodeAt(0));
+
+    const messageMenu = shimCallback(
+      "shim_message_menu",
+      "a".charCodeAt(0),
+      PICK_ONE,
+      "a - an identified item",
+    );
+    await expect(isSettled(messageMenu)).resolves.toBe(false);
+    expect(isWaitingForInput()).toBe(true);
+    sendKey("a".charCodeAt(0));
+
+    await expect(messageMenu).resolves.toBe("a".charCodeAt(0));
+    expect(completeEndgameCollection()).toBeNull();
   });
 
   it("leaves ordinary yn prompts pending when game-over is not verified", async () => {

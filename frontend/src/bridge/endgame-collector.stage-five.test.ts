@@ -81,6 +81,10 @@ const UNEXPECTED_INPUTS: Array<[string, EndgameCollectorEvent]> = [
     { type: "input-request", inputKind: "extended-command" },
   ],
   [
+    "message menu",
+    { type: "input-request", inputKind: "message-menu" },
+  ],
+  [
     "numeric yn",
     {
       type: "yn",
@@ -149,6 +153,95 @@ describe("alpha-2.2 EndgameCollector contract", () => {
       });
     },
   );
+
+  it.each([
+    {
+      label: "single-item",
+      itemTexts: ["a - a +0 bullwhip (weapon in hand)"],
+    },
+    {
+      label: "multi-item",
+      itemTexts: [
+        "a - a +0 bullwhip (weapon in hand)",
+        "b - 3 uncursed food rations",
+      ],
+    },
+  ])(
+    "collects and resolves a $label PICK_ONE inventory after its disclosure",
+    ({ itemTexts }) => {
+      const collector = createCollector({
+        owner: OWNER,
+        style: "blisshack",
+        isGameOver: () => true,
+      });
+      registerHudWindows(collector);
+      expect(collector.handle(disclosure())).toEqual({
+        kind: "resolve",
+        value: YES,
+      });
+      const inventory = endgameWindowFixture({
+        id: 10,
+        type: NHW_MENU,
+        menuItems: itemTexts.map(endgameMenuItemFixture),
+      });
+      collector.handle({
+        type: "window-created",
+        windowId: inventory.id,
+        windowType: inventory.type,
+      });
+
+      expect(collector.handle({
+        type: "select-menu",
+        window: inventory,
+        how: PICK_ONE,
+      })).toEqual({ kind: "resolve", value: 0 });
+
+      destroyHudWindows(collector);
+      collector.handle({
+        type: "display-window",
+        window: endgameWindowFixture({
+          id: 20,
+          type: NHW_TEXT,
+          lines: [{ text: "You quit.", attribute: 0 }],
+        }),
+        blocking: true,
+      });
+      expect(collector.complete()?.sections[1]).toMatchObject({
+        kind: "disclosure",
+        title: DISCLOSURE_QUERY,
+        blocks: [{
+          kind: "menu",
+          sourceWindowId: inventory.id,
+          items: itemTexts.map((text) => ({ text })),
+        }],
+      });
+    },
+  );
+
+  it("falls back for an arbitrary game-over PICK_ONE menu", () => {
+    const collector = createCollector({
+      owner: OWNER,
+      style: "blisshack",
+      isGameOver: () => true,
+    });
+    const menu = endgameWindowFixture({
+      id: 12,
+      type: NHW_MENU,
+      menuPrompt: "Choose an action:",
+      menuItems: [endgameMenuItemFixture("a - apply")],
+    });
+
+    expect(collector.handle({
+      type: "select-menu",
+      window: menu,
+      how: PICK_ONE,
+    })).toEqual({ kind: "pass" });
+    expect(collector.getState()).toMatchObject({
+      phase: "fallback",
+      fallbackReason: "unexpected-menu",
+      summary: null,
+    });
+  });
 
   it("applies endgame style changes while the current session is idle", () => {
     const collector = createCollector({

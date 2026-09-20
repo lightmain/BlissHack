@@ -75,6 +75,208 @@ test("retains the last permanent inventory through end-game disclosure", async (
   expect(errors).toEqual({ console: [], page: [] });
 });
 
+test("collects a real unified-character quit into the BlissHack summary", async ({
+  page,
+}) => {
+  const errors = captureErrors(page);
+  const name = "E2EBlissEnd";
+  await openHome(page, "blisshack-endgame-collection");
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("group", { name: "Endgame style" })
+    .getByRole("radio", { name: "BlissHack" })
+    .check();
+  await page.getByRole("group", { name: "Character setup style" })
+    .getByRole("radio", { name: "BlissHack" })
+    .check();
+  await page.getByRole("button", { name: "Apply" }).click();
+
+  await page.getByRole("button", { name: "New Game" }).click();
+  const nameInput = page.getByRole("textbox", { name: "Name" });
+  await expect(nameInput).toBeFocused();
+  await nameInput.fill(name);
+  await nameInput.press("Enter");
+  await expect(page.locator("[data-character-column=\"role\"]")).toBeFocused();
+  await page.keyboard.press("a");
+  await page.keyboard.press("h");
+  await page.keyboard.press("m");
+  await page.keyboard.press("l");
+  for (const choice of [
+    "a Archeologist",
+    "h human",
+    "m male",
+    "l lawful",
+  ]) {
+    await expect(page.getByRole("button", {
+      name: choice,
+      exact: true,
+    })).toHaveAttribute("aria-pressed", "true");
+  }
+  await expect(page.getByRole("button", { name: "Confirm" })).toBeFocused();
+  await page.keyboard.press("Enter");
+
+  const introduction = page.locator(".nh-text-dialog");
+  await expect(introduction).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("dialog", {
+    name: "Do you want a tutorial?",
+  })).toBeVisible();
+  await page.keyboard.press("n");
+  await expect(
+    page.getByRole("region", { name: "Character status" })
+      .locator(".nh-status-value")
+      .filter({ hasText: new RegExp(`^${name} the .+$`) }),
+  ).toBeVisible();
+
+  await page.evaluate(() => {
+    type CallbackRecord = {
+      name: string;
+      choices?: string;
+      how?: number;
+      identifier?: number;
+      query?: string;
+      windowId?: number;
+    };
+    const host = globalThis as typeof globalThis
+      & Record<string, unknown>
+      & {
+        __blisshackEndgameCallbacks?: CallbackRecord[];
+        __blisshackEndgameUiSightings?: string[];
+      };
+    const callbackName = Object.keys(host).find((key) =>
+      key.startsWith("blissCallback_session_")
+    );
+    const callback = callbackName ? host[callbackName] : null;
+    if (!callbackName || typeof callback !== "function") {
+      throw new Error("Active session callback was not found");
+    }
+    const callbacks: CallbackRecord[] = [];
+    const uiSightings: string[] = [];
+    host.__blisshackEndgameCallbacks = callbacks;
+    host.__blisshackEndgameUiSightings = uiSightings;
+    const observer = new MutationObserver(() => {
+      const prompt = document.querySelector(".nh-prompt")?.textContent ?? "";
+      if (/Do you want (your possessions identified|to see)/.test(prompt)) {
+        uiSightings.push(`prompt:${prompt.trim()}`);
+      }
+      if (document.querySelector(".nh-dialog.nh-menu")) {
+        uiSightings.push("menu");
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    host[callbackName] = async (...args: unknown[]) => {
+      const callbackNameArg = typeof args[0] === "string" ? args[0] : "";
+      if (
+        callbackNameArg === "shim_yn_function"
+        || callbackNameArg === "shim_add_menu"
+        || callbackNameArg === "shim_select_menu"
+      ) {
+        callbacks.push({
+          name: callbackNameArg,
+          ...(callbackNameArg === "shim_yn_function"
+            ? {
+              query: typeof args[1] === "string" ? args[1] : "",
+              choices: typeof args[2] === "string" ? args[2] : "",
+            }
+            : {}),
+          ...(callbackNameArg === "shim_add_menu"
+            ? {
+              windowId: typeof args[1] === "number" ? args[1] : undefined,
+              identifier: typeof args[3] === "number" ? args[3] : undefined,
+            }
+            : {}),
+          ...(callbackNameArg === "shim_select_menu"
+            ? {
+              windowId: typeof args[1] === "number" ? args[1] : undefined,
+              how: typeof args[2] === "number" ? args[2] : undefined,
+            }
+            : {}),
+        });
+      }
+      return callback(...args);
+    };
+  });
+
+  await page.keyboard.press("#");
+  const commandDialog = page.getByRole("dialog", { name: "Extended command" });
+  await expect(commandDialog).toBeVisible();
+  await commandDialog.locator("input").fill("quit");
+  await commandDialog.locator("input").press("Enter");
+  await expect(page.locator(".nh-prompt")).toContainText(
+    "Really quit without saving?",
+  );
+  await page.keyboard.press("y");
+
+  await page.waitForFunction(() => {
+    const host = globalThis as typeof globalThis & {
+      __blisshackEndgameUiSightings?: string[];
+    };
+    return (host.__blisshackEndgameUiSightings?.length ?? 0) > 0
+      || document.querySelector(".end-summary-screen") !== null;
+  }, undefined, { timeout: 15_000 });
+  const callbackTrace = await page.evaluate(() => {
+    const host = globalThis as typeof globalThis & {
+      __blisshackEndgameCallbacks?: Array<{
+        name: string;
+        choices?: string;
+        how?: number;
+        identifier?: number;
+        query?: string;
+        windowId?: number;
+      }>;
+      __blisshackEndgameUiSightings?: string[];
+    };
+    return {
+      callbacks: host.__blisshackEndgameCallbacks ?? [],
+      uiSightings: host.__blisshackEndgameUiSightings ?? [],
+    };
+  });
+  const inventoryQuestionIndex = callbackTrace.callbacks.findIndex(
+    ({ name: callbackName, query }) =>
+      callbackName === "shim_yn_function"
+      && /possessions identified|what you had when you quit/.test(query ?? ""),
+  );
+  expect(inventoryQuestionIndex).toBeGreaterThan(-1);
+  expect(callbackTrace.callbacks[inventoryQuestionIndex]?.choices).toBe("ynq");
+  expect(callbackTrace.uiSightings).toEqual([]);
+
+  const inventorySelectIndex = callbackTrace.callbacks.findIndex(
+    ({ how, name: callbackName }, index) =>
+      index > inventoryQuestionIndex
+      && callbackName === "shim_select_menu"
+      && how === 1,
+  );
+  const inventoryWindowId =
+    callbackTrace.callbacks[inventorySelectIndex]?.windowId;
+  const inventoryItemCount = callbackTrace.callbacks
+    .slice(inventoryQuestionIndex + 1, inventorySelectIndex)
+    .filter(({ identifier, name: callbackName, windowId }) =>
+      callbackName === "shim_add_menu"
+      && windowId === inventoryWindowId
+      && identifier !== 0)
+    .length;
+  expect(inventorySelectIndex).toBeGreaterThan(inventoryQuestionIndex);
+  expect(inventoryItemCount).toBeGreaterThan(1);
+  expect(callbackTrace.callbacks.findIndex(
+    ({ name: callbackName }, index) =>
+      index > inventorySelectIndex && callbackName === "shim_yn_function",
+  )).toBeGreaterThan(inventorySelectIndex);
+
+  await expect(page.getByRole("dialog", { name: "Menu" })).toHaveCount(0);
+  await expect(page.getByText(
+    /Do you want (your possessions identified|to see)/,
+  )).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Game Over" })).toBeVisible();
+  const inventoryTab = page.getByRole("tab", {
+    name: /Do you want (your possessions identified|to see what you had when you quit)/,
+  });
+  await expect(inventoryTab).toBeVisible();
+  await inventoryTab.click();
+  await expect(page.getByRole("tabpanel", {
+    name: /Do you want (your possessions identified|to see what you had when you quit)/,
+  }).locator(".end-summary-line")).not.toHaveCount(0);
+  expect(errors).toEqual({ console: [], page: [] });
+});
+
 test("keeps original end-game disclosures serial and returns after summary", async ({
   page,
 }) => {

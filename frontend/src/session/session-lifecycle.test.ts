@@ -5,6 +5,7 @@ import {
 import { createDiagnosticLog } from "../diagnostics/diagnostic-log";
 import {
   NHW_MENU,
+  PICK_ONE,
   getSnapshot,
   resetGameState,
 } from "../game-state";
@@ -603,6 +604,66 @@ describe("session callback isolation", () => {
     await callbackFor(callbackHost, second)("shim_preference_update", 256);
     expect(secondModule.module.UTF8ToString).toHaveBeenCalledWith(256);
     expect(getSnapshot().lastPreference).toBe("second-module");
+  });
+
+  it("records the first endgame collector fallback exactly once", async () => {
+    const module = createModuleHarness("module");
+    const profile = createDefaultProfile();
+    profile.interface.endgameStyle = "blisshack";
+    const diagnostics = createDiagnosticLog({
+      productVersion: "prealpha-test",
+      buildId: "test",
+      console: { warn: vi.fn(), error: vi.fn() },
+      storage: null,
+    });
+    const { manager, callbackHost } = createHarness(
+      [module.module],
+      diagnostics,
+      {
+        installRuntimeConfig: vi.fn(),
+        loadProfile: () => profile,
+      },
+    );
+    const session = await manager.startSession();
+    const callback = callbackFor(callbackHost, session);
+    const globals = globalThis.nethackGlobal?.globals;
+    expect(globals).toBeDefined();
+    if (globals) {
+      globals.program_state = { gameover: true };
+    }
+    await expect(callback(
+      "shim_yn_function",
+      "Do you want your possessions identified?",
+      "ynq",
+      "n".charCodeAt(0),
+    )).resolves.toBe("y".charCodeAt(0));
+
+    for (const message of ["a - an item", "a - another item"]) {
+      const messageMenu = callback(
+        "shim_message_menu",
+        "a".charCodeAt(0),
+        PICK_ONE,
+        message,
+      );
+      expect(await isSettled(messageMenu)).toBe(false);
+      manager.sendKey("a".charCodeAt(0));
+      await expect(messageMenu).resolves.toBe("a".charCodeAt(0));
+    }
+
+    const fallbackEvents = diagnostics.events().filter(
+      ({ event }) => event === "endgame.collection_fallback",
+    );
+    expect(fallbackEvents).toHaveLength(1);
+    expect(fallbackEvents[0]).toMatchObject({
+      level: "warning",
+      area: "bridge",
+      event: "endgame.collection_fallback",
+      moduleId: session.moduleId,
+      sessionId: session.sessionId,
+      detail: {
+        fallbackReason: "unexpected-message-menu",
+      },
+    });
   });
 });
 

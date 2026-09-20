@@ -92,7 +92,7 @@ export type EndgameCollectorEvent =
   }
   | {
     type: "input-request";
-    inputKind: "getlin" | "extended-command";
+    inputKind: "getlin" | "extended-command" | "message-menu";
   };
 
 export interface EndgameCollectorState {
