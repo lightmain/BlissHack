@@ -59,8 +59,31 @@ const summary: EndgameSummary = {
         kind: "text",
         sourceWindowId: null,
         lines: [
-          { text: " No  Points     Name", attribute: 1 },
-          { text: "  1       42  Ada-Wiz-Hum-Fem-Neu", attribute: 0 },
+          {
+            text: " No  Points     Name".padEnd(71) + "Hp [max]",
+            attribute: 1,
+          },
+          {
+            text:
+              "  1       2500  TenLetters-Wiz-Hum-Fem-Neu died in The Dungeons of",
+            attribute: 0,
+          },
+          {
+            text: "                Doom on level 7.  Killed by a minotaur."
+              .padEnd(72) + "-  [42]",
+            attribute: 0,
+          },
+          {
+            text:
+              "  2       1200  CurrentOne-Val-Hum-Mal-Law died in The Dungeons of"
+                .padEnd(79),
+            attribute: 1,
+          },
+          {
+            text: "                Doom on level 3.  Killed by a grid bug."
+              .padEnd(72) + "3  [18]",
+            attribute: 1,
+          },
         ],
       }],
     },
