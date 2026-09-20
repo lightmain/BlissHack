@@ -668,6 +668,84 @@ describe("session callback isolation", () => {
 });
 
 describe("session cleanup", () => {
+  it("flushes once more after main returns before retiring the session", async () => {
+    const module = createModuleHarness("module");
+    const nextModule = createModuleHarness("next");
+    const diagnostics = createDiagnosticLog({
+      productVersion: "alpha-2.2",
+      buildId: "test",
+      console: { warn: vi.fn(), error: vi.fn() },
+      storage: null,
+    });
+    let mainReturned = false;
+    const flushPhases: string[] = [];
+    const flush = vi.fn(async () => {
+      flushPhases.push(mainReturned ? "post-main" : "exit-callback");
+    });
+    const storage = {
+      initialize: vi.fn(async () => true),
+      refreshFromPersistent: vi.fn(async () => []),
+      listSaves: vi.fn(async () => []),
+      readSave: vi.fn(async () => new Uint8Array()),
+      restoreOriginalSave: vi.fn(async () => undefined),
+      deleteSave: vi.fn(async () => undefined),
+      exportSave: vi.fn(async () => new Uint8Array()),
+      exportAllSaves: vi.fn(async () => []),
+      validateSave: vi.fn(async () => ({
+        status: "damaged" as const,
+        reason: "validation-failed" as const,
+      })),
+      importSave: vi.fn(async () => ({
+        status: "imported" as const,
+        path: "/save/0Ada",
+      })),
+      clearManagedFiles: vi.fn(async () => []),
+      restoreManagedFiles: vi.fn(async () => undefined),
+      flush,
+    } satisfies StorageService;
+    const { manager, callbackHost, dispatch } = createHarness(
+      [module.module, nextModule.module],
+      diagnostics,
+      { createStorageService: () => storage },
+    );
+    const session = await manager.startSession();
+    const callback = callbackFor(callbackHost, session);
+
+    await callback("shim_exit_nhwindows", "goodbye");
+    expect(flushPhases).toEqual(["exit-callback"]);
+
+    mainReturned = true;
+    module.resolveMain();
+    await vi.waitFor(() => {
+      expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({
+        type: "SESSION_CLEANUP_COMPLETED",
+        sessionId: session.sessionId,
+      }));
+    });
+
+    expect(flushPhases).toEqual(["exit-callback", "post-main"]);
+    const events = diagnostics.events();
+    const flushIndexes = events.flatMap((event, index) =>
+      event.event === "storage.flush_completed"
+        && event.sessionId === session.sessionId
+        ? [index]
+        : []
+    );
+    const cleanupIndex = events.findIndex((event) =>
+      event.event === "session.cleaned"
+        && event.sessionId === session.sessionId
+    );
+    const nextModuleIndex = events.findIndex((event, index) =>
+      index > cleanupIndex
+        && event.event === "module.loading"
+        && event.sessionId === null
+    );
+    expect(flushIndexes).toHaveLength(2);
+    expect(flushIndexes[1]).toBeLessThan(cleanupIndex);
+    expect(cleanupIndex).toBeLessThan(nextModuleIndex);
+    expect(callbackHost[session.callbackName]).toBeUndefined();
+  });
+
   it("retires the session and prepares Home before publishing its result", async () => {
     const module = createModuleHarness("module");
     const nextModule = createModuleHarness("next");

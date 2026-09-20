@@ -1,3 +1,4 @@
+import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
 import { captureErrors } from "./helpers/browser-errors";
 import { exportDiagnosticLog } from "./helpers/diagnostic-artifact";
@@ -8,6 +9,43 @@ import {
   startNewGame,
   startNewGameFromHome,
 } from "./helpers/game-flow";
+
+/** Capture raw ranking lines emitted by the active NetHack callback. */
+async function captureRankingOutput(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const host = globalThis as typeof globalThis & Record<string, unknown> & {
+      __blisshackRankingOutput?: string[];
+    };
+    const callbackName = Object.keys(host).find((name) =>
+      name.startsWith("blissCallback_session_")
+    );
+    const callback = callbackName ? host[callbackName] : null;
+    if (!callbackName || typeof callback !== "function") {
+      throw new Error("Active session callback was not found");
+    }
+    const output: string[] = [];
+    host.__blisshackRankingOutput = output;
+    host[callbackName] = async (...args: unknown[]) => {
+      if (
+        (args[0] === "shim_raw_print" || args[0] === "shim_raw_print_bold")
+        && typeof args[1] === "string"
+      ) {
+        output.push(args[1]);
+      }
+      return callback(...args);
+    };
+  });
+}
+
+/** Read ranking lines captured on the current page generation. */
+async function readRankingOutput(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const host = globalThis as typeof globalThis & {
+      __blisshackRankingOutput?: string[];
+    };
+    return (host.__blisshackRankingOutput ?? []).join("\n");
+  });
+}
 
 test("quits an active game and starts a clean second session", async ({
   page,
@@ -38,6 +76,32 @@ test("quits an active game and starts a clean second session", async ({
   expect(moduleIds.length).toBeGreaterThanOrEqual(3);
   expect(moduleIds.every(Boolean)).toBe(true);
   expect(new Set(moduleIds).size).toBe(moduleIds.length);
+  expect(errors).toEqual({ console: [], page: [] });
+});
+
+test("persists rankings across a reload and a second completed game", async ({
+  page,
+}) => {
+  const errors = captureErrors(page);
+  const firstName = "RankOne";
+  const secondName = "RankTwo";
+  expect(new TextEncoder().encode(firstName).byteLength).toBeLessThanOrEqual(10);
+  expect(new TextEncoder().encode(secondName).byteLength).toBeLessThanOrEqual(10);
+
+  await startNewGame(page, firstName);
+  await captureRankingOutput(page);
+  await quitAndReturnHome(page);
+  expect(await readRankingOutput(page)).toContain(firstName);
+
+  await page.reload();
+  await expect(page.getByRole("button", { name: "New Game" })).toBeVisible();
+  await startNewGameFromHome(page, secondName);
+  await captureRankingOutput(page);
+  await quitAndReturnHome(page);
+
+  const secondRanking = await readRankingOutput(page);
+  expect(secondRanking).toContain(firstName);
+  expect(secondRanking).toContain(secondName);
   expect(errors).toEqual({ console: [], page: [] });
 });
 

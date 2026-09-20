@@ -32,10 +32,12 @@ describe("full backup format", () => {
         schemaVersion: number;
         interface: Record<string, unknown>;
       };
+      ranking: unknown;
       saves: Array<{ fileName: string; sha256: string }>;
     };
     expect(document.format).toBe("blisshack-backup");
-    expect(document.schemaVersion).toBe(1);
+    expect(document.schemaVersion).toBe(2);
+    expect(document.ranking).toBeNull();
     expect(document.profile).toMatchObject({
       schemaVersion: 3,
       interface: {
@@ -239,7 +241,7 @@ describe("full backup format", () => {
 
   it("rejects an unsupported schema and wrong file format", async () => {
     const wrongSchema = await exportedDocument();
-    wrongSchema.schemaVersion = 2;
+    wrongSchema.schemaVersion = 3;
     await expect(parseDocument(wrongSchema)).rejects.toMatchObject({
       code: "unsupported-schema",
     });

@@ -25,6 +25,7 @@ const crossPost = join(
   repositoryRoot,
   "sys/unix/hints/include/cross-post.500",
 );
+const sysconf = join(repositoryRoot, "sys/libnh/sysconf");
 const temporaryDirectories = [];
 
 /**
@@ -405,5 +406,14 @@ describe("WASM tile mapping build wiring", () => {
     expect(targetRule).toMatch(
       /^\s*\$\(HOBJ\).*\$\(GENTILEOFILE\).*\$\(TARGET_HACKLIB\)/m,
     );
+  });
+});
+
+describe("WASM local ranking identity", () => {
+  it("uses a shared non-UID ranking identity", async () => {
+    const source = await readFile(sysconf, "utf8");
+
+    expect(source).toMatch(/^PERS_IS_UID=0$/m);
+    expect(source).not.toMatch(/^PERS_IS_UID=1$/m);
   });
 });

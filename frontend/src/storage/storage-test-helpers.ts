@@ -82,10 +82,12 @@ export function createStorageModuleHarness(
       fileModifiedAt.delete(oldPath);
     }),
     stat: vi.fn((path: string) => {
-      if (files.has(path)) {
+      const bytes = files.get(path);
+      if (bytes) {
         return {
           mode: 0x8000,
           mtime: new Date(fileModifiedAt.get(path) ?? 0),
+          size: bytes.byteLength,
         };
       }
       if (directories.has(path)) return { mode: 0x4000 };
