@@ -98,6 +98,12 @@ describe("global scrollbar CSS contract", () => {
       )}\\)\\s+var\\(${escapeRegExp(trackToken ?? "")}\\)\\s*;`,
     ));
 
+    expect(cssFor(indexCss, "*:hover")).toMatch(new RegExp(
+      `\\bscrollbar-color\\s*:\\s*var\\(${escapeRegExp(
+        hoverToken ?? "",
+      )}\\)\\s+var\\(${escapeRegExp(trackToken ?? "")}\\)\\s*;`,
+    ));
+
     const scrollbar = globalWebkitCssFor("");
     expect(scrollbar).toMatch(new RegExp(
       `\\bwidth\\s*:\\s*var\\(${escapeRegExp(sizeToken ?? "")}\\)\\s*;`,
