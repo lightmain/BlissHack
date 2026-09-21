@@ -127,6 +127,12 @@ describe("global scrollbar CSS contract", () => {
     ));
   });
 
+  it("[defect-probing] excludes Gecko from the WebKit reset branch", () => {
+    expect(indexCss).toMatch(
+      /@supports\s+selector\(\s*::-webkit-scrollbar\s*\)\s+and\s+\(\s*not\s+\(\s*-moz-appearance\s*:\s*none\s*\)\s*\)\s*\{/,
+    );
+  });
+
   it("[defect-probing] leaves Endgame scrollbars to the global contract", () => {
     expect(endgameCss).not.toMatch(/\bscrollbar-width\s*:/);
   });
