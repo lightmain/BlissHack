@@ -139,8 +139,8 @@ test("navigates result tabs by mouse and keyboard without moving Confirm", async
   await expect(tabs.nth(2)).toBeFocused();
   await expect(tabs.nth(2)).toHaveAttribute("aria-selected", "true");
   await tabs.nth(2).press("End");
-  await expect(tabs.nth(3)).toBeFocused();
-  await tabs.nth(3).press("Home");
+  await expect(tabs.last()).toBeFocused();
+  await tabs.last().press("Home");
   await expect(tabs.nth(0)).toBeFocused();
   await tabs.nth(0).press("Tab");
   const summaryPanel = page.getByRole("tabpanel", { name: "Summary" });
@@ -151,6 +151,76 @@ test("navigates result tabs by mouse and keyboard without moving Confirm", async
   await confirm.click();
   await expect(page.locator("[data-end-summary-returned-home=true]"))
     .toBeVisible();
+});
+
+test("[defect-probing] scrolls overflowing result tabs with a real vertical wheel", async ({
+  page,
+}) => {
+  const tablist = page.getByRole("tablist", { name: "Endgame results" });
+  const unoverflowedWheel = await tablist.evaluate((element) => {
+    const event = new WheelEvent("wheel", {
+      bubbles: true,
+      cancelable: true,
+      deltaMode: WheelEvent.DOM_DELTA_PIXEL,
+      deltaY: 80,
+    });
+    return {
+      clientWidth: element.clientWidth,
+      defaultAllowed: element.dispatchEvent(event),
+      defaultPrevented: event.defaultPrevented,
+      scrollLeft: element.scrollLeft,
+      scrollWidth: element.scrollWidth,
+    };
+  });
+  expect(unoverflowedWheel.scrollWidth)
+    .toBeLessThanOrEqual(unoverflowedWheel.clientWidth);
+  expect(unoverflowedWheel.defaultAllowed).toBe(true);
+  expect(unoverflowedWheel.defaultPrevented).toBe(false);
+  expect(unoverflowedWheel.scrollLeft).toBe(0);
+
+  await page.setViewportSize({ width: 320, height: 700 });
+  const overflow = await tablist.evaluate((element) => ({
+    clientWidth: element.clientWidth,
+    scrollWidth: element.scrollWidth,
+  }));
+  expect(overflow.scrollWidth).toBeGreaterThan(overflow.clientWidth);
+
+  const tablistBox = await tablist.boundingBox();
+  expect(tablistBox).not.toBeNull();
+  await page.mouse.move(
+    (tablistBox?.x ?? 0) + (tablistBox?.width ?? 0) / 2,
+    (tablistBox?.y ?? 0) + (tablistBox?.height ?? 0) / 2,
+  );
+
+  await tablist.evaluate((element) => {
+    element.scrollLeft = 80;
+  });
+  await page.mouse.wheel(80, 10);
+  await expect.poll(() =>
+    tablist.evaluate((element) => element.scrollLeft)).toBe(160);
+
+  await tablist.evaluate((element) => {
+    element.scrollLeft = 0;
+  });
+  await page.mouse.wheel(0, 120);
+  await expect.poll(() =>
+    tablist.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+  const afterWheelRight = await tablist.evaluate(
+    (element) => element.scrollLeft,
+  );
+
+  await page.mouse.wheel(0, -60);
+  await expect.poll(() =>
+    tablist.evaluate((element) => element.scrollLeft))
+    .toBeLessThan(afterWheelRight);
+
+  const conductTab = page.getByRole("tab", {
+    name: "Conduct and Achievements",
+  });
+  await conductTab.click();
+  await expect(conductTab).toHaveAttribute("aria-selected", "true");
+  await conductTab.press("ArrowRight");
+  await expect(page.getByRole("tab", { name: "Ranking" })).toBeFocused();
 });
 
 test("keeps long sections independently scrollable without page overflow", async ({

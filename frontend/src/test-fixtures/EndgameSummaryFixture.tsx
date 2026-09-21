@@ -53,6 +53,18 @@ const summary: EndgameSummary = {
       }],
     },
     {
+      kind: "disclosure",
+      title: "Conduct and Achievements",
+      blocks: [{
+        kind: "text",
+        sourceWindowId: 4,
+        lines: [{
+          text: "You followed a deliberately long fixture conduct.",
+          attribute: 0,
+        }],
+      }],
+    },
+    {
       kind: "ranking",
       title: "Ranking",
       blocks: [{

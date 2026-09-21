@@ -8,8 +8,16 @@ interface EndgameSummaryScreenProps {
   onConfirm(): void;
 }
 
+const DOM_DELTA_PIXEL = 0;
+const DOM_DELTA_LINE = 1;
+const DOM_DELTA_PAGE = 2;
+
 interface EndgameSummaryScreenModule {
   EndgameSummaryScreen?: ComponentType<EndgameSummaryScreenProps>;
+  getEndgameTabWheelDelta?: (
+    event: Readonly<Pick<WheelEvent, "deltaMode" | "deltaX" | "deltaY">>,
+    pageSize: number,
+  ) => number | null;
 }
 
 /**
@@ -39,6 +47,20 @@ async function requireScreen(): Promise<
   expect(module.EndgameSummaryScreen).toBeTypeOf("function");
   return module.EndgameSummaryScreen as ComponentType<
     EndgameSummaryScreenProps
+  >;
+}
+
+/** Require the pure wheel normalization contract used by the tablist listener. */
+async function requireWheelDelta(): Promise<
+  NonNullable<EndgameSummaryScreenModule["getEndgameTabWheelDelta"]>
+> {
+  const modulePath = "./EndgameSummaryScreen";
+  const module = await import(
+    /* @vite-ignore */ modulePath
+  ) as EndgameSummaryScreenModule;
+  expect(module.getEndgameTabWheelDelta).toBeTypeOf("function");
+  return module.getEndgameTabWheelDelta as NonNullable<
+    EndgameSummaryScreenModule["getEndgameTabWheelDelta"]
   >;
 }
 
@@ -137,6 +159,58 @@ function attributeCount(html: string, attribute: string): number {
 }
 
 describe("alpha-2.2 EndgameSummaryScreen contract", () => {
+  it("[defect-probing] maps only vertical-dominant wheel input to horizontal pixels", async () => {
+    const getWheelDelta = await requireWheelDelta();
+
+    expect(getWheelDelta({
+      deltaMode: DOM_DELTA_PIXEL,
+      deltaX: 0,
+      deltaY: 48,
+    }, 320)).toBe(48);
+    expect(getWheelDelta({
+      deltaMode: DOM_DELTA_PIXEL,
+      deltaX: 0,
+      deltaY: -48,
+    }, 320)).toBe(-48);
+    expect(getWheelDelta({
+      deltaMode: DOM_DELTA_PIXEL,
+      deltaX: 49,
+      deltaY: 48,
+    }, 320)).toBeNull();
+    expect(getWheelDelta({
+      deltaMode: DOM_DELTA_PIXEL,
+      deltaX: -49,
+      deltaY: -48,
+    }, 320)).toBeNull();
+  });
+
+  it("normalizes line and page wheel modes without changing direction", async () => {
+    const getWheelDelta = await requireWheelDelta();
+    const downLine = getWheelDelta({
+      deltaMode: DOM_DELTA_LINE,
+      deltaX: 0,
+      deltaY: 3,
+    }, 320);
+    const upLine = getWheelDelta({
+      deltaMode: DOM_DELTA_LINE,
+      deltaX: 0,
+      deltaY: -2,
+    }, 320);
+
+    expect(downLine).toBeGreaterThan(3);
+    expect(upLine).toBeLessThan(-2);
+    expect(getWheelDelta({
+      deltaMode: DOM_DELTA_PAGE,
+      deltaX: 0,
+      deltaY: 1,
+    }, 320)).toBe(320);
+    expect(getWheelDelta({
+      deltaMode: DOM_DELTA_PAGE,
+      deltaX: 0,
+      deltaY: -1,
+    }, 320)).toBe(-320);
+  });
+
   it("[defect-probing] renders Summary first, Ranking last, and no empty disclosure", async () => {
     const Screen = await requireScreen();
     const html = renderToStaticMarkup(createElement(Screen, {
