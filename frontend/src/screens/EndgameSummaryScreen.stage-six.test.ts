@@ -12,12 +12,15 @@ const DOM_DELTA_PIXEL = 0;
 const DOM_DELTA_LINE = 1;
 const DOM_DELTA_PAGE = 2;
 
-interface EndgameSummaryScreenModule {
-  EndgameSummaryScreen?: ComponentType<EndgameSummaryScreenProps>;
+interface EndgameTabWheelModule {
   getEndgameTabWheelDelta?: (
     event: Readonly<Pick<WheelEvent, "deltaMode" | "deltaX" | "deltaY">>,
     pageSize: number,
   ) => number | null;
+}
+
+interface EndgameSummaryScreenModule {
+  EndgameSummaryScreen?: ComponentType<EndgameSummaryScreenProps>;
 }
 
 /**
@@ -52,15 +55,15 @@ async function requireScreen(): Promise<
 
 /** Require the pure wheel normalization contract used by the tablist listener. */
 async function requireWheelDelta(): Promise<
-  NonNullable<EndgameSummaryScreenModule["getEndgameTabWheelDelta"]>
+  NonNullable<EndgameTabWheelModule["getEndgameTabWheelDelta"]>
 > {
-  const modulePath = "./EndgameSummaryScreen";
+  const modulePath = "./endgame-tab-wheel";
   const module = await import(
     /* @vite-ignore */ modulePath
-  ) as EndgameSummaryScreenModule;
+  ) as EndgameTabWheelModule;
   expect(module.getEndgameTabWheelDelta).toBeTypeOf("function");
   return module.getEndgameTabWheelDelta as NonNullable<
-    EndgameSummaryScreenModule["getEndgameTabWheelDelta"]
+    EndgameTabWheelModule["getEndgameTabWheelDelta"]
   >;
 }
 

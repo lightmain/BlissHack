@@ -17,6 +17,7 @@ import {
   parseEndgameRanking,
   type EndgameRankingTable,
 } from "./endgame-ranking";
+import { getEndgameTabWheelDelta } from "./endgame-tab-wheel";
 import "../styles/endgame-summary.css";
 
 interface EndgameSummaryScreenProps {
@@ -40,6 +41,7 @@ export function EndgameSummaryScreen({
   );
   const [selectedIndex, setSelectedIndex] = useState(0);
   const dialogRef = useRef<HTMLElement>(null);
+  const tabsRef = useRef<HTMLDivElement>(null);
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   useEffect(() => {
@@ -68,6 +70,28 @@ export function EndgameSummaryScreen({
 
     dialog.addEventListener("keydown", containFocus);
     return () => dialog.removeEventListener("keydown", containFocus);
+  }, []);
+
+  useEffect(() => {
+    const tabs = tabsRef.current;
+    if (!tabs) return undefined;
+    const tablist = tabs;
+
+    /** Map vertical wheel motion only while the tablist can consume it. */
+    function scrollTabs(event: WheelEvent): void {
+      if (tablist.scrollWidth <= tablist.clientWidth) return;
+      const delta = getEndgameTabWheelDelta(event, tablist.clientWidth);
+      if (delta === null || delta === 0) return;
+
+      const maximum = tablist.scrollWidth - tablist.clientWidth;
+      const next = Math.min(maximum, Math.max(0, tablist.scrollLeft + delta));
+      if (next === tablist.scrollLeft) return;
+      event.preventDefault();
+      tablist.scrollLeft = next;
+    }
+
+    tablist.addEventListener("wheel", scrollTabs, { passive: false });
+    return () => tablist.removeEventListener("wheel", scrollTabs);
   }, []);
 
   /**
@@ -120,6 +144,7 @@ export function EndgameSummaryScreen({
           aria-orientation="horizontal"
           className="end-summary-tabs"
           data-browser-tab-navigation="true"
+          ref={tabsRef}
           role="tablist"
         >
           {sections.map((section, index) => {
