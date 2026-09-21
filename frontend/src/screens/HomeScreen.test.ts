@@ -20,16 +20,17 @@ interface StageTwoHomeProps {
 }
 
 /**
- * Return the opening button tag whose accessible text matches a label.
+ * Return the complete button markup whose visible text matches a label.
  * @param html - server-rendered HomeScreen markup.
  * @param label - visible button label.
  * @returns the complete button element.
  */
 function buttonMarkup(html: string, label: string): string {
-  const match = html.match(
-    new RegExp(`<button[^>]*>\\s*${label}\\s*</button>`, "i"),
-  );
-  expect(match, `missing ${label} button`).not.toBeNull();
+  const match = [...html.matchAll(/<button\b[^>]*>([\s\S]*?)<\/button>/gi)]
+    .find((entry) =>
+      entry[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").includes(label)
+    );
+  expect(match, `missing ${label} button`).toBeDefined();
   return match?.[0] ?? "";
 }
 
