@@ -1309,3 +1309,19 @@
     grid-template-columns: 14ch minmax(0, 1fr);
   }
 }
+
+@media (max-width: 327px) {
+  .nh-hud-layout-below[data-has-inventory="true"]:not(
+    [data-inventory-collapsed="true"]
+  ) {
+    grid-template-areas:
+      "messages"
+      "map"
+      "status"
+      "inventory"
+      "actions";
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows:
+      auto minmax(0, max-content) auto minmax(11rem, 1fr) 0;
+  }
+}
