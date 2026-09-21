@@ -233,6 +233,80 @@ test("opens itemactions from permanent inventory without flashing its selector",
   expect(errors).toEqual({ console: [], page: [] });
 });
 
+test("uses two-column anchored actions without changing four-column menus", async ({
+  page,
+}) => {
+  const permanentItem = await startInventoryContextGame(
+    page,
+    "ContextActionColumns",
+  );
+  const permanentStructure = await permanentItem.evaluate((row) => ({
+    childClasses: Array.from(row.children, (child) => child.className),
+    columnCount: getComputedStyle(row).gridTemplateColumns
+      .trim()
+      .split(/\s+/)
+      .length,
+  }));
+
+  const anchoredMenu = await openInventoryContextMenu(page, permanentItem);
+  const anchoredAction = anchoredMenu.locator("[data-core-identifier]").first();
+  const anchoredStructure = await anchoredAction.evaluate((row) => ({
+    childClasses: Array.from(row.children, (child) => child.className),
+    columnCount: getComputedStyle(row).gridTemplateColumns
+      .trim()
+      .split(/\s+/)
+      .length,
+    glyphCount: row.querySelectorAll(".nh-menu-glyph").length,
+    markCount: row.querySelectorAll(".nh-menu-mark").length,
+  }));
+  await page.keyboard.press("Escape");
+
+  await page.keyboard.press("i");
+  const inventoryMenu = page.locator(".nh-dialog.nh-menu");
+  await expect(inventoryMenu).toBeVisible();
+  const inventoryStructure = await inventoryMenu
+    .locator("[data-core-identifier]")
+    .first()
+    .evaluate((row) => ({
+      childClasses: Array.from(row.children, (child) => child.className),
+      columnCount: getComputedStyle(row).gridTemplateColumns
+        .trim()
+        .split(/\s+/)
+        .length,
+    }));
+
+  expect({
+    anchored: anchoredStructure,
+    inventory: inventoryStructure,
+    permanent: permanentStructure,
+  }).toEqual({
+    anchored: {
+      childClasses: ["nh-menu-accelerator", "nh-menu-text"],
+      columnCount: 2,
+      glyphCount: 0,
+      markCount: 0,
+    },
+    inventory: {
+      childClasses: [
+        "nh-menu-glyph",
+        "nh-menu-mark",
+        "nh-menu-accelerator",
+        "nh-menu-text",
+      ],
+      columnCount: 4,
+    },
+    permanent: {
+      childClasses: [
+        "nh-menu-glyph",
+        "nh-menu-mark",
+        "nh-menu-accelerator",
+        "nh-menu-text",
+      ],
+      columnCount: 4,
+    },
+  });
+});
+
 test("[defect-probing] moves real menu focus and restores the inventory trigger after Escape", async ({
   page,
 }) => {

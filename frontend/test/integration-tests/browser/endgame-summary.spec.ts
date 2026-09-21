@@ -270,6 +270,49 @@ test("navigates result tabs by mouse and keyboard without moving Confirm", async
     .toBeVisible();
 });
 
+test("confirms once with Enter from every endgame dialog focus target", async ({
+  page,
+}) => {
+  const confirm = page.getByRole("button", {
+    name: "Confirm",
+    exact: true,
+  });
+  const shortcut = confirm.locator("kbd");
+  await expect(shortcut).toHaveText("enter");
+  const shortcutAppearance = await shortcut.evaluate((element) => {
+    const marker = element.getBoundingClientRect();
+    const button = element.parentElement?.getBoundingClientRect();
+    return {
+      color: getComputedStyle(element).color,
+      leftOfCenter: button ? marker.right <= button.left + button.width / 2 : false,
+    };
+  });
+  expect(shortcutAppearance).toEqual({
+    color: "rgb(125, 220, 140)",
+    leftOfCenter: true,
+  });
+
+  for (const focusTarget of ["tab", "tabpanel", "confirm"] as const) {
+    if (focusTarget !== "tab") {
+      await page.goto("?end-summary-fixture=1");
+      await expect(page.getByRole("heading", { name: "Game Over" }))
+        .toBeVisible();
+    }
+    const target = focusTarget === "tab"
+      ? page.getByRole("tab").first()
+      : focusTarget === "tabpanel"
+        ? page.getByRole("tabpanel", { name: "Summary" })
+        : page.getByRole("button", { name: "Confirm", exact: true });
+    await target.focus();
+    await expect(target).toBeFocused();
+    await target.press("Enter");
+    await expect.soft(
+      page.locator("[data-end-summary-returned-home=true]"),
+      `Enter from ${focusTarget} should perform one confirmation transition`,
+    ).toHaveCount(1, { timeout: 2_000 });
+  }
+});
+
 test("[defect-probing] scrolls overflowing result tabs with a real vertical wheel", async ({
   page,
 }) => {

@@ -254,6 +254,102 @@ test("uses the unified keyboard character setup flow", async ({ page }) => {
   expect(errors).toEqual({ console: [], page: [] });
 });
 
+test("uses n and a as protected unified setup actions", async ({ page }) => {
+  await openHome(page, "unified-character-action-shortcuts");
+  await enableUnifiedSetup(page);
+  await page.getByRole("button", { name: "New Game" }).click();
+
+  const setup = page.getByRole("region", { name: "Character setup" });
+  const input = page.getByRole("textbox", { name: "Name" });
+  const auto = page.getByRole("button", { name: "Auto", exact: true });
+  const autoAndStart = page.getByRole("button", {
+    name: "Auto & Start",
+    exact: true,
+  });
+  await expect(auto.locator("kbd")).toHaveText("n");
+  await expect(autoAndStart.locator("kbd")).toHaveText("a");
+  for (const action of [auto, autoAndStart]) {
+    const marker = await action.locator("kbd").boundingBox();
+    const button = await action.boundingBox();
+    expect(marker).not.toBeNull();
+    expect(button).not.toBeNull();
+    expect(marker!.x + marker!.width).toBeLessThanOrEqual(
+      button!.x + button!.width / 2,
+    );
+  }
+
+  await input.press("n");
+  await input.press("a");
+  await expect(input).toHaveValue("na");
+  await expect(input).toBeFocused();
+  await expect(setup).toHaveAttribute(
+    "data-character-phase",
+    "entering-name",
+  );
+
+  await input.fill("E2EUnifiedShortcutAuto");
+  await input.press("Enter");
+  await page.keyboard.press("a");
+  await page.keyboard.press("h");
+  await page.keyboard.press("m");
+  await expect(
+    page.locator("[data-character-column=\"alignment\"]"),
+  ).toBeFocused();
+  await setup.evaluate((element) => {
+    document.documentElement.dataset.testCharacterPhaseLog = "";
+    const observer = new MutationObserver(() => {
+      const phase = element.getAttribute("data-character-phase");
+      document.documentElement.dataset.testCharacterPhaseLog += ` ${phase}`;
+    });
+    observer.observe(element, {
+      attributeFilter: ["data-character-phase"],
+      attributes: true,
+    });
+  });
+  await page.keyboard.press("n");
+  await expect(page.getByRole("button", { name: "Confirm" })).toBeEnabled();
+  const autoPhaseLog = await page.locator("html").getAttribute(
+    "data-test-character-phase-log",
+  );
+
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("button", { name: "New Game" })).toBeVisible();
+  await page.getByRole("button", { name: "New Game" }).click();
+  const nextInput = page.getByRole("textbox", { name: "Name" });
+  await nextInput.fill("E2EUnifiedShortcutStart");
+  await nextInput.press("Enter");
+  const nextSetup = page.getByRole("region", { name: "Character setup" });
+  await nextSetup.evaluate((element) => {
+    document.documentElement.dataset.testCharacterPhaseLog = "";
+    const observer = new MutationObserver(() => {
+      const phase = element.getAttribute("data-character-phase");
+      document.documentElement.dataset.testCharacterPhaseLog += ` ${phase}`;
+    });
+    observer.observe(element, {
+      attributeFilter: ["data-character-phase"],
+      attributes: true,
+    });
+  });
+  await page.keyboard.press("a");
+  await expect.soft.poll(
+    () => page.locator("html").getAttribute(
+      "data-test-character-phase-log",
+    ),
+    { timeout: 2_000 },
+  ).toContain("starting");
+  const startPhaseLog = await page.locator("html").getAttribute(
+    "data-test-character-phase-log",
+  );
+
+  expect({
+    autoBeforeAlignment: autoPhaseLog?.includes("auto-selecting"),
+    startBeforeRole: startPhaseLog?.includes("starting"),
+  }).toEqual({
+    autoBeforeAlignment: true,
+    startBeforeRole: true,
+  });
+});
+
 test("activates a focused Role button with Space and advances focus", async ({
   page,
 }) => {
