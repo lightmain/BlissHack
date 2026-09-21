@@ -18,6 +18,8 @@ import {
   type EndgameRankingTable,
 } from "./endgame-ranking";
 import { getEndgameTabWheelDelta } from "./endgame-tab-wheel";
+import { InterfaceShortcutLabel } from "./InterfaceShortcutLabel";
+import { matchesInterfaceShortcut } from "./interface-shortcut";
 import "../styles/endgame-summary.css";
 
 interface EndgameSummaryScreenProps {
@@ -71,6 +73,22 @@ export function EndgameSummaryScreen({
     dialog.addEventListener("keydown", containFocus);
     return () => dialog.removeEventListener("keydown", containFocus);
   }, []);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return undefined;
+
+    /** Confirm the detached result from any focus target inside its dialog. */
+    function confirmWithEnter(event: globalThis.KeyboardEvent): void {
+      if (!matchesInterfaceShortcut(event, "Enter")) return;
+      event.preventDefault();
+      event.stopPropagation();
+      onConfirm();
+    }
+
+    dialog.addEventListener("keydown", confirmWithEnter);
+    return () => dialog.removeEventListener("keydown", confirmWithEnter);
+  }, [onConfirm]);
 
   useEffect(() => {
     const tabs = tabsRef.current;
@@ -204,12 +222,15 @@ export function EndgameSummaryScreen({
         </section>
         <footer className="end-summary-footer">
           <button
+            aria-keyshortcuts="Enter"
             className="end-summary-confirm"
             data-end-summary-confirm="true"
             onClick={onConfirm}
             type="button"
           >
-            Confirm
+            <InterfaceShortcutLabel shortcut="enter">
+              Confirm
+            </InterfaceShortcutLabel>
           </button>
         </footer>
       </main>

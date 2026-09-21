@@ -5,6 +5,8 @@ import type {
   SaveListEntry,
 } from "../storage/storage-service";
 import { PRODUCT_VERSION } from "../version";
+import { InterfaceShortcutLabel } from "./InterfaceShortcutLabel";
+import { matchesInterfaceShortcut } from "./interface-shortcut";
 import { SavePickerPopover } from "./SavePickerPopover";
 
 /** Properties for the application home screen. */
@@ -53,6 +55,7 @@ export function HomeScreen({
   saves = [],
   storageAvailable = true,
 }: HomeScreenProps) {
+  const homeRef = useRef<HTMLElement>(null);
   const continueRegionRef = useRef<HTMLDivElement>(null);
   const savePickerId = "home-save-picker";
 
@@ -78,8 +81,32 @@ export function HomeScreen({
     };
   }, [onDismissSavePicker, savePickerOpen]);
 
+  useEffect(() => {
+    /** Start a new game from the unmodified Home shortcut. */
+    function handleNewGameShortcut(event: KeyboardEvent): void {
+      if (
+        savePickerOpen
+        || !homeRef.current
+        || homeRef.current.closest("[inert]")
+      ) return;
+      if (!matchesInterfaceShortcut(event, "n")) return;
+      event.preventDefault();
+      onNewGame();
+    }
+
+    document.addEventListener("keydown", handleNewGameShortcut);
+    return () => document.removeEventListener(
+      "keydown",
+      handleNewGameShortcut,
+    );
+  }, [onNewGame, savePickerOpen]);
+
   return (
-    <main className="home-screen" aria-labelledby="home-title">
+    <main
+      aria-labelledby="home-title"
+      className="home-screen"
+      ref={homeRef}
+    >
       <header className="home-header">
         <span className="home-version">{PRODUCT_VERSION}</span>
         <span className="home-runtime">NetHack 5.0</span>
@@ -87,7 +114,15 @@ export function HomeScreen({
 
       <section className="home-main">
         <nav aria-label="Main commands" className="home-commands">
-          <button onClick={onNewGame} type="button">New Game</button>
+          <button
+            aria-keyshortcuts="n"
+            onClick={onNewGame}
+            type="button"
+          >
+            <InterfaceShortcutLabel shortcut="n">
+              New Game
+            </InterfaceShortcutLabel>
+          </button>
           <div className="home-command-slot" ref={continueRegionRef}>
             <button
               aria-controls={savePickerId}
