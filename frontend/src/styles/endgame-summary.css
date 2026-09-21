@@ -60,7 +60,6 @@
   overflow-y: hidden;
   border-bottom: 1px solid #30363a;
   background: #0d1011;
-  scrollbar-width: thin;
 }
 
 .end-summary-tab {
@@ -108,7 +107,6 @@
   font-size: 0.875rem;
   line-height: 1.45;
   outline: none;
-  scrollbar-width: thin;
 }
 
 .end-summary-panel:focus-visible {
@@ -134,7 +132,6 @@
   border: 1px solid #30363a;
   border-radius: 4px;
   outline: none;
-  scrollbar-width: thin;
 }
 
 .end-ranking-scroll:focus-visible {

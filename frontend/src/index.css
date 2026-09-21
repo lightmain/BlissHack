@@ -1,12 +1,92 @@
 :root {
   --blisshack-monospace-font:
     "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  --blisshack-scrollbar-size: 8px;
+  --blisshack-scrollbar-track: #0d1011;
+  --blisshack-scrollbar-thumb: #5a6268;
+  --blisshack-scrollbar-thumb-hover: #7ddc8c;
+  --blisshack-scrollbar-thumb-active: #a5edb1;
   color: #d8d8d2;
   background: #080a0b;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+:root,
+* {
+  scrollbar-color:
+    var(--blisshack-scrollbar-thumb)
+    var(--blisshack-scrollbar-track);
+  scrollbar-width: thin;
+}
+
+*:hover,
+*:focus-visible {
+  scrollbar-color:
+    var(--blisshack-scrollbar-thumb-hover)
+    var(--blisshack-scrollbar-track);
+}
+
+*::-webkit-scrollbar {
+  width: var(--blisshack-scrollbar-size);
+  height: var(--blisshack-scrollbar-size);
+}
+
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-corner {
+  background: var(--blisshack-scrollbar-track);
+}
+
+*::-webkit-scrollbar-thumb {
+  min-width: 24px;
+  min-height: 24px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background-color: var(--blisshack-scrollbar-thumb);
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover,
+*:hover::-webkit-scrollbar-thumb,
+*:focus-visible::-webkit-scrollbar-thumb {
+  background-color: var(--blisshack-scrollbar-thumb-hover);
+}
+
+*::-webkit-scrollbar-thumb:active {
+  background-color: var(--blisshack-scrollbar-thumb-active);
+}
+
+@supports selector(::-webkit-scrollbar) and (not (-moz-appearance: none)) {
+  :root,
+  *,
+  *:hover,
+  *:focus-visible {
+    scrollbar-color: auto;
+    scrollbar-width: auto;
+  }
+}
+
+@media (forced-colors: active) {
+  :root,
+  *,
+  *:hover,
+  *:focus-visible {
+    scrollbar-color: auto;
+    scrollbar-width: auto;
+  }
+
+  *::-webkit-scrollbar,
+  *::-webkit-scrollbar-track,
+  *::-webkit-scrollbar-thumb,
+  *::-webkit-scrollbar-thumb:hover,
+  *:hover::-webkit-scrollbar-thumb,
+  *:focus-visible::-webkit-scrollbar-thumb,
+  *::-webkit-scrollbar-thumb:active,
+  *::-webkit-scrollbar-corner {
+    all: revert;
+  }
 }
 
 html,
