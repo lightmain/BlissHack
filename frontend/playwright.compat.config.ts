@@ -25,6 +25,7 @@ const basicFlowNames = [
   "opens itemactions from permanent inventory without flashing its selector",
   "keeps permanent inventory mouse-only while core inventory accepts accelerators",
   "navigates result tabs by mouse and keyboard without moving Confirm",
+  "scrolls overflowing result tabs with a real vertical wheel",
   "keeps long sections independently scrollable without page overflow",
   "keeps Ranking in a focusable horizontal scroller at 320px",
   "fits the result shell at the supported minimum width",
