@@ -11,6 +11,78 @@ import {
 import { readExpectedProductVersion } from "./helpers/product-version";
 import { openSavePicker } from "./helpers/save-flow";
 
+test("uses n as the guarded Home New Game shortcut", async ({ page }) => {
+  await openHome(page, "home-new-game-shortcut");
+  const newGame = page.getByRole("button", {
+    name: "New Game",
+    exact: true,
+  });
+  const shortcut = newGame.locator("kbd");
+
+  await expect(shortcut).toHaveText("n");
+  const shortcutAppearance = await shortcut.evaluate((element) => {
+    const marker = element.getBoundingClientRect();
+    const button = element.parentElement?.getBoundingClientRect();
+    return {
+      color: getComputedStyle(element).color,
+      leftOfCenter: button ? marker.right <= button.left + button.width / 2 : false,
+    };
+  });
+  expect(shortcutAppearance).toEqual({
+    color: "rgb(125, 220, 140)",
+    leftOfCenter: true,
+  });
+
+  const input = page.locator("[data-test-home-shortcut-input]");
+  await page.locator(".home-main").evaluate((element) => {
+    const probe = document.createElement("input");
+    probe.dataset.testHomeShortcutInput = "true";
+    probe.setAttribute("aria-label", "Home shortcut input");
+    element.append(probe);
+    probe.focus();
+  });
+  await input.press("n");
+  await expect(input).toHaveValue("n");
+  await expect(newGame).toBeVisible();
+  await input.evaluate((element) => element.remove());
+
+  const guardedDispatches = await page.locator(".home-screen").evaluate(
+    (home) => {
+      const dispatch = (
+        modifiers: Partial<Pick<
+          KeyboardEventInit,
+          "altKey" | "ctrlKey" | "metaKey"
+        >> = {},
+        prevent = false,
+      ): boolean => {
+        if (prevent) {
+          home.addEventListener("keydown", (event) => event.preventDefault(), {
+            once: true,
+          });
+        }
+        return home.dispatchEvent(new KeyboardEvent("keydown", {
+          bubbles: true,
+          cancelable: true,
+          code: "KeyN",
+          key: "n",
+          ...modifiers,
+        }));
+      };
+      return {
+        alt: dispatch({ altKey: true }),
+        ctrl: dispatch({ ctrlKey: true }),
+        defaultPrevented: dispatch({}, true),
+        meta: dispatch({ metaKey: true }),
+      };
+    },
+  );
+  expect(guardedDispatches.defaultPrevented).toBe(false);
+  await expect(newGame).toBeVisible();
+
+  await page.keyboard.press("n");
+  await expect(page.getByRole("textbox")).toBeVisible();
+});
+
 test("starts no NetHack session before the player begins a game", async ({
   page,
 }) => {

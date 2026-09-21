@@ -3,7 +3,9 @@ import { defineConfig, devices } from "@playwright/test";
 const deploymentBasePath = "/BlissHack/";
 const previewOrigin = "http://127.0.0.1:4176";
 const basicFlowNames = [
+  "uses n as the guarded Home New Game shortcut",
   "submits a non-empty character name on blur",
+  "uses n and a as protected unified setup actions",
   "activates a focused Role button with Space and advances focus",
   "cancels an existing-save name without restoring it",
   "uses the unified keyboard character setup flow",
@@ -26,6 +28,7 @@ const basicFlowNames = [
   "keeps permanent inventory mouse-only while core inventory accepts accelerators",
   "uses the global scrollbar palette across browser engines",
   "navigates result tabs by mouse and keyboard without moving Confirm",
+  "confirms once with Enter from every endgame dialog focus target",
   "scrolls overflowing result tabs with a real vertical wheel",
   "keeps long sections independently scrollable without page overflow",
   "keeps Ranking in a focusable horizontal scroller at 320px",
@@ -33,6 +36,7 @@ const basicFlowNames = [
   "moves real menu focus and restores the inventory trigger after Escape",
   "closes on left click outside and restores the inventory trigger",
   "prevents the native menu on right click outside and restores the inventory trigger",
+  "uses two-column anchored actions without changing four-column menus",
   "uses a five-pixel threshold and rejects non-map drop targets",
   "highlights the player cell and cancels interrupted drags without commands",
   "drops one stack once and waits for a new permanent-inventory revision",
