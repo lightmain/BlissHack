@@ -79,6 +79,46 @@ test("uses n as the guarded Home New Game shortcut", async ({ page }) => {
   expect(guardedDispatches.defaultPrevented).toBe(false);
   await expect(newGame).toBeVisible();
 
+  const savePicker = await openSavePicker(page);
+  const savePickerDispatchAllowed = await savePicker.evaluate((element) =>
+    element.dispatchEvent(new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      code: "KeyN",
+      key: "n",
+    })));
+  expect(savePickerDispatchAllowed).toBe(true);
+  await expect(savePicker).toBeVisible();
+  await expect(newGame).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(savePicker).toHaveCount(0);
+
+  await page.keyboard.press("n");
+  await expect(page.getByRole("textbox")).toBeVisible();
+});
+
+test("ignores n while the Home root is inert", async ({ page }) => {
+  await openHome(page, "home-new-game-inert-shortcut");
+  const newGame = page.getByRole("button", {
+    name: "New Game",
+    exact: true,
+  });
+  const root = page.locator("#root");
+  const inertDispatchAllowed = await root.evaluate((element) => {
+    element.inert = true;
+    return element.dispatchEvent(new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      code: "KeyN",
+      key: "n",
+    }));
+  });
+  expect(inertDispatchAllowed).toBe(true);
+  await expect(newGame).toBeVisible();
+  await root.evaluate((element) => {
+    element.inert = false;
+  });
+
   await page.keyboard.press("n");
   await expect(page.getByRole("textbox")).toBeVisible();
 });

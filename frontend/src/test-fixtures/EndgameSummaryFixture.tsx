@@ -104,21 +104,24 @@ const summary: EndgameSummary = {
 
 /**
  * Provide deterministic endgame UI data only for the browser test build.
- * @returns a result page which exposes its one-way confirmation state.
+ * @returns a result page exposing its confirmation state and callback count.
  */
 export function EndgameSummaryFixture() {
-  const [confirmed, setConfirmed] = useState(false);
-  if (confirmed) {
-    return (
-      <main className="app-loading" data-end-summary-returned-home="true">
-        Home fixture
-      </main>
-    );
-  }
+  const [confirmCount, setConfirmCount] = useState(0);
   return (
-    <EndgameSummaryScreen
-      onConfirm={() => setConfirmed(true)}
-      summary={summary}
-    />
+    <div data-end-summary-confirm-count={confirmCount}>
+      {confirmCount > 0
+        ? (
+          <main className="app-loading" data-end-summary-returned-home="true">
+            Home fixture
+          </main>
+        )
+        : (
+          <EndgameSummaryScreen
+            onConfirm={() => setConfirmCount((count) => count + 1)}
+            summary={summary}
+          />
+        )}
+    </div>
   );
 }

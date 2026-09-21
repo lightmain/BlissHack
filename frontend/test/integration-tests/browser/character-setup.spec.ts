@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
 import { captureErrors } from "./helpers/browser-errors";
 import {
@@ -64,6 +64,40 @@ async function finishStartup(page: Page): Promise<void> {
   await expect(
     page.getByRole("progressbar", { name: /^Hit points:/ }),
   ).toBeVisible();
+}
+
+type RejectedShortcutGuard = "repeat" | "isComposing" | "defaultPrevented";
+
+/**
+ * Dispatch an action key event which the interface shortcut guard must reject.
+ * @param target - active character setup surface.
+ * @param key - lowercase action shortcut under test.
+ * @param guard - event condition which disqualifies the shortcut.
+ * @returns the browser-observed guard flags from the dispatched event.
+ */
+async function dispatchRejectedActionShortcut(
+  target: Locator,
+  key: "a" | "n",
+  guard: RejectedShortcutGuard,
+): Promise<Record<RejectedShortcutGuard, boolean>> {
+  return target.evaluate((element, request) => {
+    const event = new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      code: `Key${request.key.toUpperCase()}`,
+      isComposing: request.guard === "isComposing",
+      key: request.key,
+      repeat: request.guard === "repeat",
+    });
+    if (request.guard === "defaultPrevented") event.preventDefault();
+    const observed = {
+      repeat: event.repeat,
+      isComposing: event.isComposing,
+      defaultPrevented: event.defaultPrevented,
+    };
+    element.dispatchEvent(event);
+    return observed;
+  }, { guard, key });
 }
 
 /**
@@ -355,6 +389,72 @@ test("uses n and a as protected unified setup actions", async ({ page }) => {
     startBeforeRole: true,
   });
 });
+
+for (
+  const guard of [
+    "repeat",
+    "isComposing",
+    "defaultPrevented",
+  ] as const satisfies readonly RejectedShortcutGuard[]
+) {
+  test(`rejects guarded setup action shortcuts: ${guard} a cannot select Archeologist`, async ({
+    page,
+  }) => {
+    await openHome(page, `unified-character-guard-${guard}-a`);
+    await enableUnifiedSetup(page);
+    await enterCharacterName(page, `E2EGuardA${guard}`);
+
+    const setup = page.getByRole("region", { name: "Character setup" });
+    const archeologist = page.getByRole("button", {
+      name: "a Archeologist",
+      exact: true,
+    });
+    await expect(setup).toHaveAttribute("data-character-focus", "role");
+    await expect(archeologist).toHaveAttribute("aria-pressed", "false");
+
+    const eventState = await dispatchRejectedActionShortcut(
+      setup,
+      "a",
+      guard,
+    );
+
+    expect(eventState[guard]).toBe(true);
+    await expect(setup).toHaveAttribute("data-character-focus", "role");
+    await expect(archeologist).toHaveAttribute("aria-pressed", "false");
+  });
+
+  test(`rejects guarded setup action shortcuts: ${guard} n cannot select Neutral`, async ({
+    page,
+  }) => {
+    await openHome(page, `unified-character-guard-${guard}-n`);
+    await enableUnifiedSetup(page);
+    await enterCharacterName(page, `E2EGuardN${guard}`);
+
+    const setup = page.getByRole("region", { name: "Character setup" });
+    await page.getByRole("button", {
+      name: "a Archeologist",
+      exact: true,
+    }).click();
+    await page.getByRole("button", { name: "h human", exact: true }).click();
+    await page.getByRole("button", { name: "m male", exact: true }).click();
+    const neutral = page.getByRole("button", {
+      name: "n neutral",
+      exact: true,
+    });
+    await expect(setup).toHaveAttribute("data-character-focus", "alignment");
+    await expect(neutral).toHaveAttribute("aria-pressed", "false");
+
+    const eventState = await dispatchRejectedActionShortcut(
+      setup,
+      "n",
+      guard,
+    );
+
+    expect(eventState[guard]).toBe(true);
+    await expect(setup).toHaveAttribute("data-character-focus", "alignment");
+    await expect(neutral).toHaveAttribute("aria-pressed", "false");
+  });
+}
 
 test("activates a focused Role button with Space and advances focus", async ({
   page,
