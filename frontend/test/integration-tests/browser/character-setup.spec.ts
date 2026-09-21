@@ -289,12 +289,18 @@ test("uses n and a as protected unified setup actions", async ({ page }) => {
 
   await input.fill("E2EUnifiedShortcutAuto");
   await input.press("Enter");
-  await page.keyboard.press("a");
-  await page.keyboard.press("h");
-  await page.keyboard.press("m");
-  await expect(
-    page.locator("[data-character-column=\"alignment\"]"),
-  ).toBeFocused();
+  await page.getByRole("button", {
+    name: "a Archeologist",
+    exact: true,
+  }).click();
+  await page.getByRole("button", { name: "h human", exact: true }).click();
+  await page.getByRole("button", { name: "m male", exact: true }).click();
+  const alignment = page.locator("[data-character-column=\"alignment\"]");
+  await expect(setup).toHaveAttribute("data-character-focus", "alignment");
+  await expect(alignment.getByRole("button", {
+    name: "n neutral",
+    exact: true,
+  })).toBeEnabled();
   await setup.evaluate((element) => {
     document.documentElement.dataset.testCharacterPhaseLog = "";
     const observer = new MutationObserver(() => {
