@@ -24,6 +24,7 @@ const basicFlowNames = [
   "restores the map trigger after every anchored-menu dismissal",
   "opens itemactions from permanent inventory without flashing its selector",
   "keeps permanent inventory mouse-only while core inventory accepts accelerators",
+  "uses the global scrollbar palette across browser engines",
   "navigates result tabs by mouse and keyboard without moving Confirm",
   "scrolls overflowing result tabs with a real vertical wheel",
   "keeps long sections independently scrollable without page overflow",

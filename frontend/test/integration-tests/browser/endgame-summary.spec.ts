@@ -118,6 +118,123 @@ test("[defect-probing] uses the Home and game monospace font throughout the resu
   });
 });
 
+test("uses the global scrollbar palette across browser engines", async ({
+  browserName,
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 700 });
+  const panel = page.getByRole("tabpanel", { name: "Summary" });
+
+  // Read both the standard and WebKit pseudo-element scrollbar contracts.
+  const readScrollbarAppearance = () => panel.evaluate((element) => {
+    const rootStyle = getComputedStyle(document.documentElement);
+    const elementStyle = getComputedStyle(element);
+    const scrollbarStyle = getComputedStyle(element, "::-webkit-scrollbar");
+    const trackStyle = getComputedStyle(
+      element,
+      "::-webkit-scrollbar-track",
+    );
+    const thumbStyle = getComputedStyle(
+      element,
+      "::-webkit-scrollbar-thumb",
+    );
+    const isTransparent = (value: string): boolean =>
+      value === "transparent" || /rgba\([^)]*,\s*0\)$/.test(value);
+    return {
+      scrollbarColor: elementStyle.getPropertyValue("scrollbar-color"),
+      tokens: {
+        active: rootStyle.getPropertyValue(
+          "--blisshack-scrollbar-thumb-active",
+        ).trim(),
+        hover: rootStyle.getPropertyValue(
+          "--blisshack-scrollbar-thumb-hover",
+        ).trim(),
+        size: rootStyle.getPropertyValue(
+          "--blisshack-scrollbar-size",
+        ).trim(),
+        thumb: rootStyle.getPropertyValue(
+          "--blisshack-scrollbar-thumb",
+        ).trim(),
+        track: rootStyle.getPropertyValue(
+          "--blisshack-scrollbar-track",
+        ).trim(),
+      },
+      webkit: {
+        height: scrollbarStyle.height,
+        thumbBackground: thumbStyle.backgroundColor,
+        thumbBackgroundClip: thumbStyle.backgroundClip,
+        thumbBorderRadius: thumbStyle.borderRadius,
+        thumbBorderWidth: thumbStyle.borderWidth,
+        thumbMinHeight: thumbStyle.minHeight,
+        thumbMinWidth: thumbStyle.minWidth,
+        thumbTransparent: isTransparent(thumbStyle.backgroundColor),
+        trackBackground: trackStyle.backgroundColor,
+        trackTransparent: isTransparent(trackStyle.backgroundColor),
+        width: scrollbarStyle.width,
+      },
+    };
+  });
+
+  const normal = await readScrollbarAppearance();
+  expect(normal.tokens).toEqual({
+    active: "#a5edb1",
+    hover: "#7ddc8c",
+    size: "8px",
+    thumb: "#5a6268",
+    track: "#0d1011",
+  });
+
+  if (browserName === "firefox") {
+    expect(normal.scrollbarColor)
+      .toBe("rgb(90, 98, 104) rgb(13, 16, 17)");
+  } else {
+    expect(normal.webkit).toMatchObject({
+      height: "8px",
+      thumbBackground: "rgb(90, 98, 104)",
+      thumbBorderRadius: "4px",
+      trackBackground: "rgb(13, 16, 17)",
+      width: "8px",
+    });
+  }
+
+  await panel.focus();
+  await expect(panel).toBeFocused();
+  const focused = await readScrollbarAppearance();
+  if (browserName === "firefox") {
+    expect(focused.scrollbarColor)
+      .toBe("rgb(125, 220, 140) rgb(13, 16, 17)");
+  } else {
+    expect(focused.webkit.thumbBackground).toBe("rgb(125, 220, 140)");
+  }
+
+  await panel.blur();
+  await panel.hover();
+  const hovered = await readScrollbarAppearance();
+  if (browserName === "firefox") {
+    expect(hovered.scrollbarColor)
+      .toBe("rgb(125, 220, 140) rgb(13, 16, 17)");
+  } else {
+    expect(hovered.webkit.thumbBackground).toBe("rgb(125, 220, 140)");
+  }
+
+  await page.emulateMedia({ forcedColors: "active" });
+  const forcedColors = await readScrollbarAppearance();
+  expect(forcedColors.scrollbarColor).toBe("auto");
+  if (browserName !== "firefox") {
+    expect(forcedColors.webkit).toMatchObject({
+      height: "auto",
+      thumbBackgroundClip: "border-box",
+      thumbBorderRadius: "0px",
+      thumbBorderWidth: "0px",
+      thumbMinHeight: "0px",
+      thumbMinWidth: "0px",
+      thumbTransparent: true,
+      trackTransparent: true,
+      width: "auto",
+    });
+  }
+});
+
 test("navigates result tabs by mouse and keyboard without moving Confirm", async ({
   page,
 }) => {
