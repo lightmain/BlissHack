@@ -267,7 +267,7 @@ test("uses the unified keyboard character setup flow", async ({ page }) => {
   await input.fill(`  ${name}  `);
   await input.press("Enter");
   await expect(page.locator("[data-character-column=\"role\"]")).toBeFocused();
-  await page.keyboard.press("a");
+  await page.keyboard.press("k");
   await expect(page.locator("[data-character-column=\"race\"]")).toBeFocused();
   await page.keyboard.press("h");
   await expect(page.locator("[data-character-column=\"gender\"]")).toBeFocused();
@@ -626,7 +626,7 @@ test("locks an existing save identity and restores it by name", async ({
   await openHome(page, "unified-character-save");
   await enableUnifiedSetup(page);
   await enterCharacterName(page, name);
-  await page.keyboard.press("a");
+  await page.keyboard.press("k");
   await page.keyboard.press("h");
   await page.keyboard.press("m");
   await page.keyboard.press("l");
@@ -636,7 +636,7 @@ test("locks an existing save identity and restores it by name", async ({
 
   await page.getByRole("button", { name: "New Game" }).click();
   const input = page.getByRole("textbox", { name: "Name" });
-  await input.fill(`${name}-Archeologist`);
+  await input.fill(`${name}-Knight`);
   await expect(page.getByText(
     "Existing save found. This character will continue.",
     { exact: true },
