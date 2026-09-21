@@ -303,10 +303,19 @@ test("confirms once with Enter from every endgame dialog focus target", async ({
       : focusTarget === "tabpanel"
         ? page.getByRole("tabpanel", { name: "Summary" })
         : page.getByRole("button", { name: "Confirm", exact: true });
+    const confirmCounter = page.locator("[data-end-summary-confirm-count]");
+    await expect(confirmCounter).toHaveAttribute(
+      "data-end-summary-confirm-count",
+      "0",
+    );
     await target.focus();
     await expect(target).toBeFocused();
     await target.press("Enter");
-    await expect.soft(
+    await expect(
+      confirmCounter,
+      `Enter from ${focusTarget} should call onConfirm exactly once`,
+    ).toHaveAttribute("data-end-summary-confirm-count", "1");
+    await expect(
       page.locator("[data-end-summary-returned-home=true]"),
       `Enter from ${focusTarget} should perform one confirmation transition`,
     ).toHaveCount(1, { timeout: 2_000 });

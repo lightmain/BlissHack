@@ -4,8 +4,10 @@ const deploymentBasePath = "/BlissHack/";
 const previewOrigin = "http://127.0.0.1:4176";
 const basicFlowNames = [
   "uses n as the guarded Home New Game shortcut",
+  "ignores n while the Home root is inert",
   "submits a non-empty character name on blur",
   "uses n and a as protected unified setup actions",
+  "rejects guarded setup action shortcuts:",
   "activates a focused Role button with Space and advances focus",
   "cancels an existing-save name without restoring it",
   "uses the unified keyboard character setup flow",
