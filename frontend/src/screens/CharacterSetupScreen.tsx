@@ -9,7 +9,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type SyntheticEvent,
 } from "react";
-import { Play, Shuffle, X } from "lucide-react";
+import { X } from "lucide-react";
 import type { GameSnapshot } from "../game-state";
 import { loadTileAtlas } from "../map/tile-assets";
 import {
@@ -30,6 +30,8 @@ import {
   type CharacterSetupOwnerToken,
 } from "../nethack-bridge";
 import type { MapRenderer } from "../settings/profile";
+import { InterfaceShortcutLabel } from "./InterfaceShortcutLabel";
+import { matchesInterfaceShortcut } from "./interface-shortcut";
 
 interface CharacterSetupScreenProps {
   inputRequest: GameSnapshot["inputRequest"];
@@ -249,6 +251,14 @@ export function CharacterSetupScreen({
       return;
     }
     if (event.target instanceof HTMLInputElement) return;
+    if (event.key === "n" || event.key === "a") {
+      if (autoAvailable && matchesInterfaceShortcut(event, event.key)) {
+        event.preventDefault();
+        event.stopPropagation();
+        handleAuto(event.key === "n" ? "y" : "a");
+      }
+      return;
+    }
     if (event.key === "Enter") {
       if (confirmAvailable && controller.pressEnter(owner)) {
         event.preventDefault();
@@ -363,22 +373,26 @@ export function CharacterSetupScreen({
         </p>
         <div className="character-setup-actions">
           <button
+            aria-keyshortcuts="n"
             disabled={!autoAvailable}
             onClick={() => handleAuto("y")}
             onPointerDown={handleNameActionPointerDown}
             type="button"
           >
-            <Shuffle aria-hidden="true" size={16} />
-            Auto
+            <InterfaceShortcutLabel shortcut="n">
+              Auto
+            </InterfaceShortcutLabel>
           </button>
           <button
+            aria-keyshortcuts="a"
             disabled={!autoAvailable}
             onClick={() => handleAuto("a")}
             onPointerDown={handleNameActionPointerDown}
             type="button"
           >
-            <Play aria-hidden="true" size={16} />
-            Auto &amp; Start
+            <InterfaceShortcutLabel shortcut="a">
+              Auto &amp; Start
+            </InterfaceShortcutLabel>
           </button>
           <button
             className="character-confirm"

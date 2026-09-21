@@ -3,3 +3,19 @@
 *::after {
   box-sizing: border-box;
 }
+
+.interface-shortcut-label {
+  display: inline-grid;
+  grid-template-columns: max-content max-content;
+  align-items: center;
+  gap: 1ch;
+}
+
+.interface-shortcut-key {
+  min-width: 2ch;
+  color: #7ddc8c;
+  font: inherit;
+  font-weight: 700;
+  line-height: 1;
+  text-align: center;
+}

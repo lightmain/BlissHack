@@ -374,7 +374,11 @@ function MenuOverlay({
         : undefined}
     >
         {window.menuPrompt && <header>{window.menuPrompt}</header>}
-        <div className="nh-menu-items">
+        <div
+          className={anchored
+            ? "nh-menu-items nh-action-menu-items"
+            : "nh-menu-items"}
+        >
           {rows.map(({ item, index, accelerator }) =>
             item.identifier === null ? (
               <div
@@ -387,6 +391,7 @@ function MenuOverlay({
               <button
                 className={[
                   "nh-menu-item",
+                  anchored ? "nh-action-menu-item" : "",
                   focusIndex === index ? "focused" : "",
                   selected.has(index) ? "selected" : "",
                   colorClass(item.color),
@@ -402,18 +407,33 @@ function MenuOverlay({
                 tabIndex={anchored ? (focusIndex === index ? 0 : -1) : undefined}
                 type="button"
               >
-                <span aria-hidden="true" className="nh-menu-glyph">
-                  {item.glyph?.ttyChar
-                    ? String.fromCodePoint(item.glyph.ttyChar)
-                    : " "}
-                </span>
-                <span className="nh-menu-mark">
-                  {how === PICK_ANY ? (selected.has(index) ? "+" : "-") : " "}
-                </span>
-                <span className="nh-menu-accelerator">
-                  {accelerator ? String.fromCharCode(accelerator) : " "}
-                </span>
-                <span className="nh-menu-text">{item.text}</span>
+                {anchored
+                  ? (
+                    <>
+                      <span className="nh-menu-accelerator">
+                        {accelerator ? String.fromCharCode(accelerator) : " "}
+                      </span>
+                      <span className="nh-menu-text">{item.text}</span>
+                    </>
+                  )
+                  : (
+                    <>
+                      <span aria-hidden="true" className="nh-menu-glyph">
+                        {item.glyph?.ttyChar
+                          ? String.fromCodePoint(item.glyph.ttyChar)
+                          : " "}
+                      </span>
+                      <span className="nh-menu-mark">
+                        {how === PICK_ANY
+                          ? (selected.has(index) ? "+" : "-")
+                          : " "}
+                      </span>
+                      <span className="nh-menu-accelerator">
+                        {accelerator ? String.fromCharCode(accelerator) : " "}
+                      </span>
+                      <span className="nh-menu-text">{item.text}</span>
+                    </>
+                  )}
               </button>
             ),
           )}

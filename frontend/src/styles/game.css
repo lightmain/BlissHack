@@ -1175,6 +1175,10 @@
   cursor: pointer;
 }
 
+.nh-action-menu-item {
+  grid-template-columns: 2ch minmax(0, 1fr);
+}
+
 .nh-menu-item:hover,
 .nh-menu-item.focused {
   border-color: #5a6268;
