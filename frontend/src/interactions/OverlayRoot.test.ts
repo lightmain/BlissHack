@@ -31,6 +31,7 @@ describe("OverlayRoot and InspectTooltip", () => {
     expect(html).toContain('aria-relevant="additions text"');
     expect(html).toContain('id="map-inspect-tooltip"');
     expect(html).toContain('role="tooltip"');
+    expect(html).toContain('class="nh-tooltip nh-inspect-tooltip"');
     expect(html).toContain("a peaceful grid bug");
     expect(html).toContain("It is moving slowly.");
     expect(html).not.toContain('role="dialog"');

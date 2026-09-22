@@ -31,6 +31,17 @@ function filterCommands(
   return filterExtendedCommands(commands, query, includeDescriptions);
 }
 
+/** Return one opening tag selected by its exact accessible label. */
+function openingTagForLabel(html: string, label: string): string {
+  return [...html.matchAll(/<[^>]+>/g)]
+    .find((match) => match[0].includes(`aria-label="${label}"`))?.[0] ?? "";
+}
+
+/** Return one attribute value from an opening HTML tag. */
+function attributeValue(tag: string, attribute: string): string | null {
+  return tag.match(new RegExp(`\\b${attribute}="([^"]+)"`))?.[1] ?? null;
+}
+
 describe("ExtendedCommandOverlay search", () => {
   it("includes command descriptions by default", () => {
     expect(filterCommands("talk")).toEqual([commands[0]]);
@@ -43,23 +54,41 @@ describe("ExtendedCommandOverlay search", () => {
     expect(filterCommands("chat", true)).toEqual([commands[0]]);
   });
 
-  it("renders the enabled description-search control beside the input", () => {
-    const html = renderToStaticMarkup(createElement(
+  it("[defect-probing] renders an accessible custom tooltip for description search", () => {
+    const renderOverlay = (): string => renderToStaticMarkup(createElement(
       gameModals.GameModalRenderer,
       {
         modal: { kind: "extcmd", commands },
       },
     ));
+    const html = renderOverlay();
     const inputIndex = html.indexOf("<input");
-    const toggleIndex = html.indexOf(
-      'title="Include descriptions in search"',
+    const toggleTag = openingTagForLabel(
+      html,
+      "Include descriptions in search",
+    );
+    const toggleIndex = html.indexOf(toggleTag);
+    const tooltipId = attributeValue(toggleTag, "aria-describedby");
+    const tooltip = html.match(
+      /<([a-z]+)(?=[^>]*\brole="tooltip")([^>]*)>([^<]*)<\/\1>/,
     );
 
     expect(inputIndex).toBeGreaterThan(-1);
     expect(toggleIndex).toBeGreaterThan(inputIndex);
-    expect(html).toContain('aria-pressed="true"');
-    expect(html).toMatch(
-      /<button(?=[^>]*title="Include descriptions in search")(?=[^>]*aria-pressed="true")[^>]*>\?<\/button>/,
-    );
+    expect(toggleTag).toMatch(/^<button\b/);
+    expect(toggleTag).toContain('aria-pressed="true"');
+    expect(toggleTag).not.toContain("title=");
+    expect(tooltipId).toMatch(/^[A-Za-z][\w:.-]*$/);
+    expect(tooltip).not.toBeNull();
+    expect(attributeValue(tooltip?.[0] ?? "", "id")).toBe(tooltipId);
+    expect(attributeValue(tooltip?.[0] ?? "", "class")?.split(/\s+/))
+      .toEqual(expect.arrayContaining(["nh-tooltip", "nh-control-tooltip"]));
+    expect(tooltip?.[3]).toBe("Include descriptions in search");
+    expect(
+      attributeValue(
+        openingTagForLabel(renderOverlay(), "Include descriptions in search"),
+        "aria-describedby",
+      ),
+    ).toBe(tooltipId);
   });
 });

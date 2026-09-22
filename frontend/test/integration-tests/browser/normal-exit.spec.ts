@@ -163,8 +163,12 @@ test("toggles extended-command description search without losing keyboard focus"
   await page.keyboard.press("#");
   const commandDialog = page.getByRole("dialog", { name: "Extended command" });
   const commandInput = commandDialog.locator("input");
-  const descriptionToggle = commandDialog.locator(
-    'button[title="Include descriptions in search"]',
+  const descriptionToggle = commandDialog.getByRole("button", {
+    name: "Include descriptions in search",
+    exact: true,
+  });
+  const descriptionTooltip = commandDialog.locator(
+    ".nh-tooltip.nh-control-tooltip[role=\"tooltip\"]",
   );
   const chatCommand = commandDialog.getByRole("button", {
     name: /chat\s+talk to someone/i,
@@ -172,9 +176,26 @@ test("toggles extended-command description search without losing keyboard focus"
 
   await expect(commandDialog).toBeVisible();
   await expect(commandInput).toBeFocused();
+  await expect(descriptionTooltip).toHaveText(
+    "Include descriptions in search",
+  );
+  const tooltipId = await descriptionTooltip.getAttribute("id");
+  expect(tooltipId).toMatch(/^[A-Za-z][\w:.-]*$/);
+  await expect(descriptionToggle).toHaveAttribute(
+    "aria-describedby",
+    tooltipId ?? "",
+  );
+  expect(await descriptionToggle.getAttribute("title")).toBeNull();
+  await expect(descriptionTooltip).toBeHidden();
   await commandInput.fill("talk");
   await expect(chatCommand).toBeVisible();
-  await expect(descriptionToggle).toHaveText("?");
+  expect(await descriptionToggle.evaluate((button) =>
+    [...button.childNodes]
+      .filter((node) => node.nodeType === Node.TEXT_NODE)
+      .map((node) => node.textContent)
+      .join("")
+      .trim()
+  )).toBe("?");
   await expect(descriptionToggle).toHaveAttribute("aria-pressed", "true");
 
   const [inputBox, toggleBox] = await Promise.all([
@@ -192,19 +213,52 @@ test("toggles extended-command description search without losing keyboard focus"
   expect(toggleBox.y).toBeLessThan(inputBox.y + inputBox.height);
   expect(toggleBox.y + toggleBox.height).toBeGreaterThan(inputBox.y);
 
+  await descriptionToggle.hover();
+  await expect(descriptionTooltip).toBeVisible();
+  const [tooltipBox, viewport] = await Promise.all([
+    descriptionTooltip.boundingBox(),
+    page.evaluate(() => ({
+      height: globalThis.innerHeight,
+      width: globalThis.innerWidth,
+    })),
+  ]);
+  expect(tooltipBox).not.toBeNull();
+  if (!tooltipBox) {
+    throw new Error("Description-search tooltip was not measurable");
+  }
+  expect(tooltipBox.x).toBeGreaterThanOrEqual(0);
+  expect(tooltipBox.y).toBeGreaterThanOrEqual(0);
+  expect(tooltipBox.x + tooltipBox.width).toBeLessThanOrEqual(
+    viewport.width + 1,
+  );
+  expect(tooltipBox.y + tooltipBox.height).toBeLessThanOrEqual(
+    viewport.height + 1,
+  );
+  expect(await page.evaluate(() => ({
+    body: document.body.scrollWidth <= document.body.clientWidth,
+    document:
+      document.documentElement.scrollWidth
+      <= document.documentElement.clientWidth,
+  }))).toEqual({ body: true, document: true });
+
+  await page.mouse.move(0, 0);
+  await expect(descriptionTooltip).toBeHidden();
   if (browserName === "webkit") {
     await descriptionToggle.focus();
   } else {
     await page.keyboard.press("Tab");
   }
   await expect(descriptionToggle).toBeFocused();
+  await expect(descriptionTooltip).toBeVisible();
   await page.keyboard.press("Space");
   await expect(descriptionToggle).toHaveAttribute("aria-pressed", "false");
   await expect(commandInput).toBeFocused();
+  await expect(descriptionTooltip).toBeHidden();
   await expect(chatCommand).toHaveCount(0);
 
   await descriptionToggle.click();
   await expect(descriptionToggle).toHaveAttribute("aria-pressed", "true");
+  await expect(descriptionTooltip).toHaveAttribute("id", tooltipId ?? "");
   await expect(commandInput).toBeFocused();
   await expect(chatCommand).toBeVisible();
 
