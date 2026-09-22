@@ -36,6 +36,31 @@ React 前端 (TSX + Vite)
   必须以接口文档和实际源码为准
 - 游戏状态在浏览器内存中，通过 IndexedDB (IDBFS) 实现存档持久化
 
+### 构建工具链环境
+
+本机有两套 Emscripten SDK 环境，版本和用途不同：
+
+- 项目专用环境：`targets/emsdk-6.0.9`
+  - 实测 `emcc 6.0.9`
+  - 大小约 1.8 GB
+  - 创建于 2026-09-06
+- 用户目录环境：`~/emsdk`
+  - 实测 `emcc 6.0.8`
+  - 这是较旧的全局环境，不用于本项目构建
+
+当前 shell 默认没有激活任何 `emcc`。构建项目前必须显式激活仓库内固定的
+6.0.9 环境，并检查工具链：
+
+```bash
+source ./targets/emsdk-6.0.9/emsdk_env.sh
+cd frontend
+npm run check:toolchain
+```
+
+因此，仓库固定使用 Emscripten 6.0.9 并不表示本地缺少对应环境。若未经上述
+激活步骤看到 6.0.8，那是用户目录中的另一套旧版 emsdk，不能据此判断项目
+工具链版本。
+
 ### 前端
 
 选择使用 React 框架来进行 UI、游戏画面的渲染，后续可能考虑使用 Canvas 或更高效率的工具来渲染动画、地图等。
