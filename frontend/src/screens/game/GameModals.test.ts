@@ -72,6 +72,8 @@ describe("ExtendedCommandOverlay search", () => {
     const tooltip = html.match(
       /<([a-z]+)(?=[^>]*\brole="tooltip")([^>]*)>([^<]*)<\/\1>/,
     );
+    const toggleEndIndex = html.indexOf("</button>", toggleIndex);
+    const tooltipIndex = html.indexOf(tooltip?.[0] ?? "");
 
     expect(inputIndex).toBeGreaterThan(-1);
     expect(toggleIndex).toBeGreaterThan(inputIndex);
@@ -80,6 +82,8 @@ describe("ExtendedCommandOverlay search", () => {
     expect(toggleTag).not.toContain("title=");
     expect(tooltipId).toMatch(/^[A-Za-z][\w:.-]*$/);
     expect(tooltip).not.toBeNull();
+    expect(toggleEndIndex).toBeGreaterThan(toggleIndex);
+    expect(tooltipIndex).toBeGreaterThan(toggleEndIndex);
     expect(attributeValue(tooltip?.[0] ?? "", "id")).toBe(tooltipId);
     expect(attributeValue(tooltip?.[0] ?? "", "class")?.split(/\s+/))
       .toEqual(expect.arrayContaining(["nh-tooltip", "nh-control-tooltip"]));

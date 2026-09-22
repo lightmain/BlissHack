@@ -108,3 +108,18 @@ button,
 input {
   font: inherit;
 }
+
+.nh-tooltip {
+  width: max-content;
+  max-width: min(28rem, calc(100vw - 24px));
+  padding: 7px 9px;
+  white-space: normal;
+  border: 1px solid #69747a;
+  border-radius: 3px;
+  background: #111517;
+  color: #f1f1eb;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 45%);
+  font-weight: 400;
+  line-height: 1.15;
+  text-align: left;
+}
