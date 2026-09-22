@@ -18,11 +18,10 @@ BlissHack 对 NetHack C 代码进行了少量有针对性的修改，主要用�
 
 ## 项目状态
 
-**alpha-2.2 阶段零至四已完成，当前停在阶段三、四人工验收门槛。**
+**alpha-2.2 已完成实现、自动门禁和人工验收。**
 
-alpha-2.2 已加入 profile v3 和三项界面风格设置；信息量现在控制状态栏说明，
-且与 Show experience 独立。角色元数据、启动控制契约和统一角色选择界面已经
-完成；终局流程仍在阶段五及后续阶段，尚未开始实现。
+alpha-2.2 已加入 profile v3、三项界面风格设置、统一角色选择、终局结果页和
+浏览器本地 Ranking。信息量只控制状态栏说明，并与 Show experience 独立。
 部署分支与 GitHub Pages 可能落后，实际线上版本以页面显示为准。
 
 当前里程碑已经实现：
@@ -142,6 +141,7 @@ Tiles/ASCII、Right/Below 在 1280×900 和 900×700 下的 HUD 组合。
 - [alpha-1.1 发布验收](doc/BlissHack/plans/in-alpha-1.1/release-acceptance.md)
 - [alpha-2.0 发布验收](doc/BlissHack/plans/in-alpha-2.0/release-acceptance.md)
 - [alpha-2.1 发布验收](doc/BlissHack/plans/in-alpha-2.1/release-acceptance.md)
+- [alpha-2.2 发布验收](doc/BlissHack/plans/in-alpha-2.2/release-acceptance.md)
 - [prealpha-3 发布验收](doc/BlissHack/plans/in-prealpha-3/release-acceptance.md)
 - [上游修改清单](doc/BlissHack/upstream-modifications.md)
 - [存档存储与读取方案评审](doc/BlissHack/plans/in-prealpha-2/save-format-review.md)

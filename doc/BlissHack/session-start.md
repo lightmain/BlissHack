@@ -10,10 +10,10 @@
 1. 完整阅读仓库根目录的 `AGENTS.md` 和 `AGENTS-cn.md`。
 2. 阅读 `README-cn.md`，确认当前产品定位、运行方式、测试入口和许可证说明。
 3. `BlissHack` 已包含完成人工验收的 alpha-1.1 Tileset、地图交互和定向基建；
-   alpha-2.1 的焦点与 Below HUD 调整已完成人工验收；alpha-2.2 阶段零至二
-   已完成并通过阶段性人工验收，阶段三、四的角色元数据、启动控制契约和统一
-   角色选择界面已完成并等待人工验收。阶段五终局采集尚未开始，当前分支尚未
-   合入、push 或部署。
+   alpha-2.1 的焦点与 Below HUD 调整已完成人工验收；alpha-2.2 的 profile
+   v3、信息量、统一角色选择、终局结果页和本地 Ranking 也已完成自动门禁与
+   人工验收。验收记录见
+   `doc/BlissHack/plans/in-alpha-2.2/release-acceptance.md`。
    GitHub Pages 可能落后，应以页面版本为准。维护当前架构时阅读
    `doc/BlissHack/plans/prealpha-4.md`；进行 tileset、Canvas 地图、
    `TILES_IN_GLYPHMAP` 或 profile v2 工作时完整阅读
