@@ -251,11 +251,11 @@ export function CharacterSetupScreen({
       return;
     }
     if (event.target instanceof HTMLInputElement) return;
-    if (event.key === "n" || event.key === "a") {
+    if (event.key === "," || event.key === ".") {
       if (autoAvailable && matchesInterfaceShortcut(event, event.key)) {
         event.preventDefault();
         event.stopPropagation();
-        handleAuto(event.key === "n" ? "y" : "a");
+        handleAuto(event.key === "," ? "y" : "a");
       }
       return;
     }
@@ -270,7 +270,10 @@ export function CharacterSetupScreen({
       event.key.length === 1
       && !event.altKey
       && !event.ctrlKey
+      && !event.defaultPrevented
       && !event.metaKey
+      && !event.nativeEvent.isComposing
+      && !event.repeat
       && controller.pressAccelerator(event.key, owner)
     ) {
       event.preventDefault();
@@ -373,24 +376,24 @@ export function CharacterSetupScreen({
         </p>
         <div className="character-setup-actions">
           <button
-            aria-keyshortcuts="n"
+            aria-keyshortcuts=","
             disabled={!autoAvailable}
             onClick={() => handleAuto("y")}
             onPointerDown={handleNameActionPointerDown}
             type="button"
           >
-            <InterfaceShortcutLabel shortcut="n">
+            <InterfaceShortcutLabel shortcut=",">
               Auto
             </InterfaceShortcutLabel>
           </button>
           <button
-            aria-keyshortcuts="a"
+            aria-keyshortcuts="."
             disabled={!autoAvailable}
             onClick={() => handleAuto("a")}
             onPointerDown={handleNameActionPointerDown}
             type="button"
           >
-            <InterfaceShortcutLabel shortcut="a">
+            <InterfaceShortcutLabel shortcut=".">
               Auto &amp; Start
             </InterfaceShortcutLabel>
           </button>
