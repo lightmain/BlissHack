@@ -1216,9 +1216,47 @@
   padding: 8px;
 }
 
-.nh-extcmd input {
-  width: 100%;
+.nh-extcmd-search {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.nh-extcmd-search input {
+  width: auto;
   padding: 8px 4px;
+}
+
+.nh-extcmd-search button {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 1px solid #4a5257;
+  border-radius: 3px;
+  background: #15191b;
+  color: #aeb6ba;
+  font: inherit;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.nh-extcmd-search button:hover,
+.nh-extcmd-search button:focus-visible {
+  border-color: #7ddc8c;
+  background: #19201c;
+  color: #fff;
+  outline: 2px solid #7ddc8c;
+  outline-offset: 2px;
+}
+
+.nh-extcmd-search button[aria-pressed="true"] {
+  border-color: #7ddc8c;
+  background: #17301f;
+  color: #7ddc8c;
 }
 
 .nh-extcmd-list {

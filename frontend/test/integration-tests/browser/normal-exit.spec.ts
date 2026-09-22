@@ -154,6 +154,7 @@ test("quits an active game and starts a clean second session", async ({
 });
 
 test("toggles extended-command description search without losing keyboard focus", async ({
+  browserName,
   page,
 }) => {
   const errors = captureErrors(page);
@@ -191,11 +192,28 @@ test("toggles extended-command description search without losing keyboard focus"
   expect(toggleBox.y).toBeLessThan(inputBox.y + inputBox.height);
   expect(toggleBox.y + toggleBox.height).toBeGreaterThan(inputBox.y);
 
+  if (browserName === "webkit") {
+    await descriptionToggle.focus();
+  } else {
+    await page.keyboard.press("Tab");
+  }
+  await expect(descriptionToggle).toBeFocused();
+  await page.keyboard.press("Space");
+  await expect(descriptionToggle).toHaveAttribute("aria-pressed", "false");
+  await expect(commandInput).toBeFocused();
+  await expect(chatCommand).toHaveCount(0);
+
+  await descriptionToggle.click();
+  await expect(descriptionToggle).toHaveAttribute("aria-pressed", "true");
+  await expect(commandInput).toBeFocused();
+  await expect(chatCommand).toBeVisible();
+
   await descriptionToggle.click();
   await expect(descriptionToggle).toHaveAttribute("aria-pressed", "false");
   await expect(commandInput).toBeFocused();
   await expect(chatCommand).toHaveCount(0);
 
+  await page.mouse.move(0, 0);
   await page.keyboard.press("ControlOrMeta+A");
   await page.keyboard.type("c");
   const commandRows = commandDialog.locator(".nh-extcmd-list > button");

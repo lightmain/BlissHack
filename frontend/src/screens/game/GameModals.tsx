@@ -13,6 +13,7 @@ import {
   PICK_NONE,
   PICK_ONE,
   getWindow,
+  type ExtendedCommand,
   type GameModal,
   type MenuItem,
   type TextLine,
@@ -30,9 +31,11 @@ import {
 } from "../../interactions/anchored-overlay";
 import type { ContextMenuPresentation } from "../../game-actions/game-action-controller";
 import { colorClass, textAttributeClass } from "../../text-styling";
+import { filterExtendedCommands } from "./extended-command-search";
 
 const AUTO_ACCELERATORS =
   "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+const DESCRIPTION_SEARCH_LABEL = "Include descriptions in search";
 
 /**
  * Select the renderer for the active modal type.
@@ -475,16 +478,16 @@ function MenuOverlay({
 function ExtendedCommandOverlay({
   commands,
 }: {
-  commands: Array<{ sourceIndex: number; name: string; description: string }>;
+  commands: ExtendedCommand[];
 }) {
   const [query, setQuery] = useState("");
+  const [includeDescriptions, setIncludeDescriptions] = useState(true);
   const [focus, setFocus] = useState(0);
-  const filtered = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
-    return normalized
-      ? commands.filter((command) => command.name.startsWith(normalized))
-      : commands;
-  }, [commands, query]);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const filtered = useMemo(
+    () => filterExtendedCommands(commands, query, includeDescriptions),
+    [commands, includeDescriptions, query],
+  );
 
   /**
    * Submit or cancel the extended-command picker.
@@ -510,17 +513,35 @@ function ExtendedCommandOverlay({
   return (
     <div className="nh-overlay">
       <section className="nh-dialog nh-extcmd" role="dialog" aria-label="Extended command">
-        <input
-          autoComplete="off"
-          autoFocus
-          onChange={(event) => {
-            setQuery(event.target.value);
-            setFocus(0);
-          }}
-          onKeyDown={handleKeyDown}
-          spellCheck={false}
-          value={query}
-        />
+        <div className="nh-extcmd-search">
+          <input
+            aria-label="Search extended commands"
+            autoComplete="off"
+            autoFocus
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setFocus(0);
+            }}
+            onKeyDown={handleKeyDown}
+            ref={inputRef}
+            spellCheck={false}
+            value={query}
+          />
+          <button
+            aria-label={DESCRIPTION_SEARCH_LABEL}
+            aria-pressed={includeDescriptions}
+            onClick={() => {
+              setIncludeDescriptions((current) => !current);
+              setFocus(0);
+              inputRef.current?.focus();
+            }}
+            onPointerDown={(event) => event.preventDefault()}
+            title={DESCRIPTION_SEARCH_LABEL}
+            type="button"
+          >
+            ?
+          </button>
+        </div>
         <div className="nh-extcmd-list">
           {filtered.slice(0, 100).map((command, index) => (
             <button
