@@ -71,20 +71,20 @@ type RejectedShortcutGuard = "repeat" | "isComposing" | "defaultPrevented";
 /**
  * Dispatch an action key event which the interface shortcut guard must reject.
  * @param target - active character setup surface.
- * @param key - lowercase action shortcut under test.
+ * @param key - punctuation action shortcut under test.
  * @param guard - event condition which disqualifies the shortcut.
  * @returns the browser-observed guard flags from the dispatched event.
  */
 async function dispatchRejectedActionShortcut(
   target: Locator,
-  key: "a" | "n",
+  key: "," | ".",
   guard: RejectedShortcutGuard,
 ): Promise<Record<RejectedShortcutGuard, boolean>> {
   return target.evaluate((element, request) => {
     const event = new KeyboardEvent("keydown", {
       bubbles: true,
       cancelable: true,
-      code: `Key${request.key.toUpperCase()}`,
+      code: request.key === "," ? "Comma" : "Period",
       isComposing: request.guard === "isComposing",
       key: request.key,
       repeat: request.guard === "repeat",
@@ -288,8 +288,10 @@ test("uses the unified keyboard character setup flow", async ({ page }) => {
   expect(errors).toEqual({ console: [], page: [] });
 });
 
-test("uses n and a as protected unified setup actions", async ({ page }) => {
-  await openHome(page, "unified-character-action-shortcuts");
+test("shows punctuation setup actions without intercepting name input", async ({
+  page,
+}) => {
+  await openHome(page, "unified-character-action-labels");
   await enableUnifiedSetup(page);
   await page.getByRole("button", { name: "New Game" }).click();
 
@@ -300,8 +302,10 @@ test("uses n and a as protected unified setup actions", async ({ page }) => {
     name: "Auto & Start",
     exact: true,
   });
-  await expect(auto.locator("kbd")).toHaveText("n");
-  await expect(autoAndStart.locator("kbd")).toHaveText("a");
+  await expect(auto).toHaveAttribute("aria-keyshortcuts", ",");
+  await expect(auto.locator("kbd")).toHaveText(",");
+  await expect(autoAndStart).toHaveAttribute("aria-keyshortcuts", ".");
+  await expect(autoAndStart.locator("kbd")).toHaveText(".");
   for (const action of [auto, autoAndStart]) {
     const marker = await action.locator("kbd").boundingBox();
     const button = await action.boundingBox();
@@ -312,29 +316,24 @@ test("uses n and a as protected unified setup actions", async ({ page }) => {
     );
   }
 
-  await input.press("n");
-  await input.press("a");
-  await expect(input).toHaveValue("na");
+  await input.press(",");
+  await input.press(".");
+  await expect(input).toHaveValue(",.");
   await expect(input).toBeFocused();
   await expect(setup).toHaveAttribute(
     "data-character-phase",
     "entering-name",
   );
+});
 
-  await input.fill("E2EUnifiedShortcutAuto");
-  await input.press("Enter");
-  await page.getByRole("button", {
-    name: "a Archeologist",
-    exact: true,
-  }).click();
-  await page.getByRole("button", { name: "h human", exact: true }).click();
-  await page.getByRole("button", { name: "m male", exact: true }).click();
-  const alignment = page.locator("[data-character-column=\"alignment\"]");
-  await expect(setup).toHaveAttribute("data-character-focus", "alignment");
-  await expect(alignment.getByRole("button", {
-    name: "n neutral",
-    exact: true,
-  })).toBeEnabled();
+test("uses comma as the unified Auto action during selection", async ({
+  page,
+}) => {
+  await openHome(page, "unified-character-comma-auto");
+  await enableUnifiedSetup(page);
+  await enterCharacterName(page, "E2EUnifiedCommaAuto");
+
+  const setup = page.getByRole("region", { name: "Character setup" });
   await setup.evaluate((element) => {
     document.documentElement.dataset.testCharacterPhaseLog = "";
     const observer = new MutationObserver(() => {
@@ -346,20 +345,24 @@ test("uses n and a as protected unified setup actions", async ({ page }) => {
       attributes: true,
     });
   });
-  await page.keyboard.press("n");
+  await page.keyboard.press(",");
   await expect(page.getByRole("button", { name: "Confirm" })).toBeEnabled();
+  await expect(page.getByRole("button", { pressed: true })).toHaveCount(4);
   const autoPhaseLog = await page.locator("html").getAttribute(
     "data-test-character-phase-log",
   );
+  expect(autoPhaseLog).toContain("auto-selecting");
+});
 
-  await page.keyboard.press("Escape");
-  await expect(page.getByRole("button", { name: "New Game" })).toBeVisible();
-  await page.getByRole("button", { name: "New Game" }).click();
-  const nextInput = page.getByRole("textbox", { name: "Name" });
-  await nextInput.fill("E2EUnifiedShortcutStart");
-  await nextInput.press("Enter");
-  const nextSetup = page.getByRole("region", { name: "Character setup" });
-  await nextSetup.evaluate((element) => {
+test("uses period as the unified Auto & Start action during selection", async ({
+  page,
+}) => {
+  await openHome(page, "unified-character-period-start");
+  await enableUnifiedSetup(page);
+  await enterCharacterName(page, "E2EUnifiedPeriodStart");
+
+  const setup = page.getByRole("region", { name: "Character setup" });
+  await setup.evaluate((element) => {
     document.documentElement.dataset.testCharacterPhaseLog = "";
     const observer = new MutationObserver(() => {
       const phase = element.getAttribute("data-character-phase");
@@ -370,24 +373,73 @@ test("uses n and a as protected unified setup actions", async ({ page }) => {
       attributes: true,
     });
   });
-  await page.keyboard.press("a");
-  await expect.soft.poll(
+  await page.keyboard.press(".");
+  await expect.poll(
     () => page.locator("html").getAttribute(
       "data-test-character-phase-log",
     ),
     { timeout: 2_000 },
   ).toContain("starting");
-  const startPhaseLog = await page.locator("html").getAttribute(
+  await finishStartup(page);
+});
+
+test("keeps a available for the Archeologist accelerator", async ({ page }) => {
+  await openHome(page, "unified-character-archeologist-accelerator");
+  await enableUnifiedSetup(page);
+  await enterCharacterName(page, "E2EUnifiedArcheologist");
+
+  const setup = page.getByRole("region", { name: "Character setup" });
+  const archeologist = page.getByRole("button", {
+    name: "a Archeologist",
+    exact: true,
+  });
+
+  await page.keyboard.press("a");
+
+  await expect(archeologist).toHaveAttribute("aria-pressed", "true");
+  await expect(setup).toHaveAttribute("data-character-focus", "race");
+  await expect(setup).toHaveAttribute("data-character-phase", "selecting");
+});
+
+test("keeps n available for the Neutral accelerator", async ({ page }) => {
+  await openHome(page, "unified-character-neutral-accelerator");
+  await enableUnifiedSetup(page);
+  await enterCharacterName(page, "E2EUnifiedNeutral");
+
+  const setup = page.getByRole("region", { name: "Character setup" });
+  await page.getByRole("button", {
+    name: "a Archeologist",
+    exact: true,
+  }).click();
+  await page.getByRole("button", { name: "h human", exact: true }).click();
+  await page.getByRole("button", { name: "m male", exact: true }).click();
+  const neutral = page.getByRole("button", {
+    name: "n neutral",
+    exact: true,
+  });
+  await expect(setup).toHaveAttribute("data-character-focus", "alignment");
+  await expect(neutral).toBeEnabled();
+  await setup.evaluate((element) => {
+    document.documentElement.dataset.testCharacterPhaseLog = "";
+    const observer = new MutationObserver(() => {
+      const phase = element.getAttribute("data-character-phase");
+      document.documentElement.dataset.testCharacterPhaseLog += ` ${phase}`;
+    });
+    observer.observe(element, {
+      attributeFilter: ["data-character-phase"],
+      attributes: true,
+    });
+  });
+
+  await page.keyboard.press("n");
+
+  await expect(neutral).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "Confirm" })).toBeFocused();
+  await expect(setup).toHaveAttribute("data-character-phase", "selecting");
+  const phaseLog = await page.locator("html").getAttribute(
     "data-test-character-phase-log",
   );
-
-  expect({
-    autoBeforeAlignment: autoPhaseLog?.includes("auto-selecting"),
-    startBeforeRole: startPhaseLog?.includes("starting"),
-  }).toEqual({
-    autoBeforeAlignment: true,
-    startBeforeRole: true,
-  });
+  expect(phaseLog).not.toMatch(/auto-selecting|starting/);
 });
 
 for (
@@ -397,62 +449,28 @@ for (
     "defaultPrevented",
   ] as const satisfies readonly RejectedShortcutGuard[]
 ) {
-  test(`rejects guarded setup action shortcuts: ${guard} a cannot select Archeologist`, async ({
+  test(`rejects guarded punctuation setup actions: ${guard}`, async ({
     page,
   }) => {
-    await openHome(page, `unified-character-guard-${guard}-a`);
+    await openHome(page, `unified-character-guard-${guard}`);
     await enableUnifiedSetup(page);
-    await enterCharacterName(page, `E2EGuardA${guard}`);
+    await enterCharacterName(page, `E2EGuard${guard}`);
 
     const setup = page.getByRole("region", { name: "Character setup" });
-    const archeologist = page.getByRole("button", {
-      name: "a Archeologist",
-      exact: true,
-    });
     await expect(setup).toHaveAttribute("data-character-focus", "role");
-    await expect(archeologist).toHaveAttribute("aria-pressed", "false");
+    await expect(page.getByRole("button", { pressed: true })).toHaveCount(0);
 
-    const eventState = await dispatchRejectedActionShortcut(
-      setup,
-      "a",
-      guard,
-    );
-
-    expect(eventState[guard]).toBe(true);
-    await expect(setup).toHaveAttribute("data-character-focus", "role");
-    await expect(archeologist).toHaveAttribute("aria-pressed", "false");
-  });
-
-  test(`rejects guarded setup action shortcuts: ${guard} n cannot select Neutral`, async ({
-    page,
-  }) => {
-    await openHome(page, `unified-character-guard-${guard}-n`);
-    await enableUnifiedSetup(page);
-    await enterCharacterName(page, `E2EGuardN${guard}`);
-
-    const setup = page.getByRole("region", { name: "Character setup" });
-    await page.getByRole("button", {
-      name: "a Archeologist",
-      exact: true,
-    }).click();
-    await page.getByRole("button", { name: "h human", exact: true }).click();
-    await page.getByRole("button", { name: "m male", exact: true }).click();
-    const neutral = page.getByRole("button", {
-      name: "n neutral",
-      exact: true,
-    });
-    await expect(setup).toHaveAttribute("data-character-focus", "alignment");
-    await expect(neutral).toHaveAttribute("aria-pressed", "false");
-
-    const eventState = await dispatchRejectedActionShortcut(
-      setup,
-      "n",
-      guard,
-    );
-
-    expect(eventState[guard]).toBe(true);
-    await expect(setup).toHaveAttribute("data-character-focus", "alignment");
-    await expect(neutral).toHaveAttribute("aria-pressed", "false");
+    for (const key of [",", "."] as const) {
+      const eventState = await dispatchRejectedActionShortcut(
+        setup,
+        key,
+        guard,
+      );
+      expect(eventState[guard]).toBe(true);
+      await expect(setup).toHaveAttribute("data-character-phase", "selecting");
+      await expect(setup).toHaveAttribute("data-character-focus", "role");
+      await expect(page.getByRole("button", { pressed: true })).toHaveCount(0);
+    }
   });
 }
 
