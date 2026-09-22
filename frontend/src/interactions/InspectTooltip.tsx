@@ -52,7 +52,7 @@ export function InspectTooltip({
   return (
     <div
       aria-hidden={hidden ? "true" : undefined}
-      className="nh-inspect-tooltip"
+      className="nh-tooltip nh-inspect-tooltip"
       data-horizontal={position.horizontal}
       data-vertical={position.vertical}
       id={id}

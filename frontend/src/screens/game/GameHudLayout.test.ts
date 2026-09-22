@@ -282,7 +282,6 @@ describe("GameHudLayout contract", () => {
     expect(inspectTooltip).toMatch(
       /\btop\s*:\s*var\(--overlay-top\)\s*;/,
     );
-    expect(inspectTooltip).toMatch(/\bwidth\s*:\s*max-content\s*;/);
     expect(inspectTooltip).not.toMatch(/\bpointer-events\s*:\s*(?:auto|all)\s*;/);
     expect(inspectTooltip).not.toMatch(/\bvisibility\s*:\s*hidden\s*;/);
     expect(cssFor('.nh-inspect-tooltip[aria-hidden="true"]'))

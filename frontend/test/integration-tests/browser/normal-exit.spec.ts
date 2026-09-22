@@ -167,9 +167,9 @@ test("toggles extended-command description search without losing keyboard focus"
     name: "Include descriptions in search",
     exact: true,
   });
-  const descriptionTooltip = commandDialog.locator(
-    ".nh-tooltip.nh-control-tooltip[role=\"tooltip\"]",
-  );
+  const descriptionTooltip = commandDialog.getByRole("tooltip", {
+    includeHidden: true,
+  });
   const chatCommand = commandDialog.getByRole("button", {
     name: /chat\s+talk to someone/i,
   });

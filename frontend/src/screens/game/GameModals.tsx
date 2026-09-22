@@ -36,6 +36,8 @@ import { filterExtendedCommands } from "./extended-command-search";
 const AUTO_ACCELERATORS =
   "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 const DESCRIPTION_SEARCH_LABEL = "Include descriptions in search";
+const DESCRIPTION_SEARCH_TOOLTIP_ID =
+  "extended-command-description-search-tooltip";
 
 /**
  * Select the renderer for the active modal type.
@@ -527,20 +529,29 @@ function ExtendedCommandOverlay({
             spellCheck={false}
             value={query}
           />
-          <button
-            aria-label={DESCRIPTION_SEARCH_LABEL}
-            aria-pressed={includeDescriptions}
-            onClick={() => {
-              setIncludeDescriptions((current) => !current);
-              setFocus(0);
-              inputRef.current?.focus();
-            }}
-            onPointerDown={(event) => event.preventDefault()}
-            title={DESCRIPTION_SEARCH_LABEL}
-            type="button"
-          >
-            ?
-          </button>
+          <span className="nh-extcmd-search-control">
+            <button
+              aria-describedby={DESCRIPTION_SEARCH_TOOLTIP_ID}
+              aria-label={DESCRIPTION_SEARCH_LABEL}
+              aria-pressed={includeDescriptions}
+              onClick={() => {
+                setIncludeDescriptions((current) => !current);
+                setFocus(0);
+                inputRef.current?.focus();
+              }}
+              onPointerDown={(event) => event.preventDefault()}
+              type="button"
+            >
+              ?
+            </button>
+            <span
+              className="nh-tooltip nh-control-tooltip"
+              id={DESCRIPTION_SEARCH_TOOLTIP_ID}
+              role="tooltip"
+            >
+              {DESCRIPTION_SEARCH_LABEL}
+            </span>
+          </span>
         </div>
         <div className="nh-extcmd-list">
           {filtered.slice(0, 100).map((command, index) => (
