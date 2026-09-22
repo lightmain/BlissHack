@@ -11,6 +11,7 @@ const basicFlowNames = [
   "uses period as the unified Auto & Start action during selection",
   "keeps a available for the Archeologist accelerator",
   "keeps n available for the Neutral accelerator",
+  "rejects guarded character accelerators:",
   "rejects guarded punctuation setup actions:",
   "activates a focused Role button with Space and advances focus",
   "cancels an existing-save name without restoring it",
