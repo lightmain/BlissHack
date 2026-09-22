@@ -17,6 +17,7 @@ const basicFlowNames = [
   "exports, previews, imports, and restores a complete profile",
   "exports, clears, and restores a complete BlissHack backup",
   "exports, deletes, imports, and continues identical raw save bytes",
+  "toggles extended-command description search without losing keyboard focus",
   "blocks a second game and retries after the owning page closes",
   "keeps a manual Follow anchor after a right-click position look",
   "right-drag pans during position input without submitting it",

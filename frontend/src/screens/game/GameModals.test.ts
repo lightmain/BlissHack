@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { ExtendedCommand } from "../../game-state";
 import * as gameModals from "./GameModals";
+import { filterExtendedCommands } from "./extended-command-search";
 
 const commands: ExtendedCommand[] = [
   {
@@ -27,18 +28,7 @@ function filterCommands(
   query: string,
   includeDescriptions?: boolean,
 ): ExtendedCommand[] {
-  const filterExtendedCommands = (
-    gameModals as unknown as {
-      filterExtendedCommands?: (
-        entries: ExtendedCommand[],
-        search: string,
-        includeDescriptions?: boolean,
-      ) => ExtendedCommand[];
-    }
-  ).filterExtendedCommands;
-
-  expect(filterExtendedCommands).toBeTypeOf("function");
-  return filterExtendedCommands!(commands, query, includeDescriptions);
+  return filterExtendedCommands(commands, query, includeDescriptions);
 }
 
 describe("ExtendedCommandOverlay search", () => {
@@ -48,6 +38,7 @@ describe("ExtendedCommandOverlay search", () => {
 
   it("can exclude descriptions without disabling name-prefix matching", () => {
     expect(filterCommands("talk", false)).toEqual([]);
+    expect(filterCommands("hat", false)).toEqual([]);
     expect(filterCommands("chat", false)).toEqual([commands[0]]);
     expect(filterCommands("chat", true)).toEqual([commands[0]]);
   });
