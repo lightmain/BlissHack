@@ -153,6 +153,68 @@ test("quits an active game and starts a clean second session", async ({
   expect(errors).toEqual({ console: [], page: [] });
 });
 
+test("toggles extended-command description search without losing keyboard focus", async ({
+  page,
+}) => {
+  const errors = captureErrors(page);
+  await startNewGame(page, "E2E_ExtSearch");
+
+  await page.keyboard.press("#");
+  const commandDialog = page.getByRole("dialog", { name: "Extended command" });
+  const commandInput = commandDialog.locator("input");
+  const descriptionToggle = commandDialog.locator(
+    'button[title="Include descriptions in search"]',
+  );
+  const chatCommand = commandDialog.getByRole("button", {
+    name: /chat\s+talk to someone/i,
+  });
+
+  await expect(commandDialog).toBeVisible();
+  await expect(commandInput).toBeFocused();
+  await commandInput.fill("talk");
+  await expect(chatCommand).toBeVisible();
+  await expect(descriptionToggle).toHaveText("?");
+  await expect(descriptionToggle).toHaveAttribute("aria-pressed", "true");
+
+  const [inputBox, toggleBox] = await Promise.all([
+    commandInput.boundingBox(),
+    descriptionToggle.boundingBox(),
+  ]);
+  expect(inputBox).not.toBeNull();
+  expect(toggleBox).not.toBeNull();
+  if (!inputBox || !toggleBox) {
+    throw new Error("Extended-command search controls were not measurable");
+  }
+  expect(toggleBox.x).toBeGreaterThanOrEqual(
+    inputBox.x + inputBox.width - 1,
+  );
+  expect(toggleBox.y).toBeLessThan(inputBox.y + inputBox.height);
+  expect(toggleBox.y + toggleBox.height).toBeGreaterThan(inputBox.y);
+
+  await descriptionToggle.click();
+  await expect(descriptionToggle).toHaveAttribute("aria-pressed", "false");
+  await expect(commandInput).toBeFocused();
+  await expect(chatCommand).toHaveCount(0);
+
+  await page.keyboard.press("ControlOrMeta+A");
+  await page.keyboard.type("c");
+  const commandRows = commandDialog.locator(".nh-extcmd-list > button");
+  expect(await commandRows.count()).toBeGreaterThan(1);
+  await expect(commandRows.first()).toHaveClass(/focused/);
+  await page.keyboard.press("ArrowDown");
+  await expect(commandInput).toBeFocused();
+  await expect(commandRows.nth(1)).toHaveClass(/focused/);
+  await page.keyboard.press("ArrowUp");
+  await expect(commandRows.first()).toHaveClass(/focused/);
+
+  await page.keyboard.press("ControlOrMeta+A");
+  await page.keyboard.type("chat");
+  await expect(chatCommand).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(commandDialog).toHaveCount(0);
+  expect(errors).toEqual({ console: [], page: [] });
+});
+
 test("persists rankings across a reload and a second completed game", async ({
   page,
 }) => {
