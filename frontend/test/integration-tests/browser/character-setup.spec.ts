@@ -435,7 +435,7 @@ test("keeps n available for the Neutral accelerator", async ({ page }) => {
 
   await expect(neutral).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("button", { name: "Confirm" })).toBeFocused();
-  await expect(setup).toHaveAttribute("data-character-phase", "selecting");
+  await expect(setup).toHaveAttribute("data-character-phase", "ready");
   const phaseLog = await page.locator("html").getAttribute(
     "data-test-character-phase-log",
   );
