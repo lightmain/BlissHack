@@ -21,16 +21,16 @@ frontend. These changes are documented in
 
 ## Project Status
 
-**Alpha-2.2 phases zero through four are complete and awaiting interim manual
-acceptance.**
+**Alpha-2.2 implementation, automated gates, and manual acceptance are
+complete.**
 
 Alpha-2.1 refines keyboard focus and the Below layout on top of the alpha-2.0
 fullscreen desktop HUD. Permanent inventory is mouse-only, while Below places
 the fixed-size map above a split status and permanent-inventory workspace; that
-release has passed manual acceptance. Alpha-2.2 now includes its unified
-character setup; end-game work remains in phase five and later. The deployment
-branch and GitHub Pages may lag; use the version displayed by the site as the
-authority.
+release has passed manual acceptance. Alpha-2.2 adds profile v3, unified
+character setup, a tabbed end-game summary, and browser-local Ranking. The
+deployment branch and GitHub Pages may lag; use the version displayed by the
+site as the authority.
 
 The current milestone provides:
 
@@ -161,6 +161,7 @@ combinations at 1280x900 and 900x700.
 - [alpha-1.1 release acceptance](doc/BlissHack/plans/in-alpha-1.1/release-acceptance.md)
 - [alpha-2.0 release acceptance](doc/BlissHack/plans/in-alpha-2.0/release-acceptance.md)
 - [alpha-2.1 release acceptance](doc/BlissHack/plans/in-alpha-2.1/release-acceptance.md)
+- [alpha-2.2 release acceptance](doc/BlissHack/plans/in-alpha-2.2/release-acceptance.md)
 - [Upstream modification inventory](doc/BlissHack/upstream-modifications.md)
 - [Fatal errors and diagnostic log design](doc/BlissHack/plans/in-prealpha-2/fatal-errors-and-diagnostics.md)
 - [Browser end-to-end test design](doc/BlissHack/plans/in-prealpha-2/browser-end-to-end-tests.md)
