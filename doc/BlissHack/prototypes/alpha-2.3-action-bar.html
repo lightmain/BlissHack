@@ -1,32 +1,82 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>BlissHack Action Bar Prototype</title>
+  <title>BlissHack alpha-2.3 Action Bar</title>
   <style>
     :root {
       color-scheme: dark;
       font-family:
-        Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
-        "Segoe UI", sans-serif;
-      --bg: #090b0c;
-      --surface: #15191a;
-      --surface-raised: #1d2222;
-      --surface-hover: #272d2c;
-      --line: #3d4542;
-      --line-strong: #626d67;
-      --text: #f3f0e7;
-      --muted: #a9b0ab;
-      --gold: #d7b765;
-      --green: #75c991;
-      --red: #e47767;
-      --cyan: #77bac1;
-      --slot-size: 64px;
+        "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      --blisshack-scrollbar-size: 8px;
+      --blisshack-scrollbar-track: #0d1011;
+      --blisshack-scrollbar-thumb: #5a6268;
+      --blisshack-scrollbar-thumb-hover: #7ddc8c;
+      --blisshack-scrollbar-thumb-active: #a5edb1;
+      --bg: #080a0b;
+      --surface: #0d1011;
+      --surface-raised: #15191b;
+      --surface-active: #232a28;
+      --line: #30363a;
+      --line-strong: #5a6268;
+      --text: #d8d8d2;
+      --text-bright: #f1f1eb;
+      --muted: #8f989d;
+      --gold: #e6cb74;
+      --green: #7ddc8c;
+      --cyan: #55b6b6;
+      --red: #d85c55;
+      --slot-size: 48px;
+      --slot-gap: 4px;
+      --row-count: 2;
+      --dock-height: 142px;
     }
 
     * {
       box-sizing: border-box;
+      scrollbar-color:
+        var(--blisshack-scrollbar-thumb)
+        var(--blisshack-scrollbar-track);
+      scrollbar-width: thin;
+    }
+
+    *:hover,
+    *:focus-visible {
+      scrollbar-color:
+        var(--blisshack-scrollbar-thumb-hover)
+        var(--blisshack-scrollbar-track);
+    }
+
+    *::-webkit-scrollbar {
+      width: var(--blisshack-scrollbar-size);
+      height: var(--blisshack-scrollbar-size);
+    }
+
+    *::-webkit-scrollbar-track,
+    *::-webkit-scrollbar-corner {
+      background: var(--blisshack-scrollbar-track);
+    }
+
+    *::-webkit-scrollbar-thumb {
+      min-width: 24px;
+      min-height: 24px;
+      border: 1px solid transparent;
+      border-radius: 4px;
+      background: var(--blisshack-scrollbar-thumb);
+      background-clip: padding-box;
+    }
+
+    *::-webkit-scrollbar-thumb:hover {
+      background: var(--blisshack-scrollbar-thumb-hover);
+    }
+
+    *::-webkit-scrollbar-thumb:active {
+      background: var(--blisshack-scrollbar-thumb-active);
+    }
+
+    * {
+      letter-spacing: 0;
     }
 
     html,
@@ -51,490 +101,831 @@
 
     button:focus-visible,
     input:focus-visible {
-      outline: 2px solid var(--gold);
-      outline-offset: 2px;
+      outline: 1px solid var(--gold);
+      outline-offset: 1px;
     }
 
-    .prototype {
-      position: relative;
+    [hidden] {
+      display: none !important;
+    }
+
+    .nh-shell,
+    .nh-terminal,
+    .nh-hud-layout {
       width: 100%;
-      height: 100svh;
-      min-height: 560px;
-      overflow: hidden;
-      background: #0d100f;
-    }
-
-    .game-topbar {
-      position: absolute;
-      inset: 0 0 auto;
-      z-index: 2;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      min-height: 42px;
-      padding: 0 18px;
-      border-bottom: 1px solid #303734;
-      background: #101312;
-    }
-
-    .game-brand {
-      color: var(--gold);
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      font-size: 13px;
-      font-weight: 700;
-    }
-
-    .game-meta {
-      display: flex;
-      gap: 14px;
-      color: var(--muted);
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      font-size: 11px;
-    }
-
-    .stage {
-      position: absolute;
-      inset: 42px 0 0;
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) 250px;
-      overflow: hidden;
-    }
-
-    .map-stage {
-      position: relative;
-      display: grid;
-      place-items: center;
+      height: 100%;
       min-width: 0;
       min-height: 0;
       overflow: hidden;
-      background-color: #0d1110;
-      background-image:
-        linear-gradient(#171c1a 1px, transparent 1px),
-        linear-gradient(90deg, #171c1a 1px, transparent 1px);
-      background-size: 24px 24px;
     }
 
-    .map-stage::after {
-      position: absolute;
-      inset: 0;
-      content: "";
-      background: rgba(0, 0, 0, 0.32);
-      pointer-events: none;
+    .nh-hud-layout {
+      display: grid;
+      grid-template:
+        "messages messages" auto
+        "map inventory" minmax(0, 1fr)
+        "actions actions" auto
+        / minmax(0, 1fr) clamp(17rem, 25vw, 22rem);
+      background: var(--bg);
     }
 
-    .ascii-map {
-      position: relative;
-      z-index: 1;
-      margin: 0 0 110px;
-      color: #79847c;
-      font: 15px/1.13 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      letter-spacing: 0;
+    .nh-messages {
+      grid-area: messages;
+      height: 82px;
+      padding: 8px 12px;
+      overflow: hidden;
+      border-bottom: 1px solid var(--line);
+      background: #111416;
+      color: var(--text-bright);
+      font-size: 13px;
+      line-height: 1.35;
+    }
+
+    .nh-message {
+      height: 1.35em;
+      overflow: hidden;
       white-space: pre;
+    }
+
+    .nh-message.muted {
+      color: #a6aca8;
+    }
+
+    .nh-map-scroll {
+      position: relative;
+      grid-area: map;
+      width: 100%;
+      height: 100%;
+      min-width: 0;
+      min-height: 0;
+      overflow: auto;
+      border-bottom: 1px solid var(--line);
+      background: #000;
+      scrollbar-width: none;
+    }
+
+    .nh-map-scroll::-webkit-scrollbar {
+      width: 0;
+      height: 0;
+    }
+
+    .nh-map-interaction {
+      position: relative;
+      width: 1280px;
+      height: 336px;
+      margin: 0 auto;
+      outline: none;
+    }
+
+    .nh-map {
+      display: block;
+      width: 1280px;
+      height: 336px;
+      image-rendering: pixelated;
       user-select: none;
     }
 
-    .ascii-map .hero {
-      color: #f7e6a5;
-      font-weight: 800;
+    .nh-map-scroll.targeting {
+      cursor: crosshair;
     }
 
-    .ascii-map .danger {
-      color: #ca7165;
-    }
-
-    .ascii-map .object {
-      color: #74a8ad;
-    }
-
-    .message-strip {
+    .targeting-readout {
       position: absolute;
-      top: 12px;
+      top: 10px;
       left: 50%;
-      z-index: 2;
-      width: min(720px, calc(100% - 32px));
-      padding: 9px 12px;
+      z-index: 4;
+      min-height: 30px;
+      padding: 6px 10px;
       transform: translateX(-50%);
-      border: 1px solid #303734;
-      border-radius: 4px;
-      background: rgba(15, 18, 17, 0.94);
-      color: #d8ddd8;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      border: 1px solid var(--gold);
+      border-radius: 3px;
+      background: #111517;
+      color: var(--text-bright);
+      box-shadow: 0 4px 14px rgb(0 0 0 / 55%);
       font-size: 12px;
+      pointer-events: none;
+      white-space: nowrap;
     }
 
-    .inventory {
+    .permanent-inventory {
+      grid-area: inventory;
+      width: 100%;
+      height: 100%;
       min-width: 0;
-      border-left: 1px solid #303734;
-      background: #111514;
+      min-height: 0;
+      overflow: auto;
+      border-bottom: 1px solid var(--line-strong);
+      border-left: 1px solid var(--line-strong);
+      background: var(--surface);
     }
 
-    .inventory-header {
+    .permanent-inventory-header {
+      position: sticky;
+      top: 0;
+      z-index: 1;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      height: 38px;
-      padding: 0 12px;
-      border-bottom: 1px solid #303734;
-      color: #d9ded9;
-      font-size: 12px;
-      font-weight: 700;
-      text-transform: uppercase;
+      min-height: 36px;
+      padding: 5px 10px;
+      border-bottom: 1px solid var(--line);
+      background: var(--surface-raised);
     }
 
-    .inventory-list {
-      margin: 0;
-      padding: 8px 12px;
-      list-style: none;
-      color: #929b95;
-      font: 12px/2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    }
-
-    .inventory-list b {
-      color: #d2b565;
-      font-weight: 500;
-    }
-
-    .player-status {
-      position: absolute;
-      right: 268px;
-      bottom: 190px;
-      left: 12px;
-      z-index: 2;
-      display: flex;
-      gap: 16px;
-      align-items: center;
-      min-height: 34px;
-      padding: 6px 10px;
-      border: 1px solid #303734;
-      border-radius: 4px;
-      background: rgba(15, 18, 17, 0.94);
-      color: var(--muted);
-      font: 11px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    }
-
-    .status-meter {
-      display: inline-grid;
-      grid-template-columns: auto 84px auto;
-      gap: 6px;
-      align-items: center;
-    }
-
-    .meter-track {
-      width: 84px;
-      height: 5px;
-      overflow: hidden;
-      border-radius: 2px;
-      background: #323936;
-    }
-
-    .meter-fill {
-      display: block;
-      width: 72%;
-      height: 100%;
-      background: var(--red);
-    }
-
-    .meter-fill.energy {
-      width: 46%;
-      background: var(--cyan);
-    }
-
-    .action-bar {
-      position: fixed;
-      right: max(12px, calc((100vw - 1180px) / 2));
-      bottom: 12px;
-      left: max(12px, calc((100vw - 1180px) / 2));
-      z-index: 20;
-      display: grid;
-      grid-template-columns: auto minmax(0, 1fr);
-      gap: 6px;
-      min-width: 0;
-      padding: 6px;
-      border: 1px solid var(--line-strong);
-      border-radius: 6px;
-      background: rgba(19, 23, 22, 0.97);
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-    }
-
-    .bar-tools {
+    .permanent-inventory-header div {
       display: flex;
       flex-direction: column;
-      gap: 4px;
-      width: 104px;
       min-width: 0;
-      padding-right: 6px;
-      border-right: 1px solid var(--line);
     }
 
-    .all-actions-button,
-    .icon-audit-button {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 32px;
-      padding: 0 8px;
-      border: 1px solid var(--line);
-      border-radius: 4px;
-      background: var(--surface-raised);
-      color: var(--text);
+    .permanent-inventory-header strong {
+      color: var(--text-bright);
+      font-size: 12px;
+    }
+
+    .permanent-inventory-header span {
+      color: var(--muted);
+      font-size: 10px;
+    }
+
+    .permanent-inventory-header button {
+      display: grid;
+      place-items: center;
+      width: 28px;
+      height: 28px;
+      padding: 0;
+      border: 1px solid transparent;
+      border-radius: 2px;
+      background: transparent;
       cursor: pointer;
+    }
+
+    .permanent-inventory-header button:hover {
+      border-color: var(--line-strong);
+      background: var(--surface-active);
+    }
+
+    .inventory-heading {
+      padding: 5px 10px;
+      background: #202527;
+      color: var(--text-bright);
       font-size: 11px;
       font-weight: 700;
     }
 
-    .all-actions-button:hover,
-    .icon-audit-button:hover {
-      border-color: var(--gold);
-      background: var(--surface-hover);
-    }
-
-    .icon-audit-button {
-      color: var(--muted);
-      font-weight: 600;
-    }
-
-    .catalog-total {
+    .permanent-inventory-item {
       display: grid;
-      place-items: center;
-      min-height: 28px;
-      color: var(--muted);
-      font: 10px/1.25 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      grid-template-columns: 18px 18px minmax(0, 1fr);
+      gap: 4px;
+      width: 100%;
+      min-height: 31px;
+      padding: 5px 10px;
+      border: 0;
+      border-bottom: 1px solid #242a2d;
+      background: transparent;
+      color: #a9afb0;
+      cursor: default;
+      text-align: left;
+    }
+
+    .permanent-inventory-item:hover {
+      background: #171c1e;
+      color: var(--text-bright);
+    }
+
+    .inventory-glyph {
+      color: var(--gold);
       text-align: center;
     }
 
-    .bar-main {
+    .inventory-key {
+      color: #a5edb1;
+    }
+
+    .panel-dimmed {
+      filter: brightness(0.32);
+      opacity: 0.68;
+      pointer-events: none;
+      user-select: none;
+    }
+
+    .action-dock {
+      position: relative;
+      z-index: 20;
+      grid-area: actions;
+      display: grid;
+      grid-template-columns: clamp(13rem, 19vw, 16rem) minmax(0, 1fr) 42px;
+      gap: 6px;
+      min-width: 0;
+      padding: 6px;
+      border-top: 1px solid #69747a;
+      background: #101415;
+      box-shadow: 0 -5px 18px rgb(0 0 0 / 38%);
+    }
+
+    .dock-status {
+      min-width: 0;
+      overflow: visible;
+      border-right: 1px solid var(--line);
+      padding: 2px 8px 2px 4px;
+    }
+
+    .nh-status {
+      display: grid;
+      gap: 4px;
+      min-width: 0;
+      height: 100%;
+      color: #c9c9c3;
+      font-size: 11px;
+    }
+
+    .nh-status-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px 7px;
+      align-items: center;
       min-width: 0;
     }
 
-    .deck-tabs {
+    .nh-status-group-identity {
+      color: var(--text-bright);
+      font-weight: 700;
+    }
+
+    .nh-status-metric {
+      position: relative;
+      display: inline-flex;
+      gap: 4px;
+      align-items: center;
+      min-width: 0;
+      outline: none;
+      white-space: nowrap;
+    }
+
+    .nh-status-resource {
+      flex: 1 1 6.7rem;
+    }
+
+    .nh-status-bar {
+      position: relative;
+      flex: 1 1 3rem;
+      width: 56px;
+      height: 7px;
+      overflow: hidden;
+      border: 1px solid #4a5257;
+      border-radius: 2px;
+      background: #1b2023;
+    }
+
+    .nh-status-bar-fill {
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: var(--status-percent);
+      background: var(--green);
+    }
+
+    .nh-status-bar-power {
+      background: var(--cyan);
+    }
+
+    .nh-status-tooltip {
+      position: absolute;
+      right: auto;
+      bottom: calc(100% + 7px);
+      left: 50%;
+      z-index: 60;
+      display: none;
+      width: max-content;
+      max-width: min(28rem, calc(100vw - 24px));
+      padding: 7px 9px;
+      transform: translateX(-50%);
+      border: 1px solid #69747a;
+      border-radius: 3px;
+      background: #111517;
+      color: var(--text-bright);
+      box-shadow: 0 4px 14px rgb(0 0 0 / 45%);
+      font-size: 11px;
+      font-weight: 400;
+      line-height: 1.15;
+      pointer-events: none;
+      text-align: left;
+      white-space: normal;
+    }
+
+    .nh-status-metric:hover .nh-status-tooltip,
+    .nh-status-metric:focus-visible .nh-status-tooltip {
+      display: grid;
+      gap: 4px;
+    }
+
+    .nh-status-tooltip strong {
+      color: var(--text-bright);
+    }
+
+    .nh-status-tooltip span {
+      color: #aeb6ba;
+    }
+
+    .condition {
+      padding: 1px 4px;
+      border: 1px solid #745c35;
+      border-radius: 2px;
+      background: #201a12;
+      color: #e7c478;
+    }
+
+    .action-workspace {
+      display: grid;
+      grid-template-rows: minmax(0, 1fr) 24px;
+      min-width: 0;
+      min-height: 0;
+      overflow: visible;
+    }
+
+    .action-grid-viewport {
+      min-width: 0;
+      min-height: 0;
+      overflow-x: auto;
+      overflow-y: hidden;
+    }
+
+    .action-grid {
+      display: flex;
+      gap: 0;
+      width: max-content;
+      min-width: 100%;
+      height: calc(
+        var(--row-count) * var(--slot-size)
+        + (var(--row-count) - 1) * var(--slot-gap)
+      );
+      overflow: visible;
+    }
+
+    .action-section {
+      position: relative;
+      flex: 0 0 calc(
+        var(--section-columns) * var(--slot-size)
+        + (var(--section-columns) - 1) * var(--slot-gap)
+      );
+      width: calc(
+        var(--section-columns) * var(--slot-size)
+        + (var(--section-columns) - 1) * var(--slot-gap)
+      );
+      min-width: var(--slot-size);
+      overflow: hidden;
+    }
+
+    .action-section.single {
+      flex-basis: auto;
+      width: auto;
+      overflow: visible;
+    }
+
+    .action-section-grid {
+      display: grid;
+      grid-auto-flow: column;
+      grid-auto-columns: var(--slot-size);
+      grid-template-rows: repeat(var(--row-count), var(--slot-size));
+      gap: var(--slot-gap);
+      width: max-content;
+    }
+
+    .section-divider {
+      position: relative;
+      z-index: 4;
+      flex: 0 0 11px;
+      width: 11px;
+      margin: 0 3px;
+      cursor: col-resize;
+      touch-action: none;
+    }
+
+    .section-divider::before {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 5px;
+      width: 1px;
+      content: "";
+      background: #778179;
+    }
+
+    .section-divider::after {
+      position: absolute;
+      top: 50%;
+      left: 2px;
+      width: 7px;
+      height: 22px;
+      transform: translateY(-50%);
+      border: 1px solid #778179;
+      border-radius: 2px;
+      content: "";
+      background: #1d2321;
+    }
+
+    .section-divider:hover::before,
+    .section-divider:hover::after {
+      border-color: var(--gold);
+      background-color: var(--gold);
+    }
+
+    .action-slot,
+    .empty-slot {
+      position: relative;
+      display: grid;
+      place-items: center;
+      width: var(--slot-size);
+      height: var(--slot-size);
+      padding: 0;
+      border: 1px solid #49514f;
+      border-radius: 3px;
+      background: #1b211f;
+    }
+
+    .action-slot {
+      color: var(--text-bright);
+      cursor: pointer;
+    }
+
+    .action-slot:hover,
+    .action-slot.targeting-active {
+      z-index: 5;
+      border-color: var(--gold);
+      background: #2a302a;
+      box-shadow: inset 0 0 0 1px #8c753b;
+    }
+
+    .action-slot[aria-disabled="true"] {
+      filter: saturate(0.2);
+      opacity: 0.38;
+      cursor: not-allowed;
+    }
+
+    .action-slot.dragging {
+      opacity: 0.24;
+    }
+
+    .action-slot.drop-hover,
+    .empty-slot.drop-hover {
+      border-color: var(--green);
+      background: #183122;
+    }
+
+    .empty-slot {
+      border-color: #2b3230;
+      border-style: dashed;
+      background: #111514;
+    }
+
+    .action-icon {
+      display: grid;
+      place-items: center;
+      width: 27px;
+      height: 27px;
+      pointer-events: none;
+    }
+
+    .action-icon svg,
+    .action-icon > i {
+      width: 25px;
+      height: 25px;
+      stroke-width: 1.7;
+    }
+
+    .slot-key {
+      position: absolute;
+      right: 3px;
+      bottom: 3px;
+      max-width: calc(100% - 6px);
+      overflow: hidden;
+      color: #aeb6ba;
+      font-size: 8px;
+      line-height: 1;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      pointer-events: none;
+    }
+
+    .square-dashed {
+      position: relative;
+      display: block;
+      width: 25px;
+      height: 25px;
+      border: 1px dashed currentColor;
+      color: #aa9b70;
+    }
+
+    .corner-x {
+      position: absolute;
+      top: -5px;
+      right: -5px;
+      display: grid;
+      place-items: center;
+      width: 12px;
+      height: 12px;
+      border: 1px solid #aa9b70;
+      border-radius: 50%;
+      background: #1b211f;
+      font: 9px/1 sans-serif;
+    }
+
+    .category-tags {
       display: flex;
       gap: 2px;
-      align-items: center;
-      height: 28px;
-      margin-bottom: 4px;
+      align-items: end;
+      min-width: 0;
+      padding-top: 3px;
       overflow-x: auto;
       scrollbar-width: none;
     }
 
-    .deck-tabs::-webkit-scrollbar {
+    .category-tags::-webkit-scrollbar {
       display: none;
     }
 
-    .deck-tab {
-      display: inline-flex;
+    .category-tag {
       flex: 0 0 auto;
-      gap: 6px;
-      align-items: center;
-      height: 28px;
-      padding: 0 10px;
+      height: 21px;
+      padding: 0 9px;
       border: 0;
       border-bottom: 2px solid transparent;
       background: transparent;
       color: var(--muted);
       cursor: pointer;
-      font-size: 11px;
+      font-size: 10px;
     }
 
-    .deck-tab:hover {
-      color: var(--text);
+    .category-tag:hover {
+      color: var(--text-bright);
     }
 
-    .deck-tab[aria-pressed="true"] {
+    .category-tag[aria-pressed="true"] {
       border-bottom-color: var(--gold);
       color: var(--gold);
     }
 
-    .deck-tab svg {
-      width: 14px;
-      height: 14px;
-    }
-
-    .shortcut-viewport {
-      min-width: 0;
-      overflow: visible;
-    }
-
-    .shortcut-row {
+    .dock-tools {
       display: grid;
-      grid-template-columns: repeat(12, minmax(var(--slot-size), 1fr));
-      gap: 4px;
-      min-width: calc(12 * var(--slot-size) + 44px);
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: 1fr 1fr;
+      gap: 3px;
+      min-width: 0;
+      border-left: 1px solid var(--line);
+      padding-left: 5px;
     }
 
-    .shortcut-row + .shortcut-row {
-      margin-top: 4px;
-    }
-
-    .action-slot {
-      position: relative;
+    .tool-button {
       display: grid;
       place-items: center;
-      width: 100%;
-      min-width: var(--slot-size);
-      height: var(--slot-size);
+      min-width: 0;
+      min-height: 0;
       padding: 0;
-      border: 1px solid #4b5550;
-      border-radius: 4px;
-      background: #202624;
-      color: #e9ebe6;
+      border: 1px solid #49514f;
+      border-radius: 3px;
+      background: #1b211f;
+      color: #c5cbc6;
       cursor: pointer;
+      font-size: 14px;
+      line-height: 1;
     }
 
-    .action-slot:hover {
-      z-index: 3;
+    .tool-button:hover {
       border-color: var(--gold);
-      background: #2b322e;
+      color: var(--text-bright);
     }
 
-    .action-slot:active {
-      transform: translateY(1px);
+    .tool-button svg {
+      width: 15px;
+      height: 15px;
     }
 
-    .action-slot[data-icon-state="custom"] {
-      border-color: #765148;
+    .tool-button.lock-rejected {
+      border-color: var(--red);
+      color: #ff9189;
+      box-shadow: 0 0 10px rgb(216 92 85 / 85%);
     }
 
-    .action-slot[data-icon-state="metaphor"]::after,
-    .action-slot[data-icon-state="custom"]::after {
-      position: absolute;
-      right: 4px;
-      bottom: 4px;
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      content: "";
-      background: var(--gold);
+    .all-actions-trigger {
+      grid-column: 2;
+      font-size: 16px;
     }
 
-    .action-slot[data-icon-state="custom"]::after {
-      background: var(--red);
+    .lock-button {
+      grid-column: 1;
     }
 
-    .action-icon {
-      position: relative;
+    .all-actions-panel {
+      position: fixed;
+      top: 104px;
+      right: max(22px, calc((100vw - 1040px) / 2));
+      bottom: calc(var(--dock-height) + 10px);
+      left: max(22px, calc((100vw - 1040px) / 2));
+      z-index: 18;
+      min-height: 180px;
+      overflow-y: auto;
+      border: 1px solid #69747a;
+      border-radius: 4px;
+      background: #101415;
+      box-shadow: 0 14px 36px rgb(0 0 0 / 65%);
+      scrollbar-color:
+        var(--blisshack-scrollbar-thumb)
+        var(--blisshack-scrollbar-track);
+    }
+
+    .all-actions-header {
+      position: sticky;
+      top: 0;
+      z-index: 3;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 45px;
+      padding: 7px 9px 7px 13px;
+      border-bottom: 1px solid var(--line);
+      background: #15191b;
+    }
+
+    .all-actions-header h1 {
+      margin: 0;
+      color: var(--text-bright);
+      font-size: 14px;
+    }
+
+    .panel-tools {
+      display: flex;
+      gap: 4px;
+    }
+
+    .panel-tools button {
       display: grid;
       place-items: center;
       width: 30px;
       height: 30px;
+      padding: 0;
+      border: 1px solid #49514f;
+      border-radius: 3px;
+      background: #1b211f;
+      cursor: pointer;
     }
 
-    .action-icon i,
-    .action-icon svg {
-      width: 28px;
-      height: 28px;
-      stroke-width: 1.7;
+    .panel-tools button:hover {
+      border-color: var(--gold);
     }
 
-    .action-icon[data-icon-state="direct"] {
-      color: #e7e8e2;
+    .panel-tools svg {
+      width: 16px;
+      height: 16px;
     }
 
-    .action-icon[data-icon-state="metaphor"] {
-      color: var(--gold);
+    .all-actions-sections {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      min-height: 0;
     }
 
-    .action-icon[data-icon-state="custom"] {
-      color: var(--red);
+    .all-actions-section {
+      padding: 10px 12px 12px;
+      border-bottom: 1px solid var(--line);
     }
 
-    .icon-fallback {
-      color: currentColor;
-      font: 700 15px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    .all-actions-section:last-child {
+      border-bottom: 0;
+    }
+
+    .all-actions-section h2 {
+      margin: 0 0 7px;
+      color: #b9a66d;
+      font-size: 10px;
       text-transform: uppercase;
     }
 
-    .action-icon:has(svg) .icon-fallback {
-      display: none;
+    .all-actions-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
+      gap: 5px;
     }
 
-    .slot-key {
-      position: absolute;
-      top: 3px;
-      right: 4px;
-      max-width: calc(100% - 8px);
+    .all-actions-slot {
+      position: relative;
+      display: grid;
+      place-items: center;
+      width: 100%;
+      min-width: 0;
+      aspect-ratio: 1;
+      padding: 0;
+      border: 1px solid #414947;
+      border-radius: 3px;
+      background: #1a201e;
+      color: var(--text-bright);
+      cursor: grab;
+    }
+
+    .all-actions-slot:hover {
+      z-index: 2;
+      border-color: var(--gold);
+      background: #272e2a;
+    }
+
+    .all-actions-slot .slot-key {
+      font-size: 8px;
+    }
+
+    .item-chooser {
+      position: fixed;
+      right: max(62px, calc((100vw - 720px) / 2));
+      bottom: calc(var(--dock-height) + 7px);
+      left: max(62px, calc((100vw - 720px) / 2));
+      z-index: 25;
+      padding: 8px;
+      border: 1px solid #69747a;
+      border-radius: 4px;
+      background: #111517;
+      box-shadow: 0 7px 22px rgb(0 0 0 / 55%);
+    }
+
+    .item-chooser header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 7px;
+      color: var(--text-bright);
+      font-size: 12px;
+    }
+
+    .item-chooser header button {
+      width: 26px;
+      height: 26px;
+      border: 1px solid var(--line);
+      border-radius: 2px;
+      background: var(--surface-raised);
+      cursor: pointer;
+    }
+
+    .chooser-items {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 5px;
+    }
+
+    .chooser-items button {
+      min-width: 0;
+      min-height: 36px;
       overflow: hidden;
-      color: #9fa7a2;
-      font: 9px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      border: 1px solid #414947;
+      border-radius: 2px;
+      background: #1a201e;
+      color: #c8ceca;
+      cursor: pointer;
+      font-size: 10px;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
 
-    .slot-order {
-      position: absolute;
-      bottom: 3px;
-      left: 4px;
-      color: #6f7873;
-      font: 9px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    }
-
-    .slot-tooltip {
-      position: absolute;
-      right: auto;
-      bottom: calc(100% + 8px);
-      left: 50%;
-      z-index: 30;
-      display: none;
-      width: 230px;
-      padding: 9px 10px;
-      transform: translateX(-50%);
-      border: 1px solid var(--line-strong);
-      border-radius: 4px;
-      background: #111514;
-      color: var(--text);
-      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
-      pointer-events: none;
-      text-align: left;
-    }
-
-    .action-slot:hover .slot-tooltip,
-    .action-slot:focus-visible .slot-tooltip {
-      display: block;
-    }
-
-    .slot-tooltip strong,
-    .slot-tooltip span {
-      display: block;
-    }
-
-    .slot-tooltip strong {
-      margin-bottom: 4px;
-      color: var(--gold);
-      font-size: 12px;
-    }
-
-    .slot-tooltip span {
-      color: var(--muted);
-      font-size: 11px;
-      font-weight: 400;
-      line-height: 1.35;
-    }
-
-    .slot-tooltip em {
-      display: block;
-      margin-top: 6px;
-      color: #7e8882;
-      font: normal 9px/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    .chooser-items button:hover {
+      border-color: var(--gold);
+      color: var(--text-bright);
     }
 
     .action-feedback {
       position: fixed;
-      bottom: 184px;
+      bottom: calc(var(--dock-height) + 7px);
       left: 50%;
-      z-index: 22;
-      display: flex;
-      gap: 8px;
-      align-items: center;
-      min-height: 34px;
-      padding: 7px 12px;
-      transform: translate(-50%, 8px);
-      border: 1px solid var(--gold);
-      border-radius: 4px;
-      background: #151918;
-      color: var(--text);
+      z-index: 30;
+      min-height: 30px;
+      padding: 6px 10px;
+      transform: translate(-50%, 6px);
+      border: 1px solid var(--green);
+      border-radius: 3px;
+      background: #111517;
+      color: var(--text-bright);
       opacity: 0;
       pointer-events: none;
-      transition: opacity 120ms ease, transform 120ms ease;
-      font-size: 12px;
+      transition: opacity 100ms ease, transform 100ms ease;
+      white-space: nowrap;
+    }
+
+    .global-action-tooltip {
+      position: fixed;
+      z-index: 80;
+      display: grid;
+      gap: 4px;
+      width: max-content;
+      max-width: min(28rem, calc(100vw - 24px));
+      padding: 7px 9px;
+      border: 1px solid #69747a;
+      border-radius: 3px;
+      background: #111517;
+      color: var(--text-bright);
+      box-shadow: 0 4px 14px rgb(0 0 0 / 45%);
+      font-size: 11px;
+      line-height: 1.15;
+      pointer-events: none;
+    }
+
+    .global-action-tooltip kbd {
+      color: var(--gold);
+      font: inherit;
     }
 
     .action-feedback.visible {
@@ -542,425 +933,82 @@
       opacity: 1;
     }
 
-    .action-feedback code {
-      color: var(--gold);
-    }
-
-    .drawer-scrim {
-      position: fixed;
-      inset: 0;
-      z-index: 38;
-      display: none;
-      background: rgba(0, 0, 0, 0.58);
-    }
-
-    .drawer-scrim.open {
-      display: block;
-    }
-
-    .all-actions-drawer {
-      position: fixed;
-      top: clamp(48px, 8vh, 90px);
-      right: max(12px, calc((100vw - 1060px) / 2));
-      bottom: 196px;
-      left: max(12px, calc((100vw - 1060px) / 2));
-      z-index: 40;
-      display: none;
-      grid-template-rows: auto auto auto minmax(0, 1fr);
-      min-height: 0;
-      overflow: hidden;
-      border: 1px solid var(--line-strong);
-      border-radius: 6px;
-      background: #121615;
-      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.55);
-    }
-
-    .all-actions-drawer.open {
-      display: grid;
-    }
-
-    .drawer-header {
-      display: flex;
-      gap: 16px;
-      align-items: center;
-      justify-content: space-between;
-      min-height: 48px;
-      padding: 8px 12px;
-      border-bottom: 1px solid var(--line);
-    }
-
-    .drawer-title {
-      min-width: 0;
-    }
-
-    .drawer-title h1 {
-      margin: 0;
-      font-size: 15px;
-      letter-spacing: 0;
-    }
-
-    .drawer-title p {
-      margin: 3px 0 0;
-      color: var(--muted);
-      font-size: 10px;
-    }
-
-    .close-drawer {
-      display: grid;
-      flex: 0 0 32px;
-      place-items: center;
-      width: 32px;
-      height: 32px;
-      padding: 0;
-      border: 1px solid var(--line);
-      border-radius: 4px;
-      background: var(--surface-raised);
-      cursor: pointer;
-    }
-
-    .close-drawer:hover {
-      border-color: var(--gold);
-    }
-
-    .close-drawer svg {
-      width: 17px;
-      height: 17px;
-    }
-
-    .drawer-controls {
-      display: grid;
-      grid-template-columns: minmax(160px, 1fr) auto;
-      gap: 8px;
-      padding: 10px 12px;
-      border-bottom: 1px solid var(--line);
-    }
-
-    .search-wrap {
-      position: relative;
-    }
-
-    .search-wrap > svg {
+    .contract-marker {
       position: absolute;
-      top: 50%;
-      left: 10px;
-      width: 15px;
-      height: 15px;
-      transform: translateY(-50%);
-      color: var(--muted);
-      pointer-events: none;
-    }
-
-    .action-search {
-      width: 100%;
-      height: 34px;
-      padding: 0 10px 0 34px;
-      border: 1px solid var(--line);
-      border-radius: 4px;
-      background: #0c0f0e;
-      color: var(--text);
-    }
-
-    .action-search::placeholder {
-      color: #727b76;
-    }
-
-    .icon-legend {
-      display: flex;
-      gap: 4px;
-      align-items: center;
-    }
-
-    .icon-state-filter {
-      display: inline-flex;
-      gap: 5px;
-      align-items: center;
-      height: 34px;
-      padding: 0 8px;
-      border: 1px solid var(--line);
-      border-radius: 4px;
-      background: var(--surface-raised);
-      color: var(--muted);
-      cursor: pointer;
-      font-size: 10px;
-      white-space: nowrap;
-    }
-
-    .icon-state-filter:hover,
-    .icon-state-filter.active {
-      border-color: var(--gold);
-      color: var(--text);
-    }
-
-    .icon-state-dot {
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-      background: var(--green);
-    }
-
-    [data-icon-state="metaphor"] .icon-state-dot {
-      background: var(--gold);
-    }
-
-    [data-icon-state="custom"] .icon-state-dot {
-      background: var(--red);
-    }
-
-    .catalog-tabs {
-      display: flex;
-      gap: 2px;
-      min-width: 0;
-      padding: 6px 12px;
-      overflow-x: auto;
-      border-bottom: 1px solid var(--line);
-      scrollbar-width: none;
-    }
-
-    .catalog-tabs::-webkit-scrollbar {
-      display: none;
-    }
-
-    .catalog-tab {
-      flex: 0 0 auto;
-      height: 28px;
-      padding: 0 10px;
-      border: 1px solid transparent;
-      border-radius: 4px;
-      background: transparent;
-      color: var(--muted);
-      cursor: pointer;
-      font-size: 11px;
-    }
-
-    .catalog-tab:hover,
-    .catalog-tab.active {
-      border-color: var(--line);
-      background: var(--surface-raised);
-      color: var(--text);
-    }
-
-    .catalog-tab.active {
-      border-color: var(--gold);
-      color: var(--gold);
-    }
-
-    .action-catalog-list {
-      min-height: 0;
-      overflow-y: auto;
-    }
-
-    .catalog-empty {
-      display: grid;
-      place-items: center;
-      height: 100%;
-      min-height: 120px;
-      color: var(--muted);
-      font-size: 12px;
-    }
-
-    .catalog-row {
-      display: grid;
-      grid-template-columns: 42px minmax(120px, 0.7fr) minmax(180px, 1.6fr) 92px;
-      gap: 10px;
-      align-items: center;
-      min-height: 52px;
-      padding: 7px 12px;
-      border-bottom: 1px solid #292f2c;
-      background: transparent;
-      cursor: pointer;
-    }
-
-    .catalog-row:hover {
-      background: #1b201e;
-    }
-
-    .catalog-row .action-icon {
-      width: 32px;
-      height: 32px;
-    }
-
-    .catalog-name {
-      min-width: 0;
-    }
-
-    .catalog-name strong,
-    .catalog-name code {
-      display: block;
+      top: 0;
+      left: 0;
+      width: 1px;
+      height: 1px;
       overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
+      clip: rect(0 0 0 0);
     }
 
-    .catalog-name strong {
-      color: #ebede8;
-      font-size: 12px;
-    }
-
-    .catalog-name code {
-      margin-top: 3px;
-      color: var(--gold);
-      font-size: 10px;
-    }
-
-    .catalog-description {
-      min-width: 0;
-      color: var(--muted);
-      font-size: 11px;
-      line-height: 1.35;
-    }
-
-    .catalog-badges {
-      display: flex;
-      flex-direction: column;
-      gap: 3px;
-      align-items: flex-end;
-    }
-
-    .catalog-key,
-    .compatibility-warning {
-      max-width: 92px;
-      overflow: hidden;
-      color: #909993;
-      font: 9px/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .compatibility-warning {
-      color: var(--red);
-    }
-
-    .category-pill {
-      display: inline-flex;
-      align-items: center;
-      height: 18px;
-      padding: 0 6px;
-      border: 1px solid #3d4542;
-      border-radius: 3px;
-      color: #9ea6a1;
-      font-size: 9px;
-    }
-
-    @media (max-width: 760px) {
+    @media (max-width: 1000px) {
       :root {
-        --slot-size: 56px;
+        --slot-size: 43px;
       }
 
-      .prototype {
-        min-height: 520px;
+      .nh-hud-layout {
+        grid-template-columns: minmax(0, 1fr) 17rem;
       }
 
-      .game-meta span:not(:last-child),
-      .inventory,
-      .player-status {
-        display: none;
+      .action-dock {
+        grid-template-columns: 12.2rem minmax(0, 1fr) 40px;
       }
 
-      .stage {
-        grid-template-columns: minmax(0, 1fr);
+      .dock-status {
+        padding-right: 5px;
       }
 
-      .ascii-map {
-        margin-bottom: 126px;
-        transform: scale(0.78);
-      }
-
-      .action-bar {
-        right: 0;
-        bottom: 0;
-        left: 0;
-        grid-template-columns: 74px minmax(0, 1fr);
-        border-right: 0;
-        border-bottom: 0;
-        border-left: 0;
-        border-radius: 0;
-      }
-
-      .bar-tools {
-        width: 74px;
-      }
-
-      .all-actions-button,
-      .icon-audit-button {
-        padding: 0 5px;
+      .nh-status {
         font-size: 10px;
       }
 
-      .deck-tab {
-        padding: 0 8px;
-      }
-
-      .deck-tab span {
-        display: none;
-      }
-
-      .shortcut-row {
-        grid-template-columns: repeat(12, var(--slot-size));
-      }
-
-      .shortcut-viewport {
-        overflow-x: auto;
-        overflow-y: hidden;
-        scrollbar-color: #4a524e transparent;
-        scrollbar-width: thin;
-      }
-
-      .slot-tooltip {
-        display: none !important;
-      }
-
-      .action-feedback {
-        bottom: 164px;
-        max-width: calc(100vw - 24px);
-      }
-
-      .all-actions-drawer {
-        inset: 8px 8px 170px;
-        border-radius: 4px;
-      }
-
-      .drawer-controls {
-        grid-template-columns: minmax(0, 1fr);
-      }
-
-      .icon-legend {
-        overflow-x: auto;
-      }
-
-      .catalog-row {
-        grid-template-columns: 36px minmax(90px, 0.8fr) minmax(130px, 1.2fr);
-        gap: 7px;
-        padding: 7px 9px;
-      }
-
-      .catalog-badges {
-        display: none;
+      .nh-status-group-attribute {
+        gap: 3px 5px;
       }
     }
 
-    @media (max-height: 640px) {
+    @media (max-height: 740px) {
       :root {
-        --slot-size: 50px;
+        --slot-size: 41px;
       }
 
-      .action-bar {
-        bottom: 0;
+      .nh-messages {
+        height: 66px;
+        padding-top: 5px;
+        padding-bottom: 5px;
       }
 
-      .bar-tools {
-        justify-content: center;
+      .all-actions-panel {
+        top: 76px;
+      }
+    }
+
+    @media (max-width: 760px) {
+      .nh-hud-layout {
+        grid-template:
+          "messages" auto
+          "map" minmax(0, 1fr)
+          "actions" auto
+          / minmax(0, 1fr);
       }
 
-      .catalog-total {
+      .permanent-inventory {
         display: none;
       }
 
-      .all-actions-drawer {
-        bottom: 154px;
+      .action-dock {
+        grid-template-columns: minmax(0, 1fr) 40px;
       }
 
-      .action-feedback {
-        bottom: 150px;
+      .dock-status {
+        display: none;
+      }
+
+      .all-actions-panel {
+        right: 8px;
+        left: 8px;
       }
     }
 
@@ -972,500 +1020,1180 @@
   </style>
 </head>
 <body>
-  <main class="prototype">
-    <header class="game-topbar">
-      <span class="game-brand">BlissHack</span>
-      <div class="game-meta">
-        <span>Dlvl: 4</span>
-        <span>Turn: 1847</span>
-        <span>128 player actions</span>
-      </div>
-    </header>
+  <main class="nh-shell nh-font-medium" aria-label="BlissHack">
+    <section class="nh-terminal" aria-label="NetHack terminal">
+      <div class="nh-hud-layout nh-hud-layout-right" id="hud-layout">
+        <section
+          class="nh-messages nh-messages-5"
+          data-hud-region="messages"
+          aria-label="Messages"
+          aria-live="polite"
+        >
+          <div class="nh-message">You descend the stairs.</div>
+          <div class="nh-message">The door opens.  You see here a food ration.</div>
+          <div class="nh-message muted">Your movements are now unencumbered.</div>
+          <div class="nh-message">&nbsp;</div>
+        </section>
 
-    <section class="stage" aria-label="Game backdrop">
-      <div class="map-stage">
-        <div class="message-strip">
-          The door opens. You see here a potion of healing.
+        <div
+          class="nh-map-scroll"
+          data-hud-region="map"
+          data-player-x="34"
+          data-player-y="10"
+        >
+          <div class="nh-map-interaction" tabindex="-1">
+            <canvas
+              class="nh-map nh-map-tiles"
+              id="dungeon-map"
+              width="1280"
+              height="336"
+              role="img"
+              aria-label="Dungeon map"
+            ></canvas>
+          </div>
+          <div
+            class="targeting-readout"
+            id="targeting-readout"
+            data-targeting-mode="inactive"
+            hidden
+          ></div>
         </div>
-        <pre class="ascii-map" aria-label="Dungeon preview">
-     ┌──────────────┐
-     │..............│
-     │..┌──────┐....│
-     │..│......+....│
-─────┘..│..<span class="object">!</span>...│....└────
-........│...<span class="hero">@</span>..<span class="danger">d</span>.........
-─────┐..│......│....┌────
-     │..└──────┘....│
-     │..............│
-     └──────────────┘</pre>
-      </div>
-      <aside class="inventory" aria-label="Inventory preview">
-        <div class="inventory-header">
-          <span>Inventory</span>
-          <span>8 / 52</span>
-        </div>
-        <ul class="inventory-list">
-          <li><b>a</b> +1 long sword</li>
-          <li><b>b</b> leather armor</li>
-          <li><b>c</b> food ration</li>
-          <li><b>d</b> potion of healing</li>
-          <li><b>e</b> key</li>
-          <li><b>f</b> wand</li>
-        </ul>
-      </aside>
-    </section>
 
-    <div class="player-status" aria-hidden="true">
-      <span>Ada the Fighter</span>
-      <span class="status-meter">
-        <span>HP</span>
-        <span class="meter-track"><span class="meter-fill"></span></span>
-        <span>34 / 47</span>
-      </span>
-      <span class="status-meter">
-        <span>Pw</span>
-        <span class="meter-track"><span class="meter-fill energy"></span></span>
-        <span>12 / 26</span>
-      </span>
-      <span>AC 3</span>
-    </div>
+        <aside
+          class="permanent-inventory permanent-inventory-right"
+          data-hud-region="inventory"
+          aria-label="Inventory"
+        >
+          <header class="permanent-inventory-header">
+            <div>
+              <strong>Inventory</strong>
+              <span>9 items</span>
+            </div>
+            <button type="button" aria-label="Collapse inventory" title="Collapse inventory">
+              <i data-lucide="panel-right-close" aria-hidden="true"></i>
+            </button>
+          </header>
+          <div class="inventory-heading">Weapons</div>
+          <button class="permanent-inventory-item" type="button">
+            <span class="inventory-glyph">)</span>
+            <span class="inventory-key">a</span>
+            <span>a +0 katana (weapon in left hand)</span>
+          </button>
+          <button class="permanent-inventory-item" type="button">
+            <span class="inventory-glyph">)</span>
+            <span class="inventory-key">b</span>
+            <span>a +0 wakizashi (alternate weapon; not wielded)</span>
+          </button>
+          <button class="permanent-inventory-item" type="button">
+            <span class="inventory-glyph">)</span>
+            <span class="inventory-key">c</span>
+            <span>a +0 yumi</span>
+          </button>
+          <button class="permanent-inventory-item" type="button">
+            <span class="inventory-glyph">)</span>
+            <span class="inventory-key">d</span>
+            <span>35 +0 ya (in quiver)</span>
+          </button>
+          <div class="inventory-heading">Armor</div>
+          <button class="permanent-inventory-item" type="button">
+            <span class="inventory-glyph">[</span>
+            <span class="inventory-key">e</span>
+            <span>an uncursed rustproof +0 splint mail (being worn)</span>
+          </button>
+          <div class="inventory-heading">Comestibles</div>
+          <button class="permanent-inventory-item" type="button">
+            <span class="inventory-glyph">%</span>
+            <span class="inventory-key">f</span>
+            <span>2 food rations</span>
+          </button>
+          <div class="inventory-heading">Potions</div>
+          <button class="permanent-inventory-item" type="button">
+            <span class="inventory-glyph">!</span>
+            <span class="inventory-key">g</span>
+            <span>a ruby potion</span>
+          </button>
+          <div class="inventory-heading">Tools</div>
+          <button class="permanent-inventory-item" type="button">
+            <span class="inventory-glyph">(</span>
+            <span class="inventory-key">h</span>
+            <span>an uncursed skeleton key</span>
+          </button>
+          <button class="permanent-inventory-item" type="button">
+            <span class="inventory-glyph">/</span>
+            <span class="inventory-key">i</span>
+            <span>a glass wand</span>
+          </button>
+        </aside>
 
-    <div class="drawer-scrim" id="drawer-scrim"></div>
-    <section
-      class="all-actions-drawer"
-      data-all-actions-drawer
-      id="all-actions-drawer"
-      role="dialog"
-      aria-label="All Actions"
-      aria-modal="true"
-    >
-      <header class="drawer-header">
-        <div class="drawer-title">
-          <h1>All Actions</h1>
-          <p id="drawer-summary">128 player-visible actions from current WASM</p>
-        </div>
-        <button class="close-drawer" id="close-drawer" type="button" aria-label="Close">
-          <i data-lucide="x" aria-hidden="true"></i>
-        </button>
-      </header>
-      <div class="drawer-controls">
-        <label class="search-wrap">
-          <i data-lucide="search" aria-hidden="true"></i>
-          <input
-            class="action-search"
-            id="action-search"
-            type="search"
-            aria-label="Search actions"
-            placeholder="Search command or description"
-          >
-        </label>
-        <div class="icon-legend" role="group" aria-label="Icon readiness">
-          <button
-            class="icon-state-filter"
-            data-icon-state="direct"
-            data-filter-icon="direct"
-            aria-pressed="false"
-            type="button"
-          >
-            <span class="icon-state-dot"></span>
-            Direct
-          </button>
-          <button
-            class="icon-state-filter"
-            data-icon-state="metaphor"
-            data-filter-icon="metaphor"
-            aria-pressed="false"
-            type="button"
-          >
-            <span class="icon-state-dot"></span>
-            Metaphor
-          </button>
-          <button
-            class="icon-state-filter"
-            data-icon-state="custom"
-            data-filter-icon="custom"
-            aria-pressed="false"
-            type="button"
-          >
-            <span class="icon-state-dot"></span>
-            Needs custom art
-          </button>
-        </div>
-      </div>
-      <nav class="catalog-tabs" role="group" aria-label="Action catalog categories">
-        <button class="catalog-tab active" data-catalog-category="all" aria-pressed="true" type="button">All 128</button>
-        <button class="catalog-tab" data-catalog-category="combat" aria-pressed="false" type="button">Combat</button>
-        <button class="catalog-tab" data-catalog-category="items" aria-pressed="false" type="button">Items</button>
-        <button class="catalog-tab" data-catalog-category="world" aria-pressed="false" type="button">World</button>
-        <button class="catalog-tab" data-catalog-category="info" aria-pressed="false" type="button">Info</button>
-        <button class="catalog-tab" data-catalog-category="system" aria-pressed="false" type="button">System</button>
-        <button class="catalog-tab" data-catalog-category="movement" aria-pressed="false" type="button">Movement ×24</button>
-      </nav>
-      <div class="action-catalog-list" id="action-catalog-list"></div>
-    </section>
+        <section
+          class="all-actions-panel"
+          id="all-actions-panel"
+          data-all-actions-panel
+          data-fullscreen="false"
+          data-layout="vertical-sections"
+          data-overlap-action-dock="false"
+          data-action-drop-zone="remove"
+          data-action-drag-source="all-actions"
+          aria-label="All Actions"
+          hidden
+        >
+          <header class="all-actions-header">
+            <h1>All Actions</h1>
+            <div class="panel-tools">
+              <button id="export-layout" type="button" aria-label="Export action bar layout" title="Export layout">
+                <i data-lucide="download" aria-hidden="true"></i>
+              </button>
+              <button id="import-layout" type="button" aria-label="Import action bar layout" title="Import layout">
+                <i data-lucide="upload" aria-hidden="true"></i>
+              </button>
+              <button id="close-all-actions" type="button" aria-label="Close All Actions" title="Close">
+                <i data-lucide="x" aria-hidden="true"></i>
+              </button>
+            </div>
+          </header>
+          <div class="all-actions-sections" id="all-actions-sections">
+            <section class="all-actions-section" data-all-actions-section="common">
+              <h2>Common</h2>
+              <div class="all-actions-grid" data-panel-grid="common"></div>
+            </section>
+            <section class="all-actions-section" data-all-actions-section="gear">
+              <h2>Gear</h2>
+              <div class="all-actions-grid" data-panel-grid="gear"></div>
+            </section>
+            <section class="all-actions-section" data-all-actions-section="magic">
+              <h2>Magic</h2>
+              <div class="all-actions-grid" data-panel-grid="magic"></div>
+            </section>
+            <section class="all-actions-section" data-all-actions-section="items">
+              <h2>Items</h2>
+              <div class="all-actions-grid" data-panel-grid="items"></div>
+            </section>
+            <section class="all-actions-section" data-all-actions-section="explore">
+              <h2>Explore</h2>
+              <div class="all-actions-grid" data-panel-grid="explore"></div>
+            </section>
+            <section class="all-actions-section" data-all-actions-section="info">
+              <h2>Information</h2>
+              <div class="all-actions-grid" data-panel-grid="info"></div>
+            </section>
+            <section class="all-actions-section" data-all-actions-section="system">
+              <h2>System</h2>
+              <div class="all-actions-grid" data-panel-grid="system"></div>
+            </section>
+          </div>
+        </section>
 
-    <div class="action-feedback" id="action-feedback" role="status"></div>
+        <section
+          class="action-dock"
+          id="action-dock"
+          data-action-dock
+          data-row-count="2"
+          aria-label="Action bar"
+        >
+          <div class="dock-status" data-dock-region="status">
+            <section class="nh-status" aria-label="Character status">
+              <div class="nh-status-group nh-status-group-identity">
+                <span class="nh-status-metric" tabindex="0">
+                  123 the Hatamoto
+                  <span class="nh-status-tooltip" role="tooltip">
+                    <strong>123 the Hatamoto</strong>
+                    <span>Your character name and current title.</span>
+                  </span>
+                </span>
+                <span>Lawful</span>
+              </div>
+              <div class="nh-status-group">
+                <span class="nh-status-metric nh-status-resource" tabindex="0">
+                  HP:15
+                  <span class="nh-status-bar">
+                    <span class="nh-status-bar-fill" style="--status-percent: 100%"></span>
+                  </span>
+                  <span class="nh-status-tooltip" role="tooltip">
+                    <strong>HP:15 (15)</strong>
+                    <span>Current and maximum hit points.</span>
+                  </span>
+                </span>
+                <span class="nh-status-metric nh-status-resource" tabindex="0">
+                  Pw:2
+                  <span class="nh-status-bar">
+                    <span class="nh-status-bar-fill nh-status-bar-power" style="--status-percent: 100%"></span>
+                  </span>
+                  <span class="nh-status-tooltip" role="tooltip">
+                    <strong>Pw:2 (2)</strong>
+                    <span>Current and maximum magical energy.</span>
+                  </span>
+                </span>
+              </div>
+              <div class="nh-status-group nh-status-group-attribute">
+                <span>Xp:1</span><span>St:16</span><span>Dx:14</span>
+                <span>Co:18</span><span>In:9</span><span>Wi:9</span>
+                <span>Ch:9</span><span>AC:4</span>
+              </div>
+              <div class="nh-status-group">
+                <span>Dlvl:1</span><span>$:0</span><span>T:184</span>
+                <span class="condition">Hungry</span>
+              </div>
+            </section>
+          </div>
 
-    <section class="action-bar" aria-label="Action bar prototype">
-      <div class="bar-tools">
-        <button class="all-actions-button" id="open-all-actions" type="button">All Actions</button>
-        <button class="icon-audit-button" id="open-icon-audit" type="button">Icon Audit</button>
-        <span class="catalog-total">104 commands<br>+ 24 movement</span>
-      </div>
-      <div class="bar-main">
-        <nav class="deck-tabs" role="group" aria-label="Action categories">
-          <button
-            class="deck-tab"
-            data-deck="common"
-            aria-pressed="true"
-            type="button"
-          >
-            <i data-lucide="star" aria-hidden="true"></i>
-            <span>Common</span>
-          </button>
-          <button
-            class="deck-tab"
-            data-deck="combat"
-            aria-pressed="false"
-            type="button"
-          >
-            <i data-lucide="swords" aria-hidden="true"></i>
-            <span>Combat</span>
-          </button>
-          <button
-            class="deck-tab"
-            data-deck="items"
-            aria-pressed="false"
-            type="button"
-          >
-            <i data-lucide="backpack" aria-hidden="true"></i>
-            <span>Items</span>
-          </button>
-          <button
-            class="deck-tab"
-            data-deck="world"
-            aria-pressed="false"
-            type="button"
-          >
-            <i data-lucide="map" aria-hidden="true"></i>
-            <span>World</span>
-          </button>
-          <button
-            class="deck-tab"
-            data-deck="info"
-            aria-pressed="false"
-            type="button"
-          >
-            <i data-lucide="book-open" aria-hidden="true"></i>
-            <span>Info</span>
-          </button>
-        </nav>
-        <div class="shortcut-viewport">
-          <div class="shortcut-row" data-shortcut-row="category" id="category-row"></div>
-          <div class="shortcut-row" data-shortcut-row="pinned" id="pinned-row"></div>
-        </div>
+          <div class="action-workspace">
+            <div class="action-grid-viewport">
+              <div
+                class="action-grid"
+                id="action-grid"
+                data-action-grid
+                data-action-drop-zone="reorder"
+              >
+                <div
+                  class="section-divider"
+                  data-section-divider="common-gear"
+                  data-layout-category="all"
+                  data-orientation="vertical"
+                  data-snap="grid"
+                  draggable="true"
+                ></div>
+                <div
+                  class="section-divider"
+                  data-section-divider="gear-magic"
+                  data-layout-category="all"
+                  data-orientation="vertical"
+                  data-snap="grid"
+                  draggable="true"
+                ></div>
+                <div
+                  class="section-divider"
+                  data-section-divider="magic-items"
+                  data-layout-category="all"
+                  data-orientation="vertical"
+                  data-snap="grid"
+                  draggable="true"
+                ></div>
+              </div>
+            </div>
+            <nav class="category-tags" aria-label="Action categories">
+              <button class="category-tag" data-category-tag="all" aria-pressed="true" type="button">All</button>
+              <button class="category-tag" data-category-tag="common" aria-pressed="false" type="button">Common</button>
+              <button class="category-tag" data-category-tag="gear" aria-pressed="false" type="button">Gear</button>
+              <button class="category-tag" data-category-tag="magic" aria-pressed="false" type="button">Magic</button>
+              <button class="category-tag" data-category-tag="items" aria-pressed="false" type="button">Items</button>
+              <button class="category-tag" data-category-tag="explore" aria-pressed="false" type="button">Explore</button>
+              <button class="category-tag" data-category-tag="custom" aria-pressed="false" type="button">Custom</button>
+            </nav>
+            <span class="contract-marker" aria-hidden="true">data-category-tags</span>
+          </div>
+
+          <div class="dock-tools">
+            <button class="tool-button" data-row-action="decrease" type="button" aria-label="Decrease rows" title="Decrease rows">-</button>
+            <button class="tool-button" data-row-action="increase" type="button" aria-label="Increase rows" title="Increase rows">+</button>
+            <button
+              class="tool-button lock-button"
+              data-action-bar-lock
+              data-lock-rejection="red-glow"
+              type="button"
+              aria-label="Unlock action bar"
+              title="Unlock action bar"
+            >
+              <i data-lucide="lock" aria-hidden="true"></i>
+            </button>
+            <button
+              class="tool-button all-actions-trigger"
+              data-all-actions-trigger
+              type="button"
+              aria-label="All Actions"
+              title="All Actions"
+            >...</button>
+          </div>
+        </section>
       </div>
     </section>
   </main>
 
-  <script type="application/json" id="action-catalog">
+  <section class="item-chooser" id="item-chooser" data-item-chooser hidden>
+    <header>
+      <span id="chooser-title">Choose an item</span>
+      <button id="close-item-chooser" type="button" aria-label="Close item chooser">x</button>
+    </header>
+    <div class="chooser-items" id="chooser-items"></div>
+  </section>
+
+  <div class="action-feedback" id="action-feedback" role="status"></div>
+  <div class="global-action-tooltip" id="action-hover-tooltip" role="tooltip" hidden>
+    <strong></strong>
+    <kbd></kbd>
+  </div>
+  <input id="layout-file-input" type="file" accept="application/json" hidden>
+
+  <span class="contract-marker" data-icon-state="missing" aria-hidden="true">
+    <span class="square-dashed"><span class="corner-x">x</span></span>
+  </span>
+  <span class="contract-marker" data-disabled-action="cast" aria-hidden="true"></span>
+
+  <script type="application/json" id="action-bar-config">
 {
-  "counts": {
-    "wasmCommands": 169,
-    "playerVisibleActions": 128,
-    "nonDirectionalActions": 104,
-    "directionalMovementActions": 24,
-    "wizardCommands": 35,
-    "internalCommands": 6
-  },
-  "nonDirectionalActions": [
-    {"id":"#","description":"enter and perform an extended command","category":"system","icon":"hash","iconState":"direct","key":"#","playerVisible":true},
-    {"id":"?","description":"list all extended commands","category":"system","icon":"list","iconState":"direct","key":"Alt+?","playerVisible":true},
-    {"id":"adjust","description":"adjust inventory letters","category":"items","icon":"arrow-left-right","iconState":"direct","key":"Alt+A","playerVisible":true},
-    {"id":"annotate","description":"name current level","category":"world","icon":"map-pin","iconState":"direct","key":"Alt+Shift+A","playerVisible":true},
-    {"id":"apply","description":"apply (use) a tool (pick-axe, key, lamp...)","category":"items","icon":"wrench","iconState":"direct","key":"a","playerVisible":true},
-    {"id":"attributes","description":"show your attributes","category":"info","icon":"user-round","iconState":"metaphor","key":"Ctrl+X","playerVisible":true},
-    {"id":"autopickup","description":"toggle the 'autopickup' option on/off","category":"system","icon":"package-plus","iconState":"direct","key":"@","playerVisible":true},
-    {"id":"call","description":"name a monster, specific object, or type of object","category":"items","icon":"tag","iconState":"direct","key":"C","playerVisible":true},
-    {"id":"cast","description":"zap (cast) a spell","category":"combat","icon":"sparkles","iconState":"direct","key":"Z","playerVisible":true},
-    {"id":"chat","description":"talk to someone","category":"world","icon":"message-circle","iconState":"direct","key":"Alt+C","playerVisible":true},
-    {"id":"chronicle","description":"show journal of major events","category":"info","icon":"book-open","iconState":"direct","key":"v","playerVisible":true},
-    {"id":"close","description":"close a door","category":"world","icon":"door-closed","iconState":"direct","key":"c","playerVisible":true},
-    {"id":"conduct","description":"list voluntary challenges you have maintained","category":"info","icon":"badge-check","iconState":"custom","key":"Alt+Shift+C","playerVisible":true},
-    {"id":"dip","description":"dip an object into something","category":"items","icon":"glass-water","iconState":"direct","key":"Alt+D","playerVisible":true},
-    {"id":"down","description":"go down a staircase","category":"world","icon":"arrow-down","iconState":"direct","key":">","playerVisible":true},
-    {"id":"drop","description":"drop an item","category":"items","icon":"package-minus","iconState":"direct","key":"d","playerVisible":true},
-    {"id":"droptype","description":"drop specific item types","category":"items","icon":"list-minus","iconState":"metaphor","key":"D","playerVisible":true},
-    {"id":"eat","description":"eat something","category":"items","icon":"utensils","iconState":"direct","key":"e","playerVisible":true},
-    {"id":"engrave","description":"engrave writing on the floor","category":"items","icon":"pen-line","iconState":"direct","key":"E","playerVisible":true},
-    {"id":"enhance","description":"advance or check weapon and spell skills","category":"combat","icon":"trending-up","iconState":"metaphor","key":"Alt+E","playerVisible":true},
-    {"id":"exploremode","description":"enter explore (discovery) mode","category":"system","icon":"triangle-alert","iconState":"custom","key":"Alt+X","playerVisible":true},
-    {"id":"fight","description":"prefix: force fight even if you don't see a monster","category":"combat","icon":"swords","iconState":"custom","key":"F","playerVisible":true},
-    {"id":"fire","description":"fire ammunition from quiver","category":"combat","icon":"crosshair","iconState":"direct","key":"f","playerVisible":true},
-    {"id":"force","description":"force a lock","category":"combat","icon":"key-round","iconState":"direct","key":"Alt+F","playerVisible":true},
-    {"id":"genocided","description":"list monsters that have been genocided or become extinct","category":"info","icon":"skull","iconState":"custom","key":"Alt+G","playerVisible":true},
-    {"id":"glance","description":"show what type of thing a map symbol corresponds to","category":"info","icon":"scan-search","iconState":"direct","key":";","playerVisible":true},
-    {"id":"help","description":"give a help message","category":"system","icon":"circle-help","iconState":"direct","key":"?","playerVisible":true},
-    {"id":"herecmdmenu","description":"show menu of commands you can do here","category":"world","icon":"mouse-pointer-click","iconState":"custom","key":"#herecmdmenu","playerVisible":true},
-    {"id":"history","description":"show a summary of the game's development","category":"info","icon":"history","iconState":"direct","key":"#history","playerVisible":true},
-    {"id":"inventory","description":"show your inventory","category":"items","icon":"backpack","iconState":"direct","key":"i","playerVisible":true},
-    {"id":"inventtype","description":"show inventory of one specific item class","category":"items","icon":"list-filter","iconState":"custom","key":"I","playerVisible":true},
-    {"id":"invoke","description":"invoke an object's special powers","category":"items","icon":"sparkles","iconState":"direct","key":"Alt+I","playerVisible":true},
-    {"id":"jump","description":"jump to another location","category":"world","icon":"move-up-right","iconState":"direct","key":"Alt+J","playerVisible":true},
-    {"id":"kick","description":"kick something","category":"combat","icon":"footprints","iconState":"direct","key":"Ctrl+D","playerVisible":true},
-    {"id":"known","description":"show what object types have been discovered","category":"info","icon":"book-open-check","iconState":"direct","key":"\\","playerVisible":true},
-    {"id":"knownclass","description":"show discovered types for one class of objects","category":"info","icon":"library","iconState":"custom","key":"`","playerVisible":true},
-    {"id":"look","description":"look at what is here","category":"info","icon":"eye","iconState":"direct","key":":","playerVisible":true},
-    {"id":"lookaround","description":"describe what you can see","category":"info","icon":"scan-eye","iconState":"direct","key":"#lookaround","playerVisible":true},
-    {"id":"loot","description":"loot a box on the floor","category":"items","icon":"archive","iconState":"direct","key":"Alt+L","playerVisible":true},
-    {"id":"monster","description":"use monster's special ability","category":"combat","icon":"sparkles","iconState":"custom","key":"Alt+M","playerVisible":true},
-    {"id":"name","description":"same as call; name a monster or object or object type","category":"items","icon":"tag","iconState":"direct","key":"Alt+N","playerVisible":true},
-    {"id":"offer","description":"offer a sacrifice to the gods","category":"world","icon":"hand-heart","iconState":"custom","key":"Alt+O","playerVisible":true},
-    {"id":"open","description":"open a door","category":"world","icon":"door-open","iconState":"direct","key":"o","playerVisible":true},
-    {"id":"options","description":"show option settings","category":"system","icon":"settings","iconState":"direct","key":"O","playerVisible":true},
-    {"id":"optionsfull","description":"show all option settings, possibly change them","category":"system","icon":"sliders-horizontal","iconState":"direct","key":"#optionsfull","playerVisible":true},
-    {"id":"overview","description":"show a summary of the explored dungeon","category":"info","icon":"map","iconState":"direct","key":"Ctrl+O","playerVisible":true},
-    {"id":"pay","description":"pay your shopping bill","category":"world","icon":"coins","iconState":"direct","key":"p","playerVisible":true},
-    {"id":"perminv","description":"scroll persistent inventory display","category":"system","icon":"panel-right","iconState":"custom","key":"|","playerVisible":true},
-    {"id":"pickup","description":"pick up things at the current location","category":"items","icon":"package-plus","iconState":"direct","key":",","playerVisible":true},
-    {"id":"pray","description":"pray to the gods for help","category":"combat","icon":"heart-handshake","iconState":"metaphor","key":"Alt+P","playerVisible":true},
-    {"id":"prevmsg","description":"view recent game messages","category":"system","icon":"message-square-more","iconState":"direct","key":"Ctrl+P","playerVisible":true},
-    {"id":"puton","description":"put on an accessory (ring, amulet, etc)","category":"items","icon":"gem","iconState":"metaphor","key":"P","playerVisible":true},
-    {"id":"quaff","description":"quaff (drink) something","category":"items","icon":"cup-soda","iconState":"direct","key":"q","playerVisible":true},
-    {"id":"quit","description":"exit without saving current game","category":"system","icon":"log-out","iconState":"direct","key":"#quit","playerVisible":true},
-    {"id":"quiver","description":"select ammunition for quiver","category":"items","icon":"target","iconState":"direct","key":"Q","playerVisible":true},
-    {"id":"read","description":"read a scroll or spellbook","category":"items","icon":"book-open-text","iconState":"direct","key":"r","playerVisible":true},
-    {"id":"redraw","description":"redraw screen","category":"system","icon":"refresh-cw","iconState":"direct","key":"Ctrl+R","playerVisible":true},
-    {"id":"remove","description":"remove an accessory (ring, amulet, etc)","category":"items","icon":"gem","iconState":"metaphor","key":"R","playerVisible":true},
-    {"id":"repeat","description":"repeat a previous command","category":"system","icon":"repeat-2","iconState":"direct","key":"Ctrl+A","playerVisible":true},
-    {"id":"reqmenu","description":"prefix: request menu or modify command","category":"system","icon":"command","iconState":"custom","key":"m","playerVisible":true},
-    {"id":"retravel","description":"travel to previously selected travel location","category":"world","icon":"route","iconState":"custom","key":"Ctrl+_","playerVisible":true},
-    {"id":"ride","description":"mount or dismount a saddled steed","category":"world","icon":"navigation","iconState":"metaphor","key":"Alt+Shift+R","playerVisible":true},
-    {"id":"rub","description":"rub a lamp or a stone","category":"items","icon":"lamp","iconState":"direct","key":"Alt+R","playerVisible":true},
-    {"id":"run","description":"prefix: run until something interesting is seen","category":"system","icon":"gauge","iconState":"custom","key":"G","playerVisible":true},
-    {"id":"rush","description":"prefix: rush until something interesting is seen","category":"system","icon":"fast-forward","iconState":"custom","key":"g","playerVisible":true},
-    {"id":"save","description":"save the game and exit","category":"system","icon":"save","iconState":"direct","key":"S","playerVisible":true},
-    {"id":"saveoptions","description":"save the game configuration","category":"system","icon":"file-cog","iconState":"metaphor","key":"#saveoptions","playerVisible":true},
-    {"id":"search","description":"search for traps and secret doors","category":"world","icon":"search","iconState":"direct","key":"s","playerVisible":true},
-    {"id":"seeall","description":"show all equipment in use","category":"info","icon":"list-checks","iconState":"custom","key":"*","playerVisible":true},
-    {"id":"seeamulet","description":"show the amulet currently worn","category":"info","icon":"gem","iconState":"metaphor","key":"\"","playerVisible":true},
-    {"id":"seearmor","description":"show the armor currently worn","category":"info","icon":"shield","iconState":"direct","key":"[","playerVisible":true},
-    {"id":"seerings","description":"show the ring(s) currently worn","category":"info","icon":"circle","iconState":"direct","key":"=","playerVisible":true},
-    {"id":"seetools","description":"show the tools currently in use","category":"info","icon":"wrench","iconState":"direct","key":"(","playerVisible":true},
-    {"id":"seeweapon","description":"show the weapon currently wielded","category":"info","icon":"sword","iconState":"direct","key":")","playerVisible":true},
-    {"id":"shell","description":"leave game to enter a sub-shell ('exit' to come back)","category":"system","icon":"terminal","iconState":"metaphor","key":"!","warning":"browser behavior needs verification","playerVisible":true},
-    {"id":"showgold","description":"show gold, possibly shop credit or debt","category":"info","icon":"coins","iconState":"direct","key":"$","playerVisible":true},
-    {"id":"showspells","description":"list and reorder known spells","category":"info","icon":"book-copy","iconState":"direct","key":"+","playerVisible":true},
-    {"id":"showtrap","description":"describe an adjacent, discovered trap","category":"info","icon":"triangle-alert","iconState":"custom","key":"^","playerVisible":true},
-    {"id":"sit","description":"sit down","category":"world","icon":"armchair","iconState":"direct","key":"Alt+S","playerVisible":true},
-    {"id":"suspend","description":"push game to background ('fg' to come back)","category":"system","icon":"pause","iconState":"metaphor","key":"Ctrl+Z","warning":"browser behavior needs verification","playerVisible":true},
-    {"id":"swap","description":"swap wielded and secondary weapons","category":"items","icon":"arrow-left-right","iconState":"direct","key":"x","playerVisible":true},
-    {"id":"takeoff","description":"take off one piece of armor","category":"items","icon":"shirt","iconState":"direct","key":"T","playerVisible":true},
-    {"id":"takeoffall","description":"remove all armor","category":"items","icon":"layers","iconState":"metaphor","key":"A","playerVisible":true},
-    {"id":"teleport","description":"teleport around the level","category":"world","icon":"locate-fixed","iconState":"direct","key":"Ctrl+T","playerVisible":true},
-    {"id":"terrain","description":"view map without monsters or objects obstructing it","category":"world","icon":"mountain","iconState":"custom","key":"Del","playerVisible":true},
-    {"id":"therecmdmenu","description":"menu of commands you can do from here to adjacent spot","category":"world","icon":"menu","iconState":"custom","key":"#therecmdmenu","playerVisible":true},
-    {"id":"throw","description":"throw something","category":"items","icon":"send","iconState":"direct","key":"t","playerVisible":true},
-    {"id":"tip","description":"empty a container","category":"items","icon":"archive-restore","iconState":"metaphor","key":"Alt+Shift+T","playerVisible":true},
-    {"id":"toggle","description":"toggle boolean option","category":"system","icon":"toggle-right","iconState":"direct","key":"#toggle","playerVisible":true},
-    {"id":"travel","description":"travel to a specific location on the map","category":"world","icon":"navigation","iconState":"direct","key":"_","playerVisible":true},
-    {"id":"turn","description":"turn undead away","category":"combat","icon":"sun","iconState":"metaphor","key":"Alt+T","playerVisible":true},
-    {"id":"twoweapon","description":"toggle two-weapon combat","category":"combat","icon":"swords","iconState":"custom","key":"X","playerVisible":true},
-    {"id":"untrap","description":"untrap something","category":"world","icon":"shield-check","iconState":"direct","key":"Alt+U","playerVisible":true},
-    {"id":"up","description":"go up a staircase","category":"world","icon":"arrow-up","iconState":"direct","key":"<","playerVisible":true},
-    {"id":"vanquished","description":"list vanquished monsters","category":"info","icon":"list-x","iconState":"custom","key":"Alt+Shift+V","playerVisible":true},
-    {"id":"version","description":"list compile time options for this version of NetHack","category":"system","icon":"info","iconState":"direct","key":"Alt+V","playerVisible":true},
-    {"id":"versionshort","description":"show version and date+time program was built","category":"system","icon":"badge-info","iconState":"direct","key":"V","playerVisible":true},
-    {"id":"wait","description":"rest one move while doing nothing","category":"world","icon":"clock","iconState":"direct","key":".","playerVisible":true},
-    {"id":"wear","description":"wear a piece of armor","category":"items","icon":"shirt","iconState":"direct","key":"W","playerVisible":true},
-    {"id":"whatdoes","description":"tell what a command does","category":"system","icon":"circle-help","iconState":"custom","key":"&","playerVisible":true},
-    {"id":"whatis","description":"show what type of thing a symbol corresponds to","category":"info","icon":"search","iconState":"custom","key":"/","playerVisible":true},
-    {"id":"wield","description":"wield (put in use) a weapon","category":"items","icon":"sword","iconState":"direct","key":"w","playerVisible":true},
-    {"id":"wipe","description":"wipe off your face","category":"items","icon":"droplets","iconState":"direct","key":"Alt+W","playerVisible":true},
-    {"id":"zap","description":"zap a wand","category":"items","icon":"wand-sparkles","iconState":"direct","key":"z","playerVisible":true}
-  ],
-  "directionalMovement": {
-    "modes": [
-      {"id":"move","label":"Move","iconState":"direct"},
-      {"id":"rush","label":"Rush","iconState":"custom"},
-      {"id":"run","label":"Run","iconState":"custom"}
+  "rows": {"min": 1, "max": 4, "default": 2},
+  "disabledBehavior": "retain-slot",
+  "storageKey": "blisshack.profile.v3.actionBar",
+  "tooltipFields": ["name", "key"],
+  "layouts": {
+    "all": [
+      {"category":"common","columns":2,"actions":["eat","quaff","kick","search"]},
+      {"category":"gear","columns":3,"actions":["wield","wear","puton","takeoff","remove","swap"]},
+      {"category":"magic","columns":3,"actions":["cast","zap","read","fire","throw","quiver"]},
+      {"category":"items","columns":3,"actions":["apply","engrave","dip","loot","tip","rub"]}
     ],
-    "directions": [
-      {"id":"west","label":"west","icon":"arrow-left"},
-      {"id":"northwest","label":"northwest","icon":"arrow-up-left"},
-      {"id":"north","label":"north","icon":"arrow-up"},
-      {"id":"northeast","label":"northeast","icon":"arrow-up-right"},
-      {"id":"east","label":"east","icon":"arrow-right"},
-      {"id":"southeast","label":"southeast","icon":"arrow-down-right"},
-      {"id":"south","label":"south","icon":"arrow-down"},
-      {"id":"southwest","label":"southwest","icon":"arrow-down-left"}
-    ]
-  }
+    "common": ["eat","quaff","kick","search","wield","wear","puton","takeoff","remove","cast","zap","read","fire","throw","apply","engrave","dip","loot","wait","travel","look"],
+    "gear": ["adjust","call","inventory","inventtype","name","puton","quiver","remove","swap","takeoff","takeoffall","wear","wield","seeall","seeamulet","seearmor","seerings","seetools","seeweapon"],
+    "magic": ["cast","enhance","invoke","monster","offer","pray","read","rub","turn","zap"],
+    "items": ["apply","dip","drop","droptype","eat","engrave","loot","pickup","quaff","throw","tip"],
+    "explore": ["annotate","chat","close","down","force","glance","jump","lookaround","open","pay","retravel","ride","run","rush","showtrap","sit","teleport","terrain","therecmdmenu","up","whatis"],
+    "custom": []
+  },
+  "catalog": [
+    {"name":"#","key":"#","category":"system","icon":"hash","input":"direct"},
+    {"name":"?","key":"Alt+?","category":"system","icon":"list","input":"direct"},
+    {"name":"adjust","key":"Alt+A","category":"gear","icon":"arrow-left-right","input":"direct"},
+    {"name":"annotate","key":"Alt+Shift+A","category":"explore","icon":"map-pin","input":"direct"},
+    {"name":"apply","key":"a","category":"items","icon":"wrench","input":"item-direction"},
+    {"name":"attributes","key":"Ctrl+X","category":"info","icon":"user-round","input":"direct"},
+    {"name":"autopickup","key":"@","category":"system","icon":"package-plus","input":"direct"},
+    {"name":"call","key":"C","category":"gear","icon":"tag","input":"item"},
+    {"name":"cast","key":"Z","category":"magic","icon":"sparkles","input":"item","disabled":true},
+    {"name":"chat","key":"Alt+C","category":"explore","icon":"message-circle","input":"direction"},
+    {"name":"chronicle","key":"v","category":"info","icon":"book-open","input":"direct"},
+    {"name":"close","key":"c","category":"explore","icon":"door-closed","input":"direction"},
+    {"name":"conduct","key":"Alt+Shift+C","category":"info","iconState":"missing","input":"direct"},
+    {"name":"dip","key":"Alt+D","category":"items","icon":"glass-water","input":"item"},
+    {"name":"down","key":">","category":"explore","icon":"arrow-down","input":"direct"},
+    {"name":"drop","key":"d","category":"items","icon":"package-minus","input":"item"},
+    {"name":"droptype","key":"D","category":"items","icon":"list-minus","input":"item"},
+    {"name":"eat","key":"e","category":"items","icon":"utensils","input":"item"},
+    {"name":"engrave","key":"E","category":"items","icon":"pen-line","input":"item"},
+    {"name":"enhance","key":"Alt+E","category":"magic","icon":"trending-up","input":"direct"},
+    {"name":"exploremode","key":"Alt+X","category":"system","icon":"triangle-alert","input":"direct"},
+    {"name":"fight","key":"F","category":"common","icon":"swords","input":"direction"},
+    {"name":"fire","key":"f","category":"common","icon":"crosshair","input":"direction"},
+    {"name":"force","key":"Alt+F","category":"explore","icon":"key-round","input":"direction"},
+    {"name":"genocided","key":"Alt+G","category":"info","icon":"skull","input":"direct"},
+    {"name":"glance","key":";","category":"explore","icon":"scan-search","input":"position"},
+    {"name":"help","key":"?","category":"system","icon":"circle-help","input":"direct"},
+    {"name":"herecmdmenu","key":"#herecmdmenu","category":"common","iconState":"missing","input":"direct"},
+    {"name":"history","key":"#history","category":"info","icon":"history","input":"direct"},
+    {"name":"inventory","key":"i","category":"gear","icon":"backpack","input":"direct"},
+    {"name":"inventtype","key":"I","category":"gear","icon":"list-filter","input":"direct"},
+    {"name":"invoke","key":"Alt+I","category":"magic","icon":"sparkles","input":"item"},
+    {"name":"jump","key":"Alt+J","category":"explore","icon":"move-up-right","input":"position"},
+    {"name":"kick","key":"Ctrl+D","category":"common","icon":"footprints","input":"direction"},
+    {"name":"known","key":"\\","category":"info","icon":"book-open-check","input":"direct"},
+    {"name":"knownclass","key":"`","category":"info","iconState":"missing","input":"direct"},
+    {"name":"look","key":":","category":"common","icon":"eye","input":"direct"},
+    {"name":"lookaround","key":"#lookaround","category":"explore","icon":"scan-eye","input":"direct"},
+    {"name":"loot","key":"Alt+L","category":"items","icon":"archive","input":"item"},
+    {"name":"monster","key":"Alt+M","category":"magic","iconState":"missing","input":"direct"},
+    {"name":"name","key":"Alt+N","category":"gear","icon":"tag","input":"item"},
+    {"name":"offer","key":"Alt+O","category":"magic","icon":"hand-heart","input":"item"},
+    {"name":"open","key":"o","category":"explore","icon":"door-open","input":"direction"},
+    {"name":"options","key":"O","category":"system","icon":"settings","input":"direct"},
+    {"name":"optionsfull","key":"#optionsfull","category":"system","icon":"sliders-horizontal","input":"direct"},
+    {"name":"overview","key":"Ctrl+O","category":"info","icon":"map","input":"direct"},
+    {"name":"pay","key":"p","category":"explore","icon":"coins","input":"direct"},
+    {"name":"perminv","key":"|","category":"info","icon":"panel-right","input":"direct"},
+    {"name":"pickup","key":",","category":"items","icon":"package-plus","input":"item"},
+    {"name":"pray","key":"Alt+P","category":"magic","icon":"heart-handshake","input":"direct"},
+    {"name":"prevmsg","key":"Ctrl+P","category":"info","icon":"message-square-more","input":"direct"},
+    {"name":"puton","key":"P","category":"gear","icon":"gem","input":"item"},
+    {"name":"quaff","key":"q","category":"items","icon":"cup-soda","input":"item"},
+    {"name":"quit","key":"#quit","category":"system","icon":"log-out","input":"direct"},
+    {"name":"quiver","key":"Q","category":"gear","icon":"target","input":"item"},
+    {"name":"read","key":"r","category":"magic","icon":"book-open-text","input":"item"},
+    {"name":"redraw","key":"Ctrl+R","category":"system","icon":"refresh-cw","input":"direct"},
+    {"name":"remove","key":"R","category":"gear","icon":"gem","input":"item"},
+    {"name":"repeat","key":"Ctrl+A","category":"system","icon":"repeat-2","input":"direct"},
+    {"name":"reqmenu","key":"m","category":"system","icon":"command","input":"direct"},
+    {"name":"retravel","key":"Ctrl+_","category":"explore","icon":"route","input":"direct"},
+    {"name":"ride","key":"Alt+Shift+R","category":"explore","icon":"navigation","input":"direction"},
+    {"name":"rub","key":"Alt+R","category":"magic","icon":"lamp","input":"item"},
+    {"name":"run","key":"G","category":"explore","icon":"gauge","input":"direct"},
+    {"name":"rush","key":"g","category":"explore","icon":"fast-forward","input":"direct"},
+    {"name":"save","key":"S","category":"system","icon":"save","input":"direct"},
+    {"name":"saveoptions","key":"#saveoptions","category":"system","icon":"file-cog","input":"direct"},
+    {"name":"search","key":"s","category":"common","icon":"search","input":"direct"},
+    {"name":"seeall","key":"*","category":"gear","icon":"list-checks","input":"direct"},
+    {"name":"seeamulet","key":"\"","category":"gear","icon":"gem","input":"direct"},
+    {"name":"seearmor","key":"[","category":"gear","icon":"shield","input":"direct"},
+    {"name":"seerings","key":"=","category":"gear","icon":"circle","input":"direct"},
+    {"name":"seetools","key":"(","category":"gear","icon":"wrench","input":"direct"},
+    {"name":"seeweapon","key":")","category":"gear","icon":"sword","input":"direct"},
+    {"name":"shell","key":"!","category":"system","icon":"terminal","input":"direct"},
+    {"name":"showgold","key":"$","category":"info","icon":"coins","input":"direct"},
+    {"name":"showspells","key":"+","category":"info","icon":"book-copy","input":"direct"},
+    {"name":"showtrap","key":"^","category":"explore","iconState":"missing","input":"direction"},
+    {"name":"sit","key":"Alt+S","category":"explore","icon":"armchair","input":"direct"},
+    {"name":"suspend","key":"Ctrl+Z","category":"system","icon":"pause","input":"direct"},
+    {"name":"swap","key":"x","category":"gear","icon":"arrow-left-right","input":"direct"},
+    {"name":"takeoff","key":"T","category":"gear","icon":"shirt","input":"item"},
+    {"name":"takeoffall","key":"A","category":"gear","icon":"layers","input":"direct"},
+    {"name":"teleport","key":"Ctrl+T","category":"explore","icon":"locate-fixed","input":"position"},
+    {"name":"terrain","key":"Del","category":"explore","icon":"mountain","input":"direct"},
+    {"name":"therecmdmenu","key":"#therecmdmenu","category":"explore","iconState":"missing","input":"position"},
+    {"name":"throw","key":"t","category":"items","icon":"send","input":"item-direction"},
+    {"name":"tip","key":"Alt+Shift+T","category":"items","icon":"archive-restore","input":"item"},
+    {"name":"toggle","key":"#toggle","category":"system","icon":"toggle-right","input":"direct"},
+    {"name":"travel","key":"_","category":"common","icon":"navigation","input":"position"},
+    {"name":"turn","key":"Alt+T","category":"magic","icon":"sun","input":"direct"},
+    {"name":"twoweapon","key":"X","category":"common","iconState":"missing","input":"direct"},
+    {"name":"untrap","key":"Alt+U","category":"common","icon":"shield-check","input":"direction"},
+    {"name":"up","key":"<","category":"explore","icon":"arrow-up","input":"direct"},
+    {"name":"vanquished","key":"Alt+Shift+V","category":"info","icon":"list-x","input":"direct"},
+    {"name":"version","key":"Alt+V","category":"system","icon":"info","input":"direct"},
+    {"name":"versionshort","key":"V","category":"system","icon":"badge-info","input":"direct"},
+    {"name":"wait","key":".","category":"common","icon":"clock","input":"direct"},
+    {"name":"wear","key":"W","category":"gear","icon":"shirt","input":"item"},
+    {"name":"whatdoes","key":"&","category":"info","icon":"circle-help","input":"direct"},
+    {"name":"whatis","key":"/","category":"explore","icon":"search","input":"position"},
+    {"name":"wield","key":"w","category":"gear","icon":"sword","input":"item"},
+    {"name":"wipe","key":"Alt+W","category":"common","icon":"droplets","input":"direct"},
+    {"name":"zap","key":"z","category":"magic","icon":"wand-sparkles","input":"item-direction"}
+  ]
 }
   </script>
 
   <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
   <script>
-    const catalog = JSON.parse(
-      document.getElementById("action-catalog").textContent,
+    const config = JSON.parse(
+      document.getElementById("action-bar-config").textContent,
     );
-    const commands = catalog.nonDirectionalActions;
-    const commandById = new Map(commands.map((action) => [action.id, action]));
-    const categoryNames = {
-      combat: "Combat",
-      info: "Info",
+    const actionByName = new Map(
+      config.catalog.map((action) => [action.name, action]),
+    );
+    const categoryLabels = {
+      common: "Common",
+      gear: "Gear",
+      magic: "Magic",
       items: "Items",
-      movement: "Movement",
+      explore: "Explore",
+      info: "Information",
       system: "System",
-      world: "World",
     };
     const displayNames = {
-      apply: "Apply",
-      cast: "Cast",
-      close: "Close",
-      drop: "Drop",
-      eat: "Eat",
-      fight: "Force Fight",
-      fire: "Fire",
-      herecmdmenu: "Context",
-      inventory: "Inventory",
-      invoke: "Invoke",
-      kick: "Kick",
-      look: "Look",
-      loot: "Loot",
-      monster: "Ability",
-      open: "Open",
-      pickup: "Pickup",
-      pray: "Pray",
+      "#": "Extended Command",
+      "?": "Extended Commands",
+      herecmdmenu: "Actions Here",
+      inventtype: "Inventory by Type",
+      knownclass: "Known by Class",
+      lookaround: "Look Around",
+      optionsfull: "All Options",
+      perminv: "Permanent Inventory",
+      prevmsg: "Previous Messages",
       puton: "Put On",
-      quaff: "Quaff",
-      quiver: "Quiver",
-      read: "Read",
-      remove: "Remove",
-      search: "Search",
-      teleport: "Teleport",
-      terrain: "Terrain",
-      throw: "Throw",
-      travel: "Travel",
-      turn: "Turn",
+      retravel: "Repeat Travel",
+      saveoptions: "Save Options",
+      seeall: "All Equipment",
+      seeamulet: "Worn Amulet",
+      seearmor: "Worn Armor",
+      seerings: "Worn Rings",
+      seetools: "Tools in Use",
+      seeweapon: "Wielded Weapon",
+      showgold: "Gold",
+      showspells: "Known Spells",
+      showtrap: "Show Trap",
+      takeoff: "Take Off",
+      takeoffall: "Take Off All",
+      therecmdmenu: "Actions There",
       twoweapon: "Two Weapon",
-      untrap: "Untrap",
-      wait: "Wait",
-      wear: "Wear",
-      wield: "Wield",
-      zap: "Zap",
+      versionshort: "Version",
+      whatdoes: "Command Help",
+      whatis: "What Is",
     };
-    const categoryDecks = {
-      common: [
-        "herecmdmenu", "search", "wait", "pickup", "open", "close",
-        "kick", "fire", "throw", "travel", "look", "inventory",
-      ],
-      combat: [
-        "fight", "fire", "kick", "throw", "cast", "zap",
-        "twoweapon", "turn", "monster", "pray", "teleport", "wait",
-      ],
-      items: [
-        "apply", "eat", "quaff", "read", "zap", "wield",
-        "wear", "puton", "remove", "drop", "loot", "inventory",
-      ],
-      world: [
-        "herecmdmenu", "open", "close", "search", "untrap", "travel",
-        "jump", "ride", "up", "down", "sit", "wait",
-      ],
-      info: [
-        "look", "lookaround", "overview", "attributes", "known", "history",
-        "chronicle", "conduct", "showspells", "seeall", "prevmsg", "help",
-      ],
-    };
-    const pinnedIds = [
-      "apply", "eat", "quaff", "read", "zap", "cast",
-      "wield", "wear", "puton", "drop", "loot", "#",
+    const chooserInventory = [
+      { key: "a", text: "a +0 katana" },
+      { key: "d", text: "35 +0 ya" },
+      { key: "e", text: "an uncursed rustproof +0 splint mail" },
+      { key: "f", text: "2 food rations" },
+      { key: "g", text: "a ruby potion" },
+      { key: "i", text: "a glass wand" },
     ];
-    const movementActions = catalog.directionalMovement.modes.flatMap(
-      (mode) => catalog.directionalMovement.directions.map((direction) => ({
-        id: `${mode.id}${direction.id}`,
-        description: `${mode.label.toLowerCase()} ${direction.label}`,
-        category: "movement",
-        icon: direction.icon,
-        iconState: mode.iconState,
-        key: "direction",
-        playerVisible: true,
-        directional: true,
-      })),
-    );
-    const allActions = [...commands, ...movementActions];
-    let currentDeck = "common";
-    let catalogCategory = "all";
-    let iconFilter = null;
+    const directionKeys = new Set([
+      "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown",
+      "h", "j", "k", "l", "y", "u", "b", "n",
+    ]);
+    const dock = document.getElementById("action-dock");
+    const actionGrid = document.getElementById("action-grid");
+    const allActionsPanel = document.getElementById("all-actions-panel");
+    const itemChooser = document.getElementById("item-chooser");
+    const mapScroll = document.querySelector(".nh-map-scroll");
+    const canvas = document.getElementById("dungeon-map");
+    const lockButton = document.querySelector("[data-action-bar-lock]");
+    let targetingAction = null;
+    let dragPayload = null;
     let feedbackTimer = 0;
-    let drawerTrigger = null;
+    let lockTimer = 0;
+    let dividerDrag = null;
+    let actionWasDragged = false;
+    let targetingItemKey = null;
+    let allActionsTrigger = null;
 
     /**
-     * Replace Lucide placeholders after a render pass.
-     * @returns {void}
+     * Return a deep clone suitable for mutable prototype state.
+     * @param {unknown} value JSON-compatible source value.
+     * @returns {unknown} cloned value.
      */
-    function refreshIcons() {
-      if (globalThis.lucide) {
-        globalThis.lucide.createIcons({
-          attrs: {
-            "aria-hidden": "true",
-            "stroke-width": 1.7,
-          },
+    function cloneValue(value) {
+      return JSON.parse(JSON.stringify(value));
+    }
+
+    const defaultState = {
+      rows: config.rows.default,
+      locked: true,
+      activeCategory: "all",
+      layouts: cloneValue(config.layouts),
+    };
+
+    /**
+     * Validate and normalize one persisted or imported action bar state.
+     * @param {unknown} candidate untrusted state value.
+     * @returns {Record<string, unknown>} normalized state.
+     */
+    function normalizeState(candidate) {
+      if (!candidate || typeof candidate !== "object") {
+        throw new Error("Action bar state must be an object");
+      }
+      if (
+        !Number.isInteger(candidate.rows)
+        || candidate.rows < config.rows.min
+        || candidate.rows > config.rows.max
+        || typeof candidate.locked !== "boolean"
+        || !Object.hasOwn(config.layouts, candidate.activeCategory)
+        || !candidate.layouts
+        || typeof candidate.layouts !== "object"
+      ) {
+        throw new Error("Action bar state metadata is invalid");
+      }
+
+      /**
+       * Validate one stable slot list without compacting empty positions.
+       * @param {unknown} list untrusted action list.
+       * @param {number} maximumLength maximum accepted slot count.
+       * @returns {Array<string|null>} normalized action list.
+       */
+      function normalizeActionList(list, maximumLength) {
+        if (
+          !Array.isArray(list)
+          || list.length > maximumLength
+          || list.some(
+            (name) => name !== null
+              && (typeof name !== "string" || !actionByName.has(name)),
+          )
+        ) {
+          throw new Error("Action bar slot list is invalid");
+        }
+        return [...list];
+      }
+
+      if (
+        !Array.isArray(candidate.layouts.all)
+        || candidate.layouts.all.length !== config.layouts.all.length
+      ) {
+        throw new Error("Combined action bar layout is invalid");
+      }
+      const all = candidate.layouts.all.map((section, index) => {
+        const expected = config.layouts.all[index];
+        if (
+          !section
+          || typeof section !== "object"
+          || section.category !== expected.category
+          || !Number.isInteger(section.columns)
+          || section.columns < 1
+          || section.columns > 8
+        ) {
+          throw new Error("Action bar section is invalid");
+        }
+        return {
+          category: section.category,
+          columns: section.columns,
+          actions: normalizeActionList(section.actions, 64),
+        };
+      });
+      const layouts = { all };
+      Object.keys(config.layouts)
+        .filter((category) => category !== "all")
+        .forEach((category) => {
+          layouts[category] = normalizeActionList(
+            candidate.layouts[category],
+            config.catalog.length,
+          );
         });
+      return {
+        rows: candidate.rows,
+        locked: candidate.locked,
+        activeCategory: candidate.activeCategory,
+        layouts,
+      };
+    }
+
+    /**
+     * Load persisted action bar state and retain defaults for invalid fields.
+     * @returns {Record<string, unknown>} normalized action bar state.
+     */
+    function loadState() {
+      try {
+        const stored = JSON.parse(localStorage.getItem(config.storageKey) || "null");
+        if (!stored || typeof stored !== "object") return cloneValue(defaultState);
+        return normalizeState(stored);
+      } catch {
+        return cloneValue(defaultState);
       }
     }
 
+    let state = loadState();
+
     /**
-     * Return the short display label for one command.
-     * @param {Record<string, unknown>} action action catalog entry.
-     * @returns {string} concise player-facing label.
+     * Persist the current prototype layout in the profile-owned storage key.
+     * @returns {void}
      */
-    function actionLabel(action) {
-      return displayNames[action.id] || action.id;
+    function saveState() {
+      localStorage.setItem(config.storageKey, JSON.stringify(state));
     }
 
     /**
-     * Format a command without inventing an invalid extended-command prefix.
-     * @param {Record<string, unknown>} action action catalog entry.
-     * @returns {string} command notation shown in the prototype.
+     * Convert one command name into a short visible label.
+     * @param {string} name canonical WASM command name.
+     * @returns {string} action label.
      */
-    function commandNotation(action) {
-      if (action.id === "#") return "#";
-      return action.directional ? action.id : `#${action.id}`;
+    function actionLabel(name) {
+      return displayNames[name]
+        || name.replace(/(^|[-_])([a-z])/g, (_, prefix, letter) => (
+          `${prefix ? " " : ""}${letter.toUpperCase()}`
+        ));
     }
 
     /**
-     * Build an icon with a text fallback when the CDN is unavailable.
-     * @param {Record<string, unknown>} action action catalog entry.
-     * @returns {HTMLSpanElement} icon element.
+     * Replace Lucide placeholders after dynamic DOM updates.
+     * @returns {void}
+     */
+    function refreshIcons() {
+      if (!globalThis.lucide) return;
+      globalThis.lucide.createIcons({
+        attrs: {
+          "aria-hidden": "true",
+          "stroke-width": 1.7,
+        },
+      });
+    }
+
+    /**
+     * Build a Lucide icon or the required dashed-square placeholder.
+     * @param {Record<string, unknown>} action catalog action.
+     * @returns {HTMLSpanElement} icon wrapper.
      */
     function createActionIcon(action) {
       const wrapper = document.createElement("span");
-      const icon = document.createElement("i");
-      const fallback = document.createElement("span");
       wrapper.className = "action-icon";
-      wrapper.dataset.iconState = action.iconState;
-      icon.dataset.lucide = action.icon;
-      icon.setAttribute("aria-hidden", "true");
-      fallback.className = "icon-fallback";
-      fallback.textContent = action.id.replace(/[^a-z0-9]/gi, "").slice(0, 1) || "#";
-      wrapper.append(icon, fallback);
+      if (action.iconState === "missing" || !action.icon) {
+        wrapper.dataset.iconState = "missing";
+        const square = document.createElement("span");
+        const corner = document.createElement("span");
+        square.className = "square-dashed";
+        corner.className = "corner-x";
+        corner.textContent = "x";
+        square.append(corner);
+        wrapper.append(square);
+      } else {
+        const icon = document.createElement("i");
+        icon.dataset.lucide = action.icon;
+        icon.setAttribute("aria-hidden", "true");
+        wrapper.append(icon);
+      }
       return wrapper;
     }
 
     /**
-     * Show a transient prototype command result.
-     * @param {Record<string, unknown>} action selected action.
+     * Position the shared action tooltip without clipping inside dock scrollers.
+     * @param {HTMLElement} target hovered or focused action button.
+     * @param {Record<string, unknown>} action catalog action.
      * @returns {void}
      */
-    function showFeedback(action) {
+    function showActionTooltip(target, action) {
+      const tooltip = document.getElementById("action-hover-tooltip");
+      tooltip.querySelector("strong").textContent = actionLabel(action.name);
+      tooltip.querySelector("kbd").textContent = action.key;
+      tooltip.hidden = false;
+      const targetRect = target.getBoundingClientRect();
+      const tooltipRect = tooltip.getBoundingClientRect();
+      const preferredTop = targetRect.top - tooltipRect.height - 7;
+      const panelHeader = target
+        .closest(".all-actions-panel")
+        ?.querySelector(".all-actions-header")
+        ?.getBoundingClientRect();
+      const shouldPlaceBelow = preferredTop < 8
+        || (panelHeader && preferredTop < panelHeader.bottom + 4);
+      const top = shouldPlaceBelow ? targetRect.bottom + 7 : preferredTop;
+      const left = Math.min(
+        window.innerWidth - tooltipRect.width - 8,
+        Math.max(
+          8,
+          targetRect.left + targetRect.width / 2 - tooltipRect.width / 2,
+        ),
+      );
+      tooltip.style.top = `${Math.round(top)}px`;
+      tooltip.style.left = `${Math.round(left)}px`;
+    }
+
+    /**
+     * Hide the shared action tooltip.
+     * @returns {void}
+     */
+    function hideActionTooltip() {
+      document.getElementById("action-hover-tooltip").hidden = true;
+    }
+
+    /**
+     * Attach pointer and keyboard tooltip behavior to one action button.
+     * @param {HTMLElement} button action button.
+     * @param {Record<string, unknown>} action catalog action.
+     * @returns {void}
+     */
+    function bindActionTooltip(button, action) {
+      button.addEventListener(
+        "pointerenter",
+        () => showActionTooltip(button, action),
+      );
+      button.addEventListener("pointerleave", hideActionTooltip);
+      button.addEventListener(
+        "focus",
+        () => showActionTooltip(button, action),
+      );
+      button.addEventListener("blur", hideActionTooltip);
+    }
+
+    /**
+     * Resolve a mutable layout array from one rendered destination.
+     * @param {HTMLElement} slot rendered destination slot.
+     * @returns {Array<string|null>} mutable action list.
+     */
+    function actionListForSlot(slot) {
+      if (slot.dataset.layoutCategory === "all") {
+        return state.layouts.all[Number(slot.dataset.sectionIndex)].actions;
+      }
+      return state.layouts[slot.dataset.layoutCategory];
+    }
+
+    /**
+     * Put an action into one destination while preserving stable slot positions.
+     * @param {HTMLElement} slot destination slot.
+     * @param {string} actionName canonical action name.
+     * @returns {void}
+     */
+    function placeAction(slot, actionName) {
+      const list = actionListForSlot(slot);
+      const index = Number(slot.dataset.slotIndex);
+      while (list.length <= index) list.push(null);
+      list[index] = actionName;
+    }
+
+    /**
+     * Remove one source action without compacting adjacent stable slots.
+     * @param {Record<string, unknown>} source drag source metadata.
+     * @returns {void}
+     */
+    function removeBarAction(source) {
+      if (source.origin !== "action-bar") return;
+      const sourceSlot = document.querySelector(
+        `[data-slot-id="${CSS.escape(source.slotId)}"]`,
+      );
+      if (!sourceSlot) return;
+      const list = actionListForSlot(sourceSlot);
+      list[Number(sourceSlot.dataset.slotIndex)] = null;
+    }
+
+    /**
+     * Flash the lock control when an edit is rejected.
+     * @returns {void}
+     */
+    function showLockRejection() {
+      lockButton.classList.add("lock-rejected");
+      window.clearTimeout(lockTimer);
+      lockTimer = window.setTimeout(
+        () => lockButton.classList.remove("lock-rejected"),
+        520,
+      );
+    }
+
+    /**
+     * Handle a drag beginning from the dock or All Actions panel.
+     * @param {DragEvent} event browser drag event.
+     * @param {Record<string, unknown>} payload source metadata.
+     * @returns {void}
+     */
+    function beginActionDrag(event, payload) {
+      if (payload.origin === "action-bar" && state.locked) {
+        event.preventDefault();
+        showLockRejection();
+        return;
+      }
+      dragPayload = payload;
+      actionWasDragged = true;
+      event.dataTransfer.effectAllowed = payload.origin === "all-actions"
+        ? "copy"
+        : "move";
+      event.dataTransfer.setData("text/plain", payload.actionName);
+      event.currentTarget.classList.add("dragging");
+    }
+
+    /**
+     * Clear drag state after a drag gesture completes.
+     * @param {DragEvent} event browser drag event.
+     * @returns {void}
+     */
+    function endActionDrag(event) {
+      event.currentTarget.classList.remove("dragging");
+      document.querySelectorAll(".drop-hover").forEach(
+        (node) => node.classList.remove("drop-hover"),
+      );
+      window.setTimeout(() => {
+        dragPayload = null;
+        actionWasDragged = false;
+      }, 0);
+    }
+
+    /**
+     * Accept a dragged action over a dock slot.
+     * @param {DragEvent} event browser drag event.
+     * @returns {void}
+     */
+    function handleSlotDragover(event) {
+      if (!dragPayload) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = dragPayload.origin === "all-actions"
+        ? "copy"
+        : "move";
+      event.currentTarget.classList.add("drop-hover");
+    }
+
+    /**
+     * Insert, overwrite, or reorder an action at one dock slot.
+     * @param {DragEvent} event browser drop event.
+     * @returns {void}
+     */
+    function handleSlotDrop(event) {
+      event.preventDefault();
+      event.stopPropagation();
+      event.currentTarget.classList.remove("drop-hover");
+      if (!dragPayload) return;
+      if (state.locked) {
+        showLockRejection();
+        return;
+      }
+      const destination = event.currentTarget;
+      const destinationList = actionListForSlot(destination);
+      const destinationIndex = Number(destination.dataset.slotIndex);
+      const replaced = destinationList[destinationIndex] || null;
+      if (dragPayload.origin === "action-bar") {
+        const sourceSlot = document.querySelector(
+          `[data-slot-id="${CSS.escape(dragPayload.slotId)}"]`,
+        );
+        if (sourceSlot) {
+          const sourceList = actionListForSlot(sourceSlot);
+          const sourceIndex = Number(sourceSlot.dataset.slotIndex);
+          sourceList[sourceIndex] = replaced;
+        }
+      }
+      placeAction(destination, dragPayload.actionName);
+      saveState();
+      renderDock();
+    }
+
+    /**
+     * Create one dock slot with stable drag and click behavior.
+     * @param {string|null} actionName canonical action name or empty slot.
+     * @param {string} layoutCategory active layout category.
+     * @param {number} sectionIndex section index for the All layout.
+     * @param {number} slotIndex stable slot index in its section.
+     * @returns {HTMLElement} rendered slot.
+     */
+    function createDockSlot(actionName, layoutCategory, sectionIndex, slotIndex) {
+      const slotId = `${layoutCategory}-${sectionIndex}-${slotIndex}`;
+      if (!actionName || !actionByName.has(actionName)) {
+        const empty = document.createElement("div");
+        empty.className = "empty-slot";
+        empty.dataset.slotId = slotId;
+        empty.dataset.layoutCategory = layoutCategory;
+        empty.dataset.sectionIndex = String(sectionIndex);
+        empty.dataset.slotIndex = String(slotIndex);
+        empty.addEventListener("dragover", handleSlotDragover);
+        empty.addEventListener("dragleave", () => empty.classList.remove("drop-hover"));
+        empty.addEventListener("drop", handleSlotDrop);
+        return empty;
+      }
+
+      const action = actionByName.get(actionName);
+      const button = document.createElement("button");
+      const key = document.createElement("span");
+      button.className = "action-slot";
+      button.type = "button";
+      button.draggable = true;
+      button.setAttribute("draggable", "true");
+      button.dataset.slotId = slotId;
+      button.dataset.layoutCategory = layoutCategory;
+      button.dataset.sectionIndex = String(sectionIndex);
+      button.dataset.slotIndex = String(slotIndex);
+      button.dataset.actionName = action.name;
+      button.setAttribute("aria-label", `${actionLabel(action.name)}, ${action.key}`);
+      if (action.disabled) {
+        button.dataset.disabledAction = action.name;
+        button.setAttribute("aria-disabled", "true");
+      }
+      if (targetingAction?.name === action.name) {
+        button.classList.add("targeting-active");
+      }
+      key.className = "slot-key";
+      key.textContent = action.key;
+      button.append(createActionIcon(action), key);
+      bindActionTooltip(button, action);
+      button.addEventListener("click", () => {
+        if (!actionWasDragged && !action.disabled) executeAction(action);
+      });
+      button.addEventListener("dragstart", (event) => {
+        beginActionDrag(event, {
+          origin: "action-bar",
+          actionName: action.name,
+          slotId,
+        });
+      });
+      button.addEventListener("dragend", endActionDrag);
+      button.addEventListener("dragover", handleSlotDragover);
+      button.addEventListener("dragleave", () => button.classList.remove("drop-hover"));
+      button.addEventListener("drop", handleSlotDrop);
+      return button;
+    }
+
+    /**
+     * Start a pointer-driven divider resize snapped to complete grid columns.
+     * @param {PointerEvent} event pointer event.
+     * @param {number} sectionIndex section to resize.
+     * @returns {void}
+     */
+    function beginDividerDrag(event, sectionIndex) {
+      if (state.locked) {
+        showLockRejection();
+        return;
+      }
+      const section = state.layouts.all[sectionIndex];
+      dividerDrag = {
+        pointerId: event.pointerId,
+        sectionIndex,
+        startX: event.clientX,
+        startColumns: section.columns,
+        sectionElement: event.currentTarget.previousElementSibling,
+      };
+      event.currentTarget.setPointerCapture(event.pointerId);
+      event.preventDefault();
+    }
+
+    /**
+     * Apply a snapped divider position during pointer movement.
+     * @param {PointerEvent} event pointer event.
+     * @returns {void}
+     */
+    function moveDivider(event) {
+      if (!dividerDrag || dividerDrag.pointerId !== event.pointerId) return;
+      const step = parseFloat(
+        getComputedStyle(document.documentElement).getPropertyValue("--slot-size"),
+      ) + 4;
+      const deltaColumns = Math.round(
+        (event.clientX - dividerDrag.startX) / step,
+      );
+      const section = state.layouts.all[dividerDrag.sectionIndex];
+      section.columns = Math.max(
+        1,
+        Math.min(8, dividerDrag.startColumns + deltaColumns),
+      );
+      dividerDrag.sectionElement.style.setProperty(
+        "--section-columns",
+        section.columns,
+      );
+    }
+
+    /**
+     * Finish divider resizing and persist the snapped width.
+     * @param {PointerEvent} event pointer event.
+     * @returns {void}
+     */
+    function endDividerDrag(event) {
+      if (!dividerDrag || dividerDrag.pointerId !== event.pointerId) return;
+      dividerDrag = null;
+      saveState();
+      renderDock();
+    }
+
+    /**
+     * Create one vertical divider between adjacent All sections.
+     * @param {number} sectionIndex section immediately before the divider.
+     * @returns {HTMLDivElement} draggable divider.
+     */
+    function createDivider(sectionIndex) {
+      const divider = document.createElement("div");
+      divider.className = "section-divider";
+      divider.dataset.sectionDivider = String(sectionIndex);
+      divider.dataset.layoutCategory = "all";
+      divider.dataset.orientation = "vertical";
+      divider.dataset.snap = "grid";
+      divider.draggable = true;
+      divider.setAttribute("draggable", "true");
+      divider.setAttribute("role", "separator");
+      divider.setAttribute("aria-orientation", "vertical");
+      divider.addEventListener("dragstart", (event) => event.preventDefault());
+      divider.addEventListener("pointerdown", (event) => {
+        beginDividerDrag(event, sectionIndex);
+      });
+      divider.addEventListener("pointermove", moveDivider);
+      divider.addEventListener("pointerup", endDividerDrag);
+      divider.addEventListener("pointercancel", endDividerDrag);
+      return divider;
+    }
+
+    /**
+     * Render the selected category while retaining every occupied slot position.
+     * @returns {void}
+     */
+    function renderDock() {
+      hideActionTooltip();
+      document.documentElement.style.setProperty("--row-count", state.rows);
+      dock.dataset.rowCount = String(state.rows);
+      actionGrid.replaceChildren();
+
+      if (state.activeCategory === "all") {
+        state.layouts.all.forEach((sectionData, sectionIndex) => {
+          const section = document.createElement("section");
+          const grid = document.createElement("div");
+          const capacity = sectionData.columns * state.rows;
+          section.className = "action-section";
+          section.style.setProperty("--section-columns", sectionData.columns);
+          section.dataset.actionSection = sectionData.category;
+          grid.className = "action-section-grid";
+          for (let index = 0; index < capacity; index += 1) {
+            grid.append(
+              createDockSlot(
+                sectionData.actions[index] || null,
+                "all",
+                sectionIndex,
+                index,
+              ),
+            );
+          }
+          section.append(grid);
+          actionGrid.append(section);
+          if (sectionIndex < state.layouts.all.length - 1) {
+            actionGrid.append(createDivider(sectionIndex));
+          }
+        });
+      } else {
+        const section = document.createElement("section");
+        const grid = document.createElement("div");
+        const actions = state.layouts[state.activeCategory] || [];
+        const slotCount = Math.max(
+          state.rows,
+          Math.ceil(actions.length / state.rows) * state.rows,
+        );
+        section.className = "action-section single";
+        grid.className = "action-section-grid";
+        for (let index = 0; index < slotCount; index += 1) {
+          grid.append(
+            createDockSlot(
+              actions[index] || null,
+              state.activeCategory,
+              0,
+              index,
+            ),
+          );
+        }
+        section.append(grid);
+        actionGrid.append(section);
+      }
+
+      document.querySelectorAll(".category-tag").forEach((tag) => {
+        tag.setAttribute(
+          "aria-pressed",
+          String(tag.dataset.categoryTag === state.activeCategory),
+        );
+      });
+      const lockIcon = state.locked ? "lock" : "lock-open";
+      lockButton.innerHTML = `<i data-lucide="${lockIcon}" aria-hidden="true"></i>`;
+      lockButton.setAttribute(
+        "aria-label",
+        state.locked ? "Unlock action bar" : "Lock action bar",
+      );
+      lockButton.title = state.locked ? "Unlock action bar" : "Lock action bar";
+      document.querySelector("[data-row-action='decrease']").disabled =
+        state.rows <= config.rows.min;
+      document.querySelector("[data-row-action='increase']").disabled =
+        state.rows >= config.rows.max;
+      updateDockHeight();
+      refreshIcons();
+    }
+
+    /**
+     * Build one draggable square for the All Actions panel.
+     * @param {Record<string, unknown>} action catalog action.
+     * @returns {HTMLButtonElement} panel action button.
+     */
+    function createPanelAction(action) {
+      const button = document.createElement("button");
+      const key = document.createElement("span");
+      button.className = "all-actions-slot";
+      button.type = "button";
+      button.draggable = true;
+      button.setAttribute("draggable", "true");
+      button.dataset.actionDragSource = "all-actions";
+      button.dataset.actionName = action.name;
+      button.setAttribute("aria-label", `${actionLabel(action.name)}, ${action.key}`);
+      key.className = "slot-key";
+      key.textContent = action.key;
+      button.append(createActionIcon(action), key);
+      bindActionTooltip(button, action);
+      button.addEventListener("click", () => {
+        if (!actionWasDragged && !action.disabled) executeAction(action);
+      });
+      button.addEventListener("dragstart", (event) => {
+        beginActionDrag(event, {
+          origin: "all-actions",
+          actionName: action.name,
+        });
+      });
+      button.addEventListener("dragend", endActionDrag);
+      return button;
+    }
+
+    /**
+     * Render all 104 commands in category sections.
+     * @returns {void}
+     */
+    function renderAllActions() {
+      document.querySelectorAll("[data-panel-grid]").forEach((grid) => {
+        const actions = config.catalog.filter(
+          (action) => action.category === grid.dataset.panelGrid,
+        );
+        grid.replaceChildren(...actions.map(createPanelAction));
+      });
+      refreshIcons();
+    }
+
+    /**
+     * Synchronize overlays with the actual rendered dock height.
+     * @returns {void}
+     */
+    function updateDockHeight() {
+      const height = Math.ceil(dock.getBoundingClientRect().height);
+      document.documentElement.style.setProperty("--dock-height", `${height}px`);
+    }
+
+    /**
+     * Show a brief prototype result without adding authored action prose.
+     * @param {string} message result text.
+     * @returns {void}
+     */
+    function showFeedback(message) {
       const feedback = document.getElementById("action-feedback");
-      feedback.replaceChildren();
-      const label = document.createElement("span");
-      const command = document.createElement("code");
-      label.textContent = `${actionLabel(action)} selected`;
-      command.textContent = commandNotation(action);
-      feedback.append(label, command);
+      feedback.textContent = message;
       feedback.classList.add("visible");
       window.clearTimeout(feedbackTimer);
       feedbackTimer = window.setTimeout(
@@ -1475,329 +2203,444 @@
     }
 
     /**
-     * Create one fixed-size action slot and its hover details.
-     * @param {Record<string, unknown>} action action catalog entry.
-     * @param {number} index visual slot index.
-     * @returns {HTMLButtonElement} action slot.
+     * Open the lightweight inventory choice strip for an item command.
+     * @param {Record<string, unknown>} action selected action.
+     * @returns {void}
      */
-    function createActionSlot(action, index) {
-      const button = document.createElement("button");
-      const key = document.createElement("span");
-      const order = document.createElement("span");
-      const tooltip = document.createElement("span");
-      const title = document.createElement("strong");
-      const description = document.createElement("span");
-      const iconNote = document.createElement("em");
-      button.className = "action-slot";
-      button.type = "button";
-      button.dataset.iconState = action.iconState;
-      button.setAttribute("aria-label", actionLabel(action));
-      key.className = "slot-key";
-      key.textContent = action.key;
-      order.className = "slot-order";
-      order.textContent = String(index + 1).padStart(2, "0");
-      tooltip.className = "slot-tooltip";
-      title.textContent = `${actionLabel(action)} · ${commandNotation(action)}`;
-      description.textContent = action.description;
-      iconNote.textContent = {
-        custom: "Icon: custom NetHack art required",
-        direct: "Icon: direct Lucide match",
-        metaphor: "Icon: generic metaphor",
-      }[action.iconState];
-      tooltip.append(title, description, iconNote);
-      button.append(createActionIcon(action), key, order, tooltip);
-      button.addEventListener("click", () => showFeedback(action));
-      return button;
+    function openItemChooser(action) {
+      cancelTargetingMode();
+      document.getElementById("chooser-title").textContent =
+        `${actionLabel(action.name)} · ${action.key}`;
+      const items = chooserInventory.map((item) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = `${item.key}  ${item.text}`;
+        button.addEventListener("click", () => {
+          itemChooser.hidden = true;
+          if (action.input === "item-direction") {
+            beginTargetingMode(action, item.key);
+          } else {
+            showFeedback(`${actionLabel(action.name)} · ${item.key}`);
+          }
+        });
+        return button;
+      });
+      document.getElementById("chooser-items").replaceChildren(...items);
+      itemChooser.hidden = false;
+      document.querySelector(".chooser-items button")?.focus();
     }
 
     /**
-     * Render a complete twelve-slot shortcut row.
-     * @param {HTMLElement} target row container.
-     * @param {string[]} ids command ids in visual order.
+     * Resolve the active target input kind for one action.
+     * @param {Record<string, unknown>} action selected action.
+     * @returns {"direction"|"position"} target input kind.
+     */
+    function targetingKind(action) {
+      return action.input.endsWith("direction") ? "direction" : "position";
+    }
+
+    /**
+     * Enter direction or map-position targeting for one action.
+     * @param {Record<string, unknown>} action selected action.
+     * @param {string|null} itemKey previously selected inventory accelerator.
      * @returns {void}
      */
-    function renderShortcutRow(target, ids) {
-      target.replaceChildren(
-        ...ids.map((id, index) => createActionSlot(commandById.get(id), index)),
+    function beginTargetingMode(action, itemKey = null) {
+      if (targetingAction?.name === action.name && targetingItemKey === itemKey) {
+        cancelTargetingMode();
+        return;
+      }
+      itemChooser.hidden = true;
+      targetingAction = action;
+      targetingItemKey = itemKey;
+      const kind = targetingKind(action);
+      const readout = document.getElementById("targeting-readout");
+      readout.hidden = false;
+      readout.dataset.targetingMode = kind;
+      readout.textContent = kind === "position"
+        ? `${actionLabel(action.name)} · choose a map position · Esc`
+        : `${actionLabel(action.name)} · choose a direction · Esc`;
+      mapScroll.classList.add("targeting");
+      drawDungeon();
+      renderDock();
+    }
+
+    /**
+     * Cancel the current direction or position request.
+     * @returns {void}
+     */
+    function cancelTargetingMode() {
+      if (!targetingAction) return;
+      targetingAction = null;
+      targetingItemKey = null;
+      const readout = document.getElementById("targeting-readout");
+      readout.hidden = true;
+      readout.dataset.targetingMode = "inactive";
+      mapScroll.classList.remove("targeting");
+      drawDungeon();
+      renderDock();
+    }
+
+    /**
+     * Finish targeting with one keyboard direction or map coordinate.
+     * @param {string} target target notation.
+     * @returns {void}
+     */
+    function finishTargeting(target) {
+      if (!targetingAction) return;
+      const label = actionLabel(targetingAction.name);
+      const itemPrefix = targetingItemKey ? `${targetingItemKey} · ` : "";
+      targetingAction = null;
+      targetingItemKey = null;
+      const readout = document.getElementById("targeting-readout");
+      readout.hidden = true;
+      readout.dataset.targetingMode = "inactive";
+      mapScroll.classList.remove("targeting");
+      drawDungeon();
+      renderDock();
+      showFeedback(`${label} · ${itemPrefix}${target}`);
+    }
+
+    /**
+     * Route one action according to its next NetHack input requirement.
+     * @param {Record<string, unknown>} action selected action.
+     * @returns {void}
+     */
+    function executeAction(action) {
+      closeAllActions();
+      if (action.input.startsWith("item")) {
+        openItemChooser(action);
+      } else if (action.input === "direction" || action.input === "position") {
+        beginTargetingMode(action);
+      } else {
+        cancelTargetingMode();
+        itemChooser.hidden = true;
+        showFeedback(`${actionLabel(action.name)} · ${action.key}`);
+      }
+    }
+
+    /**
+     * Open the non-modal action directory and dim only game content.
+     * @returns {void}
+     */
+    function openAllActions() {
+      itemChooser.hidden = true;
+      allActionsTrigger = document.activeElement;
+      allActionsPanel.hidden = false;
+      document.querySelectorAll(
+        ".nh-messages, .nh-map-scroll, .permanent-inventory",
+      ).forEach((region) => {
+        region.classList.add("panel-dimmed");
+        region.inert = true;
+      });
+      document.getElementById("close-all-actions").focus();
+    }
+
+    /**
+     * Close the action directory and release dimmed game regions.
+     * @returns {void}
+     */
+    function closeAllActions() {
+      if (allActionsPanel.hidden) return;
+      hideActionTooltip();
+      allActionsPanel.hidden = true;
+      document.querySelectorAll(
+        ".nh-messages, .nh-map-scroll, .permanent-inventory",
+      ).forEach((region) => {
+        region.classList.remove("panel-dimmed");
+        region.inert = false;
+      });
+      if (allActionsTrigger instanceof HTMLElement && allActionsTrigger.isConnected) {
+        allActionsTrigger.focus();
+      }
+      allActionsTrigger = null;
+    }
+
+    /**
+     * Export action bar state in a profile-compatible JSON envelope.
+     * @returns {void}
+     */
+    function exportLayout() {
+      const payload = JSON.stringify({
+        schemaVersion: 3,
+        interface: { actionBar: state },
+      }, null, 2);
+      const url = URL.createObjectURL(
+        new Blob([payload], { type: "application/json" }),
       );
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "blisshack-action-bar.json";
+      link.click();
+      URL.revokeObjectURL(url);
     }
 
     /**
-     * Apply one category deck to the first shortcut row.
-     * @param {string} deckName selected deck identifier.
+     * Import action bar state from a profile-compatible JSON file.
+     * @param {Event} event file input change event.
+     * @returns {Promise<void>} completion promise.
+     */
+    async function importLayout(event) {
+      const fileInput = event.currentTarget;
+      const [file] = fileInput.files;
+      if (!file) return;
+      const previousState = state;
+      try {
+        const payload = JSON.parse(await file.text());
+        state = normalizeState(payload?.interface?.actionBar);
+        renderDock();
+        saveState();
+        showFeedback("Action bar layout imported");
+      } catch {
+        state = previousState;
+        renderDock();
+        showFeedback("Action bar layout could not be imported");
+      } finally {
+        fileInput.value = "";
+      }
+    }
+
+    /**
+     * Draw a tile-like 80 by 21 dungeon into the real HUD canvas.
      * @returns {void}
      */
-    function selectDeck(deckName) {
-      currentDeck = deckName;
-      document.querySelectorAll("[data-deck]").forEach((tab) => {
-        tab.setAttribute(
-          "aria-pressed",
-          String(tab.dataset.deck === currentDeck),
+    function drawDungeon() {
+      const context = canvas.getContext("2d");
+      const tile = 16;
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      context.fillStyle = "#020303";
+      context.fillRect(0, 0, canvas.width, canvas.height);
+
+      const rooms = [
+        { x: 17, y: 3, w: 15, h: 8 },
+        { x: 38, y: 2, w: 18, h: 9 },
+        { x: 28, y: 13, w: 21, h: 6 },
+        { x: 58, y: 12, w: 13, h: 6 },
+      ];
+      context.lineWidth = 2;
+      for (const room of rooms) {
+        context.fillStyle = "#262622";
+        context.fillRect(
+          (room.x + 1) * tile,
+          (room.y + 1) * tile,
+          (room.w - 2) * tile,
+          (room.h - 2) * tile,
         );
-      });
-      renderShortcutRow(
-        document.getElementById("category-row"),
-        categoryDecks[currentDeck],
-      );
-      refreshIcons();
-    }
-
-    /**
-     * Create one searchable action row for the catalog drawer.
-     * @param {Record<string, unknown>} action action catalog entry.
-     * @returns {HTMLDivElement} catalog row.
-     */
-    function createCatalogRow(action) {
-      const row = document.createElement("div");
-      const name = document.createElement("div");
-      const label = document.createElement("strong");
-      const command = document.createElement("code");
-      const description = document.createElement("div");
-      const badges = document.createElement("div");
-      const category = document.createElement("span");
-      const key = document.createElement("span");
-      row.className = "catalog-row";
-      row.tabIndex = 0;
-      row.setAttribute("role", "button");
-      row.append(createActionIcon(action));
-      name.className = "catalog-name";
-      label.textContent = actionLabel(action);
-      command.textContent = commandNotation(action);
-      name.append(label, command);
-      description.className = "catalog-description";
-      description.textContent = action.description;
-      badges.className = "catalog-badges";
-      category.className = "category-pill";
-      category.textContent = categoryNames[action.category];
-      key.className = "catalog-key";
-      key.textContent = action.key;
-      badges.append(category, key);
-      if (action.warning) {
-        const warning = document.createElement("span");
-        warning.className = "compatibility-warning";
-        warning.textContent = action.warning;
-        badges.append(warning);
+        context.strokeStyle = "#77705a";
+        context.strokeRect(
+          room.x * tile + 1,
+          room.y * tile + 1,
+          room.w * tile - 2,
+          room.h * tile - 2,
+        );
       }
-      row.append(name, description, badges);
-      row.addEventListener("click", () => showFeedback(action));
-      row.addEventListener("keydown", (event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          showFeedback(action);
+
+      context.fillStyle = "#282823";
+      context.fillRect(32 * tile, 6 * tile, 6 * tile, tile);
+      context.fillRect(45 * tile, 10 * tile, tile, 3 * tile);
+      context.fillRect(49 * tile, 15 * tile, 9 * tile, tile);
+
+      context.strokeStyle = "#34342d";
+      context.lineWidth = 1;
+      for (let x = 0; x <= 80; x += 1) {
+        context.beginPath();
+        context.moveTo(x * tile + 0.5, 0);
+        context.lineTo(x * tile + 0.5, 336);
+        context.stroke();
+      }
+      for (let y = 0; y <= 21; y += 1) {
+        context.beginPath();
+        context.moveTo(0, y * tile + 0.5);
+        context.lineTo(1280, y * tile + 0.5);
+        context.stroke();
+      }
+
+      context.fillStyle = "#bd9a4e";
+      context.fillRect(31 * tile + 5, 6 * tile + 2, 6, 12);
+      context.fillStyle = "#67ad78";
+      context.fillRect(34 * tile + 4, 9 * tile + 4, 8, 8);
+      context.fillStyle = "#c15f55";
+      context.beginPath();
+      context.arc(41 * tile + 8, 7 * tile + 8, 6, 0, Math.PI * 2);
+      context.fill();
+      context.fillStyle = "#70a7ad";
+      context.beginPath();
+      context.moveTo(25 * tile + 8, 6 * tile + 2);
+      context.lineTo(25 * tile + 13, 6 * tile + 13);
+      context.lineTo(25 * tile + 3, 6 * tile + 13);
+      context.closePath();
+      context.fill();
+      context.fillStyle = "#d3bf74";
+      context.font = "bold 14px monospace";
+      context.textAlign = "center";
+      context.textBaseline = "middle";
+      context.fillText("@", 34 * tile + 8, 10 * tile + 8);
+
+      if (targetingAction) {
+        const targets = targetingKind(targetingAction) === "direction"
+          ? [-1, 0, 1].flatMap((deltaY) => (
+            [-1, 0, 1]
+              .filter((deltaX) => deltaX !== 0 || deltaY !== 0)
+              .map((deltaX) => ({
+                x: 34 + deltaX,
+                y: 10 + deltaY,
+              }))
+          ))
+          : [{ x: 37, y: 10 }];
+        context.strokeStyle = "#f1d36f";
+        context.lineWidth = 2;
+        context.fillStyle = "rgba(241, 211, 111, 0.2)";
+        for (const target of targets) {
+          context.strokeRect(
+            target.x * tile + 1,
+            target.y * tile + 1,
+            tile - 2,
+            tile - 2,
+          );
+          context.fillRect(
+            target.x * tile + 1,
+            target.y * tile + 1,
+            tile - 2,
+            tile - 2,
+          );
         }
-      });
-      return row;
+      }
     }
 
     /**
-     * Filter and render the complete action directory.
-     * @returns {void}
+     * Convert a selected map cell into one NetHack direction key.
+     * @param {number} x selected map x coordinate.
+     * @param {number} y selected map y coordinate.
+     * @returns {string|null} vi direction key, or null for the player cell.
      */
-    function renderCatalog() {
-      const query = document
-        .getElementById("action-search")
-        .value
-        .trim()
-        .toLowerCase();
-      const visible = allActions.filter((action) => {
-        const categoryMatches =
-          catalogCategory === "all" || action.category === catalogCategory;
-        const iconMatches = iconFilter === null || action.iconState === iconFilter;
-        const queryMatches =
-          query === ""
-          || action.id.includes(query)
-          || action.description.toLowerCase().includes(query);
-        return categoryMatches && iconMatches && queryMatches;
+    function directionKeyForCell(x, y) {
+      const deltaX = Math.sign(x - Number(mapScroll.dataset.playerX));
+      const deltaY = Math.sign(y - Number(mapScroll.dataset.playerY));
+      return {
+        "-1,-1": "y",
+        "0,-1": "k",
+        "1,-1": "u",
+        "-1,0": "h",
+        "1,0": "l",
+        "-1,1": "b",
+        "0,1": "j",
+        "1,1": "n",
+      }[`${deltaX},${deltaY}`] || null;
+    }
+
+    document.querySelectorAll(".category-tag").forEach((tag) => {
+      tag.addEventListener("click", () => {
+        state.activeCategory = tag.dataset.categoryTag;
+        saveState();
+        renderDock();
       });
-      const list = document.getElementById("action-catalog-list");
-      if (visible.length === 0) {
-        const empty = document.createElement("div");
-        empty.className = "catalog-empty";
-        empty.textContent = "No matching actions";
-        list.replaceChildren(empty);
+    });
+
+    document.querySelector("[data-row-action='decrease']").addEventListener(
+      "click",
+      () => {
+        state.rows = Math.max(config.rows.min, state.rows - 1);
+        saveState();
+        renderDock();
+      },
+    );
+
+    document.querySelector("[data-row-action='increase']").addEventListener(
+      "click",
+      () => {
+        state.rows = Math.min(config.rows.max, state.rows + 1);
+        saveState();
+        renderDock();
+      },
+    );
+
+    lockButton.addEventListener("click", () => {
+      state.locked = !state.locked;
+      saveState();
+      renderDock();
+    });
+
+    document.querySelector("[data-all-actions-trigger]").addEventListener(
+      "click",
+      () => {
+        if (allActionsPanel.hidden) openAllActions();
+        else closeAllActions();
+      },
+    );
+    document.getElementById("close-all-actions").addEventListener(
+      "click",
+      closeAllActions,
+    );
+    document.getElementById("close-item-chooser").addEventListener(
+      "click",
+      () => { itemChooser.hidden = true; },
+    );
+    document.getElementById("export-layout").addEventListener(
+      "click",
+      exportLayout,
+    );
+    document.getElementById("import-layout").addEventListener(
+      "click",
+      () => document.getElementById("layout-file-input").click(),
+    );
+    document.getElementById("layout-file-input").addEventListener(
+      "change",
+      importLayout,
+    );
+
+    canvas.addEventListener("click", (event) => {
+      if (!targetingAction) return;
+      const bounds = canvas.getBoundingClientRect();
+      const x = Math.floor((event.clientX - bounds.left) / (bounds.width / 80));
+      const y = Math.floor((event.clientY - bounds.top) / (bounds.height / 21));
+      if (targetingKind(targetingAction) === "direction") {
+        const direction = directionKeyForCell(x, y);
+        if (direction) finishTargeting(direction);
       } else {
-        list.replaceChildren(...visible.map(createCatalogRow));
+        finishTargeting(`${x},${y}`);
       }
-      document.getElementById("drawer-summary").textContent =
-        `${visible.length} shown · ${catalog.counts.playerVisibleActions}`
-        + " player-visible actions from current WASM";
-      refreshIcons();
-    }
-
-    /**
-     * Synchronize all category and icon filter pressed states.
-     * @returns {void}
-     */
-    function updateFilterStates() {
-      document.querySelectorAll("[data-catalog-category]").forEach((item) => {
-        const selected = item.dataset.catalogCategory === catalogCategory;
-        item.classList.toggle("active", selected);
-        item.setAttribute("aria-pressed", String(selected));
-      });
-      document.querySelectorAll("[data-filter-icon]").forEach((item) => {
-        const selected = item.dataset.filterIcon === iconFilter;
-        item.classList.toggle("active", selected);
-        item.setAttribute("aria-pressed", String(selected));
-      });
-    }
-
-    /**
-     * Open the complete catalog and optionally select one icon readiness filter.
-     * @param {string|null} requestedIconFilter icon state or null.
-     * @returns {void}
-     */
-    function openDrawer(requestedIconFilter = null) {
-      drawerTrigger = document.activeElement;
-      catalogCategory = "all";
-      iconFilter = requestedIconFilter;
-      document.getElementById("action-search").value = "";
-      document.getElementById("all-actions-drawer").classList.add("open");
-      document.getElementById("drawer-scrim").classList.add("open");
-      document
-        .querySelectorAll(
-          ".prototype > :not(.all-actions-drawer):not(.drawer-scrim)",
-        )
-        .forEach((node) => {
-          node.inert = true;
-        });
-      updateFilterStates();
-      renderCatalog();
-      document.getElementById("action-search").focus();
-    }
-
-    /**
-     * Keep keyboard focus inside the open modal catalog.
-     * @param {KeyboardEvent} event document keyboard event.
-     * @returns {void}
-     */
-    function trapDrawerFocus(event) {
-      if (event.key !== "Tab") return;
-      const drawer = document.getElementById("all-actions-drawer");
-      const focusable = [...drawer.querySelectorAll(
-        "button:not([disabled]), input:not([disabled]), [tabindex='0']",
-      )];
-      if (focusable.length === 0) return;
-      const first = focusable[0];
-      const last = focusable.at(-1);
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    }
-
-    /**
-     * Return focus to the control which opened the catalog.
-     * @returns {void}
-     */
-    function restoreDrawerTrigger() {
-      if (drawerTrigger instanceof HTMLElement) {
-        drawerTrigger.focus();
-      } else {
-        document.getElementById("open-all-actions").focus();
-      }
-      drawerTrigger = null;
-    }
-
-    /**
-     * Release background content after the modal closes.
-     * @returns {void}
-     */
-    function releaseModalBackground() {
-      document
-        .querySelectorAll(
-          ".prototype > :not(.all-actions-drawer):not(.drawer-scrim)",
-        )
-        .forEach((node) => {
-          node.inert = false;
-        });
-      restoreDrawerTrigger();
-    }
-
-    /**
-     * Update one icon readiness filter and refresh the directory.
-     * @param {string} requested icon readiness state.
-     * @returns {void}
-     */
-    function toggleIconFilter(requested) {
-      iconFilter = iconFilter === requested ? null : requested;
-      updateFilterStates();
-      renderCatalog();
-    }
-
-    /**
-     * Update one catalog category and refresh the directory.
-     * @param {string} requested catalog category.
-     * @returns {void}
-     */
-    function selectCatalogCategory(requested) {
-      catalogCategory = requested;
-      updateFilterStates();
-      renderCatalog();
-    }
-
-    /**
-     * Determine whether the complete action catalog is currently open.
-     * @returns {boolean} whether the modal is open.
-     */
-    function isDrawerOpen() {
-      return document
-        .getElementById("all-actions-drawer")
-        .classList
-        .contains("open");
-    }
-
-    /**
-     * Close the complete action catalog.
-     * @returns {void}
-     */
-    function closeDrawer() {
-      document.getElementById("all-actions-drawer").classList.remove("open");
-      document.getElementById("drawer-scrim").classList.remove("open");
-      releaseModalBackground();
-    }
-
-    document.querySelectorAll("[data-deck]").forEach((tab) => {
-      tab.addEventListener("click", () => selectDeck(tab.dataset.deck));
     });
-    document.querySelectorAll("[data-catalog-category]").forEach((tab) => {
-      tab.addEventListener("click", () => {
-        selectCatalogCategory(tab.dataset.catalogCategory);
-      });
-    });
-    document.querySelectorAll("[data-filter-icon]").forEach((button) => {
-      button.addEventListener("click", () => {
-        toggleIconFilter(button.dataset.filterIcon);
-      });
-    });
-    document
-      .getElementById("open-all-actions")
-      .addEventListener("click", () => openDrawer());
-    document
-      .getElementById("open-icon-audit")
-      .addEventListener("click", () => openDrawer("custom"));
-    document
-      .getElementById("close-drawer")
-      .addEventListener("click", closeDrawer);
-    document
-      .getElementById("drawer-scrim")
-      .addEventListener("click", closeDrawer);
-    document
-      .getElementById("action-search")
-      .addEventListener("input", renderCatalog);
+
     document.addEventListener("keydown", (event) => {
-      if (!isDrawerOpen()) return;
       if (event.key === "Escape") {
-        closeDrawer();
-      } else {
-        trapDrawerFocus(event);
+        if (!allActionsPanel.hidden) closeAllActions();
+        else if (!itemChooser.hidden) itemChooser.hidden = true;
+        else cancelTargetingMode();
+        return;
+      }
+      if (
+        targetingAction
+        && targetingKind(targetingAction) === "direction"
+        && directionKeys.has(event.key)
+      ) {
+        event.preventDefault();
+        finishTargeting(event.key);
       }
     });
 
-    selectDeck(currentDeck);
-    renderShortcutRow(document.getElementById("pinned-row"), pinnedIds);
+    document.addEventListener("dragover", (event) => {
+      if (dragPayload) event.preventDefault();
+    });
+
+    document.addEventListener("drop", (event) => {
+      if (!dragPayload || dock.contains(event.target)) return;
+      event.preventDefault();
+      if (dragPayload.origin === "action-bar" && !state.locked) {
+        removeBarAction(dragPayload);
+        saveState();
+        renderDock();
+      }
+    });
+
+    window.addEventListener("resize", updateDockHeight);
+    allActionsPanel.addEventListener("scroll", hideActionTooltip);
+    document.querySelector(".action-grid-viewport").addEventListener(
+      "scroll",
+      hideActionTooltip,
+    );
+    renderAllActions();
+    renderDock();
+    drawDungeon();
     refreshIcons();
   </script>
 </body>
