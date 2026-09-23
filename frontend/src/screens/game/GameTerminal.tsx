@@ -25,6 +25,8 @@ import {
   submitLine,
 } from "../../nethack-bridge";
 import type { InterfaceSettings } from "../../settings/profile";
+import type { ActionBarLayout } from "../../action-bar/action-bar-layout";
+import type { SessionActionCatalog } from "../../game-actions/action-catalog";
 import { buildStatusMetrics } from "../../status-metrics";
 import { textAttributeClass } from "../../text-styling";
 import {
@@ -33,8 +35,13 @@ import {
 } from "../PermanentInventoryPanel";
 import { GameHudLayout } from "./GameHudLayout";
 import { StatusArea } from "./StatusArea";
+import { ActionDock } from "./ActionDock";
 
 interface GameTerminalProps {
+  actionBarLayout: ActionBarLayout;
+  actionBarStyle: InterfaceSettings["actionBarStyle"];
+  actionBlocked: boolean;
+  actionCatalog: SessionActionCatalog | null;
   clipCenter: GameSnapshot["clipCenter"];
   commandInput: boolean;
   cursor: GameSnapshot["cursor"];
@@ -58,6 +65,7 @@ interface GameTerminalProps {
   onInspectLeave?(key?: string): void;
   onInventoryCollapsedChange(collapsed: boolean): void;
   onMapRendererFallback?(reason: TileRendererFallbackReason): void;
+  onActionBarLayoutChange?(layout: ActionBarLayout): void;
   onPrimaryClick(origin: MapInteractionOrigin): void;
   permanentInventory: GameSnapshot["permanentInventory"];
   permanentInventoryCollapsed: boolean;
@@ -70,6 +78,10 @@ interface GameTerminalProps {
 
 /** Render the active terminal while keeping browser overlays outside its inert tree. */
 export function GameTerminal({
+  actionBarLayout,
+  actionBarStyle,
+  actionBlocked,
+  actionCatalog,
   clipCenter,
   commandInput,
   cursor,
@@ -93,6 +105,7 @@ export function GameTerminal({
   onInspectLeave,
   onInventoryCollapsedChange,
   onMapRendererFallback,
+  onActionBarLayoutChange,
   onPrimaryClick,
   permanentInventory,
   permanentInventoryCollapsed,
@@ -122,6 +135,39 @@ export function GameTerminal({
       />
     )
     : null;
+  const statusArea = (
+    <StatusArea
+      informationLevel={informationLevel}
+      metrics={statusMetrics}
+      onInspect={onInspect}
+      onInspectLeave={onInspectLeave}
+    />
+  );
+  const inputArea = <InputArea request={inputRequest} />;
+  const originalStatus = actionBarStyle === "original"
+    ? (
+      <div
+        className="nh-hud-status-region"
+        data-hud-region="status"
+        data-overflow-owner="status"
+      >
+        {statusArea}
+        {inputArea}
+      </div>
+    )
+    : null;
+  const actionDock = actionBarStyle === "blisshack"
+    ? (
+      <ActionDock
+        blocked={actionBlocked}
+        catalog={actionCatalog}
+        input={inputArea}
+        layout={actionBarLayout}
+        onLayoutChange={onActionBarLayoutChange}
+        status={statusArea}
+      />
+    )
+    : null;
 
   return (
     <section
@@ -130,6 +176,8 @@ export function GameTerminal({
       inert={inert}
     >
       <GameHudLayout
+        actionBarStyle={actionBarStyle}
+        actionSlot={actionDock}
         inventory={inventory}
         inventoryCollapsed={permanentInventoryCollapsed}
         map={(
@@ -156,21 +204,7 @@ export function GameTerminal({
           <MessageArea historyLines={historyLines} messages={messages} />
         )}
         position={permanentInventoryPosition}
-        status={(
-          <div
-            className="nh-hud-status-region"
-            data-hud-region="status"
-            data-overflow-owner="status"
-          >
-            <StatusArea
-              informationLevel={informationLevel}
-              metrics={statusMetrics}
-              onInspect={onInspect}
-              onInspectLeave={onInspectLeave}
-            />
-            <InputArea request={inputRequest} />
-          </div>
-        )}
+        status={originalStatus}
       />
     </section>
   );

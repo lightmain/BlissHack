@@ -1,7 +1,11 @@
 import type { ReactNode } from "react";
-import type { PermanentInventoryPosition } from "../../settings/profile";
+import type {
+  ActionBarStyle,
+  PermanentInventoryPosition,
+} from "../../settings/profile";
 
 interface GameHudLayoutProps {
+  actionBarStyle: ActionBarStyle;
   actionSlot?: ReactNode;
   inventory: ReactNode;
   inventoryCollapsed: boolean;
@@ -17,6 +21,7 @@ interface GameHudLayoutProps {
  * @returns the stable full-screen HUD grid.
  */
 export function GameHudLayout({
+  actionBarStyle,
   actionSlot,
   inventory,
   inventoryCollapsed,
@@ -29,6 +34,7 @@ export function GameHudLayout({
     <div
       className={`nh-hud-layout nh-hud-layout-${position}`}
       data-has-inventory={inventory ? "true" : "false"}
+      data-action-bar-style={actionBarStyle}
       data-inventory-collapsed={inventoryCollapsed ? "true" : "false"}
       data-inventory-position={position}
       data-layout-owner="GameHudLayout"

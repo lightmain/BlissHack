@@ -35,6 +35,10 @@ import {
   validateProfile,
   type BlissHackProfile,
 } from "../settings/profile";
+import {
+  validateActionBarLayout,
+  type ActionBarLayout,
+} from "../action-bar/action-bar-layout";
 import { runtimeSettingsFromProfile } from "../settings/runtime-settings-protocol";
 import type { ProfileLoadStatus } from "../settings/profile-store";
 import {
@@ -159,6 +163,7 @@ export function GameScreen({
     () => profileWithRuntimeSettings(profile, snapshot.runtimeSettings),
     [profile, snapshot.runtimeSettings],
   );
+  const actionCatalog = currentActionCatalog(moduleId, sessionId);
   const actionController = useMemo(
     () => createGameActionController({
       scope: { moduleId, sessionId },
@@ -462,6 +467,23 @@ export function GameScreen({
   }
 
   /**
+   * Persist an action bar layout without entering the WASM runtime.
+   * @param layout - complete validated action bar layout.
+   * @returns nothing; persistence completion is owned by the profile provider.
+   */
+  function setActionBarLayout(layout: ActionBarLayout): void {
+    void onApplyProfile(validateProfile({
+      ...gameProfile,
+      interface: {
+        ...gameProfile.interface,
+        actionBarLayout: validateActionBarLayout(layout),
+      },
+    })).catch(() => {
+      // Keep the current profile when browser persistence rejects the update.
+    });
+  }
+
+  /**
    * Return keyboard ownership to the game when its non-browser UI is clicked.
    * @param event - mouse event captured by the active game shell.
    */
@@ -665,6 +687,17 @@ export function GameScreen({
         />
       ) : (
         <GameTerminal
+          actionBarLayout={settings.actionBarLayout}
+          actionBarStyle={settings.actionBarStyle}
+          actionBlocked={
+            readOnly
+            || !snapshot.commandInput
+            || snapshot.modal !== null
+            || pauseView !== null
+            || actionState.intent !== null
+            || inventoryDragState.status !== "idle"
+          }
+          actionCatalog={actionCatalog}
           clipCenter={snapshot.clipCenter}
           commandInput={snapshot.commandInput}
           cursor={snapshot.cursor}
@@ -679,6 +712,8 @@ export function GameScreen({
             settings.terminalFontSize,
             settings.messageHistoryLines,
             settings.mapRenderer,
+            settings.actionBarStyle,
+            settings.actionBarLayout.rows,
           ].join(":")}
           map={snapshot.map}
           mapRenderer={settings.mapRenderer}
@@ -692,6 +727,7 @@ export function GameScreen({
           onInspectLeave={handleInspectLeave}
           onInventoryCollapsedChange={setInventoryCollapsed}
           onMapRendererFallback={onMapRendererFallback}
+          onActionBarLayoutChange={setActionBarLayout}
           onPrimaryClick={handlePrimaryClick}
           permanentInventory={snapshot.permanentInventory}
           permanentInventoryCollapsed={settings.permanentInventoryCollapsed}
@@ -755,6 +791,23 @@ export function GameScreen({
       )}
     </main>
   );
+}
+
+/**
+ * Decode the copied action catalog for the current render and session owner.
+ * @param moduleId - module generation owning the catalog.
+ * @param sessionId - active session owning the command identifiers.
+ * @returns a validated session catalog, or null before publication.
+ */
+function currentActionCatalog(moduleId: string, sessionId: string) {
+  try {
+    return decodeActionCatalog(
+      globalThis.nethackGlobal?.actionCatalog,
+      { moduleId, sessionId },
+    );
+  } catch {
+    return null;
+  }
 }
 
 /**
