@@ -454,4 +454,38 @@ describe("stage-two .bhactions format", () => {
       },
     ]);
   });
+
+  it("reports divider-only changes through section widths", () => {
+    const current = cloneLayout();
+    const incoming = cloneLayout();
+    incoming.all[0].columns = 4;
+
+    expect(requireApi().diffActionBarLayouts(current, incoming)).toEqual([
+      {
+        path: "columns",
+        label: "Section widths",
+        current: "Common 2, Gear 3, Magic 3, Items 3",
+        incoming: "Common 4, Gear 3, Magic 3, Items 3",
+      },
+    ]);
+  });
+
+  it("distinguishes equal-count slot replacements in the diff text", () => {
+    const current = cloneLayout();
+    const incoming = cloneLayout();
+    incoming.categories.common[0] = "future-action";
+
+    const differences = requireApi().diffActionBarLayouts(current, incoming);
+
+    expect(differences).toHaveLength(1);
+    expect(differences[0]).toMatchObject({
+      path: "slots",
+      label: "Slots",
+    });
+    expect(differences[0].current).not.toBe(differences[0].incoming);
+    expect(differences[0].current).toContain("Common slot 1: eat");
+    expect(differences[0].incoming).toContain(
+      "Common slot 1: future-action",
+    );
+  });
 });

@@ -1,9 +1,17 @@
+import {
+  createDefaultActionBarLayout,
+  validateActionBarLayout,
+  type ActionBarLayout,
+} from "../action-bar/action-bar-layout";
+
 /** Current browser and export schema version for BlissHack settings. */
-export const PROFILE_SCHEMA_VERSION = 3;
+export const PROFILE_SCHEMA_VERSION = 4;
 /** Oldest profile schema accepted for migration. */
 export const LEGACY_PROFILE_SCHEMA_VERSION = 1;
+/** Intermediate profile schema which introduced the map renderer. */
+export const PROFILE_SCHEMA_VERSION_V2 = 2;
 /** Direct predecessor accepted for migration. */
-export const PREVIOUS_PROFILE_SCHEMA_VERSION = 2;
+export const PREVIOUS_PROFILE_SCHEMA_VERSION = 3;
 /** Maximum accepted size of an imported profile document. */
 export const PROFILE_IMPORT_MAX_BYTES = 1024 * 1024;
 
@@ -18,6 +26,9 @@ export type EndgameStyle = (typeof ENDGAME_STYLES)[number];
 
 export const CHARACTER_SETUP_STYLES = ["original", "blisshack"] as const;
 export type CharacterSetupStyle = (typeof CHARACTER_SETUP_STYLES)[number];
+
+export const ACTION_BAR_STYLES = ["original", "blisshack"] as const;
+export type ActionBarStyle = (typeof ACTION_BAR_STYLES)[number];
 
 export const TERMINAL_FONT_SIZES = ["small", "medium", "large"] as const;
 export type TerminalFontSize = (typeof TERMINAL_FONT_SIZES)[number];
@@ -76,7 +87,12 @@ export interface InterfaceSettingsV3 extends InterfaceSettingsV2 {
   characterSetupStyle: CharacterSetupStyle;
 }
 
-export type InterfaceSettings = InterfaceSettingsV3;
+export interface InterfaceSettingsV4 extends InterfaceSettingsV3 {
+  actionBarStyle: ActionBarStyle;
+  actionBarLayout: ActionBarLayout;
+}
+
+export type InterfaceSettings = InterfaceSettingsV4;
 
 export type PickupTypesV1 =
   | { mode: "all" }
@@ -113,14 +129,20 @@ export interface BlissHackProfileV3 {
   nethack: NetHackSettingsV1;
 }
 
-export type BlissHackProfile = BlissHackProfileV3;
+export interface BlissHackProfileV4 {
+  schemaVersion: 4;
+  interface: InterfaceSettingsV4;
+  nethack: NetHackSettingsV1;
+}
 
-export interface BlissHackProfileExportV3 extends BlissHackProfileV3 {
+export type BlissHackProfile = BlissHackProfileV4;
+
+export interface BlissHackProfileExportV4 extends BlissHackProfileV4 {
   productVersion: string;
   exportedAt: string;
 }
 
-export type BlissHackProfileExport = BlissHackProfileExportV3;
+export type BlissHackProfileExport = BlissHackProfileExportV4;
 
 export type ProfileFormatErrorCode =
   | "invalid-json"
@@ -142,6 +164,7 @@ export class ProfileFormatError extends Error {
 
 type SupportedProfileSchemaVersion =
   | typeof LEGACY_PROFILE_SCHEMA_VERSION
+  | typeof PROFILE_SCHEMA_VERSION_V2
   | typeof PREVIOUS_PROFILE_SCHEMA_VERSION
   | typeof PROFILE_SCHEMA_VERSION;
 
@@ -154,8 +177,9 @@ const PROFILE_DOCUMENT_MIGRATORS: Record<
   ProfileDocumentMigrator
 > = {
   [LEGACY_PROFILE_SCHEMA_VERSION]: migrateProfileV1Document,
-  [PREVIOUS_PROFILE_SCHEMA_VERSION]: migrateProfileV2Document,
-  [PROFILE_SCHEMA_VERSION]: validateProfileV3Document,
+  [PROFILE_SCHEMA_VERSION_V2]: migrateProfileV2Document,
+  [PREVIOUS_PROFILE_SCHEMA_VERSION]: migrateProfileV3Document,
+  [PROFILE_SCHEMA_VERSION]: validateProfileV4Document,
 };
 
 /** Return a fresh profile so callers cannot mutate shared defaults. */
@@ -172,6 +196,8 @@ export function createDefaultProfile(): BlissHackProfile {
       informationLevel: "original",
       endgameStyle: "original",
       characterSetupStyle: "original",
+      actionBarStyle: "original",
+      actionBarLayout: createDefaultActionBarLayout(),
     },
     nethack: {
       tutorial: true,
@@ -208,31 +234,63 @@ export function validateProfile(value: unknown): BlissHackProfile {
   return migrateProfileDocument(value);
 }
 
-/** Migrate a strict schema v1 document to the current profile. */
+/**
+ * Migrate a strict schema-v1 document to the current profile.
+ * @param profile - untrusted profile object after root-key validation.
+ * @returns a detached schema-v4 profile.
+ */
 function migrateProfileV1Document(
   profile: Record<string, unknown>,
 ): BlissHackProfile {
   const v2: BlissHackProfileV2 = {
-    schemaVersion: PREVIOUS_PROFILE_SCHEMA_VERSION,
+    schemaVersion: PROFILE_SCHEMA_VERSION_V2,
     interface: migrateInterfaceSettingsV1(profile.interface),
     nethack: validateNetHackSettings(profile.nethack),
   };
   return migrateProfileV2Document(v2 as unknown as Record<string, unknown>);
 }
 
-/** Migrate one strict schema v2 document by adding v3 presentation defaults. */
+/**
+ * Migrate a strict schema-v2 document through the v3 presentation defaults.
+ * @param profile - untrusted profile object after root-key validation.
+ * @returns a detached schema-v4 profile.
+ */
 function migrateProfileV2Document(
+  profile: Record<string, unknown>,
+): BlissHackProfile {
+  const v3: BlissHackProfileV3 = {
+    schemaVersion: PREVIOUS_PROFILE_SCHEMA_VERSION,
+    interface: migrateInterfaceSettingsV2(profile.interface),
+    nethack: validateNetHackSettings(profile.nethack),
+  };
+  return migrateProfileV3Document(v3 as unknown as Record<string, unknown>);
+}
+
+/**
+ * Migrate a strict schema-v3 document by adding action bar defaults.
+ * @param profile - untrusted profile object after root-key validation.
+ * @returns a detached schema-v4 profile.
+ */
+function migrateProfileV3Document(
   profile: Record<string, unknown>,
 ): BlissHackProfile {
   return {
     schemaVersion: PROFILE_SCHEMA_VERSION,
-    interface: migrateInterfaceSettingsV2(profile.interface),
+    interface: {
+      ...validateInterfaceSettingsV3(profile.interface),
+      actionBarStyle: "original",
+      actionBarLayout: createDefaultActionBarLayout(),
+    },
     nethack: validateNetHackSettings(profile.nethack),
   };
 }
 
-/** Validate a strict current-schema document and detach nested values. */
-function validateProfileV3Document(
+/**
+ * Validate a strict current-schema document and detach nested values.
+ * @param profile - untrusted profile object after root-key validation.
+ * @returns a detached schema-v4 profile.
+ */
+function validateProfileV4Document(
   profile: Record<string, unknown>,
 ): BlissHackProfile {
   return {
@@ -364,6 +422,8 @@ export function validateInterfaceSettings(
       "informationLevel",
       "endgameStyle",
       "characterSetupStyle",
+      "actionBarStyle",
+      "actionBarLayout",
     ],
     "interface",
   );
@@ -396,6 +456,9 @@ export function validateInterfaceSettings(
   if (!isOneOf(settings.characterSetupStyle, CHARACTER_SETUP_STYLES)) {
     throw invalidProfile("interface.characterSetupStyle is invalid");
   }
+  if (!isOneOf(settings.actionBarStyle, ACTION_BAR_STYLES)) {
+    throw invalidProfile("interface.actionBarStyle is invalid");
+  }
 
   return {
     mapRenderer: settings.mapRenderer,
@@ -407,6 +470,8 @@ export function validateInterfaceSettings(
     informationLevel: settings.informationLevel,
     endgameStyle: settings.endgameStyle,
     characterSetupStyle: settings.characterSetupStyle,
+    actionBarStyle: settings.actionBarStyle,
+    actionBarLayout: validateActionBarLayoutForProfile(settings.actionBarLayout),
   };
 }
 
@@ -439,13 +504,77 @@ function migrateInterfaceSettingsV1(value: unknown): InterfaceSettingsV2 {
  * @param value - persisted or imported v2 interface.
  * @returns migrated v3 interface settings.
  */
-function migrateInterfaceSettingsV2(value: unknown): InterfaceSettings {
+function migrateInterfaceSettingsV2(value: unknown): InterfaceSettingsV3 {
   return {
     ...validateInterfaceSettingsV2(value),
     informationLevel: "original",
     endgameStyle: "original",
     characterSetupStyle: "original",
   };
+}
+
+/**
+ * Validate and detach the historical v3 interface shape.
+ * @param value - persisted or imported v3 interface value.
+ * @returns detached v3 interface settings.
+ */
+function validateInterfaceSettingsV3(value: unknown): InterfaceSettingsV3 {
+  const settings = requireRecord(value, "interface");
+  assertExactKeys(
+    settings,
+    [
+      "mapRenderer",
+      "terminalFontSize",
+      "messageHistoryLines",
+      "followPlayer",
+      "permanentInventoryPosition",
+      "permanentInventoryCollapsed",
+      "informationLevel",
+      "endgameStyle",
+      "characterSetupStyle",
+    ],
+    "interface",
+  );
+  const v2 = validateInterfaceSettingsV2({
+    mapRenderer: settings.mapRenderer,
+    terminalFontSize: settings.terminalFontSize,
+    messageHistoryLines: settings.messageHistoryLines,
+    followPlayer: settings.followPlayer,
+    permanentInventoryPosition: settings.permanentInventoryPosition,
+    permanentInventoryCollapsed: settings.permanentInventoryCollapsed,
+  });
+  if (!isOneOf(settings.informationLevel, INFORMATION_LEVELS)) {
+    throw invalidProfile("interface.informationLevel is invalid");
+  }
+  if (!isOneOf(settings.endgameStyle, ENDGAME_STYLES)) {
+    throw invalidProfile("interface.endgameStyle is invalid");
+  }
+  if (!isOneOf(settings.characterSetupStyle, CHARACTER_SETUP_STYLES)) {
+    throw invalidProfile("interface.characterSetupStyle is invalid");
+  }
+  return {
+    ...v2,
+    informationLevel: settings.informationLevel,
+    endgameStyle: settings.endgameStyle,
+    characterSetupStyle: settings.characterSetupStyle,
+  };
+}
+
+/**
+ * Convert layout validation failures into the profile error contract.
+ * @param value - untrusted embedded action bar layout.
+ * @returns a detached validated layout.
+ */
+function validateActionBarLayoutForProfile(value: unknown): ActionBarLayout {
+  try {
+    return validateActionBarLayout(value);
+  } catch (error) {
+    throw invalidProfile(
+      error instanceof Error
+        ? `interface.${error.message}`
+        : "interface.actionBarLayout is invalid",
+    );
+  }
 }
 
 /**
@@ -594,6 +723,7 @@ function parseJson(json: string): unknown {
 function profileSchemaVersion(value: unknown): SupportedProfileSchemaVersion {
   if (
     value !== LEGACY_PROFILE_SCHEMA_VERSION
+    && value !== PROFILE_SCHEMA_VERSION_V2
     && value !== PREVIOUS_PROFILE_SCHEMA_VERSION
     && value !== PROFILE_SCHEMA_VERSION
   ) {

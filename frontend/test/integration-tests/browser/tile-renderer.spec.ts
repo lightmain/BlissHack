@@ -19,7 +19,7 @@ import {
 } from "./helpers/map-viewport-state";
 
 const DIAGNOSTIC_STORAGE_KEY = "blisshack.diagnostics.v1";
-const PROFILE_STORAGE_KEY = "blisshack.profile.v3";
+const PROFILE_STORAGE_KEY = "blisshack.profile.v4";
 
 interface TileAssetRequestCounts {
   manifest: number;

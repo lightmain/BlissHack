@@ -7,9 +7,11 @@ import {
 } from "./profile";
 
 /** Current browser-local key used for persisted BlissHack settings. */
-export const PROFILE_STORAGE_KEY = "blisshack.profile.v3";
+export const PROFILE_STORAGE_KEY = "blisshack.profile.v4";
 /** Direct predecessor retained for in-memory migration and explicit cleanup. */
-export const PREVIOUS_PROFILE_STORAGE_KEY = "blisshack.profile.v2";
+export const PREVIOUS_PROFILE_STORAGE_KEY = "blisshack.profile.v3";
+/** Schema-v2 key retained for in-memory migration and explicit cleanup. */
+export const PROFILE_STORAGE_KEY_V2 = "blisshack.profile.v2";
 /** Oldest profile key retained for in-memory migration and explicit cleanup. */
 export const LEGACY_PROFILE_STORAGE_KEY = "blisshack.profile.v1";
 
@@ -73,6 +75,9 @@ export function createProfileStore(
           raw = storage.getItem(PREVIOUS_PROFILE_STORAGE_KEY);
         }
         if (raw === null) {
+          raw = storage.getItem(PROFILE_STORAGE_KEY_V2);
+        }
+        if (raw === null) {
           raw = storage.getItem(LEGACY_PROFILE_STORAGE_KEY);
         }
       } catch {
@@ -114,6 +119,7 @@ export function createProfileStore(
       }
       storage.removeItem(PROFILE_STORAGE_KEY);
       storage.removeItem(PREVIOUS_PROFILE_STORAGE_KEY);
+      storage.removeItem(PROFILE_STORAGE_KEY_V2);
       storage.removeItem(LEGACY_PROFILE_STORAGE_KEY);
       return createDefaultProfile();
     },

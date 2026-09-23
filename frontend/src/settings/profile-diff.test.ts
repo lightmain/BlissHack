@@ -103,6 +103,19 @@ describe("profile differences", () => {
     });
   });
 
+  it("detects action bar changes whose summaries are identical", () => {
+    const current = createDefaultProfile();
+    const incoming = structuredClone(current);
+    incoming.interface.actionBarLayout.categories.common[0] = "future-action";
+
+    expect(diffProfiles(current, incoming)).toContainEqual({
+      path: "interface.actionBarLayout",
+      label: "Action bar layout",
+      current: "2 rows, All, locked, 104 actions, 0 empty",
+      incoming: "2 rows, All, locked, 104 actions, 0 empty",
+    });
+  });
+
   it("reports changed fields in stable Settings order", () => {
     const current = createDefaultProfile();
     const incoming = createDefaultProfile();

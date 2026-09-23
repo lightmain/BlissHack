@@ -58,7 +58,7 @@ test("exports, clears, and restores a complete BlissHack backup", async ({
     format: "blisshack-backup",
     schemaVersion: 2,
     profile: {
-      schemaVersion: 3,
+      schemaVersion: 4,
       interface: {
         mapRenderer: "tiles",
         terminalFontSize: "large",
@@ -103,6 +103,8 @@ test("exports, clears, and restores a complete BlissHack backup", async ({
     localStorage.getItem("blisshack.profile.v1"))).toBeNull();
   expect(await page.evaluate(() =>
     localStorage.getItem("blisshack.profile.v2"))).toBeNull();
+  expect(await page.evaluate(() =>
+    localStorage.getItem("blisshack.profile.v4"))).toBeNull();
   expect(await page.evaluate(() =>
     localStorage.getItem("blisshack.profile.v3"))).toBeNull();
 

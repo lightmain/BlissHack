@@ -2,6 +2,7 @@ import type {
   BlissHackProfile,
   PickupTypesV1,
 } from "./profile";
+import { summarizeActionBarSlots } from "../action-bar/action-bar-layout";
 
 export interface ProfileDifference {
   path: string;
@@ -44,6 +45,28 @@ const PROFILE_FIELDS: readonly FieldDefinition[] = [
     label: "Character setup style",
     value: (profile) => profile.interface.characterSetupStyle,
     format: (value) => value === "blisshack" ? "BlissHack" : "Original",
+  },
+  {
+    path: "interface.actionBarStyle",
+    label: "Action bar",
+    value: (profile) => profile.interface.actionBarStyle,
+    format: (value) => value === "blisshack" ? "BlissHack" : "Original",
+  },
+  {
+    path: "interface.actionBarLayout",
+    label: "Action bar layout",
+    value: (profile) => profile.interface.actionBarLayout,
+    format: (value) => {
+      const layout = value as BlissHackProfile["interface"]["actionBarLayout"];
+      const category = layout.activeCategory[0].toUpperCase()
+        + layout.activeCategory.slice(1);
+      return [
+        `${layout.rows} rows`,
+        category,
+        layout.locked ? "locked" : "unlocked",
+        summarizeActionBarSlots(layout),
+      ].join(", ");
+    },
   },
   {
     path: "interface.terminalFontSize",
@@ -137,7 +160,7 @@ const PROFILE_FIELDS: readonly FieldDefinition[] = [
   },
 ];
 
-/** Compare every V1 setting in stable UI order. */
+/** Compare every current profile setting in stable UI order. */
 export function diffProfiles(
   current: BlissHackProfile,
   incoming: BlissHackProfile,
@@ -145,7 +168,7 @@ export function diffProfiles(
   return PROFILE_FIELDS.flatMap((field) => {
     const currentValue = field.value(current);
     const incomingValue = field.value(incoming);
-    return field.format(currentValue) === field.format(incomingValue)
+    return JSON.stringify(currentValue) === JSON.stringify(incomingValue)
       ? []
       : [{
         path: field.path,
