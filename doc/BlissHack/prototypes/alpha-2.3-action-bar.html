@@ -27,8 +27,10 @@
       --green: #7ddc8c;
       --cyan: #55b6b6;
       --red: #d85c55;
-      --slot-size: 48px;
+      --slot-target-size: 48px;
+      --slot-size: var(--slot-target-size);
       --slot-gap: 4px;
+      --tool-button-size: 22px;
       --row-count: 2;
       --dock-height: 142px;
     }
@@ -452,7 +454,7 @@
     .action-grid {
       display: flex;
       gap: 0;
-      width: max-content;
+      width: 100%;
       min-width: 100%;
       height: calc(
         var(--row-count) * var(--slot-size)
@@ -476,8 +478,6 @@
     }
 
     .action-section.single {
-      flex-basis: auto;
-      width: auto;
       overflow: visible;
     }
 
@@ -665,23 +665,26 @@
     }
 
     .dock-tools {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      grid-template-rows: 1fr 1fr;
-      gap: 3px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      align-items: center;
+      gap: 0;
       min-width: 0;
+      min-height: 94px;
       border-left: 1px solid var(--line);
       padding-left: 5px;
     }
 
     .tool-button {
       display: grid;
+      flex: 0 0 var(--tool-button-size);
       place-items: center;
-      min-width: 0;
-      min-height: 0;
+      width: var(--tool-button-size);
+      height: var(--tool-button-size);
       padding: 0;
       border: 1px solid #49514f;
-      border-radius: 3px;
+      border-radius: 50%;
       background: #1b211f;
       color: #c5cbc6;
       cursor: pointer;
@@ -706,12 +709,7 @@
     }
 
     .all-actions-trigger {
-      grid-column: 2;
       font-size: 16px;
-    }
-
-    .lock-button {
-      grid-column: 1;
     }
 
     .all-actions-panel {
@@ -945,7 +943,7 @@
 
     @media (max-width: 1000px) {
       :root {
-        --slot-size: 43px;
+        --slot-target-size: 43px;
       }
 
       .nh-hud-layout {
@@ -971,7 +969,7 @@
 
     @media (max-height: 740px) {
       :root {
-        --slot-size: 41px;
+        --slot-target-size: 41px;
       }
 
       .nh-messages {
@@ -1243,6 +1241,10 @@
                 id="action-grid"
                 data-action-grid
                 data-action-drop-zone="reorder"
+                data-last-section-fill="empty-slots"
+                data-column-fit="available-width-integer"
+                data-slot-sizing="dynamic"
+                data-grid-width="complete-slots"
               >
                 <div
                   class="section-divider"
@@ -1997,7 +1999,7 @@
     function moveDivider(event) {
       if (!dividerDrag || dividerDrag.pointerId !== event.pointerId) return;
       const step = parseFloat(
-        getComputedStyle(document.documentElement).getPropertyValue("--slot-size"),
+        getComputedStyle(dock).getPropertyValue("--slot-size"),
       ) + 4;
       const deltaColumns = Math.round(
         (event.clientX - dividerDrag.startX) / step,
@@ -2052,6 +2054,62 @@
     }
 
     /**
+     * Fit an integer number of complete slot columns to the grid viewport.
+     * @param {number} requiredColumns minimum columns needed by the layout.
+     * @param {number} sectionCount visible section count.
+     * @returns {{columns: number, slotSize: number, width: number}} grid metrics.
+     */
+    function calculateGridFit(requiredColumns, sectionCount) {
+      const viewportWidth = actionGrid.parentElement.getBoundingClientRect().width;
+      const rootStyle = getComputedStyle(document.documentElement);
+      const targetSize = parseFloat(
+        rootStyle.getPropertyValue("--slot-target-size"),
+      );
+      const gap = parseFloat(rootStyle.getPropertyValue("--slot-gap"));
+      const dividerWidth = 17;
+      const dividerSpace = Math.max(0, sectionCount - 1) * dividerWidth;
+      const fittedColumns = Math.max(
+        1,
+        Math.floor(
+          (viewportWidth - dividerSpace + sectionCount * gap)
+          / (targetSize + gap),
+        ),
+      );
+      if (requiredColumns > fittedColumns) {
+        const fittedRequiredSize =
+          (viewportWidth
+            - dividerSpace
+            - (requiredColumns - sectionCount) * gap)
+          / requiredColumns;
+        if (fittedRequiredSize >= 32) {
+          return {
+            columns: requiredColumns,
+            slotSize: fittedRequiredSize,
+            width: viewportWidth,
+          };
+        }
+        return {
+          columns: requiredColumns,
+          slotSize: targetSize,
+          width:
+            requiredColumns * targetSize
+            + (requiredColumns - sectionCount) * gap
+            + dividerSpace,
+        };
+      }
+      const columns = Math.max(requiredColumns, fittedColumns);
+      return {
+        columns,
+        slotSize:
+          (viewportWidth
+            - dividerSpace
+            - (columns - sectionCount) * gap)
+          / columns,
+        width: viewportWidth,
+      };
+    }
+
+    /**
      * Render the selected category while retaining every occupied slot position.
      * @returns {void}
      */
@@ -2059,16 +2117,51 @@
       hideActionTooltip();
       document.documentElement.style.setProperty("--row-count", state.rows);
       dock.dataset.rowCount = String(state.rows);
+      const isCombined = state.activeCategory === "all";
+      const actions = isCombined
+        ? null
+        : state.layouts[state.activeCategory] || [];
+      const combinedFixedColumns = isCombined
+        ? state.layouts.all
+          .slice(0, -1)
+          .reduce((total, section) => total + section.columns, 0)
+        : 0;
+      const combinedLastSection = isCombined
+        ? state.layouts.all.at(-1)
+        : null;
+      const requiredColumns = isCombined
+        ? combinedFixedColumns + Math.max(
+          combinedLastSection.columns,
+          Math.ceil(combinedLastSection.actions.length / state.rows) + 1,
+        )
+        : Math.max(1, Math.ceil(actions.length / state.rows));
+      const sectionCount = isCombined ? state.layouts.all.length : 1;
+      const gridFit = calculateGridFit(requiredColumns, sectionCount);
+      dock.style.setProperty("--slot-size", `${gridFit.slotSize}px`);
+      actionGrid.style.width = `${gridFit.width}px`;
+      actionGrid.style.minWidth = `${gridFit.width}px`;
+      actionGrid.dataset.fittedColumns = String(gridFit.columns);
+      actionGrid.dataset.fittedSlotSize = gridFit.slotSize.toFixed(2);
       actionGrid.replaceChildren();
 
-      if (state.activeCategory === "all") {
+      if (isCombined) {
         state.layouts.all.forEach((sectionData, sectionIndex) => {
           const section = document.createElement("section");
           const grid = document.createElement("div");
-          const capacity = sectionData.columns * state.rows;
+          const isLastSection = sectionIndex === state.layouts.all.length - 1;
+          const columns = isLastSection
+            ? Math.max(
+              sectionData.columns,
+              gridFit.columns - combinedFixedColumns,
+            )
+            : sectionData.columns;
+          const capacity = columns * state.rows;
           section.className = "action-section";
-          section.style.setProperty("--section-columns", sectionData.columns);
+          section.style.setProperty("--section-columns", columns);
           section.dataset.actionSection = sectionData.category;
+          if (isLastSection) {
+            section.dataset.fillsRemainingColumns = "true";
+          }
           grid.className = "action-section-grid";
           for (let index = 0; index < capacity; index += 1) {
             grid.append(
@@ -2089,12 +2182,9 @@
       } else {
         const section = document.createElement("section");
         const grid = document.createElement("div");
-        const actions = state.layouts[state.activeCategory] || [];
-        const slotCount = Math.max(
-          state.rows,
-          Math.ceil(actions.length / state.rows) * state.rows,
-        );
+        const slotCount = gridFit.columns * state.rows;
         section.className = "action-section single";
+        section.style.setProperty("--section-columns", gridFit.columns);
         grid.className = "action-section-grid";
         for (let index = 0; index < slotCount; index += 1) {
           grid.append(
@@ -2632,7 +2722,7 @@
       }
     });
 
-    window.addEventListener("resize", updateDockHeight);
+    window.addEventListener("resize", renderDock);
     allActionsPanel.addEventListener("scroll", hideActionTooltip);
     document.querySelector(".action-grid-viewport").addEventListener(
       "scroll",

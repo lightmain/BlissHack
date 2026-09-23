@@ -210,6 +210,39 @@ test("places status left of a two-row dock with independent controls", (context)
   );
 });
 
+test("stacks four fixed circular dock controls with flexible spacing", (context) => {
+  if (!requirePrototype(context)) return;
+
+  const dockToolsMarkup = html.match(
+    /<div\b[^>]*\bclass=["'][^"']*\bdock-tools\b[^"']*["'][^>]*>([\s\S]*?)<\/div>/i,
+  )?.[1];
+  assert.ok(dockToolsMarkup, "prototype must expose the dock tools container");
+  assert.equal(
+    (dockToolsMarkup.match(/<button\b/gi) ?? []).length,
+    4,
+    "dock tools must contain exactly four buttons",
+  );
+
+  const dockToolsRule = html.match(/\.dock-tools\s*\{([^}]*)\}/i)?.[1];
+  assert.ok(dockToolsRule, "prototype must style .dock-tools");
+  assert.match(dockToolsRule, /\bdisplay:\s*flex\s*;/i);
+  assert.match(dockToolsRule, /\bflex-direction:\s*column\s*;/i);
+  assert.match(dockToolsRule, /\bjustify-content:\s*space-between\s*;/i);
+
+  const toolButtonRule = html.match(/\.tool-button\s*\{([^}]*)\}/i)?.[1];
+  assert.ok(toolButtonRule, "prototype must style .tool-button");
+  const width = toolButtonRule.match(/\bwidth:\s*([^;]+)\s*;/i)?.[1].trim();
+  const height = toolButtonRule.match(/\bheight:\s*([^;]+)\s*;/i)?.[1].trim();
+  assert.ok(width && height, "tool buttons must declare fixed width and height");
+  assert.equal(width, height, "tool buttons must have equal fixed dimensions");
+  assert.match(
+    width,
+    /^(?:\d+(?:\.\d+)?px|var\(\s*--[a-z0-9-]*tool[a-z0-9-]*size\s*\))$/i,
+    "tool button size must be a fixed pixel value or fixed tool-size variable",
+  );
+  assert.match(toolButtonRule, /\bborder-radius:\s*50%\s*;/i);
+});
+
 test("places the ordered category tags below the action grid", (context) => {
   if (!requirePrototype(context)) return;
 
@@ -239,6 +272,33 @@ test("defines draggable vertical grid-snapped dividers for the All layout", (con
     assert.equal(readAttribute(divider, "data-snap"), "grid");
     assert.equal(readAttribute(divider, "draggable"), "true");
   }
+});
+
+test("fills the final All section with complete slots across the available width", (context) => {
+  if (!requirePrototype(context)) return;
+
+  const [grid] = openingTagsWithAttribute("data-action-grid");
+  assert.ok(grid, "prototype must expose data-action-grid");
+  assert.equal(
+    readAttribute(grid, "data-last-section-fill"),
+    "empty-slots",
+    "the final All section must absorb remaining width with empty slots",
+  );
+  assert.equal(
+    readAttribute(grid, "data-column-fit"),
+    "available-width-integer",
+    "available width must resolve to an integer column count",
+  );
+  assert.equal(
+    readAttribute(grid, "data-slot-sizing"),
+    "dynamic",
+    "slot size must adapt to the available width",
+  );
+  assert.equal(
+    readAttribute(grid, "data-grid-width"),
+    "complete-slots",
+    "the fitted grid width must contain only complete slots",
+  );
 });
 
 test("catalog is exactly the 104 current non-directional WASM commands", async (context) => {
