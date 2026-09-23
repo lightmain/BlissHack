@@ -192,11 +192,12 @@ const glyphEvents = [];
 const statusFieldMetadataEvents = [];
 const statusUpdateEvents = [];
 const coreCommandResults = [];
+const publishedBoundaryGenerations = [];
 const menuSelections = [];
 const activeMenus = new Map();
 const activeWindows = new Map();
 let queuedRuntimeSettings = 0;
-let queuedCoreCommand = 0;
+let queuedCoreCommand = null;
 let queuedExtendedCommand = null;
 let activeCommandResponses = null;
 let activeModule = null;
@@ -211,10 +212,10 @@ const RUNTIME_SETTINGS_PERM_INVENT = 1 << 25;
 const RUNTIME_SETTINGS_PERMINV_ALL = 1 << 26;
 const RUNTIME_SETTINGS_PERMINV_FULL = 2 << 26;
 const RUNTIME_SETTINGS_PERMINV_MODE_MASK = 3 << 26;
-const CORE_COMMAND_VERSION = 1 << 28;
-const CORE_COMMAND_INVENTORY = 2;
-const CORE_COMMAND_DROP = 3;
-const CORE_COMMAND_RESERVED = (1 << 31) >>> 0;
+const CORE_COMMAND_VERSION = 2 << 28;
+const CORE_COMMAND_CATALOG = 2;
+const CORE_COMMAND_REQUEST_ITEM_MENU = 1 << 4;
+const CORE_COMMAND_UNKNOWN_BIT = (1 << 27) >>> 0;
 const MENU_BEHAVE_PERMINV = 1;
 const MENU_BEHAVE_STANDARD = 0;
 const PICK_ONE = 1;
@@ -236,6 +237,7 @@ const INTERNALCMD = 0x0040;
 const PREFIXCMD = 0x0200;
 const MOVEMENTCMD = 0x0400;
 const CMD_PARAM = 0x4000;
+const KNOWN_COMMAND_FLAGS = 0x7fff;
 const INPUT_STATE_OTHER = 0;
 const INPUT_STATE_COMMAND = 1;
 const INPUT_STATE_GETPOS = 2;
@@ -377,7 +379,7 @@ const EXPECTED_MOVEMENT_COMMAND_NAMES = [
 ];
 
 /**
- * Copy visible player commands from the current WASM extcmdlist.
+ * Copy all commands from the current WASM extcmdlist.
  * @param {object} module - initialized Emscripten module.
  * @returns {Array<{
  * sourceIndex: number,
@@ -385,9 +387,9 @@ const EXPECTED_MOVEMENT_COMMAND_NAMES = [
  * defaultKey: number,
  * flags: number,
  * }>}
- * visible commands in authoritative source order.
+ * commands in authoritative source order.
  */
-function readVisibleWasmCommands(module) {
+function readAllWasmCommands(module) {
   const listPtr = globalThis.nethackGlobal?.pointers?.extcmdlist ?? 0;
   if (listPtr === 0) return [];
   const commands = [];
@@ -399,9 +401,6 @@ function readVisibleWasmCommands(module) {
     const flags = Number(
       module.getValue(entryPtr + EXTCMD_FLAGS_OFFSET, "i32"),
     ) >>> 0;
-    if ((flags & (WIZMODECMD | CMD_NOT_AVAILABLE | INTERNALCMD)) !== 0) {
-      continue;
-    }
     commands.push({
       sourceIndex,
       name: module.UTF8ToString(textPtr),
@@ -412,6 +411,18 @@ function readVisibleWasmCommands(module) {
     });
   }
   return commands;
+}
+
+/**
+ * Copy player-visible commands from the current WASM extcmdlist.
+ * @param {object} module - initialized Emscripten module.
+ * @returns {ReturnType<typeof readAllWasmCommands>} visible commands.
+ */
+function readVisibleWasmCommands(module) {
+  return readAllWasmCommands(module).filter(
+    ({ flags }) =>
+      (flags & (WIZMODECMD | CMD_NOT_AVAILABLE | INTERNALCMD)) === 0,
+  );
 }
 
 /**
@@ -616,6 +627,93 @@ async function runExtendedCommand(command, responses = {}) {
 }
 
 /**
+ * Encode one v2 catalog command as [header, requestNonce, argument].
+ * @param {number} sessionCommandId - current WASM extcmdlist index.
+ * @param {number} requestNonce - nonzero session-local request identity.
+ * @param {boolean} [requestItemMenu] - whether getobj should use a menu.
+ * @returns {[number, number, number]} exact protocol words.
+ */
+function catalogCommandPayload(
+  sessionCommandId,
+  requestNonce,
+  requestItemMenu = false,
+) {
+  return [
+    (
+      CORE_COMMAND_VERSION
+      | CORE_COMMAND_CATALOG
+      | (requestItemMenu ? CORE_COMMAND_REQUEST_ITEM_MENU : 0)
+    ) >>> 0,
+    requestNonce >>> 0,
+    sessionCommandId >>> 0,
+  ];
+}
+
+/**
+ * Compare command identities without coercing any protocol word.
+ * @param {number[]} left - first protocol tuple.
+ * @param {number[]} right - second protocol tuple.
+ * @returns {boolean} whether all three words match.
+ */
+function sameCoreCommandPayload(left, right) {
+  return left.length === 3
+    && right.length === 3
+    && left.every((word, index) => word === right[index]);
+}
+
+/**
+ * Queue one v2 request for the next real shim_get_nh_event boundary.
+ * @param {[number, number, number]} payload - exact protocol tuple.
+ * @param {object} [responses] - structured responses used by the command.
+ * @returns {{
+ * startIndex: number,
+ * boundaryGeneration: number,
+ * payload: [number, number, number],
+ * }} trace marker.
+ */
+function startCoreCommand(payload, responses = {}) {
+  if (!pendingInput || pendingInput.inputState !== INPUT_STATE_COMMAND) {
+    throw new Error("Cannot queue a core command outside command input");
+  }
+  if (
+    !Array.isArray(payload)
+    || payload.length !== 3
+    || !payload.every(
+      (word) =>
+        Number.isInteger(word) && word >= 0 && word <= 0xffffffff,
+    )
+  ) {
+    throw new Error("Core command payload must contain three uint32 words");
+  }
+  const marker = {
+    startIndex: callbackEvents.length,
+    boundaryGeneration: commandBoundaryGeneration,
+    payload: [...payload],
+  };
+  queuedCoreCommand = [...payload];
+  activeCommandResponses = {
+    ynResponses: [...(responses.ynResponses ?? [])],
+    unrestrictedYnResponses: [
+      ...(responses.unrestrictedYnResponses ?? []),
+    ],
+    menuResponses: [...(responses.menuResponses ?? [])],
+    menuItemGlyphs: [...(responses.menuItemGlyphs ?? [])],
+  };
+  resolvePendingInput(ESCAPE);
+  return marker;
+}
+
+/**
+ * Execute one v2 request and return at the next top-level boundary.
+ * @param {[number, number, number]} payload - exact protocol tuple.
+ * @param {object} [responses] - structured responses used by the command.
+ * @returns {Promise<object[]>} structured callback trace.
+ */
+async function runCoreCommand(payload, responses = {}) {
+  return finishExtendedCommand(startCoreCommand(payload, responses));
+}
+
+/**
  * Test whether a trace contains one callback type.
  * @param {object[]} trace - structured command trace.
  * @param {string} name - exact shim callback name.
@@ -755,18 +853,39 @@ async function blissCallback(name, ...args) {
       return undefined;
 
     case "shim_command_sync": {
-      const command = queuedCoreCommand;
-      queuedCoreCommand = 0;
-      return command;
+      const boundaryGeneration = Number(args[0]);
+      const requestPtr = Number(args[1]);
+      if (Number.isInteger(boundaryGeneration) && boundaryGeneration > 0) {
+        callbackEvent.commandBoundaryGeneration = boundaryGeneration;
+        publishedBoundaryGenerations.push(boundaryGeneration);
+      }
+      const payload = queuedCoreCommand;
+      queuedCoreCommand = null;
+      if (payload === null) return 0;
+      callbackEvent.payload = [...payload];
+      if (activeModule && Number.isInteger(requestPtr) && requestPtr > 0) {
+        activeModule.setValue(requestPtr, payload[0], "i32");
+        activeModule.setValue(requestPtr + 4, payload[1], "i32");
+        activeModule.setValue(requestPtr + 8, payload[2], "i32");
+        return 1;
+      }
+      // Keep the old scalar callback harmless so a stale runtime can finish
+      // and report the missing v2 behavior through assertions.
+      return 0;
     }
 
-    case "shim_command_result":
-      coreCommandResults.push({
-        payload: args[0] >>> 0,
-        success: Number(args[1]),
+    case "shim_command_result": {
+      const result = {
+        payload: [args[0] >>> 0, args[1] >>> 0, args[2] >>> 0],
+        success: Number(args[3]),
         eventIndex: eventCount,
-      });
+        boundaryGeneration: commandBoundaryGeneration,
+      };
+      callbackEvent.payload = [...result.payload];
+      callbackEvent.success = result.success;
+      coreCommandResults.push(result);
       return undefined;
+    }
 
     case "shim_nhgetch": {
       const inputState = Number(args[0]);
@@ -992,7 +1111,6 @@ async function run() {
   const cmdSource = readFileSync(CMD_SOURCE, "utf8");
   const hackSource = readFileSync(HACK_SOURCE, "utf8");
   const lockSource = readFileSync(LOCK_SOURCE, "utf8");
-  const doSource = readFileSync(DO_SOURCE, "utf8");
   const saveSource = readFileSync(SAVE_SOURCE, "utf8");
   const tileSource = readFileSync(TILE_SOURCE, "utf8");
   const libnhMainSource = readFileSync(LIBNH_MAIN_SOURCE, "utf8");
@@ -1003,6 +1121,10 @@ async function run() {
   const characterCatalogInit = cBlockAfter(
     libnhMainSource,
     /\njs_character_catalog_init\s*\(\s*void\s*\)\s*/,
+  );
+  const actionCatalogInit = cBlockAfter(
+    libnhMainSource,
+    /\njs_action_catalog_init\s*\(\s*void\s*\)\s*/,
   );
   assert(
     /\binitoptions\s*\(\s*\)\s*;\s*#ifdef __EMSCRIPTEN__\s*js_character_catalog_init\s*\(\s*\)\s*;/.test(
@@ -1025,6 +1147,22 @@ async function run() {
       && [...characterCatalogInit.matchAll(/\bmap_glyphinfo\s*\(/g)].length
         === 2,
     "character previews use the initialized authoritative glyph map",
+  );
+  assert(
+    /\binitoptions\s*\(\s*\)\s*;[\s\S]*?\bjs_action_catalog_init\s*\(\s*\)\s*;/.test(
+      libnhMainSource,
+    )
+      && actionCatalogInit !== null
+      && /\bextcmdlist\b/.test(actionCatalogInit)
+      && /\bWIZMODECMD\b/.test(actionCatalogInit)
+      && /\bCMD_NOT_AVAILABLE\b/.test(actionCatalogInit)
+      && /\bINTERNALCMD\b/.test(actionCatalogInit)
+      && /\bMOVEMENTCMD\b/.test(actionCatalogInit)
+      && /\bnethackGlobal\.actionCatalog\b/.test(libnhMainSource)
+      && /\bschemaVersion\s*:\s*1\b/.test(libnhMainSource)
+      && /\bsessionCommandId\b/.test(libnhMainSource)
+      && /\bdefaultKey\b/.test(libnhMainSource),
+    "libnh copies a versioned filtered action catalog after options setup",
   );
   assert(
     getdirBlock !== null
@@ -1090,93 +1228,53 @@ async function run() {
     winshimSource,
     /\nvoid\s*\nshim_get_nh_event\s*\([^;{}]*\)\s*/,
   );
-  const allowlistedCommands = commandQueue === null
-    ? []
-    : [...commandQueue.matchAll(
-      /\bcase\s+(SHIM_COMMAND_[A-Z_]+)\s*:/g,
-    )].map((match) => match[1]);
   assert(
-    /#define\s+SHIM_COMMAND_VERSION\s+1U\b/.test(winshimSource)
+    /#define\s+SHIM_COMMAND_VERSION\s+2U\b/.test(winshimSource)
       && /#define\s+SHIM_COMMAND_VERSION_SHIFT\s+28\b/.test(winshimSource)
       && /#define\s+SHIM_COMMAND_VERSION_MASK\s+\(7U\s*<<\s*SHIM_COMMAND_VERSION_SHIFT\)/.test(
         winshimSource,
       ),
-    "winshim command protocol has the expected version field",
-  );
-  assert(
-    JSON.stringify(allowlistedCommands) === JSON.stringify([
-      "SHIM_COMMAND_CLICKLOOK",
-      "SHIM_COMMAND_INVENTORY",
-      "SHIM_COMMAND_DROP",
-    ])
-      && commandQueue !== null
-      && /\bname\s*=\s*"clicklook"\s*;/.test(commandQueue)
-      && /\bname\s*=\s*"inventory"\s*;/.test(commandQueue)
-      && /\bname\s*=\s*"drop"\s*;/.test(commandQueue)
-      && /\bdefault\s*:\s*return\s+FALSE\s*;/.test(commandQueue),
-    "winshim command protocol allowlists only clicklook, inventory, and drop",
+    "winshim command protocol uses the v2 version field",
   );
   assert(
     commandQueue !== null
-      && /\bpayload\s*&\s*~SHIM_COMMAND_DEFINED_MASK\b/.test(commandQueue)
+      && /\b(?:payload|header)\s*&\s*~SHIM_COMMAND_DEFINED_MASK\b/.test(
+        commandQueue,
+      )
       && /\bversion\s*!=\s*SHIM_COMMAND_VERSION\b/.test(commandQueue)
-      && /\bSHIM_COMMAND_CLICKLOOK\b[\s\S]*?\bisok\s*\(\s*\(coordxy\)\s*x\s*,\s*\(coordxy\)\s*y\s*\)/.test(
-        commandQueue,
-      )
-      && /\bSHIM_COMMAND_INVENTORY\b[\s\S]*?\bif\s*\(\s*x\s*\|\|\s*y\s*\)/.test(
-        commandQueue,
-      )
-      && /\bSHIM_COMMAND_DROP\b[\s\S]*?\bif\s*\(\s*x\s*\|\|\s*y\s*\)/.test(
-        commandQueue,
-      )
-      && /\bentry->flags\s*&\s*CMD_NOT_AVAILABLE\b/.test(commandQueue),
-    "winshim rejects reserved bits, incompatible versions, invalid coordinates,"
-      + " and unavailable commands",
-  );
-  assert(
-    commandQueue !== null
+      && /\b>=\s*extcmdlist_length\b/.test(commandQueue)
       && /\bextcmdlist\b/.test(commandQueue)
-      && /\bstrcmp\s*\(\s*entry->ef_txt\s*,\s*name\s*\)/.test(commandQueue)
+      && /\b!entry->ef_funct\b/.test(commandQueue)
+      && ["INTERNALCMD", "WIZMODECMD", "CMD_NOT_AVAILABLE", "CMD_PARAM"]
+        .every((flag) => commandQueue.includes(flag))
       && /\bcmdq_add_ec\s*\(\s*CQ_CANNED\s*,\s*entry->ef_funct\s*\)/.test(
         commandQueue,
       ),
-    "winshim resolves allowlisted names through authoritative command metadata",
-  );
-  assert(
-    /\{\s*'d'\s*,\s*"drop"[\s\S]*?\bdodrop\s*,\s*CMD_M_PREFIX\b/.test(
-      cmdSource,
-    )
-      && /\bif\s*\(\s*iflags\.menu_requested\s*\)\s*iflags\.force_invmenu\s*=\s*TRUE\s*;[\s\S]*?\bgetobj\s*\(\s*"drop"[\s\S]*?\biflags\.force_invmenu\s*=\s*save_force_invmenu\s*;/.test(
-        doSource,
-      )
-      && commandQueue !== null
-      && /\bcommand\s*==\s*SHIM_COMMAND_DROP\b[\s\S]*?\bcmdq_add_ec\s*\(\s*CQ_CANNED\s*,\s*do_reqmenu\s*\)[\s\S]*?\bcmdq_add_ec\s*\(\s*CQ_CANNED\s*,\s*entry->ef_funct\s*\)/.test(
-        commandQueue,
-      ),
-    "browser drop queues a native request-menu flow through dodrop",
+    "winshim v2 rejects unknown bits, versions, IDs, functions, and flags"
+      + " before queueing a catalog command through CQ_CANNED",
   );
   assert(
     commandSync !== null
-      && /\brequest\s*=\s*0\s*;/.test(commandSync)
-      && /\blocal_callback\s*\(\s*shim_callback_name\s*,\s*"shim_command_sync"\s*,[\s\S]*?"i"\s*,\s*NULL\s*\)/.test(
-        commandSync,
-      )
+      && /\bcommand_boundary_generation\b/.test(commandSync)
+      && /\bheader\b/.test(commandSync)
+      && /\brequest_nonce\b/.test(commandSync)
+      && /\bargument\b/.test(commandSync)
       && getNhEvent !== null
-      && /\bcommand\s*=\s*\(unsigned int\)\s*shim_command_sync\s*\(\s*\)\s*;[\s\S]*?\baccepted\s*=\s*shim_queue_command\s*\(\s*command\s*\)\s*;[\s\S]*?\bshim_command_result\s*\(\s*\(int\)\s*command\s*,\s*accepted\s*\?\s*1\s*:\s*0\s*\)\s*;/.test(
-        getNhEvent,
-      )
+      && [...getNhEvent.matchAll(/\bshim_command_sync\s*\(/g)].length === 1
+      && [...getNhEvent.matchAll(/\bshim_queue_command\s*\(/g)].length === 1
+      && [...getNhEvent.matchAll(/\bshim_command_result\s*\(/g)].length === 1
       && [...winshimSource.matchAll(/\bshim_queue_command\s*\(/g)].length === 2,
-    "winshim consumes at most one command only at shim_get_nh_event",
+    "one shim_get_nh_event boundary consumes and reports at most one request",
   );
   assert(
     commandResult !== null
-      && /void\s*\*args\[\]\s*=\s*\{\s*&request\s*,\s*&success\s*\}\s*;/.test(
-        commandResult,
-      )
-      && /\blocal_callback\s*\(\s*shim_callback_name\s*,\s*"shim_command_result"\s*,[\s\S]*?"vii"\s*,\s*args\s*\)/.test(
-        commandResult,
-      ),
-    "winshim reports the exact command payload and acceptance result",
+      && /\bheader\b/.test(commandResult)
+      && /\brequest_nonce\b/.test(commandResult)
+      && /\bargument\b/.test(commandResult)
+      && /\bsuccess\b/.test(commandResult)
+      && /\bshim_command_reset\b/.test(winshimSource)
+      && /\bcommand_boundary_generation\b/.test(winshimSource),
+    "winshim reports exact request identity and resets request and generation state",
   );
   const thereCommandMenu = cBlockAfter(
     cmdSource,
@@ -1250,6 +1348,13 @@ async function run() {
   const openInDirection = cBlockAfter(
     lockSource,
     /\nint\s*\ndoopen_indir\s*\([^;{}]*\)\s*/,
+  );
+  assert(
+    commandQueue !== null
+      && /\bcmdq_add_ec\s*\(\s*CQ_CANNED\s*,/.test(commandQueue)
+      && commandDispatcher !== null
+      && /\bcan_do_extcmd\s*\(\s*tlist\s*\)/.test(commandDispatcher),
+    "catalog commands enter CQ_CANNED and retain rhack availability checks",
   );
   assert(
     clickToCommand !== null
@@ -1487,11 +1592,12 @@ async function run() {
   statusFieldMetadataEvents.length = 0;
   statusUpdateEvents.length = 0;
   coreCommandResults.length = 0;
+  publishedBoundaryGenerations.length = 0;
   menuSelections.length = 0;
   activeMenus.clear();
   activeWindows.clear();
   queuedRuntimeSettings = 0;
-  queuedCoreCommand = 0;
+  queuedCoreCommand = null;
   queuedExtendedCommand = null;
   activeCommandResponses = null;
   selectedCharacterFixture = null;
@@ -1666,12 +1772,66 @@ async function run() {
 
   // --- Action command catalog ---
   console.log("\n--- Action command catalog ---");
+  const allCommands = readAllWasmCommands(module);
   const visibleCommands = readVisibleWasmCommands(module);
   const actionCommands = visibleCommands.filter(
     ({ flags }) => (flags & MOVEMENTCMD) === 0,
   );
   const movementCommands = visibleCommands.filter(
     ({ flags }) => (flags & MOVEMENTCMD) !== 0,
+  );
+  const copiedActionCatalog = globalThis.nethackGlobal.actionCatalog;
+  const copiedActionCommands = Array.isArray(copiedActionCatalog?.commands)
+    ? copiedActionCatalog.commands
+    : [];
+  assert(
+    copiedActionCatalog?.schemaVersion === 1
+      && copiedActionCommands.length === 104,
+    "WASM exposes a versioned copied action catalog with 104 commands",
+  );
+  assert(
+    JSON.stringify(copiedActionCommands) === JSON.stringify(
+      actionCommands.map(({ sourceIndex, name, defaultKey, flags }) => ({
+        sessionCommandId: sourceIndex,
+        name,
+        defaultKey,
+        flags,
+      })),
+    ),
+    "copied action catalog matches authoritative extcmd values and order",
+  );
+  assert(
+    copiedActionCommands.length === 104
+      && new Set(copiedActionCommands.map(({ sessionCommandId }) =>
+        sessionCommandId)).size === copiedActionCommands.length
+      && new Set(copiedActionCommands.map(({ name }) => name)).size
+        === copiedActionCommands.length
+      && copiedActionCommands.every(
+        ({ sessionCommandId, name, defaultKey, flags }) =>
+          Number.isInteger(sessionCommandId)
+          && sessionCommandId >= 0
+          && sessionCommandId < 1024
+          && typeof name === "string"
+          && name.length > 0
+          && Number.isInteger(defaultKey)
+          && defaultKey >= 0
+          && defaultKey <= 0xff
+          && Number.isInteger(flags)
+          && (flags & ~KNOWN_COMMAND_FLAGS) === 0
+          && (
+            flags
+            & (WIZMODECMD | CMD_NOT_AVAILABLE | INTERNALCMD | MOVEMENTCMD)
+          ) === 0,
+      ),
+    "copied action catalog has unique IDs and names, bounded keys and flags,"
+      + " and excludes restricted and movement commands",
+  );
+  const copiedToggle = copiedActionCommands.find(({ name }) => name === "toggle");
+  assert(
+    copiedToggle !== undefined
+      && (copiedToggle.flags & CMD_PARAM) !== 0
+      && copiedToggle.defaultKey === 0,
+    "toggle remains visible in the catalog with CMD_PARAM and no bare key",
   );
   assert(
     actionCommands.length === 104
@@ -1858,83 +2018,6 @@ async function run() {
     );
   }
 
-  // --- Core command protocol ---
-  console.log("\n--- Core command protocol ---");
-  const invalidInventoryCommand = (
-    CORE_COMMAND_VERSION
-    | CORE_COMMAND_INVENTORY
-    | CORE_COMMAND_RESERVED
-  ) >>> 0;
-  let commandResultsBefore = coreCommandResults.length;
-  let menuSelectionsBefore = menuSelections.length;
-  queuedCoreCommand = invalidInventoryCommand;
-  await sendKeyAndWait(27);
-  assert(
-    coreCommandResults.length === commandResultsBefore + 1
-      && coreCommandResults.at(-1)?.payload === invalidInventoryCommand
-      && coreCommandResults.at(-1)?.success === 0,
-    "real WASM callback rejects a command payload containing a reserved bit",
-  );
-  assert(
-    menuSelections.length === menuSelectionsBefore,
-    "rejected command payload does not enter a core menu",
-  );
-
-  const inventoryCommand = (
-    CORE_COMMAND_VERSION | CORE_COMMAND_INVENTORY
-  ) >>> 0;
-  commandResultsBefore = coreCommandResults.length;
-  menuSelectionsBefore = menuSelections.length;
-  queuedCoreCommand = inventoryCommand;
-  await sendKeyAndWait(27);
-  const inventoryCommandResult = coreCommandResults.at(-1);
-  const commandMenus = menuSelections.slice(menuSelectionsBefore);
-  const inventorySelector = commandMenus.find(
-    (selection) =>
-      selection.behavior === MENU_BEHAVE_STANDARD
-      && selection.how === PICK_ONE
-      && selection.selectableItemCount > 0,
-  );
-  assert(
-    coreCommandResults.length === commandResultsBefore + 1
-      && inventoryCommandResult?.payload === inventoryCommand
-      && inventoryCommandResult.success === 1,
-    "real WASM callback accepts the versioned inventory command payload",
-  );
-  assert(
-    inventorySelector !== undefined,
-    "accepted inventory command enters an ordinary selectable core menu",
-  );
-  assert(
-    inventorySelector !== undefined
-      && inventoryCommandResult !== undefined
-      && inventoryCommandResult.eventIndex < inventorySelector.eventIndex,
-    "command result precedes the inventory select_menu callback",
-  );
-
-  const dropCommand = (CORE_COMMAND_VERSION | CORE_COMMAND_DROP) >>> 0;
-  commandResultsBefore = coreCommandResults.length;
-  menuSelectionsBefore = menuSelections.length;
-  queuedCoreCommand = dropCommand;
-  await sendKeyAndWait(27);
-  const dropCommandResult = coreCommandResults.at(-1);
-  const dropSelector = menuSelections.slice(menuSelectionsBefore).find(
-    (selection) =>
-      selection.behavior === MENU_BEHAVE_STANDARD
-      && selection.how === PICK_ONE
-      && selection.selectableItemCount > 0,
-  );
-  assert(
-    coreCommandResults.length === commandResultsBefore + 1
-      && dropCommandResult?.payload === dropCommand
-      && dropCommandResult.success === 1,
-    "real WASM callback accepts the versioned drop command payload",
-  );
-  assert(
-    dropSelector !== undefined,
-    "accepted drop command enters a native PICK_ONE inventory menu",
-  );
-
   // --- Representative command behavior ---
   console.log("\n--- Representative command behavior ---");
   const actionCommandsByName = new Map(
@@ -1978,6 +2061,200 @@ async function run() {
       && representativeCommands.save.defaultKey === "S".charCodeAt(0),
     "representative commands retain their real WASM source IDs and keys",
   );
+
+  // --- Core command protocol v2 ---
+  console.log("\n--- Core command protocol v2 ---");
+  const dropCommand = actionCommandsByName.get("drop");
+  const internalCommand = allCommands.find(
+    ({ flags }) => (flags & INTERNALCMD) !== 0,
+  );
+  const wizardCommand = allCommands.find(
+    ({ flags }) => (flags & WIZMODECMD) !== 0,
+  );
+  const unavailableCommand = allCommands.find(
+    ({ flags }) => (flags & CMD_NOT_AVAILABLE) !== 0,
+  );
+  if (!dropCommand) throw new Error("Drop command metadata is missing");
+  assert(
+    internalCommand !== undefined && wizardCommand !== undefined,
+    "real extcmdlist exposes internal and wizard IDs for rejection tests",
+  );
+
+  const validSearchPayload = catalogCommandPayload(
+    representativeCommands.search.sourceIndex,
+    101,
+  );
+  const rejectedRequests = [
+    {
+      label: "unknown header bit",
+      payload: [
+        (validSearchPayload[0] | CORE_COMMAND_UNKNOWN_BIT) >>> 0,
+        102,
+        validSearchPayload[2],
+      ],
+    },
+    {
+      label: "unknown protocol version",
+      payload: [
+        ((3 << 28) | CORE_COMMAND_CATALOG) >>> 0,
+        103,
+        validSearchPayload[2],
+      ],
+    },
+    {
+      label: "zero nonce",
+      payload: catalogCommandPayload(
+        representativeCommands.search.sourceIndex,
+        0,
+      ),
+    },
+    {
+      label: "out-of-range command ID",
+      payload: catalogCommandPayload(1024, 104),
+    },
+    {
+      label: "internal command ID",
+      payload: catalogCommandPayload(internalCommand?.sourceIndex ?? 1024, 105),
+    },
+    {
+      label: "wizard command ID",
+      payload: catalogCommandPayload(wizardCommand?.sourceIndex ?? 1024, 106),
+    },
+    {
+      label: "CMD_PARAM command ID",
+      payload: catalogCommandPayload(
+        representativeCommands.toggle.sourceIndex,
+        107,
+      ),
+    },
+    ...(unavailableCommand
+      ? [{
+        label: "unavailable command ID",
+        payload: catalogCommandPayload(unavailableCommand.sourceIndex, 108),
+      }]
+      : []),
+  ];
+  for (const { label, payload } of rejectedRequests) {
+    const resultsBefore = coreCommandResults.length;
+    const menusBefore = menuSelections.length;
+    const rejectedTrace = await runCoreCommand(payload);
+    const result = coreCommandResults.slice(resultsBefore).at(-1);
+    assert(
+      coreCommandResults.length === resultsBefore + 1
+        && result !== undefined
+        && sameCoreCommandPayload(result.payload, payload)
+        && result.success === 0,
+      `real WASM rejects ${label} and returns its exact three-word identity`,
+    );
+    assert(
+      menuSelections.length === menusBefore
+        && !traceHas(rejectedTrace, "shim_get_ext_cmd"),
+      `${label} does not dispatch a command or enter a core menu`,
+    );
+  }
+
+  const searchResultsBefore = coreCommandResults.length;
+  const searchXpUpdatesBefore = statusUpdateEvents.filter(
+    (event) => event.field === 13,
+  ).length;
+  const coreSearchTrace = await runCoreCommand(validSearchPayload);
+  const searchResult = coreCommandResults.slice(searchResultsBefore).at(-1);
+  const searchResultIndex = coreSearchTrace.findIndex(
+    (event) =>
+      event.name === "shim_command_result"
+      && sameCoreCommandPayload(event.payload ?? [], validSearchPayload),
+  );
+  const searchCompletionBoundary = coreSearchTrace.findIndex(
+    (event, index) =>
+      index > searchResultIndex
+      && event.boundaryGeneration !== undefined,
+  );
+  assert(
+    searchResult !== undefined
+      && sameCoreCommandPayload(searchResult.payload, validSearchPayload)
+      && searchResult.success === 1
+      && !traceHas(coreSearchTrace, "shim_get_ext_cmd")
+      && searchResultIndex >= 0
+      && searchCompletionBoundary > searchResultIndex
+      && statusUpdateEvents.filter((event) => event.field === 13).length
+        > searchXpUpdatesBefore,
+    "search executes from a v2 catalog request through CQ_CANNED",
+  );
+
+  const inventoryPayload = catalogCommandPayload(
+    representativeCommands.inventory.sourceIndex,
+    109,
+  );
+  const inventoryResultsBefore = coreCommandResults.length;
+  const inventoryMenusBefore = menuSelections.length;
+  const coreInventoryTrace = await runCoreCommand(inventoryPayload);
+  const inventoryResult = coreCommandResults
+    .slice(inventoryResultsBefore)
+    .at(-1);
+  const inventorySelector = menuSelections
+    .slice(inventoryMenusBefore)
+    .find(
+      (selection) =>
+        selection.behavior === MENU_BEHAVE_STANDARD
+        && selection.how === PICK_ONE
+        && selection.selectableItemCount > 0,
+    );
+  assert(
+    inventoryResult !== undefined
+      && sameCoreCommandPayload(inventoryResult.payload, inventoryPayload)
+      && inventoryResult.success === 1
+      && !traceHas(coreInventoryTrace, "shim_get_ext_cmd"),
+    "inventory executes from a v2 catalog request through CQ_CANNED",
+  );
+  assert(
+    inventorySelector !== undefined
+      && inventoryResult !== undefined
+      && inventoryResult.eventIndex < inventorySelector.eventIndex,
+    "v2 inventory reports acceptance before its real PICK_ONE menu",
+  );
+
+  const dropPayload = catalogCommandPayload(
+    dropCommand.sourceIndex,
+    110,
+    true,
+  );
+  const dropResultsBefore = coreCommandResults.length;
+  const dropMenusBefore = menuSelections.length;
+  const coreDropTrace = await runCoreCommand(dropPayload);
+  const dropResult = coreCommandResults.slice(dropResultsBefore).at(-1);
+  const dropSelector = menuSelections.slice(dropMenusBefore).find(
+    (selection) =>
+      selection.behavior === MENU_BEHAVE_STANDARD
+      && selection.how === PICK_ONE
+      && selection.selectableItemCount > 0,
+  );
+  assert(
+    dropResult !== undefined
+      && sameCoreCommandPayload(dropResult.payload, dropPayload)
+      && dropResult.success === 1
+      && !traceHas(coreDropTrace, "shim_get_ext_cmd"),
+    "drop executes from a v2 catalog request through CQ_CANNED",
+  );
+  assert(
+    dropSelector !== undefined
+      && dropResult !== undefined
+      && dropResult.eventIndex < dropSelector.eventIndex,
+    "v2 drop preserves the real request-menu inventory flow",
+  );
+  assert(
+    publishedBoundaryGenerations.length > 0
+      && publishedBoundaryGenerations.every(
+        (generation, index) =>
+          Number.isInteger(generation)
+          && generation > 0
+          && (
+            index === 0
+            || generation > publishedBoundaryGenerations[index - 1]
+          ),
+      ),
+    "WASM publishes strictly increasing nonzero command-boundary generations",
+  );
+
   // Preserve the source-order contract here; the live save flow runs last
   // because successful save terminates the shared Asyncify runtime.
   const saveCommandBlock = cBlockAfter(
@@ -2173,22 +2450,48 @@ async function run() {
       + " feedback",
   );
 
-  const prefixMarker = startExtendedCommand(representativeCommands.fight);
+  const prefixPayload = catalogCommandPayload(
+    representativeCommands.fight.sourceIndex,
+    111,
+  );
+  const prefixMarker = startCoreCommand(prefixPayload);
   const prefixContinuation = await waitForPendingInput(5000);
   const prefixTraceBeforeContinuation = commandTraceFrom(
     prefixMarker.startIndex,
   );
+  const prefixResultIndex = prefixTraceBeforeContinuation.findIndex(
+    (event) =>
+      event.name === "shim_command_result"
+      && sameCoreCommandPayload(event.payload ?? [], prefixPayload)
+      && event.success === 1,
+  );
+  const prefixResult = prefixResultIndex < 0
+    ? undefined
+    : prefixTraceBeforeContinuation[prefixResultIndex];
+  const prefixContinuationReady = (
+    prefixResult !== undefined
+    && prefixContinuation?.inputState === INPUT_STATE_COMMAND
+    && commandBoundaryGeneration === prefixResult.boundaryGeneration
+    && !prefixTraceBeforeContinuation.slice(prefixResultIndex + 1).some(
+      (event) => event.boundaryGeneration !== undefined,
+    )
+  );
   assert(
     (representativeCommands.fight.flags & PREFIXCMD) !== 0
-      && prefixContinuation?.inputState === INPUT_STATE_COMMAND
-      && commandBoundaryGeneration === prefixMarker.boundaryGeneration
-      && !traceHasBoundary(prefixTraceBeforeContinuation),
-    "fight requests commandInp continuation before publishing a new boundary",
+      && prefixContinuationReady,
+    "v2 fight reports acceptance, then requests commandInp without advancing"
+      + " the accepted boundary generation",
   );
-  resolvePendingInput(ESCAPE);
-  const prefixTrace = await finishExtendedCommand(prefixMarker);
+  let prefixTrace = prefixTraceBeforeContinuation;
+  if (prefixContinuationReady) {
+    resolvePendingInput(ESCAPE);
+    prefixTrace = await finishExtendedCommand(prefixMarker);
+  } else {
+    activeCommandResponses = null;
+  }
   assert(
-    traceHasBoundary(prefixTrace)
+    prefixContinuationReady
+      && commandBoundaryGeneration > prefixResult.boundaryGeneration
       && prefixTrace.at(-1)?.inputState === INPUT_STATE_COMMAND,
     "cancelling the PREFIXCMD continuation reaches the next command boundary",
   );

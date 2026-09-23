@@ -25,7 +25,6 @@ import {
   normalizePlayerNameInput,
   preparePlayerNamePrompt,
   queueRuntimeSettings,
-  requestCoreCommand,
   requestSaveAndExit,
   resetBridgeState,
   sendKey,
@@ -43,9 +42,46 @@ import {
   validateSaveMetadata,
   type EmscriptenModule,
 } from "./nethack-bridge";
-import { encodeCoreCommandRequest } from "./game-actions/core-command-protocol";
 import { createDefaultProfile } from "./settings/profile";
 import { encodeRuntimeSettings } from "./settings/runtime-settings-protocol";
+
+interface CoreCommandOwner {
+  moduleId: string;
+  sessionId: string;
+}
+
+type CoreCommandIntent =
+  | {
+    command: "clicklook";
+    x: number;
+    y: number;
+  }
+  | {
+    command: "catalog";
+    sessionCommandId: number;
+    requestItemMenu: boolean;
+  };
+
+type CoreCommandPayload = readonly [
+  header: number,
+  requestNonce: number,
+  argument: number,
+];
+
+interface StageOneCoreCommandBridge {
+  requestCoreCommand(
+    request: CoreCommandIntent,
+    owner?: CoreCommandOwner,
+  ): boolean;
+}
+
+const stageOneCoreCommandBridge =
+  nethackBridge as unknown as StageOneCoreCommandBridge;
+const CORE_COMMAND_REQUEST_PTR = 0x7000;
+const CURRENT_COMMAND_OWNER = {
+  moduleId: "module-current",
+  sessionId: "session-current",
+} as const;
 
 interface MockModuleHarness {
   module: EmscriptenModule;
@@ -250,6 +286,53 @@ function shimCallback(
   ...args: unknown[]
 ): Promise<unknown> {
   return shimCallbackForModule(harness.module, name, ...args);
+}
+
+/** Install the session identity used to authorize catalog commands. */
+function setCurrentCommandOwner(
+  owner: CoreCommandOwner = CURRENT_COMMAND_OWNER,
+): void {
+  nethackBridge.setCharacterSetupContext({
+    ...owner,
+    style: "original",
+    saveIdentities: [],
+  });
+}
+
+/** Build one catalog intent without exposing the protocol nonce to callers. */
+function catalogIntent(
+  sessionCommandId: number,
+  requestItemMenu = false,
+): CoreCommandIntent {
+  return {
+    command: "catalog",
+    sessionCommandId,
+    requestItemMenu,
+  };
+}
+
+/** Read the three uint32 words written by shim_command_sync. */
+function readCoreCommandPayload(): CoreCommandPayload {
+  return [
+    harness.readI32(CORE_COMMAND_REQUEST_PTR) >>> 0,
+    harness.readI32(CORE_COMMAND_REQUEST_PTR + 4) >>> 0,
+    harness.readI32(CORE_COMMAND_REQUEST_PTR + 8) >>> 0,
+  ];
+}
+
+/** Ask the bridge to fill one C-owned command request struct. */
+async function synchronizeCoreCommandAt(
+  boundaryGeneration: number,
+): Promise<{ available: unknown; payload: CoreCommandPayload }> {
+  harness.writeI32(CORE_COMMAND_REQUEST_PTR, 0);
+  harness.writeI32(CORE_COMMAND_REQUEST_PTR + 4, 0);
+  harness.writeI32(CORE_COMMAND_REQUEST_PTR + 8, 0);
+  const available = await shimCallback(
+    "shim_command_sync",
+    boundaryGeneration,
+    CORE_COMMAND_REQUEST_PTR,
+  );
+  return { available, payload: readCoreCommandPayload() };
 }
 
 beforeEach(() => {
@@ -1145,11 +1228,22 @@ describe("key, position, and prompt input", () => {
 });
 
 describe("core command synchronization", () => {
-  it("accepts requests only at top-level command input and ends it with ESC", async () => {
-    expect(requestCoreCommand({ command: "inventory" })).toBe(false);
+  it("accepts catalog requests only at top-level input for the current owner", async () => {
+    setCurrentCommandOwner();
+    expect(
+      stageOneCoreCommandBridge.requestCoreCommand(
+        catalogIntent(29),
+        CURRENT_COMMAND_OWNER,
+      ),
+    ).toBe(false);
 
-    const ordinaryInput = shimCallback("shim_nhgetch");
-    expect(requestCoreCommand({ command: "inventory" })).toBe(false);
+    const ordinaryInput = shimCallback("shim_nhgetch", 0);
+    expect(
+      stageOneCoreCommandBridge.requestCoreCommand(
+        catalogIntent(29),
+        CURRENT_COMMAND_OWNER,
+      ),
+    ).toBe(false);
     sendKey("i".charCodeAt(0));
     await expect(ordinaryInput).resolves.toBe("i".charCodeAt(0));
 
@@ -1160,7 +1254,12 @@ describe("core command synchronization", () => {
       0x304,
       3,
     );
-    expect(requestCoreCommand({ command: "inventory" })).toBe(false);
+    expect(
+      stageOneCoreCommandBridge.requestCoreCommand(
+        catalogIntent(29),
+        CURRENT_COMMAND_OWNER,
+      ),
+    ).toBe(false);
     sendKey("h".charCodeAt(0));
     await expect(directionInput).resolves.toBe("h".charCodeAt(0));
 
@@ -1171,16 +1270,32 @@ describe("core command synchronization", () => {
       0x304,
       1,
     );
-    expect(requestCoreCommand({ command: "inventory" })).toBe(true);
+    expect(
+      stageOneCoreCommandBridge.requestCoreCommand(catalogIntent(29), {
+        moduleId: "module-stale",
+        sessionId: CURRENT_COMMAND_OWNER.sessionId,
+      }),
+    ).toBe(false);
+    expect(
+      stageOneCoreCommandBridge.requestCoreCommand(catalogIntent(29), {
+        moduleId: CURRENT_COMMAND_OWNER.moduleId,
+        sessionId: "session-stale",
+      }),
+    ).toBe(false);
+    expect(
+      stageOneCoreCommandBridge.requestCoreCommand(
+        catalogIntent(29),
+        CURRENT_COMMAND_OWNER,
+      ),
+    ).toBe(true);
 
     await expect(commandInput).resolves.toBe(27);
     expect(getSnapshot().commandInput).toBe(false);
     expect(isWaitingForInput()).toBe(false);
   });
 
-  it("synchronizes once and rejects another request until the result arrives", async () => {
-    const request = { command: "inventory" } as const;
-    const payload = encodeCoreCommandRequest(request);
+  it("allocates nonzero increasing nonces and consumes at most once per boundary", async () => {
+    setCurrentCommandOwner();
     const firstInput = shimCallback(
       "shim_nh_poskey",
       0x300,
@@ -1188,65 +1303,94 @@ describe("core command synchronization", () => {
       0x304,
       1,
     );
-    expect(requestCoreCommand(request)).toBe(true);
+    expect(
+      stageOneCoreCommandBridge.requestCoreCommand(
+        catalogIntent(29),
+        CURRENT_COMMAND_OWNER,
+      ),
+    ).toBe(true);
     await expect(firstInput).resolves.toBe(27);
 
-    await expect(shimCallback("shim_command_sync")).resolves.toBe(payload);
-    await expect(shimCallback("shim_command_sync")).resolves.toBe(0);
-
-    const blockedInput = shimCallback(
-      "shim_nh_poskey",
-      0x300,
-      0x302,
-      0x304,
-      1,
-    );
-    expect(requestCoreCommand({ command: "drop" })).toBe(false);
-    await expectPending(blockedInput);
-    sendKey(".".charCodeAt(0));
-    await expect(blockedInput).resolves.toBe(".".charCodeAt(0));
-
-    await expect(
-      shimCallback("shim_command_result", payload, 1),
-    ).resolves.toBeUndefined();
-
-    const nextInput = shimCallback(
-      "shim_nh_poskey",
-      0x300,
-      0x302,
-      0x304,
-      1,
-    );
-    expect(requestCoreCommand({ command: "drop" })).toBe(true);
-    await expect(nextInput).resolves.toBe(27);
-  });
-
-  it("rejects a result whose payload does not match the active request", async () => {
-    const request = { command: "inventory" } as const;
-    const input = shimCallback(
-      "shim_nh_poskey",
-      0x300,
-      0x302,
-      0x304,
-      1,
-    );
-    expect(requestCoreCommand(request)).toBe(true);
-    await expect(input).resolves.toBe(27);
-    const payload = await shimCallback("shim_command_sync") as number;
-
-    await expect(
-      shimCallback("shim_command_result", (payload ^ 1) >>> 0, 1),
-    ).resolves.toBeUndefined();
-
-    expect(getSnapshot()).toMatchObject({
-      phase: "error",
-      error: expect.stringContaining(
-        "Core command result does not match the active request",
-      ),
+    const first = await synchronizeCoreCommandAt(1);
+    expect(first.available).toBe(1);
+    expect(first.payload[0]).toBeGreaterThan(0);
+    expect(first.payload[1]).toBeGreaterThan(0);
+    expect(first.payload[2]).toBe(29);
+    await expect(synchronizeCoreCommandAt(1)).resolves.toMatchObject({
+      available: 0,
+      payload: [0, 0, 0],
     });
+    await expect(
+      shimCallback("shim_command_result", ...first.payload, 1),
+    ).resolves.toBeUndefined();
+
+    const secondInput = shimCallback(
+      "shim_nh_poskey",
+      0x300,
+      0x302,
+      0x304,
+      1,
+    );
+    expect(
+      stageOneCoreCommandBridge.requestCoreCommand(
+        catalogIntent(15, true),
+        CURRENT_COMMAND_OWNER,
+      ),
+    ).toBe(true);
+    await expect(secondInput).resolves.toBe(27);
+
+    await expect(synchronizeCoreCommandAt(1)).resolves.toMatchObject({
+      available: 0,
+      payload: [0, 0, 0],
+    });
+    const second = await synchronizeCoreCommandAt(2);
+    expect(second.available).toBe(1);
+    expect(second.payload[1]).toBeGreaterThan(first.payload[1]);
+    expect(second.payload[2]).toBe(15);
   });
+
+  it.each([
+    ["header", 0],
+    ["request nonce", 1],
+    ["argument", 2],
+  ] as const)(
+    "rejects a result whose %s does not match the active request",
+    async (_name, wordIndex) => {
+      setCurrentCommandOwner();
+      const input = shimCallback(
+        "shim_nh_poskey",
+        0x300,
+        0x302,
+        0x304,
+        1,
+      );
+      expect(
+        stageOneCoreCommandBridge.requestCoreCommand(
+          catalogIntent(29),
+          CURRENT_COMMAND_OWNER,
+        ),
+      ).toBe(true);
+      await expect(input).resolves.toBe(27);
+      const { available, payload } = await synchronizeCoreCommandAt(1);
+      expect(available).toBe(1);
+      const mismatched = [...payload] as [number, number, number];
+      mismatched[wordIndex] = (mismatched[wordIndex] + 1) >>> 0;
+
+      await expect(
+        shimCallback("shim_command_result", ...mismatched, 1),
+      ).resolves.toBeUndefined();
+
+      expect(getSnapshot()).toMatchObject({
+        phase: "error",
+        error: expect.stringContaining(
+          "Core command result does not match the active request",
+        ),
+      });
+    },
+  );
 
   it("treats accepted=0 as a rejected command failure", async () => {
+    setCurrentCommandOwner();
     const input = shimCallback(
       "shim_nh_poskey",
       0x300,
@@ -1254,12 +1398,18 @@ describe("core command synchronization", () => {
       0x304,
       1,
     );
-    expect(requestCoreCommand({ command: "inventory" })).toBe(true);
+    expect(
+      stageOneCoreCommandBridge.requestCoreCommand(
+        catalogIntent(29),
+        CURRENT_COMMAND_OWNER,
+      ),
+    ).toBe(true);
     await expect(input).resolves.toBe(27);
-    const payload = await shimCallback("shim_command_sync") as number;
+    const { available, payload } = await synchronizeCoreCommandAt(1);
+    expect(available).toBe(1);
 
     await expect(
-      shimCallback("shim_command_result", payload, 0),
+      shimCallback("shim_command_result", ...payload, 0),
     ).resolves.toBeUndefined();
 
     expect(getSnapshot()).toMatchObject({
@@ -1270,7 +1420,8 @@ describe("core command synchronization", () => {
     });
   });
 
-  it("clears pending and active command requests on reset", async () => {
+  it("clears pending and active requests plus boundary state on reset", async () => {
+    setCurrentCommandOwner();
     const pendingInput = shimCallback(
       "shim_nh_poskey",
       0x300,
@@ -1278,12 +1429,21 @@ describe("core command synchronization", () => {
       0x304,
       1,
     );
-    expect(requestCoreCommand({ command: "inventory" })).toBe(true);
+    expect(
+      stageOneCoreCommandBridge.requestCoreCommand(
+        catalogIntent(29),
+        CURRENT_COMMAND_OWNER,
+      ),
+    ).toBe(true);
     await expect(pendingInput).resolves.toBe(27);
 
     resetBridgeState();
-    await expect(shimCallback("shim_command_sync")).resolves.toBe(0);
+    await expect(synchronizeCoreCommandAt(1)).resolves.toMatchObject({
+      available: 0,
+      payload: [0, 0, 0],
+    });
 
+    setCurrentCommandOwner();
     const activeInput = shimCallback(
       "shim_nh_poskey",
       0x300,
@@ -1291,13 +1451,33 @@ describe("core command synchronization", () => {
       0x304,
       1,
     );
-    expect(requestCoreCommand({ command: "inventory" })).toBe(true);
+    expect(
+      stageOneCoreCommandBridge.requestCoreCommand(
+        catalogIntent(29),
+        CURRENT_COMMAND_OWNER,
+      ),
+    ).toBe(true);
     await expect(activeInput).resolves.toBe(27);
-    await expect(shimCallback("shim_command_sync")).resolves.toBe(
-      encodeCoreCommandRequest({ command: "inventory" }),
-    );
+    const active = await synchronizeCoreCommandAt(2);
+    expect(active.available).toBe(1);
 
     resetBridgeState();
+    await shimCallback("shim_command_result", ...active.payload, 1);
+    expect(getSnapshot()).toMatchObject({
+      phase: "error",
+      error: expect.stringContaining(
+        "Core command result does not match the active request",
+      ),
+    });
+
+    resetBridgeState();
+    expect(
+      (getSnapshot() as ReturnType<typeof getSnapshot> & {
+        commandBoundaryGeneration: number;
+      }).commandBoundaryGeneration,
+    ).toBe(0);
+
+    setCurrentCommandOwner();
     const freshInput = shimCallback(
       "shim_nh_poskey",
       0x300,
@@ -1305,14 +1485,62 @@ describe("core command synchronization", () => {
       0x304,
       1,
     );
-    expect(requestCoreCommand({ command: "drop" })).toBe(true);
+    expect(
+      stageOneCoreCommandBridge.requestCoreCommand(
+        catalogIntent(30),
+        CURRENT_COMMAND_OWNER,
+      ),
+    ).toBe(true);
     await expect(freshInput).resolves.toBe(27);
-    await expect(shimCallback("shim_command_sync")).resolves.toBe(
-      encodeCoreCommandRequest({ command: "drop" }),
+    const fresh = await synchronizeCoreCommandAt(1);
+    expect(fresh.available).toBe(1);
+    expect(fresh.payload[1]).toBeGreaterThan(0);
+    expect(fresh.payload[2]).toBe(30);
+  });
+
+  it("publishes increasing boundary generations without advancing on command input", async () => {
+    expect(
+      (getSnapshot() as ReturnType<typeof getSnapshot> & {
+        commandBoundaryGeneration: number;
+      }).commandBoundaryGeneration,
+    ).toBe(0);
+
+    await expect(synchronizeCoreCommandAt(1)).resolves.toMatchObject({
+      available: 0,
+    });
+    expect(
+      (getSnapshot() as ReturnType<typeof getSnapshot> & {
+        commandBoundaryGeneration: number;
+      }).commandBoundaryGeneration,
+    ).toBe(1);
+
+    const commandInput = shimCallback(
+      "shim_nh_poskey",
+      0x300,
+      0x302,
+      0x304,
+      1,
     );
+    expect(
+      (getSnapshot() as ReturnType<typeof getSnapshot> & {
+        commandBoundaryGeneration: number;
+      }).commandBoundaryGeneration,
+    ).toBe(1);
+    sendKey(27);
+    await expect(commandInput).resolves.toBe(27);
+
+    await expect(synchronizeCoreCommandAt(2)).resolves.toMatchObject({
+      available: 0,
+    });
+    expect(
+      (getSnapshot() as ReturnType<typeof getSnapshot> & {
+        commandBoundaryGeneration: number;
+      }).commandBoundaryGeneration,
+    ).toBe(2);
   });
 
   it("keeps action-intent commands isolated from keyboard typeahead", async () => {
+    setCurrentCommandOwner();
     const initialInput = shimCallback(
       "shim_nh_poskey",
       0x300,
@@ -1332,10 +1560,16 @@ describe("core command synchronization", () => {
       0x304,
       1,
     );
-    expect(requestCoreCommand({ command: "inventory" })).toBe(true);
+    expect(
+      stageOneCoreCommandBridge.requestCoreCommand(
+        catalogIntent(29),
+        CURRENT_COMMAND_OWNER,
+      ),
+    ).toBe(true);
     await expect(intentInput).resolves.toBe(27);
-    const payload = await shimCallback("shim_command_sync") as number;
-    await shimCallback("shim_command_result", payload, 1);
+    const { available, payload } = await synchronizeCoreCommandAt(1);
+    expect(available).toBe(1);
+    await shimCallback("shim_command_result", ...payload, 1);
 
     sendKey("k".charCodeAt(0));
     setActionIntentActive(false);
