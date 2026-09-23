@@ -57,6 +57,7 @@ describe("SettingsScreen", () => {
     expect(html).toContain("Information level");
     expect(html).toContain("Endgame style");
     expect(html).toContain("Character setup style");
+    expect(html).toContain("Action bar");
     expect(html).toContain("Terminal font size");
     expect(html).toContain("Message history");
     expect(html).toContain("Follow player on the map");
@@ -112,13 +113,14 @@ describe("SettingsScreen", () => {
     expect(buttonMarkup(html, "Apply")).toMatch(/\sdisabled(?:=""|>)/i);
   });
 
-  it("renders all three presentation settings as segmented controls defaulting to Original", () => {
+  it("renders all four presentation settings as segmented controls defaulting to Original", () => {
     const html = renderSettings();
 
     for (const legend of [
       "Information level",
       "Endgame style",
       "Character setup style",
+      "Action bar",
     ]) {
       const fieldset = fieldsetMarkup(html, legend);
       expect(fieldset).toContain(">Original</span>");
@@ -132,6 +134,8 @@ describe("SettingsScreen", () => {
     expect(fieldsetMarkup(html, "Endgame style"))
       .toContain(">BlissHack</span>");
     expect(fieldsetMarkup(html, "Character setup style"))
+      .toContain(">BlissHack</span>");
+    expect(fieldsetMarkup(html, "Action bar"))
       .toContain(">BlissHack</span>");
   });
 
@@ -194,11 +198,13 @@ describe("SettingsScreen", () => {
       html,
       "Character setup style",
     ));
+    const actionBar = visibleText(fieldsetMarkup(html, "Action bar"));
 
     expect(information).toMatch(/immediate(?:ly)?.*current game/i);
     expect(endgame).toMatch(
       /(?:current|this) game(?:'s)?(?: ending)?.*future defaults/i,
     );
     expect(character).toMatch(/next new game/i);
+    expect(actionBar).toMatch(/immediate(?:ly)?.*current game/i);
   });
 });

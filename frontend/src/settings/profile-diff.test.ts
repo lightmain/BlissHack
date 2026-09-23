@@ -70,6 +70,39 @@ describe("profile differences", () => {
     ]));
   });
 
+  it("reports the Action bar mode with user-facing labels", () => {
+    const current = createDefaultProfile();
+    const incoming = createDefaultProfile();
+    (incoming.interface as unknown as Record<string, unknown>).actionBarStyle =
+      "blisshack";
+
+    expect(diffProfiles(current, incoming)).toContainEqual({
+      path: "interface.actionBarStyle",
+      label: "Action bar",
+      current: "Original",
+      incoming: "BlissHack",
+    });
+  });
+
+  it("summarizes action bar layout changes without dumping slot JSON", () => {
+    const current = createDefaultProfile() as any;
+    const incoming = structuredClone(current);
+    incoming.interface.actionBarLayout.rows = 3;
+    incoming.interface.actionBarLayout.locked = false;
+    incoming.interface.actionBarLayout.activeCategory = "custom";
+    incoming.interface.actionBarLayout.categories.custom = [
+      null,
+      "future-action",
+    ];
+
+    expect(diffProfiles(current, incoming)).toContainEqual({
+      path: "interface.actionBarLayout",
+      label: "Action bar layout",
+      current: "2 rows, All, locked, 104 actions, 0 empty",
+      incoming: "3 rows, Custom, unlocked, 105 actions, 1 empty",
+    });
+  });
+
   it("reports changed fields in stable Settings order", () => {
     const current = createDefaultProfile();
     const incoming = createDefaultProfile();

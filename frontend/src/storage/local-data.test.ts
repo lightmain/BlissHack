@@ -6,6 +6,7 @@ import { createLocalDataStore } from "./local-data";
 describe("managed local data", () => {
   it("clears and restores every BlissHack-owned profile key and diagnostics", () => {
     const values = new Map<string, string>([
+      ["blisshack.profile.v4", "profile-v4"],
       ["blisshack.profile.v3", "profile-v3"],
       ["blisshack.profile.v2", "profile-v2"],
       ["blisshack.profile.v1", "profile-v1"],
@@ -30,13 +31,14 @@ describe("managed local data", () => {
     localData.restore(snapshot);
     expect(values).toEqual(new Map([
       ["unrelated", "keep"],
+      ["blisshack.profile.v4", "profile-v4"],
       ["blisshack.profile.v3", "profile-v3"],
       ["blisshack.profile.v2", "profile-v2"],
       ["blisshack.profile.v1", "profile-v1"],
       [DIAGNOSTIC_STORAGE_KEY, "diagnostics"],
     ]));
     expect(storage.removeItem).not.toHaveBeenCalledWith("unrelated");
-    expect(PROFILE_STORAGE_KEY).toBe("blisshack.profile.v3");
+    expect(PROFILE_STORAGE_KEY).toBe("blisshack.profile.v4");
   });
 
   it("restores absence instead of inventing missing values", () => {
