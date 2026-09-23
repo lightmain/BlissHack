@@ -124,6 +124,21 @@ export function InterfaceSettingsSection({
           value={draft.interface.characterSetupStyle}
         />
         <SegmentedField
+          description={isGameSettings
+            ? "Applies immediately to the current game."
+            : undefined}
+          label="Action bar"
+          name="action-bar-style"
+          onChange={(actionBarStyle) => {
+            onInterfaceChange({ actionBarStyle });
+          }}
+          options={[
+            { value: "original", label: "Original" },
+            { value: "blisshack", label: "BlissHack" },
+          ]}
+          value={draft.interface.actionBarStyle}
+        />
+        <SegmentedField
           label="Terminal font size"
           name="terminal-font-size"
           onChange={(terminalFontSize) => {

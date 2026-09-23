@@ -63,9 +63,9 @@ test("edits, persists, and cancels Home Settings without replacing the module", 
   await expect(sameModulePicker).toHaveAttribute("data-module-id", moduleId!);
   await page.keyboard.press("Escape");
   const persisted = await page.evaluate(() =>
-    JSON.parse(localStorage.getItem("blisshack.profile.v3") ?? "null"));
+    JSON.parse(localStorage.getItem("blisshack.profile.v4") ?? "null"));
   expect(persisted).toMatchObject({
-    schemaVersion: 3,
+    schemaVersion: 4,
     interface: {
       terminalFontSize: "large",
       messageHistoryLines: 3,
@@ -140,7 +140,7 @@ test("exports, previews, imports, and restores a complete profile", async ({
   expect(download.suggestedFilename()).toBe("blisshack-profile.bhprofile");
   const exported = JSON.parse((await readDownload(download)).toString("utf8"));
   expect(exported).toMatchObject({
-    schemaVersion: 3,
+    schemaVersion: 4,
     productVersion: expectedProductVersion,
     interface: {
       mapRenderer: "tiles",
@@ -206,9 +206,9 @@ test("exports, previews, imports, and restores a complete profile", async ({
   })).toBeChecked();
 
   const restored = await page.evaluate(() =>
-    JSON.parse(localStorage.getItem("blisshack.profile.v3") ?? "null"));
+    JSON.parse(localStorage.getItem("blisshack.profile.v4") ?? "null"));
   expect(restored).toMatchObject({
-    schemaVersion: 3,
+    schemaVersion: 4,
     interface: {
       terminalFontSize: "medium",
       messageHistoryLines: 5,
