@@ -63,6 +63,22 @@ const DO_SOURCE = join(
   "src",
   "do.c",
 );
+const SAVE_SOURCE = join(
+  __dirname,
+  "..",
+  "..",
+  "..",
+  "src",
+  "save.c",
+);
+const TILE_SOURCE = join(
+  __dirname,
+  "..",
+  "..",
+  "..",
+  "src",
+  "tile.c",
+);
 const LIBNH_MAIN_SOURCE = join(
   __dirname,
   "..",
@@ -157,9 +173,12 @@ function buildCharacterTuples(catalog) {
 
 let nextWindowId = 0;
 let pendingInput = null;
+const pendingInputWaiters = new Set();
 const receivedEventNames = new Set();
 const receivedEvents = [];
+const callbackEvents = [];
 let eventCount = 0;
+let eventsWithoutInput = 0;
 let ynCount = 0;
 const numberPadStates = [];
 const ynPrompts = [];
@@ -175,9 +194,14 @@ const statusUpdateEvents = [];
 const coreCommandResults = [];
 const menuSelections = [];
 const activeMenus = new Map();
+const activeWindows = new Map();
 let queuedRuntimeSettings = 0;
 let queuedCoreCommand = 0;
+let queuedExtendedCommand = null;
+let activeCommandResponses = null;
 let activeModule = null;
+let commandBoundaryGeneration = 0;
+let selectedCharacterFixture = null;
 
 const RUNTIME_SETTINGS_VERSION = 2 << 28;
 const RUNTIME_SETTINGS_PENDING = 1 << 0;
@@ -194,17 +218,29 @@ const CORE_COMMAND_RESERVED = (1 << 31) >>> 0;
 const MENU_BEHAVE_PERMINV = 1;
 const MENU_BEHAVE_STANDARD = 0;
 const PICK_ONE = 1;
+const PICK_NONE = 0;
 const MAX_ATLAS_TILE_INDEX = 2306;
 const FIRST_OTHER_TILE_INDEX = 1272;
 const LAST_LINEAR_CMAP_OFFSET = 32;
 const UNEXPLORED_TILE_INDEX = 1469;
 const EXTCMD_ENTRY_SIZE = 24;
+const EXTCMD_KEY_OFFSET = 0;
 const EXTCMD_TEXT_OFFSET = 4;
 const EXTCMD_FLAGS_OFFSET = 16;
+const MENU_ITEM_SIZE = 16;
+const MENU_ITEM_COUNT_OFFSET = 8;
+const MENU_ITEM_FLAGS_OFFSET = 12;
 const WIZMODECMD = 0x0004;
 const CMD_NOT_AVAILABLE = 0x0010;
 const INTERNALCMD = 0x0040;
+const PREFIXCMD = 0x0200;
 const MOVEMENTCMD = 0x0400;
+const CMD_PARAM = 0x4000;
+const INPUT_STATE_OTHER = 0;
+const INPUT_STATE_COMMAND = 1;
+const INPUT_STATE_GETPOS = 2;
+const ESCAPE = 27;
+const EXTENDED_COMMAND_KEY = "#".charCodeAt(0);
 
 const EXPECTED_ACTION_COMMAND_NAMES = [
   "#",
@@ -343,7 +379,12 @@ const EXPECTED_MOVEMENT_COMMAND_NAMES = [
 /**
  * Copy visible player commands from the current WASM extcmdlist.
  * @param {object} module - initialized Emscripten module.
- * @returns {Array<{sourceIndex: number, name: string, flags: number}>}
+ * @returns {Array<{
+ * sourceIndex: number,
+ * name: string,
+ * defaultKey: number,
+ * flags: number,
+ * }>}
  * visible commands in authoritative source order.
  */
 function readVisibleWasmCommands(module) {
@@ -364,6 +405,9 @@ function readVisibleWasmCommands(module) {
     commands.push({
       sourceIndex,
       name: module.UTF8ToString(textPtr),
+      defaultKey: Number(
+        module.getValue(entryPtr + EXTCMD_KEY_OFFSET, "i8"),
+      ) & 0xff,
       flags,
     });
   }
@@ -392,16 +436,60 @@ function readGlyphInfo(ptr) {
 }
 
 /**
- * Wait until the core reaches another keyboard-facing callback.
- * @param {number} timeoutMs - maximum time to wait.
- * @returns {Promise<boolean>} whether an input callback arrived.
+ * Publish one keyboard-facing callback to event-driven test waiters.
+ * @param {{
+ * name: string,
+ * inputState: number,
+ * eventIndex: number,
+ * resolve: (value: number) => void,
+ * }} input - blocked WASM callback.
  */
-async function waitForPendingInput(timeoutMs) {
-  const start = Date.now();
-  while (!pendingInput && Date.now() - start < timeoutMs) {
-    await new Promise((resolve) => setTimeout(resolve, 50));
+function setPendingInput(input) {
+  pendingInput = input;
+  eventsWithoutInput = 0;
+  for (const waiter of [...pendingInputWaiters]) {
+    if (!waiter.predicate(input)) continue;
+    pendingInputWaiters.delete(waiter);
+    clearTimeout(waiter.timeout);
+    waiter.resolve(input);
   }
-  return pendingInput !== null;
+}
+
+/**
+ * Wait for a matching keyboard-facing callback without sleep-based progress.
+ * @param {number} timeoutMs - failure guard only.
+ * @param {(input: object) => boolean} [predicate] - required input shape.
+ * @returns {Promise<object|null>} matching callback, or null on timeout.
+ */
+function waitForPendingInput(timeoutMs, predicate = () => true) {
+  if (pendingInput && predicate(pendingInput)) {
+    return Promise.resolve(pendingInput);
+  }
+  return new Promise((resolve) => {
+    const waiter = {
+      predicate,
+      resolve,
+      timeout: null,
+    };
+    waiter.timeout = setTimeout(() => {
+      pendingInputWaiters.delete(waiter);
+      resolve(null);
+    }, timeoutMs);
+    pendingInputWaiters.add(waiter);
+  });
+}
+
+/**
+ * Resolve the callback currently blocking the WASM core.
+ * @param {number} value - NetHack input byte.
+ * @returns {boolean} whether an input was pending.
+ */
+function resolvePendingInput(value) {
+  const input = pendingInput;
+  pendingInput = null;
+  if (!input) return false;
+  input.resolve(value);
+  return true;
 }
 
 /**
@@ -410,11 +498,140 @@ async function waitForPendingInput(timeoutMs) {
  * @returns {Promise<boolean>} whether the next input callback arrived.
  */
 async function sendKeyAndWait(key) {
-  const resolveInput = pendingInput;
-  pendingInput = null;
-  if (!resolveInput) return false;
-  resolveInput(key);
-  return waitForPendingInput(5000);
+  if (!resolvePendingInput(key)) return false;
+  return (await waitForPendingInput(5000)) !== null;
+}
+
+/**
+ * Return callback events belonging to a command flow.
+ * @param {number} startIndex - callbackEvents offset before command input.
+ * @returns {object[]} copied event slice.
+ */
+function commandTraceFrom(startIndex) {
+  return callbackEvents.slice(startIndex);
+}
+
+/**
+ * Resolve one core-generated menu with a structurally identified row.
+ * @param {object} menu - copied menu metadata.
+ * @param {number} menuListPtr - address of the core's menu_item pointer.
+ * @param {number|undefined} targetGlyph - required object glyph when supplied.
+ * @returns {number} number of selected rows.
+ */
+function selectMenuItem(menu, menuListPtr, targetGlyph) {
+  const selectableItems = menu?.items.filter(
+    ({ identifier }) => identifier !== 0,
+  ) ?? [];
+  const item = targetGlyph === undefined
+    ? selectableItems.find(
+      ({ accelerator }) =>
+        (accelerator >= 65 && accelerator <= 90)
+        || (accelerator >= 97 && accelerator <= 122),
+    ) ?? selectableItems[0]
+    : selectableItems.find(({ glyph }) => glyph === targetGlyph);
+  if (!activeModule || !item || menuListPtr === 0) return -1;
+  const resultPtr = activeModule._malloc(MENU_ITEM_SIZE);
+  activeModule.setValue(resultPtr, item.identifier, "i32");
+  activeModule.setValue(resultPtr + 4, 0, "i32");
+  activeModule.setValue(resultPtr + MENU_ITEM_COUNT_OFFSET, -1, "i32");
+  activeModule.setValue(resultPtr + MENU_ITEM_FLAGS_OFFSET, 0, "i32");
+  activeModule.setValue(menuListPtr, resultPtr, "*");
+  return 1;
+}
+
+/**
+ * Start a real command through the current WASM extended-command picker.
+ * @param {{sourceIndex: number, name: string}} command - WASM metadata row.
+ * @param {{
+ * ynResponses?: number[],
+ * unrestrictedYnResponses?: number[],
+ * menuResponses?: Array<"cancel"|"first">,
+ * menuItemGlyphs?: number[],
+ * }} [responses] - structured callback responses for this command only.
+ * @returns {{startIndex: number, boundaryGeneration: number}}
+ * trace markers captured before command input.
+ */
+function startExtendedCommand(command, responses = {}) {
+  if (!pendingInput || pendingInput.inputState !== INPUT_STATE_COMMAND) {
+    throw new Error(`Cannot start ${command.name} outside command input`);
+  }
+  const marker = {
+    startIndex: callbackEvents.length,
+    boundaryGeneration: commandBoundaryGeneration,
+  };
+  queuedExtendedCommand = command.sourceIndex;
+  activeCommandResponses = {
+    ynResponses: [...(responses.ynResponses ?? [])],
+    unrestrictedYnResponses: [
+      ...(responses.unrestrictedYnResponses ?? []),
+    ],
+    menuResponses: [...(responses.menuResponses ?? [])],
+    menuItemGlyphs: [...(responses.menuItemGlyphs ?? [])],
+  };
+  resolvePendingInput(EXTENDED_COMMAND_KEY);
+  return marker;
+}
+
+/**
+ * Drive non-boundary key callbacks to cancellation and stop at a new boundary.
+ * @param {{startIndex: number, boundaryGeneration: number}} marker - flow start.
+ * @returns {Promise<object[]>} structured callback trace for the command.
+ */
+async function finishExtendedCommand(marker) {
+  for (;;) {
+    const input = await waitForPendingInput(5000);
+    if (!input) throw new Error("Timed out waiting for command input");
+    if (
+      input.inputState === INPUT_STATE_COMMAND
+      && commandBoundaryGeneration > marker.boundaryGeneration
+    ) {
+      activeCommandResponses = null;
+      return commandTraceFrom(marker.startIndex);
+    }
+    if (input.inputState === INPUT_STATE_COMMAND) {
+      const traceNames = commandTraceFrom(marker.startIndex)
+        .map(({ name }) => name)
+        .join(", ");
+      throw new Error(
+        `Unexpected command continuation before boundary: ${traceNames}`,
+      );
+    }
+    resolvePendingInput(ESCAPE);
+  }
+}
+
+/**
+ * Execute one real extended command and return at the next top-level boundary.
+ * @param {{sourceIndex: number, name: string}} command - WASM metadata row.
+ * @param {{
+ * ynResponses?: number[],
+ * unrestrictedYnResponses?: number[],
+ * menuResponses?: Array<"cancel"|"first">,
+ * menuItemGlyphs?: number[],
+ * }} [responses] - structured callback responses for this command only.
+ * @returns {Promise<object[]>} structured callback trace.
+ */
+async function runExtendedCommand(command, responses = {}) {
+  return finishExtendedCommand(startExtendedCommand(command, responses));
+}
+
+/**
+ * Test whether a trace contains one callback type.
+ * @param {object[]} trace - structured command trace.
+ * @param {string} name - exact shim callback name.
+ * @returns {boolean} whether the callback occurred.
+ */
+function traceHas(trace, name) {
+  return trace.some((event) => event.name === name);
+}
+
+/**
+ * Test whether a trace crossed the Emscripten command-loop safe boundary.
+ * @param {object[]} trace - structured command trace.
+ * @returns {boolean} whether settings synchronization began a new boundary.
+ */
+function traceHasBoundary(trace) {
+  return trace.some((event) => event.boundaryGeneration !== undefined);
 }
 
 globalThis.nethackGlobal = globalThis.nethackGlobal || {};
@@ -423,8 +640,11 @@ async function blissCallback(name, ...args) {
   receivedEventNames.add(name);
   receivedEvents.push(name);
   eventCount++;
+  eventsWithoutInput++;
+  const callbackEvent = { name, eventIndex: eventCount };
+  callbackEvents.push(callbackEvent);
 
-  if (eventCount > 10000 && !pendingInput) {
+  if (eventsWithoutInput > 10000 && !pendingInput) {
     console.error(
       `ABORT: 10000+ events without input prompt. Unique: ${[...receivedEventNames].join(", ")}`
     );
@@ -434,11 +654,25 @@ async function blissCallback(name, ...args) {
   if (name === "shim_yn_function") {
     ynCount++;
     ynPrompts.push(String(args[0] ?? ""));
+    callbackEvent.choices = typeof args[1] === "string" && args[1].length > 0
+      ? args[1]
+      : null;
+    callbackEvent.defaultCode = Number(args[2]);
     if (ynCount > 200) {
       console.error("ABORT: shim_yn_function called 200+ times (loop?)");
       process.exit(1);
     }
+    const responseQueue = callbackEvent.choices === null
+      && activeCommandResponses?.unrestrictedYnResponses.length > 0
+      ? activeCommandResponses.unrestrictedYnResponses
+      : activeCommandResponses?.ynResponses;
+    const queuedResponse = responseQueue?.shift();
+    if (queuedResponse !== undefined) {
+      callbackEvent.response = queuedResponse;
+      return queuedResponse;
+    }
     const def = typeof args[2] === "number" && args[2] > 0 ? args[2] : 121;
+    callbackEvent.response = def;
     return def;
   }
 
@@ -456,16 +690,45 @@ async function blissCallback(name, ...args) {
       windowMessages.push(String(args[2] ?? ""));
       return undefined;
 
-    case "shim_create_nhwindow":
-      return nextWindowId++;
+    case "shim_create_nhwindow": {
+      const windowId = nextWindowId++;
+      const windowType = Number(args[0]);
+      callbackEvent.windowId = windowId;
+      callbackEvent.windowType = windowType;
+      activeWindows.set(windowId, windowType);
+      return windowId;
+    }
+
+    case "shim_display_nhwindow":
+      callbackEvent.windowId = Number(args[0]);
+      callbackEvent.windowType = activeWindows.get(Number(args[0])) ?? null;
+      callbackEvent.blocking = Boolean(args[1]);
+      return undefined;
+
+    case "shim_destroy_nhwindow":
+      callbackEvent.windowId = Number(args[0]);
+      callbackEvent.windowType = activeWindows.get(Number(args[0])) ?? null;
+      activeWindows.delete(Number(args[0]));
+      activeMenus.delete(Number(args[0]));
+      return undefined;
 
     case "shim_player_selection_or_tty":
       if (globalThis.nethackGlobal?.globals?.flags) {
         const f = globalThis.nethackGlobal.globals.flags;
-        f.initrole = -1; // ROLE_RANDOM
-        f.initrace = -1;
-        f.initgend = -1;
-        f.initalign = -1;
+        const catalog = globalThis.nethackGlobal.characterCatalog;
+        const role = catalog?.roles.find(({ fileCode }) => fileCode === "Tou");
+        const race = catalog?.races.find(({ fileCode }) => fileCode === "Hum");
+        const gender = catalog?.genders.find(
+          ({ fileCode }) => fileCode === "Mal",
+        );
+        const alignment = catalog?.alignments.find(
+          ({ fileCode }) => fileCode === "Neu",
+        );
+        selectedCharacterFixture = { role, race, gender, alignment };
+        f.initrole = role?.index ?? -1;
+        f.initrace = race?.index ?? -1;
+        f.initgend = gender?.index ?? -1;
+        f.initalign = alignment?.index ?? -1;
       }
       return false;
 
@@ -476,6 +739,8 @@ async function blissCallback(name, ...args) {
       return undefined;
 
     case "shim_settings_sync": {
+      commandBoundaryGeneration += 1;
+      callbackEvent.boundaryGeneration = commandBoundaryGeneration;
       runtimeSettingsSnapshots.push(args[0] >>> 0);
       const update = queuedRuntimeSettings;
       queuedRuntimeSettings = 0;
@@ -503,17 +768,33 @@ async function blissCallback(name, ...args) {
       });
       return undefined;
 
-    case "shim_nhgetch":
-      inputStates.push(args[0]);
+    case "shim_nhgetch": {
+      const inputState = Number(args[0]);
+      inputStates.push(inputState);
+      callbackEvent.inputState = inputState;
       return new Promise((resolve) => {
-        pendingInput = resolve;
+        setPendingInput({
+          name,
+          inputState,
+          eventIndex: eventCount,
+          resolve,
+        });
       });
+    }
 
-    case "shim_nh_poskey":
-      inputStates.push(args[3]);
+    case "shim_nh_poskey": {
+      const inputState = Number(args[3]);
+      inputStates.push(inputState);
+      callbackEvent.inputState = inputState;
       return new Promise((resolve) => {
-        pendingInput = resolve;
+        setPendingInput({
+          name,
+          inputState,
+          eventIndex: eventCount,
+          resolve,
+        });
       });
+    }
 
     case "shim_print_glyph":
       glyphEvents.push({
@@ -543,10 +824,13 @@ async function blissCallback(name, ...args) {
     case "shim_start_menu": {
       const windowId = Number(args[0]);
       const behavior = Number(args[1]) >>> 0;
+      callbackEvent.windowId = windowId;
+      callbackEvent.behavior = behavior;
       activeMenus.set(windowId, {
         behavior,
         itemCount: 0,
         selectableItemCount: 0,
+        items: [],
       });
       if ((behavior & MENU_BEHAVE_PERMINV) !== 0) {
         permanentInventoryUpdates.push({ kind: "start", windowId });
@@ -556,10 +840,19 @@ async function blissCallback(name, ...args) {
 
     case "shim_add_menu": {
       const windowId = Number(args[0]);
+      const identifier = Number(args[2]);
       const menu = activeMenus.get(windowId);
+      callbackEvent.windowId = windowId;
+      callbackEvent.identifier = identifier;
+      callbackEvent.accelerator = Number(args[3]) & 0xff;
       if (menu) {
         menu.itemCount += 1;
-        if (Number(args[2]) !== 0) menu.selectableItemCount += 1;
+        menu.items.push({
+          identifier,
+          accelerator: Number(args[3]) & 0xff,
+          glyph: readGlyphInfo(Number(args[1]))?.glyph ?? null,
+        });
+        if (identifier !== 0) menu.selectableItemCount += 1;
       }
       if (permanentInventoryUpdates.some(
         (event) => event.kind === "start" && event.windowId === windowId,
@@ -577,31 +870,75 @@ async function blissCallback(name, ...args) {
       const windowId = Number(args[0]);
       const how = Number(args[1]);
       const menu = activeMenus.get(windowId);
-      menuSelections.push({
+      const selection = {
         windowId,
         how,
         behavior: menu?.behavior ?? null,
         itemCount: menu?.itemCount ?? 0,
         selectableItemCount: menu?.selectableItemCount ?? 0,
         eventIndex: eventCount,
-      });
-      if (args[1] === 0) {
+        response: "cancel",
+      };
+      callbackEvent.windowId = windowId;
+      callbackEvent.how = how;
+      callbackEvent.behavior = selection.behavior;
+      callbackEvent.itemCount = selection.itemCount;
+      callbackEvent.selectableItemCount = selection.selectableItemCount;
+      if (Number(args[2]) !== 0) {
+        activeModule.setValue(Number(args[2]), 0, "*");
+      }
+      if (how === PICK_NONE) {
+        selection.response = "none";
+        callbackEvent.response = selection.response;
+        menuSelections.push(selection);
         permanentInventoryUpdates.push({
           kind: "commit",
           windowId,
         });
         return 0;
       }
+      const menuResponse = activeCommandResponses?.menuResponses.shift()
+        ?? "cancel";
+      if (menuResponse === "first") {
+        const targetGlyph = activeCommandResponses?.menuItemGlyphs.shift();
+        const selectedCount = selectMenuItem(
+          menu,
+          Number(args[2]),
+          targetGlyph,
+        );
+        if (selectedCount > 0) {
+          selection.response = "first";
+          callbackEvent.response = selection.response;
+          menuSelections.push(selection);
+          return selectedCount;
+        }
+      }
+      callbackEvent.response = selection.response;
+      menuSelections.push(selection);
       return -1; // cancel/dismiss
     }
+
     case "shim_message_menu":
+      callbackEvent.how = Number(args[1]);
+      callbackEvent.response = Number(args[1]) === PICK_NONE ? 0 : ESCAPE;
+      return callbackEvent.response;
+
     case "shim_doprev_message":
       return 0;
 
-    case "shim_get_ext_cmd":
-      return -1;
+    case "shim_get_ext_cmd": {
+      const selection = queuedExtendedCommand;
+      queuedExtendedCommand = null;
+      callbackEvent.sourceIndex = selection;
+      return selection ?? -1;
+    }
 
     case "shim_getlin":
+      if (activeCommandResponses && activeModule && Number(args[1]) !== 0) {
+        activeModule.setValue(Number(args[1]), ESCAPE, "i8");
+        activeModule.setValue(Number(args[1]) + 1, 0, "i8");
+        callbackEvent.cancelled = true;
+      }
       return undefined;
 
     case "shim_getmsghistory":
@@ -631,6 +968,8 @@ async function run() {
   assert(existsSync(HACK_SOURCE), "hack.c exists");
   assert(existsSync(LOCK_SOURCE), "lock.c exists");
   assert(existsSync(DO_SOURCE), "do.c exists");
+  assert(existsSync(SAVE_SOURCE), "save.c exists");
+  assert(existsSync(TILE_SOURCE), "tile.c exists");
   assert(existsSync(LIBNH_MAIN_SOURCE), "libnhmain.c exists");
   if (
     !existsSync(WASM_JS)
@@ -640,6 +979,8 @@ async function run() {
     || !existsSync(HACK_SOURCE)
     || !existsSync(LOCK_SOURCE)
     || !existsSync(DO_SOURCE)
+    || !existsSync(SAVE_SOURCE)
+    || !existsSync(TILE_SOURCE)
     || !existsSync(LIBNH_MAIN_SOURCE)
   ) {
     console.error(
@@ -652,7 +993,13 @@ async function run() {
   const hackSource = readFileSync(HACK_SOURCE, "utf8");
   const lockSource = readFileSync(LOCK_SOURCE, "utf8");
   const doSource = readFileSync(DO_SOURCE, "utf8");
+  const saveSource = readFileSync(SAVE_SOURCE, "utf8");
+  const tileSource = readFileSync(TILE_SOURCE, "utf8");
   const libnhMainSource = readFileSync(LIBNH_MAIN_SOURCE, "utf8");
+  const getdirBlock = cBlockAfter(
+    cmdSource,
+    /\nint\s*\ngetdir\s*\(\s*const char \*s\s*\)\s*/,
+  );
   const characterCatalogInit = cBlockAfter(
     libnhMainSource,
     /\njs_character_catalog_init\s*\(\s*void\s*\)\s*/,
@@ -678,6 +1025,13 @@ async function run() {
       && [...characterCatalogInit.matchAll(/\bmap_glyphinfo\s*\(/g)].length
         === 2,
     "character previews use the initialized authoritative glyph map",
+  );
+  assert(
+    getdirBlock !== null
+      && /\bprogram_state\.input_state\s*=\s*getdirInp\s*;[\s\S]*?\byn_function\s*\(/.test(
+        getdirBlock,
+      ),
+    "getdir marks getdirInp before invoking the unrestricted yn callback",
   );
   assert(
     /\bCREATE_READONLY_GLOBAL\s*\(\s*program_state\.gameover\s*,\s*"b"\s*\)\s*;/.test(
@@ -1076,6 +1430,9 @@ async function run() {
       && !/^PERS_IS_UID=1$/m.test(runtimeSysconf),
     "embedded runtime sysconf ranks browser players by name",
   );
+  if (!module.FS.analyzePath("/save").exists) {
+    module.FS.mkdir("/save");
+  }
 
   // --- Stage-two save helpers before main ---
   console.log("\n--- Save helpers before main ---");
@@ -1115,7 +1472,10 @@ async function run() {
   console.log("\n--- Game startup ---");
   receivedEventNames.clear();
   receivedEvents.length = 0;
+  callbackEvents.length = 0;
   eventCount = 0;
+  eventsWithoutInput = 0;
+  commandBoundaryGeneration = 0;
   numberPadStates.length = 0;
   ynPrompts.length = 0;
   rawMessages.length = 0;
@@ -1129,8 +1489,12 @@ async function run() {
   coreCommandResults.length = 0;
   menuSelections.length = 0;
   activeMenus.clear();
+  activeWindows.clear();
   queuedRuntimeSettings = 0;
   queuedCoreCommand = 0;
+  queuedExtendedCommand = null;
+  activeCommandResponses = null;
+  selectedCharacterFixture = null;
 
   const gamePromise = module.ccall("main", "number", [], [], { async: true });
   gamePromise.catch(() => {});
@@ -1232,6 +1596,13 @@ async function run() {
       && permanentInventoryUpdates.some((event) => event.kind === "commit"),
     "perm_invent creates, populates, and commits a persistent inventory menu",
   );
+  assert(
+    selectedCharacterFixture?.role?.fileCode === "Tou"
+      && selectedCharacterFixture?.race?.fileCode === "Hum"
+      && selectedCharacterFixture?.gender?.fileCode === "Mal"
+      && selectedCharacterFixture?.alignment?.fileCode === "Neu",
+    "command characterization uses the deterministic Tourist fixture",
+  );
 
   // --- Character catalog ---
   console.log("\n--- Character catalog ---");
@@ -1332,6 +1703,11 @@ async function run() {
   );
   const glyphConstants = globalThis.nethackGlobal.constants.GLYPH;
   const mgConstants = globalThis.nethackGlobal.constants.MG;
+  const expensiveCameraObjectIndex = Number(
+    tileSource.match(/expensive camera \(onum=(\d+)\)/)?.[1],
+  );
+  const expensiveCameraGlyph = glyphConstants.GLYPH_OBJ_OFF
+    + expensiveCameraObjectIndex;
   const unexploredGlyphs = foregroundGlyphs.filter(
     (glyph) =>
       glyph.glyph === glyphConstants.GLYPH_UNEXPLORED
@@ -1431,6 +1807,10 @@ async function run() {
     "glyph_info keeps its WASM32 ABI size",
   );
   assert(
+    Number.isInteger(expensiveCameraObjectIndex),
+    "generated tile metadata identifies the Tourist camera object glyph",
+  );
+  assert(
     new Set(ordinaryGlyphs.map((glyph) => glyph.glyph)).size >= 2
       && new Set(ordinaryGlyphs.map((glyph) => glyph.ttyChar)).size >= 2
       && new Set(ordinaryGlyphs.map((glyph) => glyph.symbolIndex)).size >= 2,
@@ -1450,7 +1830,9 @@ async function run() {
     const experienceUpdatesBeforeCommand = statusUpdateEvents.filter(
       (event) => event.field === 13,
     ).length;
-    await sendKeyAndWait(46); // ordinary wait command; cannot grant XP
+    const searchCommand = actionCommands.find(({ name }) => name === "search");
+    if (!searchCommand) throw new Error("Search command metadata is missing");
+    await runExtendedCommand(searchCommand);
     assert(
       eventCount > countBefore,
       `game processed input (${eventCount - countBefore} new events)`
@@ -1551,6 +1933,292 @@ async function run() {
   assert(
     dropSelector !== undefined,
     "accepted drop command enters a native PICK_ONE inventory menu",
+  );
+
+  // --- Representative command behavior ---
+  console.log("\n--- Representative command behavior ---");
+  const actionCommandsByName = new Map(
+    actionCommands.map((command) => [command.name, command]),
+  );
+  const representativeNames = [
+    "#",
+    "apply",
+    "cast",
+    "eat",
+    "fight",
+    "inventory",
+    "kick",
+    "save",
+    "search",
+    "throw",
+    "toggle",
+    "travel",
+    "wield",
+  ];
+  const representativeCommands = Object.fromEntries(
+    representativeNames.map((name) => [name, actionCommandsByName.get(name)]),
+  );
+  if (
+    representativeNames.some((name) => !representativeCommands[name])
+  ) {
+    throw new Error("Representative command metadata is incomplete");
+  }
+  assert(
+    representativeNames.every((name) =>
+      Number.isInteger(representativeCommands[name].sourceIndex))
+      && representativeCommands["#"].defaultKey === EXTENDED_COMMAND_KEY
+      && representativeCommands.search.defaultKey === "s".charCodeAt(0)
+      && representativeCommands.inventory.defaultKey === "i".charCodeAt(0)
+      && representativeCommands.eat.defaultKey === "e".charCodeAt(0)
+      && representativeCommands.wield.defaultKey === "w".charCodeAt(0)
+      && representativeCommands.apply.defaultKey === "a".charCodeAt(0)
+      && representativeCommands.throw.defaultKey === "t".charCodeAt(0)
+      && representativeCommands.kick.defaultKey === 4
+      && representativeCommands.travel.defaultKey === "_".charCodeAt(0)
+      && representativeCommands.save.defaultKey === "S".charCodeAt(0),
+    "representative commands retain their real WASM source IDs and keys",
+  );
+  // Preserve the source-order contract here; the live save flow runs last
+  // because successful save terminates the shared Asyncify runtime.
+  const saveCommandBlock = cBlockAfter(
+    saveSource,
+    /\nint\s*\ndosave\s*\(\s*void\s*\)\s*/,
+  );
+  const saveConfirmIndex = saveCommandBlock?.indexOf("y_n(") ?? -1;
+  const saveWriteIndex = saveCommandBlock?.indexOf("dosave0()") ?? -1;
+  const saveSourceDisplayIndex = saveCommandBlock?.indexOf(
+    "display_nhwindow(WIN_MESSAGE, TRUE)",
+  ) ?? -1;
+  const saveSourceExitIndex = saveCommandBlock?.indexOf(
+    "exit_nhwindows(",
+  ) ?? -1;
+  const saveTerminateIndex = saveCommandBlock?.indexOf(
+    "nh_terminate(EXIT_SUCCESS)",
+  ) ?? -1;
+  assert(
+    representativeCommands.save.defaultKey === "S".charCodeAt(0)
+      && saveCommandBlock !== null
+      && saveConfirmIndex >= 0
+      && saveWriteIndex > saveConfirmIndex
+      && saveSourceDisplayIndex > saveWriteIndex
+      && saveSourceExitIndex > saveSourceDisplayIndex
+      && saveTerminateIndex > saveSourceExitIndex,
+    "save combines live WASM metadata with confirm, write, blocking display,"
+      + " window exit, and termination source order",
+  );
+
+  const pickerMarker = {
+    startIndex: callbackEvents.length,
+    boundaryGeneration: commandBoundaryGeneration,
+  };
+  queuedExtendedCommand = null;
+  activeCommandResponses = {
+    ynResponses: [],
+    unrestrictedYnResponses: [],
+    menuResponses: [],
+  };
+  resolvePendingInput(EXTENDED_COMMAND_KEY);
+  const pickerTrace = await finishExtendedCommand(pickerMarker);
+  assert(
+    pickerTrace.some(
+      (event) =>
+        event.name === "shim_get_ext_cmd" && event.sourceIndex === null,
+    )
+      && traceHasBoundary(pickerTrace),
+    "# cancellation passes through get_ext_cmd and returns at a new boundary",
+  );
+
+  const searchTrace = await runExtendedCommand(
+    representativeCommands.search,
+  );
+  assert(
+    traceHas(searchTrace, "shim_get_ext_cmd")
+      && traceHasBoundary(searchTrace)
+      && !traceHas(searchTrace, "shim_yn_function")
+      && !traceHas(searchTrace, "shim_select_menu")
+      && !searchTrace.some(
+        (event) =>
+          event.inputState !== undefined
+          && event.inputState !== INPUT_STATE_COMMAND,
+      ),
+    "search completes directly between two structured command boundaries",
+  );
+
+  const inventoryTrace = await runExtendedCommand(
+    representativeCommands.inventory,
+  );
+  assert(
+    inventoryTrace.some(
+      (event) =>
+        event.name === "shim_select_menu"
+        && event.behavior === MENU_BEHAVE_STANDARD
+        && event.how === PICK_ONE
+        && event.selectableItemCount > 0,
+    )
+      && traceHasBoundary(inventoryTrace),
+    "inventory exposes a standard PICK_ONE action menu before its boundary",
+  );
+
+  const itemCommandCases = [
+    { name: "eat", menuResponse: "cancel", reachesDirection: false },
+    { name: "wield", menuResponse: "cancel", reachesDirection: false },
+    {
+      name: "apply",
+      menuResponse: "first",
+      menuItemGlyph: expensiveCameraGlyph,
+      reachesDirection: true,
+    },
+    { name: "throw", menuResponse: "first", reachesDirection: true },
+  ];
+  for (const itemCase of itemCommandCases) {
+    const itemTrace = await runExtendedCommand(
+      representativeCommands[itemCase.name],
+      {
+        unrestrictedYnResponses: itemCase.reachesDirection
+          ? ["?".charCodeAt(0), ESCAPE]
+          : ["?".charCodeAt(0)],
+        menuResponses: [itemCase.menuResponse],
+        menuItemGlyphs: itemCase.menuItemGlyph === undefined
+          ? []
+          : [itemCase.menuItemGlyph],
+      },
+    );
+    const itemPromptIndex = itemTrace.findIndex(
+      (event) =>
+        event.name === "shim_yn_function"
+        && event.choices === null
+        && event.response === "?".charCodeAt(0),
+    );
+    const itemMenuIndex = itemTrace.findIndex(
+      (event) =>
+        event.name === "shim_select_menu"
+        && event.behavior === MENU_BEHAVE_STANDARD
+        && event.how === PICK_ONE
+        && event.selectableItemCount > 0
+        && event.response === itemCase.menuResponse,
+    );
+    assert(
+      itemPromptIndex >= 0
+        && itemMenuIndex > itemPromptIndex
+        && traceHasBoundary(itemTrace),
+      `${itemCase.name} exposes core-filtered PICK_ONE items and returns`
+        + " at a new boundary",
+    );
+    if (itemCase.reachesDirection) {
+      assert(
+        itemTrace.findIndex(
+          (event, index) =>
+            index > itemMenuIndex
+            && event.name === "shim_yn_function"
+            && event.choices === null
+            && event.response === ESCAPE,
+        ) > itemMenuIndex,
+        `${itemCase.name} reaches the getdir-backed unrestricted input after`
+          + " item selection",
+      );
+    }
+  }
+
+  const kickTrace = await runExtendedCommand(
+    representativeCommands.kick,
+    { unrestrictedYnResponses: [ESCAPE] },
+  );
+  assert(
+    kickTrace.some(
+      (event) =>
+        event.name === "shim_yn_function"
+        && event.choices === null
+        && event.response === ESCAPE,
+    )
+      && traceHasBoundary(kickTrace),
+    "kick reaches the getdir-backed unrestricted input and supports"
+      + " cancellation",
+  );
+
+  const travelTrace = await runExtendedCommand(
+    representativeCommands.travel,
+  );
+  const travelPositionIndex = travelTrace.findIndex(
+    (event) =>
+      event.name === "shim_nh_poskey"
+      && event.inputState === INPUT_STATE_GETPOS,
+  );
+  const travelBoundaryIndex = travelTrace.findIndex(
+    (event, index) =>
+      index > travelPositionIndex
+      && event.boundaryGeneration !== undefined,
+  );
+  assert(
+    travelPositionIndex >= 0
+      && travelBoundaryIndex > travelPositionIndex
+      && travelTrace.some(
+        (event, index) =>
+          index > travelBoundaryIndex
+          && event.inputState === INPUT_STATE_COMMAND,
+      ),
+    "travel exposes getposInp and cancellation reaches a later boundary",
+  );
+
+  const toggleTrace = await runExtendedCommand(
+    representativeCommands.toggle,
+  );
+  assert(
+    (representativeCommands.toggle.flags & CMD_PARAM) !== 0
+      && representativeCommands.toggle.defaultKey === 0
+      && traceHas(toggleTrace, "shim_raw_print")
+      && !traceHas(toggleTrace, "shim_select_menu")
+      && !traceHas(toggleTrace, "shim_yn_function")
+      && traceHasBoundary(toggleTrace),
+    "toggle metadata requires a parameter and bare execution returns via core"
+      + " feedback",
+  );
+
+  const prefixMarker = startExtendedCommand(representativeCommands.fight);
+  const prefixContinuation = await waitForPendingInput(5000);
+  const prefixTraceBeforeContinuation = commandTraceFrom(
+    prefixMarker.startIndex,
+  );
+  assert(
+    (representativeCommands.fight.flags & PREFIXCMD) !== 0
+      && prefixContinuation?.inputState === INPUT_STATE_COMMAND
+      && commandBoundaryGeneration === prefixMarker.boundaryGeneration
+      && !traceHasBoundary(prefixTraceBeforeContinuation),
+    "fight requests commandInp continuation before publishing a new boundary",
+  );
+  resolvePendingInput(ESCAPE);
+  const prefixTrace = await finishExtendedCommand(prefixMarker);
+  assert(
+    traceHasBoundary(prefixTrace)
+      && prefixTrace.at(-1)?.inputState === INPUT_STATE_COMMAND,
+    "cancelling the PREFIXCMD continuation reaches the next command boundary",
+  );
+
+  const rejectedTrace = await runExtendedCommand(
+    representativeCommands.cast,
+  );
+  const rejectedSelectionIndex = rejectedTrace.findIndex(
+    (event) =>
+      event.name === "shim_get_ext_cmd"
+      && event.sourceIndex === representativeCommands.cast.sourceIndex,
+  );
+  const rejectedOutputIndex = rejectedTrace.findIndex(
+    (event, index) =>
+      index > rejectedSelectionIndex
+      && (
+        event.name === "shim_putstr"
+        || event.name === "shim_raw_print"
+      ),
+  );
+  assert(
+    rejectedSelectionIndex >= 0
+      && rejectedOutputIndex > rejectedSelectionIndex
+      && !traceHas(rejectedTrace, "shim_select_menu")
+      && !traceHas(rejectedTrace, "shim_yn_function")
+      && !rejectedTrace.some(
+        (event) => event.inputState === INPUT_STATE_OTHER,
+      )
+      && traceHasBoundary(rejectedTrace),
+    "the spell-less Tourist rejection stays in core and returns directly",
   );
 
   // --- Runtime settings protocol ---
@@ -1690,6 +2358,53 @@ async function run() {
         ),
     ),
     "generated runtime options produced no configuration error",
+  );
+
+  // --- Terminal save flow ---
+  console.log("\n--- Terminal save flow ---");
+  const saveMarker = startExtendedCommand(representativeCommands.save, {
+    ynResponses: ["y".charCodeAt(0)],
+  });
+  const gameExit = await Promise.race([
+    gamePromise.then(
+      () => true,
+      (error) =>
+        typeof error === "object"
+        && error !== null
+        && "status" in error
+        && error.status === 0,
+    ),
+    new Promise((resolve) => {
+      setTimeout(() => resolve(false), 5000);
+    }),
+  ]);
+  const saveTrace = commandTraceFrom(saveMarker.startIndex);
+  const saveConfirmEvent = saveTrace.find(
+    (event) =>
+      event.name === "shim_yn_function"
+      && event.response === "y".charCodeAt(0),
+  );
+  const saveDisplayIndex = saveTrace.findIndex(
+    (event) =>
+      event.name === "shim_display_nhwindow"
+      && event.blocking === true,
+  );
+  const saveExitIndex = saveTrace.findIndex(
+    (event, index) =>
+      index > saveDisplayIndex
+      && event.name === "shim_exit_nhwindows",
+  );
+  assert(
+    saveConfirmEvent !== undefined
+      && saveDisplayIndex >= 0
+      && saveExitIndex > saveDisplayIndex
+      && gameExit === true,
+    "save confirms, performs its blocking display, exits windows, and"
+      + " terminates the real WASM session",
+  );
+  assert(
+    module.FS.analyzePath("/save/0TestPlayer").exists,
+    "save writes the deterministic character to the formal save directory",
   );
 
   // --- Summary ---
