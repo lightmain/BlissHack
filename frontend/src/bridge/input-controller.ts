@@ -18,6 +18,7 @@ import {
   showMenu,
   showText,
   type MenuItem,
+  setCommandBoundaryGeneration,
 } from "../game-state";
 import type { NetHackSettingsV1 } from "../settings/profile";
 import {
@@ -30,7 +31,8 @@ import type { EmscriptenModule } from "./emscripten-module";
 import { readExtendedCommands } from "./shim-decoders";
 import {
   encodeCoreCommandRequest,
-  type CoreCommandRequest,
+  MAX_CORE_COMMAND_NONCE,
+  type CoreCommandPayload,
 } from "../game-actions/core-command-protocol";
 import {
   buildLegalCharacterTuples,
@@ -44,6 +46,23 @@ import {
 interface MenuSelection {
   itemIndex: number;
   count: number;
+}
+
+export interface CoreCommandOwner {
+  moduleId: string;
+  sessionId: string;
+}
+
+export type CoreCommandIntent =
+  | { command: "clicklook"; x: number; y: number }
+  | {
+    command: "catalog";
+    sessionCommandId: number;
+    requestItemMenu: boolean;
+  };
+
+interface QueuedCoreCommand {
+  payload: CoreCommandPayload;
 }
 
 type PendingAction =
@@ -106,8 +125,10 @@ let actionIntentActive = false;
 let saveExitAutomation: "confirm" | "display" | null = null;
 let knownSaveNames: string[] = [];
 let pendingRuntimeSettings: RuntimeNetHackSettings | null = null;
-let pendingCoreCommand: number | null = null;
-let activeCoreCommand: number | null = null;
+let pendingCoreCommand: QueuedCoreCommand | null = null;
+let activeCoreCommand: QueuedCoreCommand | null = null;
+let nextCoreCommandNonce = 1;
+let lastCoreCommandSyncGeneration = 0;
 let characterSetupContext: CharacterSetupContext = {
   moduleId: "",
   sessionId: "",
@@ -450,21 +471,35 @@ export function requestSaveAndExit(): void {
 }
 
 /**
- * Queue one allowlisted command and advance to the next safe core boundary.
- * @param request - versioned command without a key-binding dependency.
+ * Queue one command and advance to the next safe core boundary.
+ * @param request - internal command or opaque current-catalog identity.
+ * @param owner - required module/session identity for catalog commands.
  * @returns whether the current top-level input accepted the request.
  */
-export function requestCoreCommand(request: CoreCommandRequest): boolean {
+export function requestCoreCommand(
+  request: CoreCommandIntent,
+  owner?: CoreCommandOwner,
+): boolean {
   const pending = pendingAction;
   if (
     pending?.kind !== "key"
     || !pending.commandInput
     || pendingCoreCommand !== null
     || activeCoreCommand !== null
+    || (
+      request.command === "catalog"
+      && (
+        owner === undefined
+        || !matchesOwner(characterSetupContext, owner)
+      )
+    )
   ) {
     return false;
   }
-  pendingCoreCommand = encodeCoreCommandRequest(request);
+  const requestNonce = allocateCoreCommandNonce();
+  pendingCoreCommand = {
+    payload: encodeCoreCommandRequest({ ...request, requestNonce }),
+  };
   pendingAction = null;
   queuedKeys.length = 0;
   typeaheadEnabled = false;
@@ -603,6 +638,8 @@ export function resetInputController(): void {
   pendingRuntimeSettings = null;
   pendingCoreCommand = null;
   activeCoreCommand = null;
+  nextCoreCommandNonce = 1;
+  lastCoreCommandSyncGeneration = 0;
   queuedKeys.length = 0;
   typeaheadEnabled = false;
   actionIntentActive = false;
@@ -653,30 +690,75 @@ export function acceptRuntimeSettingsResult(
   }
 }
 
-/** Return at most one command queued for this safe core boundary. */
-export function synchronizeCoreCommand(): number {
+/**
+ * Copy at most one queued request into C-owned memory at a safe boundary.
+ * @param module - active module whose memory owns the destination.
+ * @param boundaryGeneration - nonzero generation published by winshim.
+ * @param requestPtr - pointer to three contiguous uint32 request words.
+ * @returns one when a request was copied, otherwise zero.
+ */
+export function synchronizeCoreCommand(
+  module: EmscriptenModule,
+  boundaryGeneration: number,
+  requestPtr: number,
+): number {
+  setCommandBoundaryGeneration(boundaryGeneration);
+  if (boundaryGeneration === lastCoreCommandSyncGeneration) return 0;
+  lastCoreCommandSyncGeneration = boundaryGeneration;
   if (activeCoreCommand !== null || pendingCoreCommand === null) return 0;
+  if (!Number.isInteger(requestPtr) || requestPtr <= 0) {
+    throw new Error("Core command request destination is invalid");
+  }
   activeCoreCommand = pendingCoreCommand;
   pendingCoreCommand = null;
-  return activeCoreCommand;
+  const [header, requestNonce, argument] = activeCoreCommand.payload;
+  module.setValue(requestPtr, header, "i32");
+  module.setValue(requestPtr + 4, requestNonce, "i32");
+  module.setValue(requestPtr + 8, argument, "i32");
+  return 1;
 }
 
 /**
- * Confirm that the core consumed the exact command payload it received.
- * @param payload - original versioned payload.
+ * Confirm that the core consumed the exact three-word request it received.
+ * @param header - original versioned command header.
+ * @param requestNonce - original session-local request identity.
+ * @param argument - original catalog identity or clicklook coordinates.
  * @param accepted - whether the core validated and queued the command.
  */
 export function acceptCoreCommandResult(
-  payload: number,
+  header: number,
+  requestNonce: number,
+  argument: number,
   accepted: number,
 ): void {
-  if (activeCoreCommand === null || (payload >>> 0) !== activeCoreCommand) {
+  const payload = [header >>> 0, requestNonce >>> 0, argument >>> 0] as const;
+  if (
+    activeCoreCommand === null
+    || payload.some(
+      (word, index) => word !== activeCoreCommand?.payload[index],
+    )
+  ) {
     throw new Error("Core command result does not match the active request");
   }
   activeCoreCommand = null;
   if (accepted !== 1) {
     throw new Error("Core rejected a validated command request");
   }
+}
+
+/**
+ * Allocate one nonzero nonce without permitting wraparound in a session.
+ * @returns the next monotonically increasing uint32 request identity.
+ */
+function allocateCoreCommandNonce(): number {
+  if (nextCoreCommandNonce === 0) {
+    throw new Error("Core command request nonce space is exhausted");
+  }
+  const requestNonce = nextCoreCommandNonce;
+  nextCoreCommandNonce = requestNonce === MAX_CORE_COMMAND_NONCE
+    ? 0
+    : requestNonce + 1;
+  return requestNonce;
 }
 
 /** Display a window and optionally wait for user acknowledgement. */

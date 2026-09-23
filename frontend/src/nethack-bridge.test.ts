@@ -1539,6 +1539,24 @@ describe("core command synchronization", () => {
     ).toBe(2);
   });
 
+  it("publishes monotonic uint32 generations across the signed i32 boundary", async () => {
+    await expect(synchronizeCoreCommandAt(0x7fffffff)).resolves.toMatchObject({
+      available: 0,
+    });
+    const beforeSignedBoundary = getSnapshot().commandBoundaryGeneration;
+
+    await expect(synchronizeCoreCommandAt(-0x80000000)).resolves.toMatchObject({
+      available: 0,
+    });
+    const afterSignedBoundary = getSnapshot().commandBoundaryGeneration;
+
+    expect([beforeSignedBoundary, afterSignedBoundary]).toEqual([
+      0x7fffffff,
+      0x80000000,
+    ]);
+    expect(afterSignedBoundary).toBeGreaterThan(beforeSignedBoundary);
+  });
+
   it("keeps action-intent commands isolated from keyboard typeahead", async () => {
     setCurrentCommandOwner();
     const initialInput = shimCallback(

@@ -54,6 +54,7 @@ interface NethackGlobals {
 }
 
 interface NethackGlobal {
+  actionCatalog?: unknown;
   characterCatalog?: unknown;
   globals?: NethackGlobals;
   pointers?: { extcmdlist?: number };

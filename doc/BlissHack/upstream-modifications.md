@@ -188,16 +188,24 @@ M win/shim/winshim.c
 - **文件**：
   - `src/cmd.c`
   - `src/do.c`
+  - `sys/libnh/libnhmain.c`
   - `win/shim/winshim.c`
 - **引入提交**：
   - `64372bfd9 feat: add core-driven context action menus`
   - `556f98bfb feat: support dropping permanent inventory items`
 - **目的**：
-  - 在 `shim_get_nh_event()` 的安全命令边界消费一个版本化 32-bit command
-    intent，按 `extcmdlist` 中的固定名称把 `clicklook`、`inventory` 或
-    `drop` 排入核心命令队列。
-  - 用独立 result callback 确认原始 payload 是否通过版本、未知位、坐标和
-    command allowlist 校验。
+  - 在 `initoptions()` 后把当前构建的 104 个非 movement 玩家命令复制为
+    `nethackGlobal.actionCatalog`；只暴露 session command ID、name、默认 key
+    和 flags，不暴露函数地址。
+  - 在 `shim_get_nh_event()` 的安全命令边界消费一个协议 v2 三字 command
+    intent，支持固定 `clicklook` 和当前 session 的 catalog command ID。
+  - 用非零单调 request nonce、单调 command-boundary generation 和独立
+    result callback 精确匹配请求；每个 generation 最多消费一个请求。
+  - C 侧重新验证未知位、版本、坐标、ID、函数以及 internal、wizard、
+    unavailable、movement、`CMD_PARAM` flags，再把命令排入 `CQ_CANNED`，
+    保留 `rhack()` 的原生可用性、prefix、repeat 和回合路径。
+  - inventory 与 drop 从固定 ID 迁移为 catalog ID；drop 通过 v2 item-menu
+    bit 保留原生 request-menu 流程。
   - 浏览器 drop intent 先排入原生 `do_reqmenu` 前缀，再执行声明
     `CMD_M_PREFIX` 的 `drop`；`dodrop()` 在该前缀存在时临时启用并随后恢复
     `force_invmenu`，使 `getobj()` 直接提供可验证的 `PICK_ONE` 菜单，而不
@@ -210,7 +218,8 @@ M win/shim/winshim.c
     直接排入带方向的踢门动作。
 - **ABI 范围**：不导出新的 C 函数，不暴露对象指针；仅在 Emscripten
   `shim_get_nh_event()` 中增加 `shim_command_sync` 和
-  `shim_command_result` 私有回调。原生 `libnethack.a` ABI 保持不变。
+  `shim_command_result` 私有回调，并增加值复制的 action catalog。原生
+  `libnethack.a` ABI 保持不变。
 - **行为依据**：
   `doc/BlissHack/shim-interface-reference.md` 第 6.5 节。
 - **回归测试**：

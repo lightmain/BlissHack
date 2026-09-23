@@ -2,19 +2,21 @@
 /* Copyright (c) Adam Powers, 2020                                */
 /* NetHack may be freely redistributed.  See license for details. */
 /* Modified for BlissHack by lightmain, 2026-09-02, 2026-09-06, 2026-09-07,
- * 2026-09-14, 2026-09-15, and 2026-09-18:
+ * 2026-09-14, 2026-09-15, 2026-09-18, and 2026-09-23:
  * preserve character selection quit semantics, expose narrow browser save
  * helpers, and synchronize a fixed set of in-game options at command
  * boundaries, including the permanent inventory capability and settings;
  * forward status field metadata while preserving generic bookkeeping, and
  * provide authoritative resource percentages to the graphical status HUD;
- * consume allowlisted browser commands at the main command boundary; expose
- * the restore-only guard as a typed WASM global for pending askname flows. */
+ * consume nonce-bound catalog commands at the main command boundary and
+ * publish its generation; expose the restore-only guard as a typed WASM
+ * global for pending askname flows. */
 
 /* not an actual windowing port, but a fake win port for libnethack */
 
 #include "hack.h"
 #include "func_tab.h"
+#include <limits.h>
 #include <string.h>
 
 #ifdef SHIM_GRAPHICS
@@ -53,9 +55,11 @@ void shim_graphics_set_callback(char *cbName);
 void shim_graphics_set_player_name(const char *player_name);
 void shim_graphics_set_restore_required(int required);
 int shim_graphics_get_save_fingerprint(uchar *outbuf, int outbufsz);
+static void shim_command_reset(void);
 
 void shim_graphics_set_callback(char *cbName) {
     if (shim_callback_name != NULL) free(shim_callback_name);
+    shim_command_reset();
     if(cbName && strlen(cbName) > 0) {
         debugf("setting shim_callback_name: %s\n", cbName);
         shim_callback_name = strdup(cbName);
@@ -207,20 +211,31 @@ VDECLCB(shim_askname,(void), "v")
      | SHIM_SETTINGS_PICKUP_MASK | SHIM_SETTINGS_PERM_INVENT \
      | SHIM_SETTINGS_PERMINV_MODE_MASK | SHIM_SETTINGS_VERSION_MASK)
 
-#define SHIM_COMMAND_VERSION 1U
+#define SHIM_COMMAND_VERSION 2U
 #define SHIM_COMMAND_CLICKLOOK 1U
-#define SHIM_COMMAND_INVENTORY 2U
-#define SHIM_COMMAND_DROP 3U
-#define SHIM_COMMAND_ID_MASK 0xfU
-#define SHIM_COMMAND_X_SHIFT 4
-#define SHIM_COMMAND_X_MASK (0x7fU << SHIM_COMMAND_X_SHIFT)
-#define SHIM_COMMAND_Y_SHIFT 11
-#define SHIM_COMMAND_Y_MASK (0x1fU << SHIM_COMMAND_Y_SHIFT)
+#define SHIM_COMMAND_CATALOG 2U
+#define SHIM_COMMAND_KIND_MASK 3U
+#define SHIM_COMMAND_REQUEST_ITEM_MENU (1U << 4)
 #define SHIM_COMMAND_VERSION_SHIFT 28
 #define SHIM_COMMAND_VERSION_MASK (7U << SHIM_COMMAND_VERSION_SHIFT)
 #define SHIM_COMMAND_DEFINED_MASK \
-    (SHIM_COMMAND_ID_MASK | SHIM_COMMAND_X_MASK | SHIM_COMMAND_Y_MASK \
+    (SHIM_COMMAND_KIND_MASK | SHIM_COMMAND_REQUEST_ITEM_MENU \
      | SHIM_COMMAND_VERSION_MASK)
+#define SHIM_COMMAND_MAX_CATALOG_ID 1023U
+#define SHIM_COMMAND_X_MASK 0x7fU
+#define SHIM_COMMAND_Y_SHIFT 7
+#define SHIM_COMMAND_Y_MASK (0x1fU << SHIM_COMMAND_Y_SHIFT)
+#define SHIM_COMMAND_COORDINATE_MASK \
+    (SHIM_COMMAND_X_MASK | SHIM_COMMAND_Y_MASK)
+
+struct shim_command_request {
+    unsigned int header;
+    unsigned int request_nonce;
+    unsigned int argument;
+};
+
+static unsigned int command_boundary_generation = 0U;
+static unsigned int last_command_request_nonce = 0U;
 
 static const char shim_pickup_symbols[] = "$\")[%?+!=/(*`0_";
 static const int shim_numpad_modes[] = { 0, 1, 2, 3, 4, -1 };
@@ -423,78 +438,103 @@ shim_settings_result(int success, int snapshot)
                        NULL, "vii", args);
 }
 
-/* Retrieve one allowlisted command request for this command-loop boundary. */
-static int
-shim_command_sync(void)
+/* Clear session-local request identity and boundary generation state. */
+static void
+shim_command_reset(void)
 {
-    int request = 0;
-
-    if (shim_callback_name)
-        local_callback(shim_callback_name, "shim_command_sync",
-                       (void *) &request, "i", NULL);
-    return request;
+    command_boundary_generation = 0U;
+    last_command_request_nonce = 0U;
 }
 
-/* Report whether the exact command payload was accepted into the core queue. */
-static void
-shim_command_result(int request, int success)
+/* Retrieve one complete command request for this command-loop boundary. */
+static int
+shim_command_sync(unsigned int boundary_generation,
+                  struct shim_command_request *request)
 {
-    void *args[] = { &request, &success };
+    void *args[] = { &boundary_generation, P2V request };
+    int available = 0;
+
+    request->header = 0U;
+    request->request_nonce = 0U;
+    request->argument = 0U;
+    if (boundary_generation != command_boundary_generation)
+        return 0;
+    if (shim_callback_name)
+        local_callback(shim_callback_name, "shim_command_sync",
+                       (void *) &available, "iip", args);
+    return available;
+}
+
+/* Report whether the exact three-word request entered the core queue. */
+static void
+shim_command_result(unsigned int header, unsigned int request_nonce,
+                    unsigned int argument, int success)
+{
+    void *args[] = { &header, &request_nonce, &argument, &success };
 
     if (shim_callback_name)
         local_callback(shim_callback_name, "shim_command_result",
-                       NULL, "vii", args);
+                       NULL, "viiii", args);
 }
 
-/* Validate and queue one fixed command by its authoritative extcmd name. */
+/* Validate and queue one internal or catalog command by copied value identity. */
 static boolean
-shim_queue_command(unsigned int payload)
+shim_queue_command(const struct shim_command_request *request)
 {
     struct ext_func_tab *entry;
-    const char *name;
-    unsigned int command, version, x, y;
+    unsigned int argument = request->argument, command, extcmdlist_length,
+                 header = request->header, request_nonce = request->request_nonce,
+                 version, x, y;
 
-    if (payload & ~SHIM_COMMAND_DEFINED_MASK)
+    if (header & ~SHIM_COMMAND_DEFINED_MASK)
         return FALSE;
-    version = (payload & SHIM_COMMAND_VERSION_MASK)
+    version = (header & SHIM_COMMAND_VERSION_MASK)
               >> SHIM_COMMAND_VERSION_SHIFT;
     if (version != SHIM_COMMAND_VERSION)
         return FALSE;
-    command = payload & SHIM_COMMAND_ID_MASK;
-    x = (payload & SHIM_COMMAND_X_MASK) >> SHIM_COMMAND_X_SHIFT;
-    y = (payload & SHIM_COMMAND_Y_MASK) >> SHIM_COMMAND_Y_SHIFT;
-    switch (command) {
-    case SHIM_COMMAND_CLICKLOOK:
+    if (!request_nonce)
+        return FALSE;
+
+    command = header & SHIM_COMMAND_KIND_MASK;
+    if (command == SHIM_COMMAND_CLICKLOOK) {
+        if ((header & SHIM_COMMAND_REQUEST_ITEM_MENU) != 0
+            || (argument & ~SHIM_COMMAND_COORDINATE_MASK) != 0)
+            return FALSE;
+        x = argument & SHIM_COMMAND_X_MASK;
+        y = (argument & SHIM_COMMAND_Y_MASK) >> SHIM_COMMAND_Y_SHIFT;
         if (!isok((coordxy) x, (coordxy) y))
             return FALSE;
-        name = "clicklook";
-        break;
-    case SHIM_COMMAND_INVENTORY:
-        if (x || y)
+        for (entry = extcmdlist; entry->ef_txt; ++entry)
+            if (!strcmp(entry->ef_txt, "clicklook"))
+                break;
+        if (!entry->ef_txt || !entry->ef_funct)
             return FALSE;
-        name = "inventory";
-        break;
-    case SHIM_COMMAND_DROP:
-        if (x || y)
+        gc.clicklook_cc.x = (coordxy) x;
+        gc.clicklook_cc.y = (coordxy) y;
+    } else if (command == SHIM_COMMAND_CATALOG) {
+        if (argument > SHIM_COMMAND_MAX_CATALOG_ID)
             return FALSE;
-        name = "drop";
-        break;
-    default:
+        for (extcmdlist_length = 0U;
+             extcmdlist[extcmdlist_length].ef_txt;
+             ++extcmdlist_length)
+            continue;
+        if (argument >= extcmdlist_length)
+            return FALSE;
+        entry = &extcmdlist[argument];
+        if (!entry->ef_funct
+            || (entry->flags & (INTERNALCMD | WIZMODECMD
+                                | CMD_NOT_AVAILABLE | MOVEMENTCMD
+                                | CMD_PARAM)) != 0)
+            return FALSE;
+    } else {
         return FALSE;
     }
 
-    for (entry = extcmdlist; entry->ef_txt; ++entry)
-        if (!strcmp(entry->ef_txt, name))
-            break;
-    if (!entry->ef_txt || !entry->ef_funct
-        || (entry->flags & CMD_NOT_AVAILABLE) != 0)
+    if (request_nonce <= last_command_request_nonce)
         return FALSE;
-    if (command == SHIM_COMMAND_CLICKLOOK) {
-        gc.clicklook_cc.x = (coordxy) x;
-        gc.clicklook_cc.y = (coordxy) y;
-    } else if (command == SHIM_COMMAND_DROP) {
+    last_command_request_nonce = request_nonce;
+    if ((header & SHIM_COMMAND_REQUEST_ITEM_MENU) != 0)
         cmdq_add_ec(CQ_CANNED, do_reqmenu);
-    }
     cmdq_add_ec(CQ_CANNED, entry->ef_funct);
     return TRUE;
 }
@@ -504,10 +544,15 @@ void
 shim_get_nh_event(void)
 {
     unsigned int before = shim_settings_snapshot(),
-                 update = (unsigned int) shim_settings_sync((int) before),
-                 command;
+                 update = (unsigned int) shim_settings_sync((int) before);
+    struct shim_command_request command;
     boolean valid, applied, accepted;
+    int command_available;
     unsigned int after;
+
+    if (command_boundary_generation == UINT_MAX)
+        panic("BlissHack command boundary generation exhausted");
+    ++command_boundary_generation;
 
     if (update) {
         applied = FALSE;
@@ -525,10 +570,12 @@ shim_get_nh_event(void)
         shim_settings_result(applied ? 1 : 0, (int) after);
     }
 
-    command = (unsigned int) shim_command_sync();
-    if (command) {
-        accepted = shim_queue_command(command);
-        shim_command_result((int) command, accepted ? 1 : 0);
+    command_available = shim_command_sync(command_boundary_generation,
+                                          &command);
+    if (command_available) {
+        accepted = shim_queue_command(&command);
+        shim_command_result(command.header, command.request_nonce,
+                            command.argument, accepted ? 1 : 0);
     }
 }
 #else
