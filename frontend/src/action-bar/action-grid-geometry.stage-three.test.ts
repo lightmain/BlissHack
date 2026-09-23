@@ -159,6 +159,28 @@ describe("stage-three action grid geometry", () => {
     expect(wide.sections.at(-1)?.slots.slice(6))
       .toEqual(Array(6).fill(null));
 
+    const narrowCategory = geometryApi.calculateActionGridGeometry({
+      availableWidth: 240,
+      dividerWidth: 0,
+      minimumSlotSize: MINIMUM_SLOT_SIZE,
+      rows: 2,
+      sections: [{
+        category: "common",
+        columns: 1,
+        slots: defaults.categories.common,
+      }],
+      slotGap: SLOT_GAP,
+      targetSlotSize: TARGET_SLOT_SIZE,
+    });
+    expect(narrowCategory.horizontalOverflow).toBe(true);
+    expect(narrowCategory.sections[0].slots.slice(
+      0,
+      defaults.categories.common.length,
+    )).toEqual(defaults.categories.common);
+    expect(narrowCategory.sections[0].slots).toHaveLength(
+      narrowCategory.sections[0].columns * 2,
+    );
+
     const persistedColumns = [2, 3, 3, 3] as const;
     const preview = geometryApi.previewActionDivider({
       dividerIndex: 0,

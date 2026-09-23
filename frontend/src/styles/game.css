@@ -449,6 +449,47 @@
   grid-template-columns: minmax(0, 1fr) 42px;
 }
 
+.nh-hud-layout-right[data-action-bar-style="blisshack"] {
+  grid-template-areas:
+    "messages inventory"
+    "map inventory"
+    "actions inventory";
+  grid-template-columns: minmax(0, 1fr) clamp(22rem, 42vw, 38rem);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.nh-hud-layout-right[data-action-bar-style="blisshack"][data-has-inventory="false"] {
+  grid-template-areas:
+    "messages"
+    "map"
+    "actions";
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.nh-hud-layout-below[data-action-bar-style="blisshack"] {
+  grid-template-areas:
+    "messages"
+    "map"
+    "inventory"
+    "actions";
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, max-content) minmax(8rem, 1fr) auto;
+}
+
+.nh-hud-layout-below[data-action-bar-style="blisshack"][data-has-inventory="false"] {
+  grid-template-areas:
+    "messages"
+    "map"
+    "actions";
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.nh-hud-layout-below[data-action-bar-style="blisshack"][data-has-inventory="true"][data-inventory-collapsed="true"] {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, max-content) 42px auto;
+}
+
 .nh-hud-action-slot {
   grid-area: actions;
   min-width: 0;
@@ -457,6 +498,219 @@
 
 .nh-hud-action-slot:empty {
   display: none;
+}
+
+.nh-action-dock {
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  padding: 6px 8px;
+  display: grid;
+  grid-template-columns: minmax(11rem, 0.42fr) minmax(0, 1fr) 36px;
+  gap: 8px;
+  overflow: hidden;
+  border-top: 1px solid #3e464a;
+  background: #0d1011;
+}
+
+.nh-action-dock-status {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  border-right: 1px solid #30363a;
+}
+
+.nh-action-dock-status .nh-status {
+  min-height: 0;
+  padding: 1px 8px 1px 2px;
+}
+
+.nh-action-workspace {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto auto;
+  gap: 4px;
+}
+
+.nh-action-grid-viewport {
+  min-width: 0;
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+
+.nh-action-grid {
+  width: var(--action-grid-width);
+  min-width: var(--action-grid-width);
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+}
+
+.nh-action-section {
+  display: grid;
+  grid-template-columns:
+    repeat(var(--action-section-columns), var(--action-slot-size));
+  grid-template-rows: repeat(var(--action-row-count), var(--action-slot-size));
+  gap: 4px;
+}
+
+.nh-action-slot {
+  width: var(--action-slot-size);
+  min-width: 0;
+  aspect-ratio: 1;
+  padding: 3px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 2px;
+  overflow: hidden;
+  border: 1px solid #454f54;
+  border-radius: 3px;
+  background: #171c1e;
+  color: #e2e5e3;
+  font: inherit;
+  font-size: 10px;
+  letter-spacing: 0;
+  cursor: pointer;
+}
+
+.nh-action-slot > span {
+  width: 100%;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nh-action-missing-icon {
+  position: relative;
+  width: 20px;
+  height: 20px;
+  display: block;
+}
+
+.nh-action-missing-icon > svg {
+  position: absolute;
+  inset: 0;
+}
+
+.nh-action-missing-icon > svg:last-child {
+  inset: auto 0 0 auto;
+  color: #ffcf5c;
+  background: #171c1e;
+}
+
+.nh-action-slot:hover:not(:disabled),
+.nh-action-slot:focus-visible {
+  border-color: #7ab7c9;
+  outline: none;
+  background: #20292d;
+  color: #fff;
+}
+
+.nh-action-slot:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+.nh-action-slot-empty {
+  border-style: dashed;
+  background: #101415;
+  cursor: default;
+  opacity: 0.5;
+}
+
+.nh-action-divider {
+  width: 17px;
+  min-width: 17px;
+  display: grid;
+  place-items: center;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.nh-action-divider::before {
+  width: 1px;
+  height: 100%;
+  content: "";
+  background: #4b565b;
+}
+
+.nh-action-categories {
+  min-width: 0;
+  display: flex;
+  gap: 3px;
+  overflow-x: auto;
+}
+
+.nh-action-categories button {
+  min-height: 24px;
+  padding: 2px 7px;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: transparent;
+  color: #8f989d;
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 0;
+  cursor: pointer;
+}
+
+.nh-action-categories button[aria-pressed="true"] {
+  border-color: #526168;
+  background: #182024;
+  color: #fff;
+}
+
+.nh-action-dock-input {
+  min-width: 0;
+  min-height: 2em;
+  overflow: hidden;
+  border-top: 1px solid #252b2e;
+}
+
+.nh-action-dock-input .nh-prompt,
+.nh-action-dock-input .nh-line-input {
+  min-height: 2em;
+  padding: 3px 2px 0;
+}
+
+.nh-action-dock-tools {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  gap: 5px;
+}
+
+.nh-action-dock-tool {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 1px solid #4e595e;
+  border-radius: 50%;
+  background: #171c1e;
+  color: #d9deda;
+  cursor: pointer;
+}
+
+.nh-action-dock-tool:hover:not(:disabled),
+.nh-action-dock-tool:focus-visible {
+  border-color: #7ab7c9;
+  outline: none;
+  background: #20292d;
+}
+
+.nh-action-dock-tool:disabled {
+  color: #60696d;
+  cursor: not-allowed;
 }
 
 .nh-messages {
@@ -1339,13 +1593,54 @@
 .nh-color-bright-cyan { color: #7de0df; }
 .nh-color-white { color: #fff; }
 
+@media (max-height: 620px) {
+  .nh-hud-layout {
+    overflow-y: auto;
+  }
+
+  .nh-map-scroll {
+    min-height: 12rem;
+  }
+}
+
 @media (max-width: 700px) {
   .nh-shell {
     font-size: 11px;
   }
 
+  .nh-hud-layout-right[data-action-bar-style="blisshack"] {
+    grid-template-areas:
+      "messages"
+      "map"
+      "inventory"
+      "actions";
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(12rem, 1fr) minmax(6rem, auto) auto;
+    overflow-y: auto;
+  }
+
+  .nh-hud-layout-below[data-action-bar-style="blisshack"] {
+    grid-template-areas:
+      "messages"
+      "map"
+      "inventory"
+      "actions";
+    grid-template-columns: minmax(0, 1fr);
+    overflow-y: auto;
+  }
+
   .nh-hud-layout-right {
     grid-template-columns: minmax(0, 1fr) minmax(18rem, 42vw);
+  }
+
+  .nh-action-dock {
+    grid-template-columns: minmax(0, 1fr) 34px;
+  }
+
+  .nh-action-dock-status {
+    grid-column: 1 / -1;
+    border-right: 0;
+    border-bottom: 1px solid #30363a;
   }
 
   .nh-overlay {

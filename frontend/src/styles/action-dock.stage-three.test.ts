@@ -74,6 +74,14 @@ describe("stage-three action dock CSS", () => {
       expect(layout).toContain("inventory");
       expect(layout).toContain("minmax(0, 1fr)");
     }
+    expect(cssFor(
+      '.nh-hud-layout-below[data-action-bar-style="blisshack"][data-has-inventory="true"][data-inventory-collapsed="true"]',
+    )).toMatch(
+      /\bgrid-template-rows\s*:\s*auto\s+minmax\(0,\s*max-content\)\s+42px\s+auto\s*;/,
+    );
+    expect(cssFor(
+      '.nh-hud-layout-below[data-action-bar-style="blisshack"][data-has-inventory="false"]',
+    )).not.toContain("inventory");
 
     expect(cssFor(".nh-map-scroll")).toMatch(/\boverflow\s*:\s*auto\s*;/);
     expect(cssFor(".nh-map")).toMatch(/\bwidth\s*:\s*80ch\s*;/);

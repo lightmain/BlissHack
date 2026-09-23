@@ -162,7 +162,10 @@ function renderGame(options: {
 /** Return all opening tags which carry one data attribute. */
 function tagsWithAttribute(html: string, attribute: string): string[] {
   return html.match(
-    new RegExp(`<[^>]+\\b${attribute}(?:="[^"]*")?[^>]*>`, "g"),
+    new RegExp(
+      `<[^>]+\\b${attribute}(?:(?:="[^"]*")|(?=\\s|>))[^>]*>`,
+      "g",
+    ),
   ) ?? [];
 }
 
