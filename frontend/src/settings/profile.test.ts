@@ -18,7 +18,7 @@ import {
 const encoder = new TextEncoder();
 
 function createProfileDocument(
-  schemaVersion: 1 | 2 | 3,
+  schemaVersion: 1 | 2 | 3 | 4,
 ): Record<string, unknown> {
   const profile = createDefaultProfile() as unknown as {
     schemaVersion: number;
@@ -31,10 +31,14 @@ function createProfileDocument(
     delete profile.interface.informationLevel;
     delete profile.interface.endgameStyle;
     delete profile.interface.characterSetupStyle;
-  } else {
+  } else if (schemaVersion === 3) {
     profile.interface.informationLevel = "original";
     profile.interface.endgameStyle = "original";
     profile.interface.characterSetupStyle = "original";
+  }
+  if (schemaVersion <= 3) {
+    delete profile.interface.actionBarStyle;
+    delete profile.interface.actionBarLayout;
   }
   return profile as unknown as Record<string, unknown>;
 }
@@ -58,18 +62,22 @@ function expectProfileError(
 }
 
 describe("profile document migration", () => {
-  it("strictly migrates schema v1 through v2 to v3 with ASCII display", () => {
+  it("strictly migrates schema v1 through v4 with compatibility defaults", () => {
     const legacy = createLegacyProfile();
 
-    expect(migrateProfileDocument(legacy)).toEqual({
-      ...createDefaultProfile(),
-      schemaVersion: 3,
+    expect(migrateProfileDocument(legacy)).toMatchObject({
+      schemaVersion: 4,
       interface: {
-        ...createDefaultProfile().interface,
         mapRenderer: "ascii",
         informationLevel: "original",
         endgameStyle: "original",
         characterSetupStyle: "original",
+        actionBarStyle: "original",
+        actionBarLayout: {
+          rows: 2,
+          locked: true,
+          activeCategory: "all",
+        },
       },
     });
 
@@ -80,18 +88,24 @@ describe("profile document migration", () => {
     );
   });
 
-  it("strictly migrates schema v2 to v3 without changing existing settings", () => {
+  it("strictly migrates schema v2 to v4 without changing existing settings", () => {
     const v2 = createProfileDocument(2);
     (v2.interface as Record<string, unknown>).mapRenderer = "ascii";
     (v2.nethack as Record<string, unknown>).showExperience = true;
 
     expect(migrateProfileDocument(v2)).toMatchObject({
-      schemaVersion: 3,
+      schemaVersion: 4,
       interface: {
         mapRenderer: "ascii",
         informationLevel: "original",
         endgameStyle: "original",
         characterSetupStyle: "original",
+        actionBarStyle: "original",
+        actionBarLayout: {
+          rows: 2,
+          locked: true,
+          activeCategory: "all",
+        },
       },
       nethack: {
         showExperience: true,
@@ -105,11 +119,21 @@ describe("profile document migration", () => {
     );
   });
 
-  it("strictly validates schema v3 and returns a detached value", () => {
+  it("strictly migrates schema v3 to v4 with the reviewed action bar defaults", () => {
     const current = createProfileDocument(3);
     const migrated = migrateProfileDocument(current);
 
-    expect(migrated).toEqual(current);
+    expect(migrated).toMatchObject({
+      schemaVersion: 4,
+      interface: {
+        actionBarStyle: "original",
+        actionBarLayout: {
+          rows: 2,
+          locked: true,
+          activeCategory: "all",
+        },
+      },
+    });
     expect(migrated).not.toBe(current);
     expect(migrated.interface).not.toBe(current.interface);
     expect(migrated.nethack).not.toBe(current.nethack);
@@ -125,10 +149,27 @@ describe("profile document migration", () => {
     );
   });
 
+  it("strictly validates schema v4 and detaches every layout collection", () => {
+    const current = createProfileDocument(4) as any;
+    const migrated = migrateProfileDocument(current) as any;
+
+    expect(migrated).toEqual(current);
+    expect(migrated).not.toBe(current);
+    expect(migrated.interface).not.toBe(current.interface);
+    expect(migrated.interface.actionBarLayout)
+      .not.toBe(current.interface.actionBarLayout);
+    expect(migrated.interface.actionBarLayout.all)
+      .not.toBe(current.interface.actionBarLayout.all);
+    expect(migrated.interface.actionBarLayout.all[0].slots)
+      .not.toBe(current.interface.actionBarLayout.all[0].slots);
+    expect(migrated.interface.actionBarLayout.categories.custom)
+      .not.toBe(current.interface.actionBarLayout.categories.custom);
+  });
+
   it("rejects unknown versions before reading migration fields", () => {
     let migrationFieldReads = 0;
     const unknownVersion = {
-      schemaVersion: 4,
+      schemaVersion: 5,
       get interface(): unknown {
         migrationFieldReads += 1;
         return {};
@@ -153,7 +194,7 @@ describe("profile defaults and validation", () => {
     const second = createDefaultProfile();
 
     expect(first).toEqual({
-      schemaVersion: 3,
+      schemaVersion: 4,
       interface: {
         mapRenderer: "tiles",
         terminalFontSize: "medium",
@@ -164,6 +205,16 @@ describe("profile defaults and validation", () => {
         informationLevel: "original",
         endgameStyle: "original",
         characterSetupStyle: "original",
+        actionBarStyle: "original",
+        actionBarLayout: expect.objectContaining({
+          rows: 2,
+          locked: true,
+          activeCategory: "all",
+          all: expect.any(Array),
+          categories: expect.objectContaining({
+            custom: [],
+          }),
+        }),
       },
       nethack: {
         tutorial: true,
@@ -186,9 +237,10 @@ describe("profile defaults and validation", () => {
     ["informationLevel", ["original", "detailed"]],
     ["endgameStyle", ["original", "blisshack"]],
     ["characterSetupStyle", ["original", "blisshack"]],
+    ["actionBarStyle", ["original", "blisshack"]],
   ] as const)("accepts every %s enum value", (field, values) => {
     for (const value of values) {
-      const profile = createProfileDocument(3);
+      const profile = createProfileDocument(4);
       (profile.interface as Record<string, unknown>)[field] = value;
 
       expect(
@@ -202,7 +254,7 @@ describe("profile defaults and validation", () => {
   it("keeps showExperience and informationLevel independent", () => {
     for (const showExperience of [false, true]) {
       for (const informationLevel of ["original", "detailed"]) {
-        const profile = createProfileDocument(3);
+        const profile = createProfileDocument(4);
         (profile.nethack as Record<string, unknown>).showExperience =
           showExperience;
         (profile.interface as Record<string, unknown>).informationLevel =
@@ -222,15 +274,17 @@ describe("profile defaults and validation", () => {
     "informationLevel",
     "endgameStyle",
     "characterSetupStyle",
-  ])("rejects a v3 profile missing interface.%s", (field) => {
-    const profile = createProfileDocument(3);
+    "actionBarStyle",
+    "actionBarLayout",
+  ])("rejects a v4 profile missing interface.%s", (field) => {
+    const profile = createProfileDocument(4);
     delete (profile.interface as Record<string, unknown>)[field];
 
     expectProfileError(() => validateProfile(profile), "invalid-profile");
   });
 
-  it("rejects unknown fields in a v3 interface", () => {
-    const profile = createProfileDocument(3);
+  it("rejects unknown fields in a v4 interface", () => {
+    const profile = createProfileDocument(4);
     (profile.interface as Record<string, unknown>).futureStyle = "future";
 
     expectProfileError(() => validateProfile(profile), "invalid-profile");
@@ -240,17 +294,18 @@ describe("profile defaults and validation", () => {
     ["informationLevel", "verbose"],
     ["endgameStyle", "tabs"],
     ["characterSetupStyle", "modern"],
-  ])("rejects invalid v3 enum interface.%s=%s", (field, value) => {
-    const profile = createProfileDocument(3);
+    ["actionBarStyle", "compact"],
+  ])("rejects invalid v4 enum interface.%s=%s", (field, value) => {
+    const profile = createProfileDocument(4);
     (profile.interface as Record<string, unknown>)[field] = value;
 
     expectProfileError(() => validateProfile(profile), "invalid-profile");
   });
 
   it.each(["tiles", "ascii"] as const)(
-    "accepts map renderer %s in a strict v3 profile",
+    "accepts map renderer %s in a strict v4 profile",
     (mapRenderer) => {
-      const profile = createProfileDocument(3);
+      const profile = createProfileDocument(4);
       (profile.interface as Record<string, unknown>).mapRenderer = mapRenderer;
 
       expect(validateProfile(profile).interface).toMatchObject({
@@ -401,7 +456,7 @@ describe("profile defaults and validation", () => {
     expectProfileError(() => parseStoredProfile("{bad"), "invalid-json");
     expectProfileError(() => parseStoredProfile(JSON.stringify({
       ...createDefaultProfile(),
-      schemaVersion: 4,
+      schemaVersion: 5,
     })), "unsupported-schema");
   });
 
@@ -432,13 +487,46 @@ describe("profile defaults and validation", () => {
 });
 
 describe("profile import and export", () => {
+  it("round-trips empty slots and unknown actions in a v4 .bhprofile", () => {
+    const profile = createDefaultProfile() as any;
+    profile.interface.actionBarStyle = "blisshack";
+    profile.interface.actionBarLayout.rows = 4;
+    profile.interface.actionBarLayout.locked = false;
+    profile.interface.actionBarLayout.activeCategory = "custom";
+    profile.interface.actionBarLayout.categories.custom = [
+      null,
+      "future-action",
+    ];
+
+    const json = serializeProfileExport(
+      profile,
+      "alpha-2.3",
+      new Date("2026-09-23T12:34:56.789Z"),
+    );
+
+    expect(parseProfileImport(encoder.encode(json))).toMatchObject({
+      schemaVersion: 4,
+      interface: {
+        actionBarStyle: "blisshack",
+        actionBarLayout: {
+          rows: 4,
+          locked: false,
+          activeCategory: "custom",
+          categories: {
+            custom: [null, "future-action"],
+          },
+        },
+      },
+    });
+  });
+
   it("serializes deterministic metadata and round-trips strict UTF-8", () => {
     const profile = createDefaultProfile();
     const profileRecord = profile as unknown as {
       schemaVersion: number;
       interface: Record<string, unknown>;
     };
-    profileRecord.schemaVersion = 3;
+    profileRecord.schemaVersion = 4;
     profileRecord.interface.informationLevel = "detailed";
     profileRecord.interface.endgameStyle = "blisshack";
     profileRecord.interface.characterSetupStyle = "blisshack";
@@ -448,16 +536,22 @@ describe("profile import and export", () => {
     expect(json.endsWith("\n")).toBe(true);
     expect(json).not.toContain("\r");
     expect(JSON.parse(json)).toMatchObject({
-      schemaVersion: 3,
+      schemaVersion: 4,
       interface: {
         mapRenderer: "tiles",
         informationLevel: "detailed",
         endgameStyle: "blisshack",
         characterSetupStyle: "blisshack",
+        actionBarStyle: "original",
+        actionBarLayout: {
+          rows: 2,
+          locked: true,
+          activeCategory: "all",
+        },
       },
     });
     expect(parseProfileImport(encoder.encode(json))).toEqual({
-      schemaVersion: 3,
+      schemaVersion: 4,
       productVersion: "prealpha-3",
       exportedAt: "2026-09-06T12:34:56.789Z",
       interface: profile.interface,
@@ -465,7 +559,7 @@ describe("profile import and export", () => {
     });
   });
 
-  it("imports a strict v1 export as an in-memory v3 ASCII profile", () => {
+  it("imports a strict v1 export as an in-memory v4 ASCII profile", () => {
     const document = {
       ...createLegacyProfile(),
       productVersion: "prealpha-3",
@@ -475,34 +569,65 @@ describe("profile import and export", () => {
     expect(parseProfileImport(
       encoder.encode(JSON.stringify(document)),
     )).toMatchObject({
-      schemaVersion: 3,
+      schemaVersion: 4,
       productVersion: "prealpha-3",
       interface: {
         mapRenderer: "ascii",
         informationLevel: "original",
         endgameStyle: "original",
         characterSetupStyle: "original",
+        actionBarStyle: "original",
+        actionBarLayout: {
+          rows: 2,
+          locked: true,
+          activeCategory: "all",
+        },
       },
     });
   });
 
-  it("imports a strict v2 export as an in-memory v3 profile", () => {
-    const document = {
+  it("imports strict v2 and v3 exports as in-memory v4 profiles", () => {
+    const v2Document = {
       ...createProfileDocument(2),
       productVersion: "alpha-1.1",
       exportedAt: "2026-09-14T12:34:56.789Z",
     };
+    const document = {
+      ...createProfileDocument(3),
+      productVersion: "alpha-2.2",
+      exportedAt: "2026-09-14T12:34:56.789Z",
+    };
 
+    expect(parseProfileImport(
+      encoder.encode(JSON.stringify(v2Document)),
+    )).toMatchObject({
+      schemaVersion: 4,
+      productVersion: "alpha-1.1",
+      interface: {
+        actionBarStyle: "original",
+        actionBarLayout: {
+          rows: 2,
+          locked: true,
+          activeCategory: "all",
+        },
+      },
+    });
     expect(parseProfileImport(
       encoder.encode(JSON.stringify(document)),
     )).toMatchObject({
-      schemaVersion: 3,
-      productVersion: "alpha-1.1",
+      schemaVersion: 4,
+      productVersion: "alpha-2.2",
       interface: {
         mapRenderer: "tiles",
         informationLevel: "original",
         endgameStyle: "original",
         characterSetupStyle: "original",
+        actionBarStyle: "original",
+        actionBarLayout: {
+          rows: 2,
+          locked: true,
+          activeCategory: "all",
+        },
       },
     });
   });
@@ -540,6 +665,8 @@ describe("profile import and export", () => {
     delete document.interface.informationLevel;
     delete document.interface.endgameStyle;
     delete document.interface.characterSetupStyle;
+    delete document.interface.actionBarStyle;
+    delete document.interface.actionBarLayout;
     delete document.interface.permanentInventoryPosition;
     delete document.interface.permanentInventoryCollapsed;
     delete document.nethack.permInvent;

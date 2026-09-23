@@ -39,12 +39,18 @@ describe("full backup format", () => {
     expect(document.schemaVersion).toBe(2);
     expect(document.ranking).toBeNull();
     expect(document.profile).toMatchObject({
-      schemaVersion: 3,
+      schemaVersion: 4,
       interface: {
         mapRenderer: "tiles",
         informationLevel: "original",
         endgameStyle: "original",
         characterSetupStyle: "original",
+        actionBarStyle: "original",
+        actionBarLayout: {
+          rows: 2,
+          locked: true,
+          activeCategory: "all",
+        },
       },
     });
     expect(document.saves.map((save) => save.fileName)).toEqual(["0Ada", "0Bob"]);
@@ -119,45 +125,86 @@ describe("full backup format", () => {
       .resolves.toMatchObject({ profile });
   });
 
-  it("imports a backup with a strict v1 profile as v3 with ASCII display", async () => {
+  it("imports a backup with a strict v1 profile as v4 with compatibility defaults", async () => {
     const document = await exportedDocument();
     document.profile.schemaVersion = 1;
     delete document.profile.interface.mapRenderer;
     delete document.profile.interface.informationLevel;
     delete document.profile.interface.endgameStyle;
     delete document.profile.interface.characterSetupStyle;
+    delete document.profile.interface.actionBarStyle;
+    delete document.profile.interface.actionBarLayout;
 
     await expect(parseDocument(document)).resolves.toMatchObject({
       profile: {
-        schemaVersion: 3,
+        schemaVersion: 4,
         interface: {
           mapRenderer: "ascii",
           informationLevel: "original",
           endgameStyle: "original",
           characterSetupStyle: "original",
+          actionBarStyle: "original",
+          actionBarLayout: {
+            rows: 2,
+            locked: true,
+            activeCategory: "all",
+          },
         },
       },
     });
   });
 
-  it("imports a backup with a strict v2 profile as v3", async () => {
+  it("imports a backup with a strict v2 profile as v4", async () => {
     const document = await exportedDocument();
     document.profile.schemaVersion = 2;
     delete document.profile.interface.informationLevel;
     delete document.profile.interface.endgameStyle;
     delete document.profile.interface.characterSetupStyle;
+    delete document.profile.interface.actionBarStyle;
+    delete document.profile.interface.actionBarLayout;
 
     await expect(parseDocument(document)).resolves.toMatchObject({
       profile: {
-        schemaVersion: 3,
+        schemaVersion: 4,
         interface: {
           mapRenderer: "tiles",
           informationLevel: "original",
           endgameStyle: "original",
           characterSetupStyle: "original",
+          actionBarStyle: "original",
+          actionBarLayout: {
+            rows: 2,
+            locked: true,
+            activeCategory: "all",
+          },
         },
       },
     });
+  });
+
+  it("imports schema v1 and v2 backups containing a strict v3 profile", async () => {
+    for (const backupSchemaVersion of [1, 2]) {
+      const document = await exportedDocument();
+      document.schemaVersion = backupSchemaVersion;
+      if (backupSchemaVersion === 1) delete document.ranking;
+      document.profile.schemaVersion = 3;
+      delete document.profile.interface.actionBarStyle;
+      delete document.profile.interface.actionBarLayout;
+
+      await expect(parseDocument(document)).resolves.toMatchObject({
+        profile: {
+          schemaVersion: 4,
+          interface: {
+            actionBarStyle: "original",
+            actionBarLayout: {
+              rows: 2,
+              locked: true,
+              activeCategory: "all",
+            },
+          },
+        },
+      });
+    }
   });
 
   it("rejects a schema 1 backup containing the old profile shape", async () => {
@@ -167,6 +214,8 @@ describe("full backup format", () => {
     delete document.profile.interface.informationLevel;
     delete document.profile.interface.endgameStyle;
     delete document.profile.interface.characterSetupStyle;
+    delete document.profile.interface.actionBarStyle;
+    delete document.profile.interface.actionBarLayout;
     delete document.profile.interface.permanentInventoryPosition;
     delete document.profile.interface.permanentInventoryCollapsed;
     delete document.profile.nethack.permInvent;
