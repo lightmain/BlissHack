@@ -183,7 +183,8 @@ All Actions 使用当前 WASM 构建中的 104 个非方向、非 internal、非
 目录规则：
 
 - 命令 name 和当前 session 的临时 command ID 来自当前 WASM，不在 TSX 中复制。
-- 分类、图标和默认布局是前端展示 metadata，必须对 catalog name 做穷举校验。
+- catalog 同时复制 key 与 flags；分类、图标和默认布局是前端展示 metadata，
+  必须对 catalog name 做穷举校验。
 - profile 只保存命令 name，不保存 `sourceIndex`、函数地址或 WASM 指针。
 - 当前版本不提供自定义快捷键。Tooltip 的 key 显示当前构建的默认绑定；没有
   单键绑定时显示 `#name`。
@@ -191,6 +192,12 @@ All Actions 使用当前 WASM 构建中的 104 个非方向、非 internal、非
   `square-dashed-x-corner` 占位符。
 - Tooltip 只包含动作 name 和 key，不展示 `extcmdlist` description，也不新增
   项目自行撰写的动作说明。
+- 104 个目录项都保留在 All Actions；目录可见不等于可以用裸 command ID
+  执行。带 `CMD_PARAM` 的条目在 alpha-2.3 标记为 `unavailable`，协议拒绝
+  排队。当前构建中这条规则覆盖 `toggle`；玩家仍可通过 `optionsfull` 修改
+  选项。本版本不伪造 `Cmd_bind.param`，也不引入参数编辑器。
+- 带 `PREFIXCMD` 的 `fight`、`reqmenu`、`run` 和 `rush` 可以启动，但必须继续
+  使用核心原生的下一命令输入；不能把该输入误判为动作已经完成。
 
 ### 4.6 执行动作
 
@@ -202,8 +209,19 @@ active intent 时开始命令。开始后：
 3. C 侧在下一次 `shim_get_nh_event()` 验证该 ID 属于当前可见 catalog。
 4. C 侧把对应 `ext_func_tab` 放入 `CQ_CANNED`。
 5. `rhack()` 继续执行 `can_do_extcmd()`、前缀、repeat 和命令返回值等原生路径。
-6. 前端仅根据随后真实出现的 input/menu/display 和下一次 command boundary
-   更新 UI。
+6. 前端仅根据随后真实出现的 input/menu/display 和递增的安全命令边界
+   generation 更新 UI。
+
+执行资格：
+
+- 协议必须拒绝 `INTERNALCMD`、`WIZMODECMD`、`CMD_NOT_AVAILABLE` 和
+  `CMD_PARAM`，即使 UI 状态错误也不能进入 `CQ_CANNED`。
+- 普通目录命令只携带 session command ID 和 request nonce，不携带函数地址。
+- `PREFIXCMD` 进入 `waiting-prefix-continuation` 并把后续按键交给核心；只有
+  `rhack()` 返回后出现的下一次 `shim_get_nh_event()` generation 才表示整个
+  prefix 流程结束。`commandInp` 本身不是完成信号。
+- 若以后要求直接执行参数化命令，必须单独设计有界参数 schema，并证明执行期
+  建立的 `Cmd_bind` context 与键盘绑定路径一致；不得在本版本中顺带放宽。
 
 不得：
 
@@ -221,9 +239,19 @@ active intent 时开始命令。开始后：
   标志。
 - 核心仍负责过滤合法候选、数量、特殊的 hands/nothing 项和取消行为。
 - 前端只把核心实际生成的 `PICK_ONE` 菜单改呈现为 dock 上方轻量选择面板。
+- command request 使用当前 session 内单调递增、非零且不回绕的 32-bit request
+  nonce；耗尽视为 fatal protocol error，不能复用旧值。C 侧仅在
+  该 request 的强制菜单路径进入 `getobj()` 候选菜单期间标记
+  `action-getobj` provenance；shim 将 provenance、request nonce 和单调递增的
+  menu generation 随 `select_menu` observation 一起复制到 TypeScript。
+- chooser 只有在 `PICK_ONE`、`action-getobj` provenance、active request
+  nonce 和本次新 menu generation 全部匹配时才接管。仅凭“动作正在运行”、
+  window ID、prompt 或第一个 `PICK_ONE` 菜单都不够。
 - 选择时提交本次菜单行的 identifier，不复用永久背包 identifier。
 - 零候选、唯一候选、二次物品选择和不支持菜单化的命令都以真实核心行为为准；
   不能用永久背包快照伪造候选。
+- 每次 `getobj()` 返回后立即清理 provenance；request 在完成、拒绝、取消和
+  session reset 时清理。匹配失败的菜单原样交给现有原生 UI。
 
 方向参数：
 
@@ -246,6 +274,13 @@ active intent 时开始命令。开始后：
 - 交回后允许玩家完成该命令，并在下一次主命令边界结束 action intent。
 - Escape 或再次点击当前 targeting 动作必须向当前核心请求提交真实取消，而不
   只是隐藏前端 UI。
+- 提交取消后进入 `cancelling-core-input`；chooser、targeting 高亮和 active
+  intent/input barrier 不能立即清除。只有对应 Asyncify callback resolver
+  已被消费，并且观察到晚于本次动作起始 generation 的新
+  `shim_get_nh_event()`，才能回到 `idle`。session reset、fatal 和 module
+  disposal 走单独的终止清理路径。
+- 取消等待期间拒绝新动作。快速执行“Escape 后点击另一动作”不得让新动作命中
+  前一个 pending input。
 
 ### 4.8 可用、不可用与槽位稳定性
 
@@ -258,7 +293,7 @@ available | blocked | unavailable
 - `blocked`：session 非 running、read-only、pause/modal 打开、不是主命令边界、
   另一个 intent 正在执行，或布局正处于不允许执行的编辑手势。
 - `unavailable`：动作 name 无法在当前 catalog 解析，或当前构建明确标记为
-  internal、wizard、`CMD_NOT_AVAILABLE`。
+  internal、wizard、`CMD_NOT_AVAILABLE`、`CMD_PARAM`。
 - `available`：可以向核心请求执行；核心仍可能根据角色、物品、地形或状态给出
   原生拒绝。
 
@@ -275,10 +310,14 @@ alpha-2.3 不为此遍历 WASM 内存，也不调用可能产生副作用的
 - 面板按 Common、Gear、Magic、Items、Explore、Info、System 垂直分节。
 - 每节内部使用固定比例正方形 grid；面板纵向滚动并复用 `index.css` 的全局
   scrollbar。
+- 面板提供正式的 `.bhactions` 导入和导出控件；格式与行为见第 5.2 节。
 - 单击动作立即关闭面板并按第 4.6、4.7 节执行。
 - 打开时 messages、map 和 permanent inventory 变暗且 `inert`。
 - 状态与动作 dock 保持原亮度和可交互。
 - 面板不是 `aria-modal=true`；键盘焦点范围为 panel 与 dock 两个可交互根。
+- dock、panel 和 chooser 的交互根必须带 `data-browser-keyboard`。Enter 和
+  Space 只触发当前浏览器控件一次，Escape 只执行本层关闭或核心取消，不能再
+  冒泡成 NetHack 按键；组件卸载后不得残留键盘 owner。
 - Escape、pause、核心 modal、session reset、fatal 和卸载都关闭面板并恢复
   合法焦点。
 
@@ -356,9 +395,14 @@ interface InterfaceSettingsV4 extends InterfaceSettingsV3 {
 - 完整 backup 外层仍为 schema v2，因为容器、save 和 Ranking 结构未变；其
   内嵌 profile 使用 v4。
 - 旧 backup v1/v2 中的旧 profile 继续迁移，Ranking 兼容规则不变。
-- All Actions 中保留原型的布局导入/导出入口时，使用独立、版本化、严格校验的
-  `.bhactions` 文档；导入只替换 `actionBarLayout`，再通过同一个 profile 原子
-  提交路径保存。
+- All Actions 必须提供独立布局导入和导出，文件扩展名为 `.bhactions`。文档
+  schema v1 只包含格式版本和完整 `actionBarLayout`，使用与 profile v4 相同
+  的严格 validator、尺寸上限和未知 action name 保留规则。
+- `.bhactions` 导入只替换 `actionBarLayout`，不改变 `actionBarStyle` 或其他
+  profile 字段；确认后通过同一个 profile 原子提交路径保存，不能建立第二个
+  localStorage key。
+- `.bhactions` 导出必须从已提交 profile 生成稳定文档；取消、非法文件或保存
+  失败时保持当前内存布局与持久布局一致。
 - 所有导入先展示差异并确认；失败不产生部分布局或 profile 更新。
 
 ## 6. 目标架构
@@ -422,12 +466,13 @@ interface ActionCatalogEntry {
 - 固定内部命令 `clicklook`。
 - catalog command ID。
 - 是否请求本命令使用核心物品菜单。
+- 当前 session 内非零、不回绕的 32-bit request nonce。
 - `clicklook` 所需坐标。
 
 C 侧必须：
 
 1. 拒绝未知版本、未知位、越界 ID 和无函数条目。
-2. 拒绝 internal、wizard 和 `CMD_NOT_AVAILABLE` 条目。
+2. 拒绝 internal、wizard、`CMD_NOT_AVAILABLE` 和 `CMD_PARAM` 条目。
 3. 每个 `shim_get_nh_event()` 最多消费一个请求。
 4. 只把命令放入 `CQ_CANNED`，由 `rhack()` 正常执行
    `can_do_extcmd()`、repeat 和回合语义。
@@ -435,6 +480,21 @@ C 侧必须：
    不能让 `force_invmenu` 泄漏到后续键盘命令。
 6. 用原 payload/nonce 回报接受结果；session reset 同时清理 pending 与 active
    请求。
+7. 发布单调递增的 command-boundary generation；前端用它区分 prefix 的后续
+   `commandInp` 与 `rhack()` 真正结束后的新顶层边界。
+8. nonce 或 generation 达到上限时拒绝继续分配并进入明确 fatal 路径，不允许
+   在同一 session 内回绕后与旧 observation 碰撞。
+
+command-scoped 物品菜单还需要一个独立于 `force_invmenu` 的来源标记：
+
+1. 只在本次 action request 触发的 `getobj()` 强制候选菜单调用期间设置
+   `action-getobj` provenance。
+2. `shim_select_menu` 将 provenance、request nonce 和 menu generation 作为
+   值复制 metadata 传给 bridge，不暴露对象指针。
+3. 离开该 `getobj()` 调用时无条件清理 provenance；嵌套或后续普通菜单不得
+   继承。
+4. 若无法以局部、可测试的改动证明 provenance，暂停轻量 chooser，保留原生
+   菜单，不能退化为按 prompt 或菜单顺序猜测。
 
 若命令不能在不改游戏规则的情况下产生核心候选菜单，该命令回退原生 prompt，
 不得为统一外观修改物品合法性。
@@ -453,12 +513,14 @@ waiting-core-response
 -> presenting-item-menu
 -> targeting-direction
 -> targeting-position
+-> waiting-prefix-continuation
 -> handed-off-to-native-ui
 -> completing
 -> idle
 
 任意 active 状态
 -> cancelling-core-input
+-> waiting-cancel-boundary
 -> idle
 ```
 
@@ -477,7 +539,10 @@ waiting-core-response
 - 每一步只消费当前真实 pending input。
 - 静态 action metadata 不能决定下一步一定是 item、direction 或 position。
 - 非预期输入必须可见地交回现有 UI，不能被吞掉。
-- 完成只由下一主命令边界或明确的核心结束事件判定，不能用固定 timeout。
+- 完成只由 request 接受后递增的新 command-boundary generation 或明确的核心
+  终止事件判定，不能用 `commandInp`、input 变空或固定 timeout。
+- 正常取消必须等待当前 callback resolver 被核心消费和新的 boundary
+  generation；等待期间仍持有 intent/input barrier。
 - action intent 与 layout edit gesture 互斥。
 
 ### 6.4 HUD 与 Overlay
@@ -501,6 +566,11 @@ session-owned overlay host，但它们的可交互范围必须与 dock 分离于
 
 状态与动作栏共用底部区域时不得重复构造 `StatusMetric[]`。BlissHack dock 使用
 紧凑 status variant；Original 使用阶段八的 TTY variant。
+
+`ActionDock`、`AllActionsPanel` 和 `ActionItemChooser` 是明确的浏览器键盘
+owner，根节点使用现有 `data-browser-keyboard` 契约。它们的 Enter、Space 和
+Escape handler 必须先完成本地语义并阻止同一事件到达 `GameScreen` 的全局
+NetHack 键盘路由。
 
 ## 7. 非目标
 
@@ -539,7 +609,7 @@ session-owned overlay host，但它们的可交互范围必须与 dock 分离于
 5. 用真实 WASM 记录 104 个可见非方向命令及 24 个被排除的移动命令。
 6. 为代表性流程建立 characterization：
    `search`、`inventory`、`eat`、`wield`、`apply`、`throw`、`kick`、`travel`、
-   `#`、`save` 和一个核心拒绝路径。
+   `#`、`save`、`toggle`、一个 `PREFIXCMD` 后续命令和一个核心拒绝路径。
 7. 固化 alpha-2.2 Original HUD、Tiles/ASCII、Right/Below 的截图与几何基线。
 
 门禁：
@@ -566,6 +636,9 @@ test: characterize action bar command flows
 - 每个安全边界最多消费一个请求。
 - request/result 必须精确匹配；reset 清理 pending 与 active 请求。
 - catalog command 由 `CQ_CANNED` 执行并经过 `rhack()` 的原生可用性检查。
+- `CMD_PARAM` 目录项无法按裸 ID 排队，当前 `toggle` 保持可见但不可执行。
+- `PREFIXCMD` 的后续 `commandInp` 不被当成新顶层 boundary；整个组合命令结束
+  后才发布新的 generation。
 
 实施版本化 catalog 和 command protocol v2。若修改 C 或 libnh，按仓库规则更新
 文件头、`shim-interface-reference.md`、`upstream-modifications.md`，并用固定
@@ -598,6 +671,8 @@ feat: dispatch catalog commands at safe boundaries
 
 实现纯函数布局模型、profile v4 和 Settings segmented control。动作栏编辑结果
 必须复用现有完整 profile 原子提交，不新建旁路 localStorage key。
+本阶段同时定义 `.bhactions` schema v1、validator、稳定序列化和导入差异模型；
+可见导入导出控件在阶段六接入。
 
 建议提交：
 
@@ -638,12 +713,17 @@ feat: add the BlissHack action dock
 
 - 直接命令从请求到下一 command boundary 完成。
 - 核心生成的物品菜单由轻量 chooser 呈现。
+- 只有 request nonce、`action-getobj` provenance 和 menu generation 匹配的
+  核心物品菜单由轻量 chooser 呈现。
 - `item -> direction`、`item -> position` 和多次 item 流程逐步推进。
 - 真实 `getdirInp` 与普通 `yn` 不混淆。
 - 真实 `getposInp` 才开启地图坐标 targeting。
 - 普通 yn/line/display/extcmd/PICK_ANY 安全交回现有 UI。
 - Escape、再次点击、session reset、fatal、unmount 和 stale revision 正确
   取消。
+- 取消在 resolver 被核心消费且出现新的 boundary generation 前保持 busy；此时
+  点击其他动作不会执行。
+- `PREFIXCMD` 保留核心后续命令输入，并在完整组合结束后完成。
 - UI intent 期间不接受 typeahead，不会把用户按键插入自动步骤。
 
 实施：
@@ -652,9 +732,16 @@ feat: add the BlissHack action dock
 2. 增加 action intent、chooser、direction targeting 和 position targeting
    状态。
 3. 只使用核心返回的菜单候选。
-4. 为物品动作增加 command-scoped 强制菜单机制，并证明不会泄漏。
+4. 为物品动作增加 command-scoped 强制菜单和 `getobj` provenance 机制，并
+   证明 nonce、menu generation 与所有清理路径不会泄漏。
 5. 单击 ActionDock 或 All Actions 的动作时执行同一条路径。
 6. 每个动作的回合、取消和错误消息与原生命令一致。
+7. `CMD_PARAM` 动作保持 unavailable；prefix 动作使用核心原生 continuation。
+
+本阶段若为 provenance 修改 `src/invent.c`、shim callback 或其他上游文件，
+必须按仓库规则写明 BlissHack 修改者、日期和目的，更新
+`shim-interface-reference.md` 与 `upstream-modifications.md`，再用固定
+Emscripten 6.0.9 重建并成组提交 runtime 三件套。
 
 真实 WASM 门禁至少覆盖：
 
@@ -666,6 +753,7 @@ feat: add the BlissHack action dock
 | 方向 | `kick`, `open`, `chat`, `untrap` |
 | 地图坐标 | `travel`, `glance`, `jump` |
 | 特殊/原生回退 | `#`, `options`, `save`, `quit`, `fight` |
+| flags 边界 | `toggle`, `fight`, `reqmenu`, `run`, `rush` |
 
 建议提交：
 
@@ -708,7 +796,9 @@ feat: customize and persist action bar layouts
 4. 保持 dock 可点击、可拖动，并支持 panel 与 dock 之间的拖放规则。
 5. 保存打开按钮，关闭后在 inert 清除之后恢复焦点。
 6. 键盘焦点只遍历 panel 与 dock 的可交互控件。
-7. 完成布局 `.bhactions` 导入导出；profile 和 backup 路径同时保持。
+7. 为 dock、panel 和 chooser 标记 `data-browser-keyboard`，验证 Enter、Space
+   和 Escape 不会同时进入全局 NetHack 键盘路由。
+8. 接入并完成正式 `.bhactions` v1 导入导出；profile 和 backup 路径同时保持。
 
 门禁：
 
@@ -716,6 +806,8 @@ feat: customize and persist action bar layouts
 - 单击动作先关闭面板，再执行一次且仅一次核心命令。
 - core modal、pause 和 All Actions 不会同时争夺焦点。
 - 动作 Tooltip 只有 name 和 key。
+- `.bhactions` 导出、差异确认、取消、有效导入和非法文件拒绝均可用，且不会
+  改变动作栏模式或其他设置。
 - Chromium、Firefox、WebKit 的点击、滚动、拖放、Escape 和焦点恢复一致。
 
 建议提交：
@@ -736,7 +828,8 @@ feat: add the all actions panel
 7. 验证 profile v1-v4、backup v1/v2、跨页面 stale profile 和 Clear Local
    Data。
 8. 对 104 个 catalog name 建立构建门禁，对代表命令执行真实 WASM 流程。
-9. 运行 unit、lint、build、WASM、Chromium、Firefox、WebKit、performance 和
+9. 验证 `.bhactions` v1 的导出、导入、取消、损坏和原子失败路径。
+10. 运行 unit、lint、build、WASM、Chromium、Firefox、WebKit、performance 和
    long-flow。
 
 本阶段结束后，BlissHack 动作栏必须达到可人工验收状态；Original 仍暂时是
@@ -792,7 +885,11 @@ docs: complete alpha-2.3 acceptance
 - 行数、分区宽度、完整列拟合、空槽与 horizontal overflow 计算。
 - layout reducer 的移动、交换、覆盖、删除、锁定拒绝和取消。
 - action intent 的全部状态转换、native handoff 和清理。
+- request nonce、menu generation、`getobj` provenance、prefix continuation
+  和 cancel-boundary 状态转换。
 - All Actions 的分类、焦点范围、inert ownership 和 trigger 恢复。
+- dock、panel、chooser 的浏览器键盘 ownership；Enter/Space/Escape 不重复
+  发送到核心。
 - ActionSlot 的 available/blocked/unavailable 与稳定占位。
 - Original TTY 状态字段排序、动态启停、颜色和无进度条。
 
@@ -801,7 +898,11 @@ docs: complete alpha-2.3 acceptance
 - 当前构建 catalog 与 104/24 基线。
 - command protocol v2 编解码、拒绝和 request/result 配对。
 - `CQ_CANNED`、`can_do_extcmd()`、repeat 和回合语义。
+- `CMD_PARAM` 拒绝与当前 `toggle` unavailable；四个 `PREFIXCMD` 的原生后续
+  输入、取消和新 boundary generation。
 - command-scoped item menu 在成功、取消、零候选和异常后都清理。
+- 普通 `PICK_ONE`、同 window ID 重用和过期 menu generation 不会被 chooser
+  接管。
 - `getdirInp`、`getposInp`、`commandInp` 和普通 `otherInp` 的准确传播。
 - item menu identifier 只在当前 menu 生命周期使用。
 - 无 Asyncify 重入、悬空 resolver、双 pending action 或跨 session 命令。
@@ -811,6 +912,7 @@ docs: complete alpha-2.3 acceptance
 
 - 两种 Action bar 设置在 Home 与游戏内的生效范围。
 - 默认布局、所有 Tab、All Actions 和 Tooltip。
+- `.bhactions` 导出、差异确认、导入、取消和损坏文件拒绝。
 - 1 至 4 行、分隔条、锁定提示和全部拖放方向。
 - 刷新、退出、继续、Profile 和完整备份后的布局恢复。
 - 物品 chooser、键盘/地图方向 targeting、位置 targeting 和 Escape。
@@ -829,6 +931,8 @@ docs: complete alpha-2.3 acceptance
 3. 调整布局后切回 Original，再切回 BlissHack，确认布局未丢失。
 4. 刷新、Save and Exit、Continue 后确认模式和布局恢复。
 5. 导出再导入 Profile 和完整备份，确认动作栏设置一同恢复。
+6. 从 All Actions 导出 `.bhactions`，修改布局后重新导入并确认只恢复布局；
+   再验证取消和损坏文件不会改变任何设置。
 
 ### 10.2 动作执行
 
@@ -838,7 +942,11 @@ docs: complete alpha-2.3 acceptance
 4. 用鼠标和键盘完成 `kick` 与 `travel`，并分别用 Escape 取消。
 5. 执行会打开普通 yn、text、menu 或 extended-command 的动作，确认回退原生 UI。
 6. 对无可用物品、无可用法术和核心拒绝状态确认原生消息与回合语义。
-7. 确认任何流程都没有多余命令、错选物品或残留 targeting 高亮。
+7. 确认 `toggle` 可见但不可点击，`fight`、`reqmenu`、`run`、`rush` 等 prefix
+   动作仍要求核心原生后续命令。
+8. 在物品 chooser 或 targeting 中按 Escape 后立即点击另一动作，确认新动作
+   只在前一取消真正回到命令边界后才能开始。
+9. 确认任何流程都没有多余命令、错选物品或残留 targeting 高亮。
 
 ### 10.3 布局编辑
 
@@ -855,8 +963,10 @@ docs: complete alpha-2.3 acceptance
 2. 确认四个圆形工具按钮大小固定，纵向间距随 dock 高度展开。
 3. 打开 All Actions，确认消息、地图、永久背包变暗且不可操作，dock 保持正常。
 4. 用 Tab、Shift+Tab、Enter、Space 和 Escape 检查 panel 与 dock。
-5. 确认 Tooltip、chooser 和 panel 不被 viewport 或 dock 裁切。
-6. 确认地图滚动、Follow 和 camera anchor 在行数及模式变化后合理保持。
+5. 在 dock、panel 和 chooser 聚焦时按 Enter、Space 和 Escape，确认每次只有
+   一个浏览器 UI 结果且没有额外 NetHack 输入。
+6. 确认 Tooltip、chooser 和 panel 不被 viewport 或 dock 裁切。
+7. 确认地图滚动、Follow 和 camera anchor 在行数及模式变化后合理保持。
 
 ### 10.5 Original TTY
 
@@ -873,8 +983,12 @@ docs: complete alpha-2.3 acceptance
 | 静态 input metadata 与真实命令分支不一致 | 只按核心实际 input/menu 推进 |
 | 通用命令绕过 `can_do_extcmd()` | 只入 `CQ_CANNED`，由 `rhack()` 执行 |
 | 物品 chooser 伪造候选或泄露未知信息 | 只呈现当前核心 `getobj()` 菜单 |
+| 同命令的普通菜单被误认作 chooser | request nonce + `action-getobj` provenance + menu generation 三重匹配 |
 | `force_invmenu` 泄漏到下一命令 | command-scoped 标志、所有退出路径清理、WASM 测试 |
 | `getdir` 被误判为普通 yn | 传播 `program_state.input_state`，禁止 prompt 文本匹配 |
+| 取消 UI 早于核心取消 | 等 callback resolver 消费和新 boundary generation 后才回 idle |
+| prefix 输入被误判为动作完成 | 以 `shim_get_nh_event()` generation 而非 `commandInp` 判定完成 |
+| 浏览器控件按键重复发送给核心 | `data-browser-keyboard` + 局部 handler + 冒泡回归测试 |
 | persisted sourceIndex 在重建后错指命令 | 只持久化 name，session 内重新解析 ID |
 | 不能准确预判动作可用性 | 使用三态模型；未知保持可点击并由核心反馈 |
 | 104 项 metadata 漏项或漂移 | 与当前 WASM catalog 做构建时穷举测试 |
@@ -893,6 +1007,11 @@ docs: complete alpha-2.3 acceptance
 - item chooser 必须根据永久背包或英文物品名自行判断候选。
 - 方向输入只能通过匹配英文 prompt 识别。
 - command-scoped 菜单请求无法证明在取消和异常路径后清理。
+- 无法为强制 `getobj()` 菜单提供 request nonce、provenance 和 menu generation
+  三重来源证明。
+- `CMD_PARAM` 只能通过伪造 `gc.cmd_bind` 或未校验参数执行。
+- prefix 流程无法区分 continuation input 与真正的新 command boundary。
+- targeting 取消无法等待核心 callback 消费就必须开放下一动作。
 - catalog 需要持久化函数地址、WASM 指针或未经验证的结构偏移。
 - 精确 disabled 状态要求读取未公开核心状态或泄露未鉴定信息。
 - All Actions 无法在保持 dock 交互时可靠隔离地图和背包焦点。
@@ -906,19 +1025,25 @@ alpha-2.3 只有同时满足以下条件才算完成：
 
 1. Settings 提供 Original/BlissHack Action bar 选项，并使用 profile v4。
 2. 旧 profile 与旧 backup 保持可导入，布局随 Profile 和完整备份保存。
-3. BlissHack dock 与状态区合并，符合已确认原型的行数、分区、Tab 和工具布局。
-4. All Actions 来自当前 WASM 的 104 个可见非方向命令。
-5. 动作按命令身份在安全边界执行，不依赖默认快捷键宏或 WASM 重入。
-6. 物品、方向、坐标和其他后续输入由核心实际请求驱动。
-7. 锁定、拖放、覆盖、移除、分隔、空槽和 Custom 布局可跨游戏恢复。
-8. All Actions 打开时只 dim/inert 游戏内容，dock 保持可交互。
-9. 不可执行动作保留槽位，不因状态变化重排。
-10. 地图、右键菜单、hover、永久背包、暂停和普通键盘输入无回归。
-11. Original 最终使用无 HP、Energy、XP 图形条的 TTY 风格状态区。
-12. Tiles/ASCII、Right/Below、1 至 4 行和规定 viewport 通过几何及截图门禁。
-13. unit、lint、build、WASM、Chromium、Firefox、WebKit、performance 和
+3. `.bhactions` v1 是正式交付：可独立导出、预览并原子导入布局，失败或取消
+   不改变 profile。
+4. BlissHack dock 与状态区合并，符合已确认原型的行数、分区、Tab 和工具布局。
+5. All Actions 来自当前 WASM 的 104 个可见非方向命令；`CMD_PARAM` 保持可见
+   但不可用，prefix 命令保留核心原生 continuation。
+6. 动作按命令身份在安全边界执行，不依赖默认快捷键宏或 WASM 重入。
+7. 物品、方向、坐标和其他后续输入由核心实际请求驱动；chooser 具有 nonce、
+   `getobj` provenance 和 menu generation 来源证明。
+8. 正常取消在核心消费并到达新命令边界前不会开放下一动作。
+9. 锁定、拖放、覆盖、移除、分隔、空槽和 Custom 布局可跨游戏恢复。
+10. All Actions 打开时只 dim/inert 游戏内容，dock 保持可交互。
+11. dock、panel、chooser 的浏览器键盘事件不会重复进入 NetHack。
+12. 不可执行动作保留槽位，不因状态变化重排。
+13. 地图、右键菜单、hover、永久背包、暂停和普通键盘输入无回归。
+14. Original 最终使用无 HP、Energy、XP 图形条的 TTY 风格状态区。
+15. Tiles/ASCII、Right/Below、1 至 4 行和规定 viewport 通过几何及截图门禁。
+16. unit、lint、build、WASM、Chromium、Firefox、WebKit、performance 和
     long-flow 全部通过。
-14. 独立代码审查和人工验收完成后再合入并部署。
+17. 独立代码审查和人工验收完成后再合入并部署。
 
 ## 14. 计划提交序列
 
