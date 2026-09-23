@@ -75,13 +75,31 @@ interface StageOneCoreCommandBridge {
   ): boolean;
 }
 
+interface StageFourCoreCommandReceipt {
+  requestNonce: number;
+  acceptedBoundaryGeneration: number | null;
+}
+
+interface StageFourCoreCommandBridge {
+  requestCoreCommand(
+    request: CoreCommandIntent,
+    owner?: CoreCommandOwner,
+  ): StageFourCoreCommandReceipt | null;
+}
+
 const stageOneCoreCommandBridge =
   nethackBridge as unknown as StageOneCoreCommandBridge;
+const stageFourCoreCommandBridge =
+  nethackBridge as unknown as StageFourCoreCommandBridge;
 const CORE_COMMAND_REQUEST_PTR = 0x7000;
 const CURRENT_COMMAND_OWNER = {
   moduleId: "module-current",
   sessionId: "session-current",
 } as const;
+const INPUT_STATE_OTHER = 0;
+const INPUT_STATE_COMMAND = 1;
+const INPUT_STATE_GETPOS = 2;
+const INPUT_STATE_GETDIR = 3;
 
 interface MockModuleHarness {
   module: EmscriptenModule;
@@ -931,6 +949,95 @@ describe("map and status decoding", () => {
 });
 
 describe("key, position, and prompt input", () => {
+  it.each([
+    ["otherInp", INPUT_STATE_OTHER],
+    ["commandInp", INPUT_STATE_COMMAND],
+  ] as const)("preserves %s on an nhgetch snapshot", async (_name, inputState) => {
+    const pending = shimCallback("shim_nhgetch", inputState);
+    const observed = getSnapshot() as ReturnType<typeof getSnapshot> & {
+      inputState: number;
+    };
+
+    sendKey(27);
+    await expect(pending).resolves.toBe(27);
+
+    expect(observed.inputState).toBe(inputState);
+  });
+
+  it("distinguishes getdirInp from an ordinary yn prompt without matching text", async () => {
+    const ordinary = shimCallback(
+      "shim_yn_function",
+      "In what direction?",
+      "",
+      0,
+      INPUT_STATE_OTHER,
+    );
+    const ordinarySnapshot = getSnapshot() as ReturnType<typeof getSnapshot> & {
+      inputState: number;
+    };
+    sendKey("n".charCodeAt(0));
+    await expect(ordinary).resolves.toBe("n".charCodeAt(0));
+
+    const direction = shimCallback(
+      "shim_yn_function",
+      "Choose a response",
+      "",
+      0,
+      INPUT_STATE_GETDIR,
+    );
+    const directionSnapshot = getSnapshot() as ReturnType<
+      typeof getSnapshot
+    > & { inputState: number };
+    sendKey("h".charCodeAt(0));
+    await expect(direction).resolves.toBe("h".charCodeAt(0));
+
+    expect(ordinarySnapshot).toMatchObject({
+      inputState: INPUT_STATE_OTHER,
+      inputRequest: { kind: "yn" },
+    });
+    expect(directionSnapshot).toMatchObject({
+      inputState: INPUT_STATE_GETDIR,
+      inputRequest: { kind: "yn" },
+    });
+  });
+
+  it("preserves getposInp as the authoritative position-targeting state", async () => {
+    const position = shimCallback(
+      "shim_nh_poskey",
+      0x300,
+      0x302,
+      0x304,
+      INPUT_STATE_GETPOS,
+    );
+    const positionSnapshot = getSnapshot() as ReturnType<typeof getSnapshot> & {
+      inputState: number;
+    };
+    sendKey(27);
+    await expect(position).resolves.toBe(27);
+
+    const nonGetpos = shimCallback(
+      "shim_nh_poskey",
+      0x300,
+      0x302,
+      0x304,
+      INPUT_STATE_OTHER,
+    );
+    const nonGetposSnapshot = getSnapshot() as ReturnType<
+      typeof getSnapshot
+    > & { inputState: number };
+    sendKey(27);
+    await expect(nonGetpos).resolves.toBe(27);
+
+    expect(positionSnapshot).toMatchObject({
+      inputState: INPUT_STATE_GETPOS,
+      inputRequest: { kind: "position" },
+    });
+    expect(nonGetposSnapshot).toMatchObject({
+      inputState: INPUT_STATE_OTHER,
+      inputRequest: { kind: "position" },
+    });
+  });
+
   it("keeps nhgetch pending until a non-zero byte is supplied", async () => {
     const promise = shimCallback("shim_nhgetch");
     expect(isWaitingForInput()).toBe(true);
@@ -1228,6 +1335,51 @@ describe("key, position, and prompt input", () => {
 });
 
 describe("core command synchronization", () => {
+  it("returns unique request receipts and records their accepted boundary generation", async () => {
+    setCurrentCommandOwner();
+    await synchronizeCoreCommandAt(5);
+
+    const firstInput = shimCallback(
+      "shim_nh_poskey",
+      0x300,
+      0x302,
+      0x304,
+      INPUT_STATE_COMMAND,
+    );
+    const firstReceipt = stageFourCoreCommandBridge.requestCoreCommand(
+      catalogIntent(29),
+      CURRENT_COMMAND_OWNER,
+    );
+    await expect(firstInput).resolves.toBe(27);
+    const firstRequest = await synchronizeCoreCommandAt(6);
+    await shimCallback("shim_command_result", ...firstRequest.payload, 1);
+
+    const secondInput = shimCallback(
+      "shim_nh_poskey",
+      0x300,
+      0x302,
+      0x304,
+      INPUT_STATE_COMMAND,
+    );
+    const secondReceipt = stageFourCoreCommandBridge.requestCoreCommand(
+      catalogIntent(15, true),
+      CURRENT_COMMAND_OWNER,
+    );
+    await expect(secondInput).resolves.toBe(27);
+    const secondRequest = await synchronizeCoreCommandAt(7);
+    await shimCallback("shim_command_result", ...secondRequest.payload, 1);
+
+    expect(firstReceipt).toMatchObject({
+      requestNonce: firstRequest.payload[1],
+      acceptedBoundaryGeneration: 6,
+    });
+    expect(secondReceipt).toMatchObject({
+      requestNonce: secondRequest.payload[1],
+      acceptedBoundaryGeneration: 7,
+    });
+    expect(secondReceipt?.requestNonce).not.toBe(firstReceipt?.requestNonce);
+  });
+
   it("accepts catalog requests only at top-level input for the current owner", async () => {
     setCurrentCommandOwner();
     expect(
@@ -1685,6 +1837,67 @@ describe("runtime settings synchronization", () => {
 });
 
 describe("menus", () => {
+  it("copies action-getobj provenance and clears it for a reused ordinary menu window", async () => {
+    const menu = await shimCallback("shim_create_nhwindow", NHW_MENU) as number;
+    await shimCallback("shim_start_menu", menu, 0);
+    await shimCallback(
+      "shim_add_menu",
+      menu,
+      0,
+      17,
+      "a".charCodeAt(0),
+      0,
+      0,
+      2,
+      "opaque item",
+      0,
+    );
+    await shimCallback("shim_end_menu", menu, "");
+
+    const actionMenu = shimCallback(
+      "shim_select_menu",
+      menu,
+      PICK_ONE,
+      0x200,
+      1,
+      41,
+      12,
+    );
+    const actionModal = getSnapshot().modal;
+    submitMenuSelection(null);
+    await expect(actionMenu).resolves.toBe(-1);
+
+    const ordinaryMenu = shimCallback(
+      "shim_select_menu",
+      menu,
+      PICK_ONE,
+      0x200,
+      0,
+      0,
+      13,
+    );
+    const ordinaryModal = getSnapshot().modal;
+    submitMenuSelection(null);
+    await expect(ordinaryMenu).resolves.toBe(-1);
+
+    expect(actionModal).toEqual({
+      kind: "menu",
+      windowId: menu,
+      how: PICK_ONE,
+      provenance: "action-getobj",
+      requestNonce: 41,
+      menuGeneration: 12,
+    });
+    expect(ordinaryModal).toEqual({
+      kind: "menu",
+      windowId: menu,
+      how: PICK_ONE,
+      provenance: "none",
+      requestNonce: 0,
+      menuGeneration: 13,
+    });
+  });
+
   it("stores the identifier already decoded by winshim's integer format", async () => {
     const menu = await shimCallback("shim_create_nhwindow", NHW_MENU) as number;
 

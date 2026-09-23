@@ -63,6 +63,14 @@ const DO_SOURCE = join(
   "src",
   "do.c",
 );
+const INVENT_SOURCE = join(
+  __dirname,
+  "..",
+  "..",
+  "..",
+  "src",
+  "invent.c",
+);
 const SAVE_SOURCE = join(
   __dirname,
   "..",
@@ -241,6 +249,7 @@ const KNOWN_COMMAND_FLAGS = 0x7fff;
 const INPUT_STATE_OTHER = 0;
 const INPUT_STATE_COMMAND = 1;
 const INPUT_STATE_GETPOS = 2;
+const INPUT_STATE_GETDIR = 3;
 const ESCAPE = 27;
 const EXTENDED_COMMAND_KEY = "#".charCodeAt(0);
 
@@ -752,6 +761,9 @@ async function blissCallback(name, ...args) {
   if (name === "shim_yn_function") {
     ynCount++;
     ynPrompts.push(String(args[0] ?? ""));
+    const inputState = Number(args[3]);
+    inputStates.push(inputState);
+    callbackEvent.inputState = inputState;
     callbackEvent.choices = typeof args[1] === "string" && args[1].length > 0
       ? args[1]
       : null;
@@ -996,6 +1008,9 @@ async function blissCallback(name, ...args) {
         behavior: menu?.behavior ?? null,
         itemCount: menu?.itemCount ?? 0,
         selectableItemCount: menu?.selectableItemCount ?? 0,
+        provenance: Number(args[3]) === 1 ? "action-getobj" : "none",
+        requestNonce: Number(args[4]) >>> 0,
+        menuGeneration: Number(args[5]) >>> 0,
         eventIndex: eventCount,
         response: "cancel",
       };
@@ -1004,6 +1019,9 @@ async function blissCallback(name, ...args) {
       callbackEvent.behavior = selection.behavior;
       callbackEvent.itemCount = selection.itemCount;
       callbackEvent.selectableItemCount = selection.selectableItemCount;
+      callbackEvent.provenance = selection.provenance;
+      callbackEvent.requestNonce = selection.requestNonce;
+      callbackEvent.menuGeneration = selection.menuGeneration;
       if (Number(args[2]) !== 0) {
         activeModule.setValue(Number(args[2]), 0, "*");
       }
@@ -1088,6 +1106,7 @@ async function run() {
   assert(existsSync(HACK_SOURCE), "hack.c exists");
   assert(existsSync(LOCK_SOURCE), "lock.c exists");
   assert(existsSync(DO_SOURCE), "do.c exists");
+  assert(existsSync(INVENT_SOURCE), "invent.c exists");
   assert(existsSync(SAVE_SOURCE), "save.c exists");
   assert(existsSync(TILE_SOURCE), "tile.c exists");
   assert(existsSync(LIBNH_MAIN_SOURCE), "libnhmain.c exists");
@@ -1099,6 +1118,7 @@ async function run() {
     || !existsSync(HACK_SOURCE)
     || !existsSync(LOCK_SOURCE)
     || !existsSync(DO_SOURCE)
+    || !existsSync(INVENT_SOURCE)
     || !existsSync(SAVE_SOURCE)
     || !existsSync(TILE_SOURCE)
     || !existsSync(LIBNH_MAIN_SOURCE)
@@ -1112,12 +1132,25 @@ async function run() {
   const cmdSource = readFileSync(CMD_SOURCE, "utf8");
   const hackSource = readFileSync(HACK_SOURCE, "utf8");
   const lockSource = readFileSync(LOCK_SOURCE, "utf8");
+  const inventSource = readFileSync(INVENT_SOURCE, "utf8");
   const saveSource = readFileSync(SAVE_SOURCE, "utf8");
   const tileSource = readFileSync(TILE_SOURCE, "utf8");
   const libnhMainSource = readFileSync(LIBNH_MAIN_SOURCE, "utf8");
   const getdirBlock = cBlockAfter(
     cmdSource,
     /\nint\s*\ngetdir\s*\(\s*const char \*s\s*\)\s*/,
+  );
+  const getobjBlock = cBlockAfter(
+    inventSource,
+    /\nstruct obj \*\ngetobj\s*\([^;{}]*\)\s*/,
+  );
+  const ynFunctionWrapper = cBlockAfter(
+    winshimSource,
+    /\nchar\s*\nshim_yn_function\s*\([^;{}]*\)\s*/,
+  );
+  const selectMenuWrapper = cBlockAfter(
+    winshimSource,
+    /\nint\s*\nshim_select_menu\s*\([^;{}]*\)\s*/,
   );
   const characterCatalogInit = cBlockAfter(
     libnhMainSource,
@@ -1171,6 +1204,31 @@ async function run() {
         getdirBlock,
       ),
     "getdir marks getdirInp before invoking the unrestricted yn callback",
+  );
+  assert(
+    ynFunctionWrapper !== null
+      && /\bprogram_state\.input_state\b/.test(ynFunctionWrapper)
+      && /\blocal_callback\s*\([\s\S]*?"shim_yn_function"[\s\S]*?\binput_state\b/.test(
+        ynFunctionWrapper,
+      ),
+    "WASM yn_function copies the complete input_state to TypeScript",
+  );
+  assert(
+    selectMenuWrapper !== null
+      && /\bshim_action_getobj_provenance\b/.test(selectMenuWrapper)
+      && /\bshim_action_getobj_request_nonce\b/.test(selectMenuWrapper)
+      && /\bshim_menu_generation\b/.test(selectMenuWrapper)
+      && /\blocal_callback\s*\([\s\S]*?"shim_select_menu"/.test(
+        selectMenuWrapper,
+      ),
+    "select_menu copies provenance, request nonce, and menu generation",
+  );
+  assert(
+    getobjBlock !== null
+      && /\bshim_action_getobj_begin\s*\(\s*\)\s*;[\s\S]*?\bdisplay_pickinv\s*\([\s\S]*?\bshim_action_getobj_end\s*\(\s*\)\s*;/.test(
+        getobjBlock,
+      ),
+    "getobj scopes action-menu provenance to the core candidate menu call",
   );
   assert(
     /\bCREATE_READONLY_GLOBAL\s*\(\s*program_state\.gameover\s*,\s*"b"\s*\)\s*;/.test(
@@ -2257,6 +2315,13 @@ async function run() {
     "v2 drop preserves the real request-menu inventory flow",
   );
   assert(
+    dropSelector?.provenance === "action-getobj"
+      && dropSelector.requestNonce === dropPayload[1]
+      && Number.isInteger(dropSelector.menuGeneration)
+      && dropSelector.menuGeneration > 0,
+    "v2 drop identifies its core item menu with provenance, nonce, and generation",
+  );
+  assert(
     publishedBoundaryGenerations.length > 0
       && publishedBoundaryGenerations.every(
         (generation, index) =>
@@ -2403,6 +2468,7 @@ async function run() {
             index > itemMenuIndex
             && event.name === "shim_yn_function"
             && event.choices === null
+            && event.inputState === INPUT_STATE_GETDIR
             && event.response === ESCAPE,
         ) > itemMenuIndex,
         `${itemCase.name} reaches the getdir-backed unrestricted input after`
@@ -2420,6 +2486,7 @@ async function run() {
       (event) =>
         event.name === "shim_yn_function"
         && event.choices === null
+        && event.inputState === INPUT_STATE_GETDIR
         && event.response === ESCAPE,
     )
       && traceHasBoundary(kickTrace),
