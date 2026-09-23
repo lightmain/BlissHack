@@ -1981,42 +1981,57 @@ BlissHack 的 Emscripten `shim_get_nh_event()` 在处理 Settings 后，于同�
 顶层命令安全边界交换两个私有回调：
 
 ```text
-shim_command_sync() -> pending command payload or 0
-shim_command_result(payload, success)
+shim_command_sync(boundary_generation, request_ptr) -> available
+shim_command_result(header, request_nonce, argument, success)
 ```
 
 前端只会在 `commandInp` 的 `nhgetch` 或 `nh_poskey` 等待中接受请求，并以
 Escape 无耗时结束当前输入周期。下一次 `shim_get_nh_event()` 才消费请求，
-因此 React 不会在 Asyncify 输入等待期间重入 C。C 侧按 `extcmdlist` 中的固定
-命令名解析 allowlist，再用 `cmdq_add_ec(CQ_CANNED, ...)` 排入正常命令队列。
-当前命令 ID 为：
+因此 React 不会在 Asyncify 输入等待期间重入 C。`shim_command_sync` 只在
+callback 有待处理请求时，向本次调用栈内的 12-byte C 结构写入三个
+`uint32_t` word；该指针不会离开 callback，也不会进入 React 状态。
+
+协议 v2 的三个 word 为：
+
+| word | 内容 |
+| --- | --- |
+| `header` | 命令种类、物品菜单标志和协议版本 |
+| `request_nonce` | 当前 session 内单调递增、非零且不回绕的请求标识 |
+| `argument` | catalog command ID，或 `clicklook` 的 x/y 坐标 |
 
 ```text
-1 = clicklook
-2 = inventory
-3 = drop
+header bits 0..1   command kind：1 = clicklook，2 = catalog
+header bit 4       request item menu（仅 catalog）
+header bits 28..30 protocol version，当前为 2
+argument 0..1023   当前 session 的 catalog command ID
 ```
 
-payload 是版本化 32-bit 无符号位字段：
+`clicklook` 的 argument 使用低 7 bit 表示 x、随后 5 bit 表示 y，且不能设置
+物品菜单标志。C 侧拒绝未知位、错误版本、零或已消费 nonce、越界 ID、非法
+地图坐标、无函数条目，以及带 `INTERNALCMD`、`WIZMODECMD`、
+`CMD_NOT_AVAILABLE`、`MOVEMENTCMD` 或 `CMD_PARAM` 的 catalog 条目。通过校验
+后只使用 `cmdq_add_ec(CQ_CANNED, ...)` 排入正常命令队列，使 `rhack()` 继续
+执行 `can_do_extcmd()`、prefix、repeat 和回合逻辑。
 
-```text
-bits 0..3   command ID
-bits 4..10  x（仅 clicklook）
-bits 11..15 y（仅 clicklook）
-bits 28..30 protocol version，当前为 1
-bit 31      保留，必须为 0
-```
+`sys/libnh/libnhmain.c` 在 `initoptions()` 后把当前构建中 104 个非 wizard、
+非 internal、非 unavailable、非 movement 命令复制到
+`nethackGlobal.actionCatalog`。每项只包含源表索引形成的
+`sessionCommandId`、name、default key 和 flags，不复制函数地址。前端解码时
+要求数量、name 和 ID 唯一，并把目录绑定到当前 module/session；跨 session
+的 ID 会在进入协议前被拒绝。C 仍以自己的 `extcmdlist` 和 flags 重新校验，
+不信任 JavaScript 快照。
 
-C 侧拒绝未知位、错误版本、未知命令、非法地图坐标、非 `clicklook` 命令携带
-坐标、不可用命令或没有实现函数的命令。`shim_command_result` 回传原始 payload，
-前端只接受与当前 in-flight 请求完全匹配的结果。每次边界最多消费一个请求；
-session reset 会同时清理 pending 和 active 请求。
+`shim_command_result` 回传原始三个 word，前端只接受与当前 in-flight 请求完全
+匹配的结果。每个 generation 最多消费一个请求；同一 generation 的重复 sync
+不取走后续请求。`shim_get_nh_event()` 发布的 generation 只在一次完整
+`rhack()` 返回后递增，因此 prefix 的 `commandInp` continuation 不会被误判为
+新顶层边界。callback 注册和 session reset 会清理 generation、nonce、pending
+及 active 状态；计数耗尽时进入明确错误路径，不发生回绕。
 
-`drop` intent 在排入原生 `drop` 命令前先排入语义化的 `do_reqmenu` 前缀；
-`drop` 命令因此声明 `CMD_M_PREFIX`。`dodrop()` 仅在此前缀存在时临时启用
-`force_invmenu` 并在 `getobj()` 返回后恢复原值，让核心直接生成标准
-`PICK_ONE` 物品菜单，避免前端向字符提示盲发 `?`；其余物品过滤、数量、
-装备/诅咒拒绝和回合语义仍完全由核心执行。
+inventory 和 drop 已从旧固定 ID 迁移为当前 catalog ID。drop request 设置
+item-menu bit，C 在命令前排入原生 `do_reqmenu` 前缀；`dodrop()` 仍只在该前缀
+存在时临时启用并随后恢复 `force_invmenu`，使 `getobj()` 直接提供可验证的
+`PICK_ONE` 菜单。其余物品过滤、数量、装备/诅咒拒绝和回合语义仍由核心执行。
 
 浏览器运行时配置固定绑定 `mouse1:mouseaction,mouse2:therecmdmenu`。上游
 `click_to_cmd()` 原本没有为预置坐标保留具体鼠标 modifier，而
@@ -2033,7 +2048,7 @@ autoopen/autounlock 流程处理开门、锁门反馈和可用工具；右键菜
 
 地图右键仍通过标准 `nh_poskey` 鼠标路径进入 `therecmdmenu`；地图悬停检查、
 永久背包右键和拖放丢弃分别通过上述 `clicklook`、`inventory` 和 `drop`
-allowlist 启动。物品选择始终使用该次普通菜单返回的 identifier，永久背包
+command intent 启动。物品选择始终使用该次普通菜单返回的 identifier，永久背包
 identifier 只用于验证用户看到的 snapshot，没有被解释为长期 `struct obj *`。
 
 前端 `GameActionController` 只接受当前 intent 预期的 `PICK_ONE` 菜单、正的

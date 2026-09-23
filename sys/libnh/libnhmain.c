@@ -5,10 +5,11 @@
 
 /* main.c - Unix NetHack */
 
-/* Modified for BlissHack by lightmain, 2026-09-12, 2026-09-18, and 2026-09-19:
+/* Modified for BlissHack by lightmain, 2026-09-12, 2026-09-18, 2026-09-19,
+ * and 2026-09-23:
  * expose glyph_info ABI metadata, a copied versioned character catalog, and
- * read-only game-over state plus the restore-only startup guard to the
- * WebAssembly client. */
+ * a copied action-command catalog; expose read-only game-over state plus the
+ * restore-only startup guard to the WebAssembly client. */
 
 #include "hack.h"
 #include "dlb.h"
@@ -28,6 +29,7 @@ void js_helpers_init();
 void js_constants_init();
 void js_globals_init();
 void js_character_catalog_init();
+void js_action_catalog_init();
 #endif
 
 #if !defined(_BULL_SOURCE) && !defined(__sgi) && !defined(_M_UNIX)
@@ -190,6 +192,7 @@ nhmain(int argc, char *argv[])
     initoptions();
 #ifdef __EMSCRIPTEN__
     js_character_catalog_init();
+    js_action_catalog_init();
 #endif
 #ifdef PANICTRACE
     ARGV0 = gh.hname; /* save for possible stack trace */
@@ -1064,6 +1067,48 @@ js_character_catalog_init(void)
         js_character_catalog_add(
             3, i, aligns[i].adj, (const char *) 0, aligns[i].filecode,
             lowc(*aligns[i].adj), aligns[i].allow, -1, -1, -1, -1);
+}
+
+/***
+ * Action command catalog
+ ***/
+EM_JS(void, js_action_catalog_begin, (), {
+    globalThis.nethackGlobal = globalThis.nethackGlobal || {};
+    globalThis.nethackGlobal.actionCatalog = {
+        schemaVersion: 1,
+        commands: []
+    };
+})
+
+EM_JS(void, js_action_catalog_add,
+      (int session_command_id, int default_key, const char *name_ptr,
+       unsigned int flags), {
+    globalThis.nethackGlobal.actionCatalog.commands.push({
+        sessionCommandId: session_command_id,
+        name: UTF8ToString(name_ptr),
+        defaultKey: default_key,
+        flags
+    });
+})
+
+/*
+ * Copy action-safe command identity and display metadata after initoptions().
+ * Function addresses and other ext_func_tab pointers remain inside the core.
+ */
+void
+js_action_catalog_init(void)
+{
+    int i;
+    unsigned int hidden_flags = WIZMODECMD | CMD_NOT_AVAILABLE
+                                | INTERNALCMD | MOVEMENTCMD;
+
+    js_action_catalog_begin();
+    for (i = 0; extcmdlist[i].ef_txt; ++i) {
+        if ((extcmdlist[i].flags & hidden_flags) != 0)
+            continue;
+        js_action_catalog_add(i, (int) extcmdlist[i].key,
+                              extcmdlist[i].ef_txt, extcmdlist[i].flags);
+    }
 }
 
 /***

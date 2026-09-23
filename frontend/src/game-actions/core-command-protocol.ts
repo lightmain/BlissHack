@@ -1,72 +1,164 @@
-export const CORE_COMMAND_PROTOCOL_VERSION = 1;
+export const CORE_COMMAND_PROTOCOL_VERSION = 2;
+export const MAX_SESSION_COMMAND_ID = 1023;
+export const MAX_CORE_COMMAND_NONCE = 0xffffffff;
 
 const VERSION_SHIFT = 28;
 const VERSION_MASK = 0b111 << VERSION_SHIFT;
-const RESERVED_MASK = 1 << 31;
-const COMMAND_MASK = 0b1111;
-const X_SHIFT = 4;
-const X_MASK = 0b1111111 << X_SHIFT;
-const Y_SHIFT = 11;
-const Y_MASK = 0b11111 << Y_SHIFT;
-const DEFINED_MASK = VERSION_MASK | COMMAND_MASK | X_MASK | Y_MASK;
+const COMMAND_KIND_MASK = 0b11;
+const REQUEST_ITEM_MENU_BIT = 1 << 4;
+const DEFINED_HEADER_MASK =
+  VERSION_MASK | COMMAND_KIND_MASK | REQUEST_ITEM_MENU_BIT;
+const CLICKLOOK_X_MASK = 0b1111111;
+const CLICKLOOK_Y_MASK = 0b11111;
+const CLICKLOOK_Y_SHIFT = 7;
+const CLICKLOOK_ARGUMENT_MASK =
+  CLICKLOOK_X_MASK | (CLICKLOOK_Y_MASK << CLICKLOOK_Y_SHIFT);
 
-const COMMAND_IDS = {
+const COMMAND_KINDS = {
   clicklook: 1,
-  inventory: 2,
-  drop: 3,
+  catalog: 2,
 } as const;
 
 export type CoreCommandRequest =
-  | { command: "clicklook"; x: number; y: number }
-  | { command: "inventory" }
-  | { command: "drop" };
-
-/** Encode one allowlisted command for consumption at the next core boundary. */
-export function encodeCoreCommandRequest(request: CoreCommandRequest): number {
-  let payload = (
-    CORE_COMMAND_PROTOCOL_VERSION << VERSION_SHIFT
-  ) | COMMAND_IDS[request.command];
-  if (request.command === "clicklook") {
-    assertCoordinate(request.x, 0b1111111, "x");
-    assertCoordinate(request.y, 0b11111, "y");
-    payload |= request.x << X_SHIFT;
-    payload |= request.y << Y_SHIFT;
+  | {
+    command: "clicklook";
+    requestNonce: number;
+    x: number;
+    y: number;
   }
-  return payload >>> 0;
+  | {
+    command: "catalog";
+    requestNonce: number;
+    sessionCommandId: number;
+    requestItemMenu: boolean;
+  };
+
+export type CoreCommandPayload = readonly [
+  header: number,
+  requestNonce: number,
+  argument: number,
+];
+
+/**
+ * Encode one complete v2 request for the next core command boundary.
+ * @param request - nonce-bearing internal or catalog command request.
+ * @returns three unsigned WASM32 words with no pointer-valued fields.
+ */
+export function encodeCoreCommandRequest(
+  request: CoreCommandRequest,
+): CoreCommandPayload {
+  assertUint32(request.requestNonce, "request nonce", false);
+  const versionHeader = CORE_COMMAND_PROTOCOL_VERSION << VERSION_SHIFT;
+  if (request.command === "clicklook") {
+    assertBoundedInteger(request.x, CLICKLOOK_X_MASK, "x coordinate");
+    assertBoundedInteger(request.y, CLICKLOOK_Y_MASK, "y coordinate");
+    return [
+      (versionHeader | COMMAND_KINDS.clicklook) >>> 0,
+      request.requestNonce >>> 0,
+      (request.x | (request.y << CLICKLOOK_Y_SHIFT)) >>> 0,
+    ];
+  }
+
+  assertBoundedInteger(
+    request.sessionCommandId,
+    MAX_SESSION_COMMAND_ID,
+    "session command ID",
+  );
+  return [
+    (
+      versionHeader
+      | COMMAND_KINDS.catalog
+      | (request.requestItemMenu ? REQUEST_ITEM_MENU_BIT : 0)
+    ) >>> 0,
+    request.requestNonce >>> 0,
+    request.sessionCommandId >>> 0,
+  ];
 }
 
-/** Decode and validate one command payload without accepting unknown bits. */
-export function decodeCoreCommandRequest(payload: number): CoreCommandRequest {
-  if (!Number.isInteger(payload) || payload <= 0 || payload > 0xffffffff) {
+/**
+ * Decode and validate one three-word command payload.
+ * @param payload - exact header, nonce, and argument words from the bridge.
+ * @returns the typed v2 command request.
+ */
+export function decodeCoreCommandRequest(
+  payload: CoreCommandPayload,
+): CoreCommandRequest {
+  if (!Array.isArray(payload) || payload.length !== 3) {
     throw new Error("Invalid core command payload");
   }
-  const unsigned = payload >>> 0;
-  if ((unsigned & RESERVED_MASK) !== 0 || (unsigned & ~DEFINED_MASK) !== 0) {
-    throw new Error("Unsupported core command payload bits");
+  const [header, requestNonce, argument] = payload;
+  assertUint32(header, "header");
+  assertUint32(requestNonce, "request nonce", false);
+  assertUint32(argument, "argument");
+  if ((header & ~DEFINED_HEADER_MASK) !== 0) {
+    throw new Error("Unsupported core command header bits");
   }
-  const version = (unsigned & VERSION_MASK) >>> VERSION_SHIFT;
+  const version = (header & VERSION_MASK) >>> VERSION_SHIFT;
   if (version !== CORE_COMMAND_PROTOCOL_VERSION) {
     throw new Error(`Unsupported core command protocol version: ${version}`);
   }
-  const command = unsigned & COMMAND_MASK;
-  const x = (unsigned & X_MASK) >>> X_SHIFT;
-  const y = (unsigned & Y_MASK) >>> Y_SHIFT;
-  if (command === COMMAND_IDS.clicklook) return { command: "clicklook", x, y };
-  if (x !== 0 || y !== 0) {
-    throw new Error("Coordinates are only valid for clicklook");
+
+  const kind = header & COMMAND_KIND_MASK;
+  const requestItemMenu = (header & REQUEST_ITEM_MENU_BIT) !== 0;
+  if (kind === COMMAND_KINDS.clicklook) {
+    if (requestItemMenu || (argument & ~CLICKLOOK_ARGUMENT_MASK) !== 0) {
+      throw new Error("Invalid clicklook command payload");
+    }
+    return {
+      command: "clicklook",
+      requestNonce,
+      x: argument & CLICKLOOK_X_MASK,
+      y: (argument >>> CLICKLOOK_Y_SHIFT) & CLICKLOOK_Y_MASK,
+    };
   }
-  if (command === COMMAND_IDS.inventory) return { command: "inventory" };
-  if (command === COMMAND_IDS.drop) return { command: "drop" };
-  throw new Error(`Unsupported core command identifier: ${command}`);
+  if (kind === COMMAND_KINDS.catalog) {
+    assertBoundedInteger(
+      argument,
+      MAX_SESSION_COMMAND_ID,
+      "session command ID",
+    );
+    return {
+      command: "catalog",
+      requestNonce,
+      sessionCommandId: argument,
+      requestItemMenu,
+    };
+  }
+  throw new Error(`Unsupported core command kind: ${kind}`);
 }
 
-/** Reject values which cannot fit the fixed WASM32 command payload. */
-function assertCoordinate(
+/**
+ * Reject an integer outside one inclusive protocol range.
+ * @param value - number supplied by the caller or decoded payload.
+ * @param maximum - largest accepted integer.
+ * @param name - field name used in diagnostics.
+ */
+function assertBoundedInteger(
   value: number,
   maximum: number,
   name: string,
 ): void {
   if (!Number.isInteger(value) || value < 0 || value > maximum) {
-    throw new Error(`Invalid core command ${name} coordinate`);
+    throw new Error(`Invalid core command ${name}`);
+  }
+}
+
+/**
+ * Reject values which cannot be represented by one unsigned WASM32 word.
+ * @param value - candidate protocol word.
+ * @param name - field name used in diagnostics.
+ * @param allowZero - whether zero is a valid value.
+ */
+function assertUint32(
+  value: number,
+  name: string,
+  allowZero = true,
+): void {
+  if (
+    !Number.isInteger(value)
+    || value < (allowZero ? 0 : 1)
+    || value > 0xffffffff
+  ) {
+    throw new Error(`Invalid core command ${name}`);
   }
 }

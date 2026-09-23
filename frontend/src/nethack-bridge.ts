@@ -281,9 +281,18 @@ async function dispatchShimCallback(
       );
       return undefined;
     case "shim_command_sync":
-      return synchronizeCoreCommand();
+      return synchronizeCoreCommand(
+        module,
+        asNumber(args[0]) >>> 0,
+        asNumber(args[1]),
+      );
     case "shim_command_result":
-      acceptCoreCommandResult(asNumber(args[0]), asNumber(args[1]));
+      acceptCoreCommandResult(
+        asNumber(args[0]),
+        asNumber(args[1]),
+        asNumber(args[2]),
+        asNumber(args[3]),
+      );
       return undefined;
     case "shim_exit_nhwindows":
       setExitReason(asString(args[0]));

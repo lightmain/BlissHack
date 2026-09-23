@@ -151,6 +151,7 @@ export interface GameSnapshot {
   modal: GameModal | null;
   inputRequest: InputRequest | null;
   commandInput: boolean;
+  commandBoundaryGeneration: number;
   runtimeSettings: RuntimeNetHackSettings | null;
   runtimeSettingsStatus: "idle" | "pending" | "applied";
   numberPad: boolean;
@@ -210,6 +211,7 @@ function createInitialSnapshot(): GameSnapshot {
     modal: null,
     inputRequest: null,
     commandInput: false,
+    commandBoundaryGeneration: 0,
     runtimeSettings: null,
     runtimeSettingsStatus: "idle",
     numberPad: false,
@@ -640,6 +642,22 @@ export function setInputRequest(request: InputRequest | null): void {
 /** Record whether the core is waiting for a top-level command key. */
 export function setCommandInput(commandInput: boolean): void {
   if (snapshot.commandInput !== commandInput) publish({ commandInput });
+}
+
+/**
+ * Publish a nondecreasing command-loop boundary generation from the core.
+ * @param generation - current nonzero generation for this WASM session.
+ */
+export function setCommandBoundaryGeneration(generation: number): void {
+  if (!Number.isInteger(generation) || generation <= 0) {
+    throw new Error("Invalid command boundary generation");
+  }
+  if (generation < snapshot.commandBoundaryGeneration) {
+    throw new Error("Command boundary generation moved backwards");
+  }
+  if (generation !== snapshot.commandBoundaryGeneration) {
+    publish({ commandBoundaryGeneration: generation });
+  }
 }
 
 /** Replace the active dynamic settings snapshot reported by the core. */

@@ -23,6 +23,10 @@ import {
   type GameActionController,
 } from "../game-actions/game-action-controller";
 import {
+  decodeActionCatalog,
+  resolveActionCatalogName,
+} from "../game-actions/action-catalog";
+import {
   resolveMapPrimaryInteraction,
   resolveMapSecondaryInteraction,
 } from "../game-actions/interaction-origin";
@@ -178,13 +182,23 @@ export function GameScreen({
           return;
         }
         if (intent.kind === "inventory-context") {
-          if (!requestCoreCommand({ command: "inventory" })) {
+          if (!requestCatalogCommandByName(
+            "inventory",
+            false,
+            moduleId,
+            sessionId,
+          )) {
             throw new Error("Core command boundary rejected inventory context");
           }
           return;
         }
         if (intent.kind === "drop-item") {
-          if (!requestCoreCommand({ command: "drop" })) {
+          if (!requestCatalogCommandByName(
+            "drop",
+            true,
+            moduleId,
+            sessionId,
+          )) {
             throw new Error("Core command boundary rejected inventory drop");
           }
           return;
@@ -741,6 +755,37 @@ export function GameScreen({
       )}
     </main>
   );
+}
+
+/**
+ * Resolve a persisted command name to the current session's opaque ID.
+ * @param name - authoritative extcmd name.
+ * @param requestItemMenu - whether the core should request item-menu input.
+ * @param moduleId - module generation which owns the catalog.
+ * @param sessionId - active session which owns the catalog.
+ * @returns whether the bridge accepted the catalog command.
+ */
+function requestCatalogCommandByName(
+  name: string,
+  requestItemMenu: boolean,
+  moduleId: string,
+  sessionId: string,
+): boolean {
+  const owner = { moduleId, sessionId };
+  try {
+    const catalog = decodeActionCatalog(
+      globalThis.nethackGlobal?.actionCatalog,
+      owner,
+    );
+    const command = resolveActionCatalogName(catalog, name, owner);
+    return requestCoreCommand({
+      command: "catalog",
+      sessionCommandId: command.sessionCommandId,
+      requestItemMenu,
+    }, owner);
+  } catch {
+    return false;
+  }
 }
 
 /**

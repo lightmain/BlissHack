@@ -883,6 +883,7 @@ async function blissCallback(name, ...args) {
       };
       callbackEvent.payload = [...result.payload];
       callbackEvent.success = result.success;
+      callbackEvent.boundaryGeneration = result.boundaryGeneration;
       coreCommandResults.push(result);
       return undefined;
     }
@@ -1242,10 +1243,16 @@ async function run() {
         commandQueue,
       )
       && /\bversion\s*!=\s*SHIM_COMMAND_VERSION\b/.test(commandQueue)
-      && /\b>=\s*extcmdlist_length\b/.test(commandQueue)
+      && />=\s*extcmdlist_length\b/.test(commandQueue)
       && /\bextcmdlist\b/.test(commandQueue)
-      && /\b!entry->ef_funct\b/.test(commandQueue)
-      && ["INTERNALCMD", "WIZMODECMD", "CMD_NOT_AVAILABLE", "CMD_PARAM"]
+      && /!entry->ef_funct\b/.test(commandQueue)
+      && [
+        "INTERNALCMD",
+        "WIZMODECMD",
+        "CMD_NOT_AVAILABLE",
+        "MOVEMENTCMD",
+        "CMD_PARAM",
+      ]
         .every((flag) => commandQueue.includes(flag))
       && /\bcmdq_add_ec\s*\(\s*CQ_CANNED\s*,\s*entry->ef_funct\s*\)/.test(
         commandQueue,
@@ -2074,7 +2081,11 @@ async function run() {
   const unavailableCommand = allCommands.find(
     ({ flags }) => (flags & CMD_NOT_AVAILABLE) !== 0,
   );
+  const movementCommand = allCommands.find(
+    ({ flags }) => (flags & MOVEMENTCMD) !== 0,
+  );
   if (!dropCommand) throw new Error("Drop command metadata is missing");
+  if (!movementCommand) throw new Error("Movement command metadata is missing");
   assert(
     internalCommand !== undefined && wizardCommand !== undefined,
     "real extcmdlist exposes internal and wizard IDs for rejection tests",
@@ -2127,10 +2138,14 @@ async function run() {
         107,
       ),
     },
+    {
+      label: "MOVEMENTCMD command ID",
+      payload: catalogCommandPayload(movementCommand.sourceIndex, 108),
+    },
     ...(unavailableCommand
       ? [{
         label: "unavailable command ID",
-        payload: catalogCommandPayload(unavailableCommand.sourceIndex, 108),
+        payload: catalogCommandPayload(unavailableCommand.sourceIndex, 109),
       }]
       : []),
   ];
