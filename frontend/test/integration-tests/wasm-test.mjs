@@ -198,6 +198,177 @@ const MAX_ATLAS_TILE_INDEX = 2306;
 const FIRST_OTHER_TILE_INDEX = 1272;
 const LAST_LINEAR_CMAP_OFFSET = 32;
 const UNEXPLORED_TILE_INDEX = 1469;
+const EXTCMD_ENTRY_SIZE = 24;
+const EXTCMD_TEXT_OFFSET = 4;
+const EXTCMD_FLAGS_OFFSET = 16;
+const WIZMODECMD = 0x0004;
+const CMD_NOT_AVAILABLE = 0x0010;
+const INTERNALCMD = 0x0040;
+const MOVEMENTCMD = 0x0400;
+
+const EXPECTED_ACTION_COMMAND_NAMES = [
+  "#",
+  "?",
+  "adjust",
+  "annotate",
+  "apply",
+  "attributes",
+  "autopickup",
+  "call",
+  "cast",
+  "chat",
+  "chronicle",
+  "close",
+  "conduct",
+  "dip",
+  "down",
+  "drop",
+  "droptype",
+  "eat",
+  "engrave",
+  "enhance",
+  "exploremode",
+  "fight",
+  "fire",
+  "force",
+  "genocided",
+  "glance",
+  "help",
+  "herecmdmenu",
+  "history",
+  "inventory",
+  "inventtype",
+  "invoke",
+  "jump",
+  "kick",
+  "known",
+  "knownclass",
+  "look",
+  "lookaround",
+  "loot",
+  "monster",
+  "name",
+  "offer",
+  "open",
+  "options",
+  "optionsfull",
+  "overview",
+  "pay",
+  "perminv",
+  "pickup",
+  "pray",
+  "prevmsg",
+  "puton",
+  "quaff",
+  "quit",
+  "quiver",
+  "read",
+  "redraw",
+  "remove",
+  "repeat",
+  "reqmenu",
+  "retravel",
+  "ride",
+  "rub",
+  "run",
+  "rush",
+  "save",
+  "saveoptions",
+  "search",
+  "seeall",
+  "seeamulet",
+  "seearmor",
+  "seerings",
+  "seetools",
+  "seeweapon",
+  "shell",
+  "showgold",
+  "showspells",
+  "showtrap",
+  "sit",
+  "suspend",
+  "swap",
+  "takeoff",
+  "takeoffall",
+  "teleport",
+  "terrain",
+  "therecmdmenu",
+  "throw",
+  "tip",
+  "toggle",
+  "travel",
+  "turn",
+  "twoweapon",
+  "untrap",
+  "up",
+  "vanquished",
+  "version",
+  "versionshort",
+  "wait",
+  "wear",
+  "whatdoes",
+  "whatis",
+  "wield",
+  "wipe",
+  "zap",
+];
+
+const EXPECTED_MOVEMENT_COMMAND_NAMES = [
+  "movewest",
+  "movenorthwest",
+  "movenorth",
+  "movenortheast",
+  "moveeast",
+  "movesoutheast",
+  "movesouth",
+  "movesouthwest",
+  "rushwest",
+  "rushnorthwest",
+  "rushnorth",
+  "rushnortheast",
+  "rusheast",
+  "rushsoutheast",
+  "rushsouth",
+  "rushsouthwest",
+  "runwest",
+  "runnorthwest",
+  "runnorth",
+  "runnortheast",
+  "runeast",
+  "runsoutheast",
+  "runsouth",
+  "runsouthwest",
+];
+
+/**
+ * Copy visible player commands from the current WASM extcmdlist.
+ * @param {object} module - initialized Emscripten module.
+ * @returns {Array<{sourceIndex: number, name: string, flags: number}>}
+ * visible commands in authoritative source order.
+ */
+function readVisibleWasmCommands(module) {
+  const listPtr = globalThis.nethackGlobal?.pointers?.extcmdlist ?? 0;
+  if (listPtr === 0) return [];
+  const commands = [];
+
+  for (let sourceIndex = 0; sourceIndex < 1024; sourceIndex += 1) {
+    const entryPtr = listPtr + sourceIndex * EXTCMD_ENTRY_SIZE;
+    const textPtr = Number(module.getValue(entryPtr + EXTCMD_TEXT_OFFSET, "*"));
+    if (textPtr === 0) break;
+    const flags = Number(
+      module.getValue(entryPtr + EXTCMD_FLAGS_OFFSET, "i32"),
+    ) >>> 0;
+    if ((flags & (WIZMODECMD | CMD_NOT_AVAILABLE | INTERNALCMD)) !== 0) {
+      continue;
+    }
+    commands.push({
+      sourceIndex,
+      name: module.UTF8ToString(textPtr),
+      flags,
+    });
+  }
+  return commands;
+}
 
 /**
  * Decode one glyph_info while its shim callback pointer remains valid.
@@ -1120,6 +1291,35 @@ async function run() {
         `${tuple.role}:${tuple.race}:${tuple.gender}:${tuple.alignment}`))
         .size === characterTuples.length,
     "compatibility masks enumerate every core-counted legal tuple once",
+  );
+
+  // --- Action command catalog ---
+  console.log("\n--- Action command catalog ---");
+  const visibleCommands = readVisibleWasmCommands(module);
+  const actionCommands = visibleCommands.filter(
+    ({ flags }) => (flags & MOVEMENTCMD) === 0,
+  );
+  const movementCommands = visibleCommands.filter(
+    ({ flags }) => (flags & MOVEMENTCMD) !== 0,
+  );
+  assert(
+    actionCommands.length === 104
+      && JSON.stringify(actionCommands.map(({ name }) => name))
+        === JSON.stringify(EXPECTED_ACTION_COMMAND_NAMES),
+    "WASM exposes the expected 104 non-directional player commands in order",
+  );
+  assert(
+    movementCommands.length === 24
+      && JSON.stringify(movementCommands.map(({ name }) => name))
+        === JSON.stringify(EXPECTED_MOVEMENT_COMMAND_NAMES),
+    "WASM exposes the expected 24 directional movement commands for exclusion",
+  );
+  assert(
+    visibleCommands.length === 128
+      && new Set(visibleCommands.map(({ name }) => name)).size === 128
+      && actionCommands.every(({ flags }) => (flags & MOVEMENTCMD) === 0)
+      && movementCommands.every(({ flags }) => (flags & MOVEMENTCMD) !== 0),
+    "action and excluded movement catalogs are unique and partition all visible commands",
   );
 
   // --- glyph_info ABI and tile mapping ---
