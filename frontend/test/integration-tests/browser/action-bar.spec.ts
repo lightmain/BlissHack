@@ -397,6 +397,77 @@ test("Action bar integration: All Actions drag preview follows the pointer and c
   expect(errors).toEqual({ console: [], page: [] });
 });
 
+test("[regression] Action bar integration: closing All Actions cancels a captured catalog drag", async ({
+  page,
+}) => {
+  const errors = captureErrors(page);
+  await startActionBarGame(page, "ActionBarCloseCatalogDrag");
+  const dock = page.getByRole("region", {
+    name: "Action bar",
+    exact: true,
+  });
+  await page.getByRole("button", { name: "Unlock action bar" }).click();
+  await page.getByRole("button", { name: "All Actions" }).click();
+  const panel = page.getByRole("dialog", { name: "All Actions" });
+  const closeButton = panel.getByRole("button", {
+    name: "Close All Actions",
+  });
+  const source = panel.locator('[data-action-name="eat"]');
+  const target = dock.locator(
+    '[data-action-slot-area="all"][data-action-slot-category="common"]'
+      + '[data-slot-index="1"]',
+  );
+  const preview = page.locator("[data-action-drag-preview]");
+  const chooser = page.getByRole("dialog", { name: "Choose an item" });
+  const baselineLayout = await readPersistedLayout(page);
+  const revision = await readShellRevision(page);
+  await expect(target).toHaveAttribute("data-action-name", "quaff");
+  await source.scrollIntoViewIfNeeded();
+  const sourceBounds = await source.boundingBox();
+  const targetBounds = await target.boundingBox();
+  expect(sourceBounds).not.toBeNull();
+  expect(targetBounds).not.toBeNull();
+
+  await page.mouse.move(
+    sourceBounds!.x + sourceBounds!.width / 2,
+    sourceBounds!.y + sourceBounds!.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    targetBounds!.x + targetBounds!.width / 2,
+    targetBounds!.y + targetBounds!.height / 2,
+    { steps: 8 },
+  );
+  await expect(preview).toBeVisible();
+  await expect(dock).toHaveAttribute("data-layout-edit-status", "dragging");
+  await expect(target).toHaveAttribute("data-action-name", "eat");
+
+  await closeButton.focus();
+  await expect(closeButton).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(panel).toHaveCount(0);
+  expect.soft(
+    await preview.count(),
+    "closing All Actions must remove the active drag preview",
+  ).toBe(0);
+  expect.soft(
+    await dock.getAttribute("data-layout-edit-status"),
+    "closing All Actions must cancel the active layout edit",
+  ).toBe("idle");
+  expect.soft(
+    await target.getAttribute("data-action-name"),
+    "closing All Actions must discard the preview layout",
+  ).toBe("quaff");
+
+  await page.mouse.up();
+  await expect(dock).toHaveAttribute("data-layout-edit-status", "idle");
+  expect.soft(await target.getAttribute("data-action-name")).toBe("quaff");
+  expect.soft(await readPersistedLayout(page)).toEqual(baselineLayout);
+  expect.soft(await chooser.count()).toBe(0);
+  expect.soft(await readShellRevision(page)).toBe(revision);
+  expect(errors).toEqual({ console: [], page: [] });
+});
+
 test("[defect-probing] Action bar integration: dock drag preview follows the pointer with All Actions closed or open and clears after each drop", async ({
   page,
 }) => {
