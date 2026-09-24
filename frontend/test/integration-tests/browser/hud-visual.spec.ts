@@ -415,22 +415,35 @@ async function expectStableActionSizing(page: Page): Promise<void> {
 
   await expect.poll(async () => {
     const current = await page.locator("[data-action-dock]").evaluate((dock) => {
+      const grid = dock.querySelector<HTMLElement>(".nh-action-grid");
+      const viewport = dock.querySelector<HTMLElement>(
+        ".nh-action-grid-viewport",
+      );
       const slot = dock.querySelector<HTMLElement>("[data-action-slot]");
       const tools = [...dock.querySelectorAll<HTMLElement>(
         "[data-action-dock-tool]",
       )];
-      if (!slot || tools.length === 0) {
-        throw new Error("Expected action slots and dock tools");
+      if (!grid || !viewport || !slot || tools.length === 0) {
+        throw new Error(
+          "Expected action grid, viewport, slots, and dock tools",
+        );
       }
       return {
+        gridWidth: grid.getBoundingClientRect().width,
+        horizontalOverflow: dock.getAttribute("data-horizontal-overflow")
+          === "true",
         slotWidth: slot.getBoundingClientRect().width,
         toolWidths: tools.map((tool) => tool.getBoundingClientRect().width),
+        viewportClientWidth: viewport.clientWidth,
       };
     });
     const expectedToolWidth = Math.min(28, current.slotWidth / 2 + 4.25);
     const matchesSlot = current.toolWidths.every(
       (width) => Math.abs(width - expectedToolWidth) <= tolerance,
     );
+    const matchesViewport = current.horizontalOverflow
+      ? Math.abs(current.slotWidth - 32) <= tolerance
+      : Math.abs(current.gridWidth - current.viewportClientWidth) <= tolerance;
     const previousSample = previous;
     const matchesPrevious = previousSample !== null
       && Math.abs(current.slotWidth - previousSample.slotWidth) <= tolerance
@@ -439,7 +452,7 @@ async function expectStableActionSizing(page: Page): Promise<void> {
         (width, index) =>
           Math.abs(width - previousSample.toolWidths[index]) <= tolerance,
       );
-    stableSamples = matchesSlot
+    stableSamples = matchesSlot && matchesViewport
       ? matchesPrevious ? stableSamples + 1 : 1
       : 0;
     previous = current;
