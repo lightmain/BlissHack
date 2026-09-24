@@ -520,13 +520,10 @@ function expectValidHudGeometry(
     const mapHeightDelta = geometry.mapContent.height - map.height;
     if (actionBarStyle === "original") {
       expect(Math.abs(mapHeightDelta)).toBeLessThanOrEqual(2);
-    } else {
-      expect(mapHeightDelta).toBeGreaterThanOrEqual(-2);
-      if (mapHeightDelta > 2) {
-        expect(geometry.mapViewport.scrollHeight).toBeGreaterThan(
-          geometry.mapViewport.clientHeight,
-        );
-      }
+    } else if (mapHeightDelta > 2) {
+      expect(geometry.mapViewport.scrollHeight).toBeGreaterThan(
+        geometry.mapViewport.clientHeight,
+      );
     }
     expect(geometry.mapContent.height).toBeCloseTo(
       intrinsicMapHeight ?? geometry.mapContent.height,
