@@ -171,9 +171,44 @@ test("Action bar integration: keeps geometry, focus, Pointer Events, and a real 
   await expect(page.getByRole("button", { name: "Lock action bar" }))
     .toBeVisible();
 
+  const commonSlot = (slotIndex: number) => dock.locator(
+    '[data-action-slot-area="all"][data-action-slot-category="common"]'
+      + `[data-slot-index="${slotIndex}"]`,
+  );
+  for (const key of ["ArrowLeft", "ArrowUp"]) {
+    expect(await commonSlot(0).evaluate((element, boundaryKey) => {
+      const event = new KeyboardEvent("keydown", {
+        altKey: true,
+        bubbles: true,
+        cancelable: true,
+        key: boundaryKey,
+      });
+      element.dispatchEvent(event);
+      return event.defaultPrevented;
+    }, key)).toBe(true);
+  }
+  await expect(commonSlot(0)).toHaveAttribute("data-action-name", "eat");
+  await commonSlot(0).focus();
+  await page.keyboard.press("Alt+ArrowRight");
+  await expect(commonSlot(0)).toHaveAttribute("data-action-name", "kick");
+  await expect(commonSlot(2)).toHaveAttribute("data-action-name", "eat");
+  await expect(commonSlot(2)).toBeFocused();
+  await page.keyboard.press("Alt+ArrowLeft");
+  await expect(commonSlot(0)).toHaveAttribute("data-action-name", "eat");
+  await expect(commonSlot(2)).toHaveAttribute("data-action-name", "kick");
+  await expect(commonSlot(0)).toBeFocused();
+  await commonSlot(0).focus();
+  await page.keyboard.press("Alt+ArrowDown");
+  await expect(commonSlot(0)).toHaveAttribute("data-action-name", "quaff");
+  await expect(commonSlot(1)).toHaveAttribute("data-action-name", "eat");
+  await expect(commonSlot(1)).toBeFocused();
+  await page.keyboard.press("Alt+ArrowUp");
+  await expect(commonSlot(0)).toHaveAttribute("data-action-name", "eat");
+  await expect(commonSlot(1)).toHaveAttribute("data-action-name", "quaff");
+
   await page.getByRole("button", { name: "Decrease rows" }).click();
   await expectActionGrid(dock, 1);
-  expect((await readActionGrid(dock)).horizontalOverflow).toBe(true);
+  expect((await readActionGrid(dock)).horizontalOverflow).toBe(false);
   for (const rows of [2, 3, 4] as const) {
     await page.getByRole("button", { name: "Increase rows" }).click();
     await expectActionGrid(dock, rows);
@@ -241,7 +276,7 @@ test("Action bar integration: keeps geometry, focus, Pointer Events, and a real 
   expect(errors).toEqual({ console: [], page: [] });
 });
 
-test("[defect-probing] All Actions drag preview follows the pointer and clears on completion", async ({
+test("Action bar integration: All Actions drag preview follows the pointer and clears on completion", async ({
   page,
 }) => {
   const errors = captureErrors(page);
@@ -304,6 +339,8 @@ test("[defect-probing] All Actions drag preview follows the pointer and clears o
   await expect(preview).toHaveCount(0);
   await page.mouse.up();
   await expect(panel).toBeVisible();
+  await source.click();
+  await expect(panel).toHaveCount(0);
   expect(errors).toEqual({ console: [], page: [] });
 });
 

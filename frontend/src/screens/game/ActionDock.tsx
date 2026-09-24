@@ -243,6 +243,12 @@ interface ActionDockProps {
   status: ReactNode;
 }
 
+interface ActionDragPreviewState {
+  clientX: number;
+  clientY: number;
+  name: string;
+}
+
 /**
  * Render the combined BlissHack status and action dock.
  * @param props - current layout, catalog, status/input content, and persistence callback.
@@ -264,6 +270,8 @@ export function ActionDock({
   const allActionsTriggerRef = useRef<HTMLButtonElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const [availableWidth, setAvailableWidth] = useState(680);
+  const [dragPreview, setDragPreview] =
+    useState<ActionDragPreviewState | null>(null);
   const suppressClickRef = useRef(false);
   const controller = useMemo(
     () => createActionBarLayoutController({
@@ -384,6 +392,7 @@ export function ActionDock({
     event: ReactPointerEvent<HTMLElement>,
     source: ActionBarDragSource,
   ): void {
+    suppressClickRef.current = false;
     if (
       blocked
       || !controller.pointerDown({
@@ -397,6 +406,13 @@ export function ActionDock({
       return;
     }
     event.currentTarget.setPointerCapture(event.pointerId);
+    setDragPreview(source.kind === "all-actions"
+      ? {
+        clientX: event.clientX,
+        clientY: event.clientY,
+        name: source.name,
+      }
+      : null);
   }
 
   /**
@@ -411,7 +427,16 @@ export function ActionDock({
       pointerId: event.pointerId,
       target: actionDropTargetAt(event.clientX, event.clientY),
     });
-    if (controller.getState().status === "dragging") event.preventDefault();
+    if (controller.getState().status === "dragging") {
+      event.preventDefault();
+      setDragPreview((current) => current
+        ? {
+          ...current,
+          clientX: event.clientX,
+          clientY: event.clientY,
+        }
+        : null);
+    }
   }
 
   /**
@@ -423,11 +448,9 @@ export function ActionDock({
     movePointerEdit(event);
     if (controller.getState().status === "dragging") {
       suppressClickRef.current = true;
-      globalThis.setTimeout(() => {
-        suppressClickRef.current = false;
-      }, 0);
     }
     void controller.pointerUp(event.pointerId);
+    setDragPreview(null);
     releaseActionPointer(event);
   }
 
@@ -440,7 +463,14 @@ export function ActionDock({
     event: ReactPointerEvent<HTMLElement>,
     reason: "pointer-cancel" | "lost-pointer-capture",
   ): void {
+    const ownedPointer = ["pending", "dragging"].includes(
+      controller.getState().status,
+    );
     controller.cancel(reason, event.pointerId);
+    if (ownedPointer) {
+      suppressClickRef.current = true;
+    }
+    setDragPreview(null);
     releaseActionPointer(event);
   }
 
@@ -476,19 +506,32 @@ export function ActionDock({
         (section) => section.category === source.section,
       )?.columns ?? 1
       : categoryGeometry.sections[0]?.columns ?? 1;
+    event.preventDefault();
+    event.stopPropagation();
+    const rows = displayedLayout.rows;
+    const row = source.slotIndex % rows;
+    if (
+      (event.key === "ArrowUp" && row === 0)
+      || (event.key === "ArrowDown" && row === rows - 1)
+    ) {
+      return;
+    }
     const delta = {
-      ArrowLeft: -1,
-      ArrowRight: 1,
-      ArrowUp: -columns,
-      ArrowDown: columns,
+      ArrowLeft: -rows,
+      ArrowRight: rows,
+      ArrowUp: -1,
+      ArrowDown: 1,
     }[event.key] ?? 0;
     const destinationIndex = source.slotIndex + delta;
-    if (destinationIndex < 0) return;
+    if (
+      destinationIndex < 0
+      || destinationIndex >= columns * rows
+    ) {
+      return;
+    }
     const destination: ActionBarSlotAddress = source.area === "all"
       ? { ...source, slotIndex: destinationIndex }
       : { ...source, slotIndex: destinationIndex };
-    event.preventDefault();
-    event.stopPropagation();
     void controller.commit({
       type: "drop",
       source: { kind: "dock-action", slot: source },
@@ -526,6 +569,12 @@ export function ActionDock({
     "committing",
   ].includes(editState.status);
   const actionsBlocked = blocked || layoutEditBlocksActions;
+  const showInput = Boolean(input) || editState.error !== null;
+  const dragPreviewPresentation = dragPreview && catalog
+    ? resolveActionSlotPresentation(dragPreview.name, catalog, {
+      blocked: false,
+    })
+    : null;
 
   /**
    * Forward one action only when no layout edit owns the dock.
@@ -571,6 +620,24 @@ export function ActionDock({
           triggerRef={allActionsTriggerRef}
         />
       )}
+      {dragPreview
+        && dragPreviewPresentation
+        && editState.status === "dragging"
+        && (
+          <div
+            aria-hidden="true"
+            className="nh-action-drag-preview"
+            data-action-drag-preview
+            data-action-name={dragPreview.name}
+            style={{
+              "--action-drag-preview-x": `${dragPreview.clientX}px`,
+              "--action-drag-preview-y": `${dragPreview.clientY}px`,
+            } as CSSProperties}
+          >
+            <ActionIcon name={dragPreviewPresentation.icon} />
+            <span>{dragPreviewPresentation.name}</span>
+          </div>
+        )}
       <section
         aria-label="Action bar"
         className="nh-action-dock"
@@ -590,7 +657,10 @@ export function ActionDock({
       >
         {status}
       </div>
-      <div className="nh-action-workspace">
+      <div
+        className="nh-action-workspace"
+        data-has-input={showInput ? "true" : "false"}
+      >
         <div className="nh-action-grid-viewport" ref={viewportRef}>
           <div className="nh-action-grid" style={gridStyle}>
             {displayedLayout.activeCategory === "all"
@@ -757,14 +827,16 @@ export function ActionDock({
             </button>
           ))}
         </nav>
-        <div className="nh-action-dock-input" data-dock-region="input">
-          {input}
-          {editState.error && (
-            <p className="nh-action-layout-error" role="alert">
-              {editState.error}
-            </p>
-          )}
-        </div>
+        {showInput && (
+          <div className="nh-action-dock-input" data-dock-region="input">
+            {input}
+            {editState.error && (
+              <p className="nh-action-layout-error" role="alert">
+                {editState.error}
+              </p>
+            )}
+          </div>
+        )}
       </div>
       <div className="nh-action-dock-tools">
         <DockTool
@@ -895,8 +967,12 @@ function ActionSlot({
       data-empty-action-slot={presentation === null ? "" : undefined}
       data-slot-index={slotIndex}
       {...slotAddressAttributes}
-      onClick={() => {
-        if (suppressClickRef.current || !presentation) return;
+      onClick={(event) => {
+        if (suppressClickRef.current) {
+          suppressClickRef.current = false;
+          if (event.detail > 0) return;
+        }
+        if (!presentation) return;
         if (
           presentation.state === "available"
           && presentation.sessionCommandId !== null

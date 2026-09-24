@@ -159,7 +159,10 @@ export function GameTerminal({
       onInspectLeave={onInspectLeave}
     />
   );
-  const inputArea = <InputArea request={inputRequest} />;
+  const showInputArea = inputRequest?.kind === "line"
+    || inputRequest?.kind === "yn"
+    || inputRequest?.kind === "message";
+  const inputArea = showInputArea ? <InputArea request={inputRequest} /> : null;
   const originalStatus = actionBarStyle === "original"
     ? (
       <div
@@ -312,7 +315,7 @@ const InputArea = memo(function InputArea({
   if (request?.kind === "message") {
     return <div className="nh-prompt">{request.message}</div>;
   }
-  return <div className="nh-prompt">&nbsp;</div>;
+  return null;
 });
 
 /**

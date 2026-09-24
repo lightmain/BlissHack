@@ -312,22 +312,30 @@ describe("stage-three ActionDock and GameTerminal structure", () => {
   });
 
   it("[defect-probing] omits the input row at a clean command boundary", () => {
-    setInputRequest(null);
     setCommandInput(true);
 
-    for (const style of ["original", "blisshack"] as const) {
-      const html = renderGame({
-        position: "right",
-        renderer: "tiles",
-        rows: 2,
-        style,
-      });
+    for (
+      const request of [
+        null,
+        { kind: "key" },
+        { kind: "position" },
+      ] as const
+    ) {
+      setInputRequest(request);
+      for (const style of ["original", "blisshack"] as const) {
+        const html = renderGame({
+          position: "right",
+          renderer: "tiles",
+          rows: 2,
+          style,
+        });
 
-      expect(classTokenCount(html, "nh-prompt")).toBe(0);
-      if (style === "blisshack") {
-        expect(tagsWithAttribute(html, "data-dock-region")
-          .map((tag) => attribute(tag, "data-dock-region")))
-          .toEqual(["status"]);
+        expect(classTokenCount(html, "nh-prompt")).toBe(0);
+        if (style === "blisshack") {
+          expect(tagsWithAttribute(html, "data-dock-region")
+            .map((tag) => attribute(tag, "data-dock-region")))
+            .toEqual(["status"]);
+        }
       }
     }
   });

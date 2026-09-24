@@ -90,7 +90,11 @@ const PROFILE_FIELDS: readonly FieldDefinition[] = [
     path: "interface.permanentInventoryPosition",
     label: "Inventory position",
     value: (profile) => profile.interface.permanentInventoryPosition,
-    format: TEXT,
+    format: (value) => value === "right"
+      ? "Right (Long)"
+      : value === "right-short"
+      ? "Right (Short)"
+      : "Below",
   },
   {
     path: "interface.permanentInventoryCollapsed",
