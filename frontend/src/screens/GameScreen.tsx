@@ -458,27 +458,19 @@ export function GameScreen({
         && !element.closest("[inert]")
       );
       if (focusable.length === 0) return;
-      const first = focusable[0];
-      const last = focusable.at(-1) as HTMLElement;
-      if (
-        event.shiftKey
-        && (
-          document.activeElement === first
-          || !focusable.includes(document.activeElement as HTMLElement)
-        )
-      ) {
-        event.preventDefault();
-        last.focus();
-      } else if (
-        !event.shiftKey
-        && (
-          document.activeElement === last
-          || !focusable.includes(document.activeElement as HTMLElement)
-        )
-      ) {
-        event.preventDefault();
-        first.focus();
-      }
+      const activeIndex = focusable.indexOf(
+        document.activeElement as HTMLElement,
+      );
+      const nextIndex = activeIndex < 0
+        ? event.shiftKey ? focusable.length - 1 : 0
+        : (
+          activeIndex
+          + (event.shiftKey ? -1 : 1)
+          + focusable.length
+        ) % focusable.length;
+      event.preventDefault();
+      event.stopPropagation();
+      focusable[nextIndex].focus();
     }
 
     document.addEventListener("keydown", containAllActionsAndDockFocus);

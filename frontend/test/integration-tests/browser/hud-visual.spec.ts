@@ -709,10 +709,6 @@ for (const { renderer, position } of HUD_VARIANTS) {
     page,
   }, testInfo) => {
     test.slow();
-    test.fail(
-      position === "below",
-      "At four rows and 900x700 the dock exceeds its action slot and viewport.",
-    );
     const errors = captureErrors(page);
     await page.setViewportSize(VIEWPORTS[0]);
     await configureHud(page, renderer, position, "blisshack");
