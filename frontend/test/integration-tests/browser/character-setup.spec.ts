@@ -648,6 +648,7 @@ test("cancels unified setup from name", async ({ page }) => {
   await enableUnifiedSetup(page);
 
   await page.getByRole("button", { name: "New Game" }).click();
+  await expect(page.getByRole("textbox", { name: "Name" })).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("button", { name: "New Game" })).toBeVisible();
   await expect(page.locator(".nh-shell")).toHaveCount(0);
