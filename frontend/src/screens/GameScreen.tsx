@@ -545,19 +545,23 @@ export function GameScreen({
   /**
    * Persist an action bar layout without entering the WASM runtime.
    * @param layout - complete validated action bar layout.
-   * @returns nothing; persistence completion is owned by the profile provider.
+   * @returns the profile-owned layout after persistence succeeds.
    */
-  function setActionBarLayout(layout: ActionBarLayout): void {
-    void onApplyProfile(validateProfile({
-      ...gameProfile,
-      interface: {
-        ...gameProfile.interface,
-        actionBarLayout: validateActionBarLayout(layout),
-      },
-    })).catch(() => {
-      // Keep the current profile when browser persistence rejects the update.
-    });
-  }
+  const setActionBarLayout = useCallback(
+    async function setActionBarLayout(
+      layout: ActionBarLayout,
+    ): Promise<ActionBarLayout> {
+      const saved = await onApplyProfile(validateProfile({
+        ...gameProfile,
+        interface: {
+          ...gameProfile.interface,
+          actionBarLayout: validateActionBarLayout(layout),
+        },
+      }));
+      return saved.interface.actionBarLayout;
+    },
+    [gameProfile, onApplyProfile],
+  );
 
   /**
    * Start or cancel one semantic action-dock request.
