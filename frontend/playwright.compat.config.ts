@@ -49,6 +49,14 @@ const basicFlowNames = [
   "highlights the player cell and cancels interrupted drags without commands",
   "drops one stack once and waits for a new permanent-inventory revision",
   "keeps worn items and shows the core drop rejection without a turn",
+  "pauses only at command input and synchronizes in-game settings",
+  "shows a fatal page and exports a private diagnostic log",
+  "shows a recoverable module fatal page when the loader returns 404",
+  "releases the game lock after fatal session cleanup",
+  "does not overwrite a profile changed by another idle page",
+  "collects a real unified-character quit into the BlissHack summary",
+  "Action bar integration:",
+  "Action bar layout transfer:",
   "HUD visual regression:",
 ].join("|");
 

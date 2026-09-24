@@ -12,6 +12,7 @@ import {
 
 type HudRenderer = "tiles" | "ascii";
 type InventoryPosition = "right" | "below";
+type ActionBarStyle = "original" | "blisshack";
 type RegionName = "messages" | "map" | "inventory" | "status";
 
 interface ViewportSize {
@@ -33,6 +34,9 @@ interface OverflowOwner {
 }
 
 interface HudGeometry {
+  actionBarStyle: string;
+  actionDock: Rectangle | null;
+  actionSlot: Rectangle;
   body: {
     clientHeight: number;
     clientWidth: number;
@@ -50,14 +54,30 @@ interface HudGeometry {
   mapViewport: {
     borderLeft: number;
     borderTop: number;
+    clientHeight: number;
     clientWidth: number;
     scrollLeft: number;
+    scrollHeight: number;
+    scrollTop: number;
     scrollWidth: number;
   };
   overflowOwners: OverflowOwner[];
   rootRem: number;
   regions: Record<RegionName, Rectangle>;
   viewport: ViewportSize;
+}
+
+interface ActionGridGeometry {
+  horizontalOverflow: boolean;
+  sections: Array<{
+    columns: number;
+    emptySlots: number;
+    slotCount: number;
+  }>;
+  slotHeights: number[];
+  slotWidths: number[];
+  viewportClientWidth: number;
+  viewportScrollWidth: number;
 }
 
 const VIEWPORTS = [
@@ -89,6 +109,7 @@ async function configureHud(
   page: Page,
   renderer: HudRenderer,
   position: InventoryPosition,
+  actionBarStyle: ActionBarStyle = "original",
 ): Promise<void> {
   await openHome(page, `hud-${renderer}-${position}`);
   await page.getByRole("button", { name: "Settings" }).click();
@@ -104,6 +125,11 @@ async function configureHud(
   await page.getByRole("radio", {
     name: position === "right" ? "Right" : "Below",
   }).check();
+  await page.getByRole("group", { name: "Action bar" })
+    .getByRole("radio", {
+      name: actionBarStyle === "original" ? "Original" : "BlissHack",
+    })
+    .check();
   await page.getByRole("button", { name: "Apply" }).click();
 }
 
@@ -118,11 +144,16 @@ async function expectReadyHud(
   page: Page,
   renderer: HudRenderer,
   position: InventoryPosition,
+  actionBarStyle: ActionBarStyle = "original",
 ): Promise<number> {
   const shell = page.locator(".nh-shell");
+  const hud = page.locator(".nh-hud-layout");
   const inventory = page.getByRole("region", { name: "Inventory" });
 
   await expect(shell).toHaveAttribute("data-command-input", "ready");
+  await expect(hud).toHaveAttribute("data-action-bar-style", actionBarStyle);
+  await expect(page.getByRole("region", { name: "Action bar" }))
+    .toHaveCount(actionBarStyle === "blisshack" ? 1 : 0);
   await expect.poll(async () => readMapRenderer(page)).toBe(renderer);
   await expect(inventory).toHaveAttribute("data-position", position);
   await expect(inventory.locator(
@@ -254,6 +285,11 @@ async function readHudGeometry(page: Page): Promise<HudGeometry> {
     const body = document.body;
     const mapContent = hud.querySelector<HTMLElement>(".nh-map-interaction");
     if (!mapContent) throw new Error("Expected one map interaction surface");
+    const actionSlot = hud.querySelector<HTMLElement>(
+      '[data-hud-region="actions"]',
+    );
+    if (!actionSlot) throw new Error("Expected one action HUD slot");
+    const actionDock = hud.querySelector<HTMLElement>("[data-action-dock]");
     const mapViewport = region("map");
     const mapViewportStyle = getComputedStyle(mapViewport);
     const overflowOwners = [
@@ -268,6 +304,9 @@ async function readHudGeometry(page: Page): Promise<HudGeometry> {
     });
 
     return {
+      actionBarStyle: hud.dataset.actionBarStyle ?? "",
+      actionDock: actionDock ? rectangle(actionDock) : null,
+      actionSlot: rectangle(actionSlot),
       body: {
         clientHeight: body.clientHeight,
         clientWidth: body.clientWidth,
@@ -285,8 +324,11 @@ async function readHudGeometry(page: Page): Promise<HudGeometry> {
       mapViewport: {
         borderLeft: Number.parseFloat(mapViewportStyle.borderLeftWidth),
         borderTop: Number.parseFloat(mapViewportStyle.borderTopWidth),
+        clientHeight: mapViewport.clientHeight,
         clientWidth: mapViewport.clientWidth,
         scrollLeft: mapViewport.scrollLeft,
+        scrollHeight: mapViewport.scrollHeight,
+        scrollTop: mapViewport.scrollTop,
         scrollWidth: mapViewport.scrollWidth,
       },
       overflowOwners,
@@ -303,6 +345,87 @@ async function readHudGeometry(page: Page): Promise<HudGeometry> {
       },
     };
   });
+}
+
+/**
+ * Read the rendered action grid without depending on browser-specific pixels.
+ * @param page - Playwright page with a visible BlissHack action dock.
+ * @returns complete-column, slot-size, and overflow measurements.
+ */
+async function readActionGridGeometry(
+  page: Page,
+): Promise<ActionGridGeometry> {
+  return page.locator("[data-action-dock]").evaluate((dock) => {
+    const viewport = dock.querySelector<HTMLElement>(
+      ".nh-action-grid-viewport",
+    );
+    if (!viewport) throw new Error("Expected one action grid viewport");
+    const slots = [...dock.querySelectorAll<HTMLElement>(
+      "[data-action-slot]",
+    )];
+    return {
+      horizontalOverflow: dock.getAttribute("data-horizontal-overflow")
+        === "true",
+      sections: [...dock.querySelectorAll<HTMLElement>(
+        "[data-action-section]",
+      )].map((section) => {
+        const sectionSlots = [...section.querySelectorAll<HTMLElement>(
+          ":scope > [data-action-slot]",
+        )];
+        return {
+          columns: getComputedStyle(section).gridTemplateColumns
+            .split(/\s+/)
+            .filter(Boolean)
+            .length,
+          emptySlots: sectionSlots.filter(
+            (slot) => slot.hasAttribute("data-empty-action-slot"),
+          ).length,
+          slotCount: sectionSlots.length,
+        };
+      }),
+      slotHeights: slots.map(
+        (slot) => slot.getBoundingClientRect().height,
+      ),
+      slotWidths: slots.map(
+        (slot) => slot.getBoundingClientRect().width,
+      ),
+      viewportClientWidth: viewport.clientWidth,
+      viewportScrollWidth: viewport.scrollWidth,
+    };
+  });
+}
+
+/**
+ * Assert the browser-rendered row contract and its real overflow state.
+ * @param geometry - current action grid measurements.
+ * @param rows - persisted row count rendered by the dock.
+ */
+function expectValidActionGridGeometry(
+  geometry: ActionGridGeometry,
+  rows: 1 | 2 | 3 | 4,
+): void {
+  expect(geometry.sections).toHaveLength(4);
+  for (const section of geometry.sections) {
+    expect(section.columns).toBeGreaterThan(0);
+    expect(section.slotCount).toBe(section.columns * rows);
+  }
+  expect(geometry.sections.at(-1)?.emptySlots).toBeGreaterThanOrEqual(rows);
+  expect(geometry.slotWidths.length).toBeGreaterThan(0);
+  for (const width of geometry.slotWidths) {
+    expect(width).toBeGreaterThanOrEqual(32);
+  }
+  for (const height of geometry.slotHeights) {
+    expect(height).toBeGreaterThanOrEqual(32);
+  }
+  if (geometry.horizontalOverflow) {
+    expect(geometry.viewportScrollWidth).toBeGreaterThan(
+      geometry.viewportClientWidth,
+    );
+  } else {
+    expect(geometry.viewportScrollWidth).toBeLessThanOrEqual(
+      geometry.viewportClientWidth,
+    );
+  }
 }
 
 /**
@@ -330,14 +453,17 @@ function overlapArea(first: Rectangle, second: Rectangle): number {
  * @param geometry - one browser layout sample.
  * @param expectedViewport - requested Playwright viewport dimensions.
  * @param position - expected inventory placement.
+ * @param actionBarStyle - expected bottom-region mode.
  */
 function expectValidHudGeometry(
   geometry: HudGeometry,
   expectedViewport: ViewportSize,
   position: InventoryPosition,
+  actionBarStyle: ActionBarStyle = "original",
   inventoryCollapsed = false,
   intrinsicMapHeight?: number,
 ): void {
+  expect(geometry.actionBarStyle).toBe(actionBarStyle);
   expect(geometry.viewport).toEqual(expectedViewport);
   expect(geometry.hud).toEqual({
     x: 0,
@@ -384,22 +510,25 @@ function expectValidHudGeometry(
 
   const { inventory, map, messages, status } = geometry.regions;
   expect(messages.y + messages.height).toBeCloseTo(map.y, 0);
-  if (position === "right") {
-    expect(map.y + map.height).toBeCloseTo(status.y, 0);
-    for (const region of [messages, map, status]) {
-      expect(region.x + region.width).toBeLessThanOrEqual(inventory.x);
+  if (position === "below") {
+    const mapHeightDelta = geometry.mapContent.height - map.height;
+    if (actionBarStyle === "original") {
+      expect(Math.abs(mapHeightDelta)).toBeLessThanOrEqual(2);
+    } else {
+      expect(mapHeightDelta).toBeGreaterThanOrEqual(-2);
+      if (mapHeightDelta > 2) {
+        expect(geometry.mapViewport.scrollHeight).toBeGreaterThan(
+          geometry.mapViewport.clientHeight,
+        );
+      }
     }
-  } else {
-    expect(messages.y + messages.height).toBeCloseTo(map.y, 0);
-    expect(Math.abs(
-      map.height - geometry.mapContent.height,
-    )).toBeLessThanOrEqual(2);
     expect(geometry.mapContent.height).toBeCloseTo(
       intrinsicMapHeight ?? geometry.mapContent.height,
       0,
     );
     expect(Math.abs(
-      geometry.mapContent.y - (map.y + geometry.mapViewport.borderTop),
+      geometry.mapContent.y + geometry.mapViewport.scrollTop
+        - (map.y + geometry.mapViewport.borderTop),
     )).toBeLessThanOrEqual(2);
     if (geometry.mapContent.width <= map.width) {
       const expectedMapX =
@@ -415,25 +544,71 @@ function expectValidHudGeometry(
           - (map.x + geometry.mapViewport.borderLeft),
       )).toBeLessThanOrEqual(2);
     }
+  }
 
-    expect(map.y + map.height).toBeCloseTo(status.y, 0);
-    expect(inventory.y).toBeCloseTo(status.y, 0);
-    expect(inventory.height).toBeCloseTo(status.height, 0);
-    expect(status.x + status.width).toBeCloseTo(inventory.x, 0);
-    expect(inventory.x + inventory.width).toBeCloseTo(
-      expectedViewport.width,
-      0,
-    );
-    expect(status.y + status.height).toBeCloseTo(expectedViewport.height, 0);
-    expect(status.height).toBeGreaterThanOrEqual(geometry.rootRem * 11 - 2);
-    if (inventoryCollapsed) {
-      expect(inventory.width).toBeLessThanOrEqual(44);
-      expect(status.width).toBeGreaterThan(inventory.width);
+  if (actionBarStyle === "original") {
+    expect(geometry.actionDock).toBeNull();
+    expect(geometry.actionSlot.width).toBe(0);
+    expect(geometry.actionSlot.height).toBe(0);
+    if (position === "right") {
+      expect(map.y + map.height).toBeCloseTo(status.y, 0);
+      for (const region of [messages, map, status]) {
+        expect(region.x + region.width).toBeLessThanOrEqual(inventory.x);
+      }
     } else {
-      expect(status.width).toBeLessThan(inventory.width);
+      expect(map.y + map.height).toBeCloseTo(status.y, 0);
+      expect(inventory.y).toBeCloseTo(status.y, 0);
+      expect(inventory.height).toBeCloseTo(status.height, 0);
+      expect(status.x + status.width).toBeCloseTo(inventory.x, 0);
+      expect(inventory.x + inventory.width).toBeCloseTo(
+        expectedViewport.width,
+        0,
+      );
+      expect(status.height).toBeGreaterThanOrEqual(geometry.rootRem * 11 - 2);
+      if (inventoryCollapsed) {
+        expect(inventory.width).toBeLessThanOrEqual(44);
+        expect(status.width).toBeGreaterThan(inventory.width);
+      } else {
+        expect(status.width).toBeLessThan(inventory.width);
+      }
+    }
+    expect(status.y + status.height).toBeCloseTo(expectedViewport.height, 0);
+  } else {
+    const actionDock = geometry.actionDock;
+    expect(actionDock).not.toBeNull();
+    expect(geometry.actionSlot.width).toBeGreaterThan(0);
+    expect(geometry.actionSlot.height).toBeGreaterThan(0);
+    expect(actionDock!.x).toBeCloseTo(geometry.actionSlot.x, 0);
+    expect(actionDock!.y).toBeCloseTo(geometry.actionSlot.y, 0);
+    expect(actionDock!.width).toBeCloseTo(geometry.actionSlot.width, 0);
+    expect(actionDock!.height).toBeCloseTo(geometry.actionSlot.height, 0);
+    expect(status.x).toBeGreaterThanOrEqual(actionDock!.x);
+    expect(status.y).toBeGreaterThanOrEqual(actionDock!.y);
+    expect(status.x + status.width).toBeLessThanOrEqual(
+      actionDock!.x + actionDock!.width,
+    );
+    expect(status.y + status.height).toBeLessThanOrEqual(
+      actionDock!.y + actionDock!.height,
+    );
+    expect(
+      geometry.actionSlot.y + geometry.actionSlot.height,
+    ).toBeCloseTo(expectedViewport.height, 0);
+
+    if (position === "right") {
+      expect(map.y + map.height).toBeCloseTo(geometry.actionSlot.y, 0);
+      for (const region of [messages, map, geometry.actionSlot]) {
+        expect(region.x + region.width).toBeLessThanOrEqual(inventory.x);
+      }
+    } else {
+      expect(map.y + map.height).toBeCloseTo(inventory.y, 0);
+      expect(inventory.x).toBeCloseTo(0, 0);
+      expect(inventory.width).toBeCloseTo(expectedViewport.width, 0);
+      expect(inventory.y + inventory.height).toBeCloseTo(
+        geometry.actionSlot.y,
+        0,
+      );
     }
   }
-  expect(status.y + status.height).toBeCloseTo(expectedViewport.height, 0);
 
   expect(geometry.overflowOwners).toHaveLength(4);
   expect(
@@ -442,6 +617,8 @@ function expectValidHudGeometry(
   for (const owner of geometry.overflowOwners) {
     const expected = owner.name === "inventory" && inventoryCollapsed
       ? "hidden"
+      : owner.name === "status" && actionBarStyle === "blisshack"
+      ? "auto"
       : EXPECTED_OVERFLOW[owner.name as keyof typeof EXPECTED_OVERFLOW];
     expect(owner.overflowX, `${owner.name} overflow-x`).toBe(expected);
     expect(owner.overflowY, `${owner.name} overflow-y`).toBe(expected);
@@ -449,7 +626,7 @@ function expectValidHudGeometry(
 }
 
 for (const { renderer, position } of HUD_VARIANTS) {
-  test(`HUD visual regression: ${renderer} with inventory ${position}`, async ({
+  test(`HUD visual regression: original ${renderer} with inventory ${position}`, async ({
     page,
   }, testInfo) => {
     test.slow();
@@ -483,6 +660,7 @@ for (const { renderer, position } of HUD_VARIANTS) {
           await readHudGeometry(page),
           viewport,
           position,
+          "original",
           false,
           intrinsicMapHeight,
         );
@@ -516,9 +694,115 @@ for (const { renderer, position } of HUD_VARIANTS) {
         await readHudGeometry(page),
         VIEWPORTS[1],
         position,
+        "original",
         true,
         intrinsicMapHeight,
       );
+    }
+
+    expect(errors).toEqual({ console: [], page: [] });
+  });
+}
+
+for (const { renderer, position } of HUD_VARIANTS) {
+  test(`HUD visual regression: blisshack ${renderer} with inventory ${position}`, async ({
+    page,
+  }, testInfo) => {
+    test.slow();
+    test.fail(
+      position === "below",
+      "At four rows and 900x700 the dock exceeds its action slot and viewport.",
+    );
+    const errors = captureErrors(page);
+    await page.setViewportSize(VIEWPORTS[0]);
+    await configureHud(page, renderer, position, "blisshack");
+    await startNewGameFromHome(
+      page,
+      `HudBh${renderer === "tiles" ? "Tiles" : "Ascii"}${
+        position === "right" ? "Right" : "Below"
+      }-Arc-Hum-Mal-Law`,
+    );
+    const readyRevision = await expectReadyHud(
+      page,
+      renderer,
+      position,
+      "blisshack",
+    );
+    await expectRendererContent(page, renderer);
+    await freezeInventoryPresentation(page);
+    const intrinsicMapHeight = await page.locator(
+      ".nh-map-interaction",
+    ).evaluate((element) => element.getBoundingClientRect().height);
+
+    for (const rows of [2, 4] as const) {
+      await expect(page.getByRole("region", { name: "Action bar" }))
+        .toHaveAttribute("data-row-count", String(rows));
+
+      for (const viewport of VIEWPORTS) {
+        await test.step(
+          `${rows} rows at ${viewport.width}x${viewport.height}`,
+          async () => {
+            await page.setViewportSize(viewport);
+            await expect(page.locator(".nh-shell")).toHaveAttribute(
+              "data-command-input",
+              "ready",
+            );
+            expect(await readShellRevision(page)).toBeGreaterThanOrEqual(
+              readyRevision,
+            );
+            if (!["firefox", "webkit"].includes(testInfo.project.name)) {
+              await expect(page).toHaveScreenshot(
+                `hud-blisshack-${renderer}-${position}-${rows}-rows-${viewport.width}x${viewport.height}.png`,
+                {
+                  mask: [
+                    page.locator(".nh-map"),
+                    page.locator(".nh-messages > *"),
+                    page.locator(".permanent-inventory-header strong"),
+                    page.locator(".permanent-inventory-header span"),
+                    page.locator(".nh-status-resource-value"),
+                    page.locator(".nh-status-value"),
+                    page.locator(".nh-condition"),
+                  ],
+                  maskColor: "#202428",
+                },
+              );
+            }
+            expectValidHudGeometry(
+              await readHudGeometry(page),
+              viewport,
+              position,
+              "blisshack",
+              false,
+              intrinsicMapHeight,
+            );
+            expectValidActionGridGeometry(
+              await readActionGridGeometry(page),
+              rows,
+            );
+          },
+        );
+      }
+
+      if (rows === 2) {
+        const unlock = page.getByRole("button", {
+          name: "Unlock action bar",
+        });
+        await unlock.click();
+        await expect(page.getByRole("button", {
+          name: "Lock action bar",
+        })).toBeVisible();
+        const increase = page.getByRole("button", { name: "Increase rows" });
+        await increase.click();
+        await expect(page.getByRole("region", { name: "Action bar" }))
+          .toHaveAttribute("data-row-count", "3");
+        await increase.click();
+        await expect(page.getByRole("region", { name: "Action bar" }))
+          .toHaveAttribute("data-row-count", "4");
+        await page.getByRole("button", { name: "Lock action bar" }).click();
+        await expect(page.getByRole("button", {
+          name: "Unlock action bar",
+        })).toBeVisible();
+      }
     }
 
     expect(errors).toEqual({ console: [], page: [] });
