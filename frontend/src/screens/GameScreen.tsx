@@ -138,6 +138,7 @@ export function GameScreen({
   );
   const [inspectTooltip, setInspectTooltip] =
     useState<ActiveInspectTooltip | null>(null);
+  const [allActionsOpen, setAllActionsOpen] = useState(false);
   const [pauseView, setPauseView] = useState<"pause" | "settings" | null>(null);
   const previousRuntimeSettings = useRef<string | null>(null);
   const settings = profile.interface;
@@ -402,6 +403,90 @@ export function GameScreen({
   ]);
 
   useEffect(() => {
+    if (
+      !allActionsOpen
+      || (
+        !readOnly
+        && snapshot.phase !== "error"
+        && snapshot.modal === null
+        && pauseView === null
+      )
+    ) return undefined;
+    const timeout = globalThis.setTimeout(() => setAllActionsOpen(false), 0);
+    return () => globalThis.clearTimeout(timeout);
+  }, [
+    allActionsOpen,
+    pauseView,
+    readOnly,
+    snapshot.modal,
+    snapshot.phase,
+  ]);
+
+  useEffect(() => {
+    if (!allActionsOpen) return undefined;
+
+    /**
+     * Keep Tab navigation inside the combined All Actions and dock controls.
+     * @param event - document keyboard event while the panel is open.
+     */
+    function containAllActionsAndDockFocus(event: KeyboardEvent): void {
+      const allActionsPanel = document.querySelector<HTMLElement>(
+        "[data-all-actions-panel]",
+      );
+      const actionDock = document.querySelector<HTMLElement>(
+        "[data-action-dock]",
+      );
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        setAllActionsOpen(false);
+        return;
+      }
+      if (event.key !== "Tab" || !allActionsPanel || !actionDock) return;
+      const focusable = [
+        ...Array.from(allActionsPanel.querySelectorAll<HTMLElement>(
+          "button:not([disabled]), input:not([disabled]), "
+            + "[tabindex]:not([tabindex='-1'])",
+        )),
+        ...Array.from(actionDock.querySelectorAll<HTMLElement>(
+          "button:not([disabled]), input:not([disabled]), "
+            + "[tabindex]:not([tabindex='-1'])",
+        )),
+      ].filter((element) =>
+        element.tabIndex >= 0
+        && element.closest("[hidden]") === null
+        && !element.closest("[inert]")
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable.at(-1) as HTMLElement;
+      if (
+        event.shiftKey
+        && (
+          document.activeElement === first
+          || !focusable.includes(document.activeElement as HTMLElement)
+        )
+      ) {
+        event.preventDefault();
+        last.focus();
+      } else if (
+        !event.shiftKey
+        && (
+          document.activeElement === last
+          || !focusable.includes(document.activeElement as HTMLElement)
+        )
+      ) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    document.addEventListener("keydown", containAllActionsAndDockFocus);
+    return () =>
+      document.removeEventListener("keydown", containAllActionsAndDockFocus);
+  }, [allActionsOpen]);
+
+  useEffect(() => {
     if (readOnly) return;
     /**
      * Route a browser key to the active NetHack callback.
@@ -552,15 +637,15 @@ export function GameScreen({
       layout: ActionBarLayout,
     ): Promise<ActionBarLayout> {
       const saved = await onApplyProfile(validateProfile({
-        ...gameProfile,
+        ...profile,
         interface: {
-          ...gameProfile.interface,
+          ...profile.interface,
           actionBarLayout: validateActionBarLayout(layout),
         },
       }));
       return saved.interface.actionBarLayout;
     },
-    [gameProfile, onApplyProfile],
+    [onApplyProfile, profile],
   );
 
   /**
@@ -612,6 +697,7 @@ export function GameScreen({
     })) {
       return;
     }
+    setAllActionsOpen(false);
     actionController.observe({
       moduleId,
       sessionId,
@@ -874,6 +960,7 @@ export function GameScreen({
               ? actionState.intent.actionName
               : null
           }
+          allActionsOpen={allActionsOpen}
           actionBarLayout={settings.actionBarLayout}
           actionBarStyle={settings.actionBarStyle}
           actionBlocked={
@@ -917,6 +1004,7 @@ export function GameScreen({
           onMapRendererFallback={onMapRendererFallback}
           onActionRequest={onActionRequest}
           onActionBarLayoutChange={setActionBarLayout}
+          onAllActionsOpenChange={setAllActionsOpen}
           onPrimaryClick={handlePrimaryClick}
           permanentInventory={snapshot.permanentInventory}
           permanentInventoryCollapsed={settings.permanentInventoryCollapsed}

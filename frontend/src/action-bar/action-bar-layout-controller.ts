@@ -53,7 +53,7 @@ export interface ActionBarLayoutController {
   ): void;
   clearLockFeedback(): void;
   commit(edit: ActionBarLayoutEdit): Promise<void>;
-  commitLayout(layout: ActionBarLayout): Promise<void>;
+  commitLayout(layout: ActionBarLayout): Promise<boolean>;
   dispose(): void;
   getState(): ActionBarLayoutControllerState;
   pointerDown(input: ActionBarPointerInput): boolean;
@@ -96,9 +96,13 @@ export function createActionBarLayoutController(
     for (const listener of listeners) listener();
   }
 
-  /** Commit one complete candidate and restore the previous layout on failure. */
-  async function commitLayout(layout: ActionBarLayout): Promise<void> {
-    if (disposed || state.status === "committing") return;
+  /**
+   * Commit one complete candidate and restore the previous layout on failure.
+   * @param layout - complete candidate layout.
+   * @returns whether the candidate was unchanged or persisted successfully.
+   */
+  async function commitLayout(layout: ActionBarLayout): Promise<boolean> {
+    if (disposed || state.status === "committing") return false;
     const committed = state.layout;
     const candidate = validateActionBarLayout(layout);
     if (JSON.stringify(candidate) === JSON.stringify(committed)) {
@@ -109,7 +113,7 @@ export function createActionBarLayoutController(
         previewLayout: null,
         status: "idle",
       });
-      return;
+      return true;
     }
     publish({
       ...state,
@@ -120,7 +124,7 @@ export function createActionBarLayoutController(
     });
     try {
       const saved = validateActionBarLayout(await options.onCommit(candidate));
-      if (disposed) return;
+      if (disposed) return false;
       publish({
         error: null,
         lastCancellationReason: null,
@@ -129,8 +133,9 @@ export function createActionBarLayoutController(
         previewLayout: null,
         status: "idle",
       });
+      return true;
     } catch {
-      if (disposed) return;
+      if (disposed) return false;
       publish({
         error: "Action bar layout could not be saved. Previous layout restored.",
         lastCancellationReason: null,
@@ -139,6 +144,7 @@ export function createActionBarLayoutController(
         previewLayout: null,
         status: "error",
       });
+      return false;
     }
   }
 

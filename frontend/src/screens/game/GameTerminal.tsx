@@ -39,6 +39,7 @@ import { ActionDock } from "./ActionDock";
 
 interface GameTerminalProps {
   activeActionName: string | null;
+  allActionsOpen: boolean;
   actionBarLayout: ActionBarLayout;
   actionBarStyle: InterfaceSettings["actionBarStyle"];
   actionBlocked: boolean;
@@ -71,6 +72,7 @@ interface GameTerminalProps {
     name: string;
     sessionCommandId: number;
   }): void;
+  onAllActionsOpenChange(open: boolean): void;
   onActionBarLayoutChange?(
     layout: ActionBarLayout,
   ): Promise<ActionBarLayout>;
@@ -87,6 +89,7 @@ interface GameTerminalProps {
 /** Render the active terminal while keeping browser overlays outside its inert tree. */
 export function GameTerminal({
   activeActionName,
+  allActionsOpen,
   actionBarLayout,
   actionBarStyle,
   actionBlocked,
@@ -117,6 +120,7 @@ export function GameTerminal({
   onMapRendererFallback,
   onActionRequest,
   onActionBarLayoutChange,
+  onAllActionsOpenChange,
   onPrimaryClick,
   permanentInventory,
   permanentInventoryCollapsed,
@@ -133,6 +137,7 @@ export function GameTerminal({
   const inventory = permanentInventoryEnabled && permanentInventory
     ? (
       <PermanentInventoryPanel
+        backgroundInert={allActionsOpen}
         collapsed={permanentInventoryCollapsed}
         dragController={inventoryDragController}
         dragEnabled={commandInput && !inert}
@@ -171,11 +176,13 @@ export function GameTerminal({
     ? (
       <ActionDock
         activeActionName={activeActionName}
+        allActionsOpen={allActionsOpen}
         blocked={actionBlocked}
         catalog={actionCatalog}
         input={inputArea}
         layout={actionBarLayout}
         onActionRequest={onActionRequest}
+        onAllActionsOpenChange={onAllActionsOpenChange}
         onLayoutChange={onActionBarLayoutChange}
         sessionKey={sessionId}
         status={statusArea}
@@ -190,12 +197,14 @@ export function GameTerminal({
       inert={inert}
     >
       <GameHudLayout
+        allActionsOpen={allActionsOpen}
         actionBarStyle={actionBarStyle}
         actionSlot={actionDock}
         inventory={inventory}
         inventoryCollapsed={permanentInventoryCollapsed}
         map={(
           <MapViewport
+            backgroundInert={allActionsOpen}
             clipCenter={clipCenter}
             commandInput={commandInput}
             cursor={cursor}
@@ -216,7 +225,11 @@ export function GameTerminal({
           />
         )}
         messages={(
-          <MessageArea historyLines={historyLines} messages={messages} />
+          <MessageArea
+            allActionsOpen={allActionsOpen}
+            historyLines={historyLines}
+            messages={messages}
+          />
         )}
         position={permanentInventoryPosition}
         status={originalStatus}
@@ -231,9 +244,11 @@ export function GameTerminal({
  * @returns message region.
  */
 const MessageArea = memo(function MessageArea({
+  allActionsOpen,
   historyLines,
   messages: allMessages,
 }: {
+  allActionsOpen: boolean;
   historyLines: InterfaceSettings["messageHistoryLines"];
   messages: TextLine[];
 }) {
@@ -243,8 +258,10 @@ const MessageArea = memo(function MessageArea({
       className={`nh-messages nh-messages-${historyLines}`}
       aria-live="polite"
       aria-label="Messages"
+      data-game-content="true"
       data-hud-region="messages"
       data-overflow-owner="messages"
+      inert={allActionsOpen}
     >
       {messages.length === 0
         ? <div className="nh-message">&nbsp;</div>
