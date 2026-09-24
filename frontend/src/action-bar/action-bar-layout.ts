@@ -66,6 +66,59 @@ export interface ActionBarLayoutDifference {
   incoming: string;
 }
 
+export interface ActionBarAllSlotAddress {
+  area: "all";
+  section: ActionBarSectionCategory;
+  slotIndex: number;
+}
+
+export interface ActionBarCategorySlotAddress {
+  area: "category";
+  category: ActionBarSingleCategory;
+  slotIndex: number;
+}
+
+export type ActionBarSlotAddress =
+  | ActionBarAllSlotAddress
+  | ActionBarCategorySlotAddress;
+
+export type ActionBarDragSource =
+  | { kind: "dock-action"; slot: ActionBarSlotAddress }
+  | { kind: "all-actions"; name: string }
+  | {
+    kind: "divider";
+    dividerIndex: number;
+    slotGap: number;
+    slotSize: number;
+  };
+
+export type ActionBarDropTarget =
+  | { kind: "dock-slot"; slot: ActionBarSlotAddress }
+  | { kind: "all-actions" }
+  | { kind: "outside" };
+
+export type ActionBarLayoutEdit =
+  | {
+    type: "drop";
+    source: Exclude<ActionBarDragSource, { kind: "divider" }>;
+    target: ActionBarDropTarget;
+  }
+  | {
+    type: "move-divider";
+    columnDelta: number;
+    dividerIndex: number;
+  }
+  | {
+    type: "set-rows";
+    rows: ActionBarLayout["rows"];
+  };
+
+export interface ActionBarLayoutEditResult {
+  layout: ActionBarLayout;
+  lockFeedback: boolean;
+  status: "changed" | "locked" | "unchanged";
+}
+
 const DEFAULT_ACTION_BAR_LAYOUT: ActionBarLayout = {
   rows: 2,
   locked: true,
@@ -195,6 +248,108 @@ const DEFAULT_ACTION_BAR_LAYOUT: ActionBarLayout = {
  */
 export function createDefaultActionBarLayout(): ActionBarLayout {
   return cloneActionBarLayout(DEFAULT_ACTION_BAR_LAYOUT);
+}
+
+/**
+ * Apply one immutable action-bar edit to a validated layout.
+ * @param layout - committed layout used as the edit baseline.
+ * @param edit - bounded slot, divider, or row-count operation.
+ * @returns detached layout plus stable changed or rejection metadata.
+ */
+export function reduceActionBarLayout(
+  layout: ActionBarLayout,
+  edit: ActionBarLayoutEdit,
+): ActionBarLayoutEditResult {
+  const current = validateActionBarLayout(layout);
+  if (current.locked) {
+    return {
+      layout: current,
+      lockFeedback: true,
+      status: "locked",
+    };
+  }
+
+  if (edit.type === "set-rows") {
+    if (
+      !Number.isInteger(edit.rows)
+      || edit.rows < ACTION_BAR_MIN_ROWS
+      || edit.rows > ACTION_BAR_MAX_ROWS
+      || edit.rows === current.rows
+    ) {
+      return unchangedEdit(current);
+    }
+    return changedEdit({
+      ...current,
+      rows: edit.rows,
+    });
+  }
+
+  if (edit.type === "move-divider") {
+    if (
+      !Number.isInteger(edit.dividerIndex)
+      || edit.dividerIndex < 0
+      || edit.dividerIndex >= current.all.length - 1
+      || !Number.isInteger(edit.columnDelta)
+      || edit.columnDelta === 0
+    ) {
+      return unchangedEdit(current);
+    }
+    const left = current.all[edit.dividerIndex];
+    const right = current.all[edit.dividerIndex + 1];
+    const minimumDelta = Math.max(1 - left.columns, right.columns - 8);
+    const maximumDelta = Math.min(8 - left.columns, right.columns - 1);
+    const delta = Math.max(
+      minimumDelta,
+      Math.min(maximumDelta, edit.columnDelta),
+    );
+    if (delta === 0) return unchangedEdit(current);
+    const all = current.all.map((section, index) => {
+      if (index === edit.dividerIndex) {
+        return { ...section, columns: section.columns + delta };
+      }
+      if (index === edit.dividerIndex + 1) {
+        return { ...section, columns: section.columns - delta };
+      }
+      return section;
+    });
+    return changedEdit({ ...current, all });
+  }
+
+  const source = edit.source;
+  if (source.kind === "all-actions") {
+    if (
+      edit.target.kind !== "dock-slot"
+      || !validActionName(source.name)
+    ) {
+      return unchangedEdit(current);
+    }
+    const destination = resolveMutableSlot(current, edit.target.slot, true);
+    if (!destination) return unchangedEdit(current);
+    if (destination.list[destination.index] === source.name) {
+      return unchangedEdit(current);
+    }
+    destination.list[destination.index] = source.name;
+    return changedEdit(current);
+  }
+
+  const sourceSlot = resolveMutableSlot(current, source.slot, false);
+  const actionName = sourceSlot?.list[sourceSlot.index];
+  if (!sourceSlot || typeof actionName !== "string") {
+    return unchangedEdit(current);
+  }
+  if (edit.target.kind !== "dock-slot") {
+    sourceSlot.list[sourceSlot.index] = null;
+    return changedEdit(current);
+  }
+  if (sameSlotAddress(source.slot, edit.target.slot)) {
+    return unchangedEdit(current);
+  }
+  const destination = resolveMutableSlot(current, edit.target.slot, true);
+  if (!destination) return unchangedEdit(current);
+  const replaced = destination.list[destination.index] ?? null;
+  sourceSlot.list[sourceSlot.index] = replaced;
+  destination.list[destination.index] = actionName;
+  return changedEdit(current);
 }
 
 /**
@@ -493,6 +648,100 @@ function validateSlots(
     }
     return slot;
   });
+}
+
+/**
+ * Resolve a slot address against one detached mutable layout.
+ * @param layout - mutable validated layout copy.
+ * @param address - stable persisted slot address.
+ * @param extend - whether a category list may be extended with empty slots.
+ * @returns mutable list and bounded index, or null for an invalid address.
+ */
+function resolveMutableSlot(
+  layout: ActionBarLayout,
+  address: ActionBarSlotAddress,
+  extend: boolean,
+): { list: ActionBarSlot[]; index: number } | null {
+  if (!Number.isInteger(address.slotIndex) || address.slotIndex < 0) {
+    return null;
+  }
+  let list: ActionBarSlot[];
+  let capacity: number;
+  if (address.area === "all") {
+    const section = layout.all.find(
+      (candidate) => candidate.category === address.section,
+    );
+    if (!section) return null;
+    list = section.slots;
+    capacity = Math.max(section.columns * layout.rows, section.slots.length);
+    if (extend && address.section === "items") {
+      capacity = ACTION_BAR_MAX_COLUMNS * layout.rows;
+    }
+  } else {
+    list = layout.categories[address.category];
+    capacity = ACTION_BAR_MAX_CATEGORY_SLOTS;
+  }
+  if (
+    address.slotIndex >= capacity
+    || (!extend && address.slotIndex >= list.length)
+  ) {
+    return null;
+  }
+  if (extend && address.area === "all") {
+    const section = layout.all.find(
+      (candidate) => candidate.category === address.section,
+    );
+    if (!section) return null;
+    section.columns = Math.max(
+      section.columns,
+      Math.ceil((address.slotIndex + 1) / layout.rows),
+    );
+  }
+  while (extend && list.length <= address.slotIndex) list.push(null);
+  return { list, index: address.slotIndex };
+}
+
+/**
+ * Compare two serializable slot addresses.
+ * @param left - first persisted slot address.
+ * @param right - second persisted slot address.
+ * @returns whether both addresses identify the same slot.
+ */
+function sameSlotAddress(
+  left: ActionBarSlotAddress,
+  right: ActionBarSlotAddress,
+): boolean {
+  if (left.area !== right.area || left.slotIndex !== right.slotIndex) {
+    return false;
+  }
+  return left.area === "all"
+    ? right.area === "all" && left.section === right.section
+    : right.area === "category" && left.category === right.category;
+}
+
+/** Return whether a catalog action name is safe to persist. */
+function validActionName(name: string): boolean {
+  return name.length > 0
+    && name.length <= ACTION_BAR_MAX_NAME_LENGTH
+    && /^[\x21-\x7e]+$/.test(name);
+}
+
+/** Package one changed reducer result. */
+function changedEdit(layout: ActionBarLayout): ActionBarLayoutEditResult {
+  return {
+    layout: validateActionBarLayout(layout),
+    lockFeedback: false,
+    status: "changed",
+  };
+}
+
+/** Package one immutable no-op reducer result. */
+function unchangedEdit(layout: ActionBarLayout): ActionBarLayoutEditResult {
+  return {
+    layout,
+    lockFeedback: false,
+    status: "unchanged",
+  };
 }
 
 /**

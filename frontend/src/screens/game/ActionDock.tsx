@@ -4,7 +4,9 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
@@ -104,13 +106,20 @@ import {
 } from "lucide-react";
 import {
   ACTION_BAR_CATEGORIES,
+  ACTION_BAR_SECTION_CATEGORIES,
+  ACTION_BAR_SINGLE_CATEGORIES,
   validateActionBarLayout,
   type ActionBarCategory,
+  type ActionBarDragSource,
+  type ActionBarDropTarget,
   type ActionBarLayout,
+  type ActionBarSlotAddress,
 } from "../../action-bar/action-bar-layout";
 import {
+  createActionBarLayoutController,
+} from "../../action-bar/action-bar-layout-controller";
+import {
   calculateActionGridGeometry,
-  previewActionDivider,
 } from "../../action-bar/action-grid-geometry";
 import {
   resolveActionSlotPresentation,
@@ -225,14 +234,9 @@ interface ActionDockProps {
     name: string;
     sessionCommandId: number;
   }) => void;
-  onLayoutChange?(layout: ActionBarLayout): void;
+  onLayoutChange?(layout: ActionBarLayout): Promise<ActionBarLayout>;
+  sessionKey?: string;
   status: ReactNode;
-}
-
-interface DividerDrag {
-  dividerIndex: number;
-  pointerId: number;
-  startX: number;
 }
 
 /**
@@ -248,48 +252,60 @@ export function ActionDock({
   layout,
   onActionRequest,
   onLayoutChange,
+  sessionKey,
   status,
 }: ActionDockProps) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const [availableWidth, setAvailableWidth] = useState(680);
-  const [previewColumns, setPreviewColumns] = useState<number[] | null>(null);
-  const dragRef = useRef<DividerDrag | null>(null);
+  const suppressClickRef = useRef(false);
+  const controller = useMemo(
+    () => createActionBarLayoutController({
+      layout,
+      onCommit: async (candidate) =>
+        onLayoutChange ? onLayoutChange(candidate) : candidate,
+    }),
+    [layout, onLayoutChange],
+  );
+  const editState = useSyncExternalStore(
+    controller.subscribe,
+    controller.getState,
+    controller.getState,
+  );
+  const displayedLayout = editState.previewLayout ?? editState.layout;
   const geometry = useMemo(() => calculateActionGridGeometry({
     availableWidth,
     dividerWidth: 17,
     minimumSlotSize: 32,
-    rows: layout.rows,
-    sections: layout.all,
+    rows: displayedLayout.rows,
+    sections: displayedLayout.all,
     slotGap: 4,
     targetSlotSize: 48,
-  }), [availableWidth, layout.all, layout.rows]);
+  }), [availableWidth, displayedLayout.all, displayedLayout.rows]);
   const categoryGeometry = useMemo(() => calculateActionGridGeometry({
     availableWidth,
     dividerWidth: 0,
     minimumSlotSize: 32,
-    rows: layout.rows,
+    rows: displayedLayout.rows,
     sections: [{
       category: "common",
       columns: 1,
-      slots: layout.activeCategory === "all"
+      slots: displayedLayout.activeCategory === "all"
         ? []
-        : layout.categories[layout.activeCategory],
+        : displayedLayout.categories[displayedLayout.activeCategory],
     }],
     slotGap: 4,
     targetSlotSize: 48,
-  }), [availableWidth, layout]);
-  const displayedSections = geometry.sections.map((section, index) => {
-    const columns = previewColumns?.[index] ?? section.columns;
+  }), [availableWidth, displayedLayout]);
+  const displayedSections = geometry.sections.map((section) => {
     return {
       ...section,
-      columns,
       slots: Array.from(
-        { length: columns * layout.rows },
+        { length: section.columns * displayedLayout.rows },
         (_, slotIndex) => section.slots[slotIndex] ?? null,
       ),
     };
   });
-  const activeGeometry = layout.activeCategory === "all"
+  const activeGeometry = displayedLayout.activeCategory === "all"
     ? geometry
     : categoryGeometry;
 
@@ -306,89 +322,196 @@ export function ActionDock({
   }, []);
 
   useEffect(() => {
-    /** Clear any transient divider preview after focus leaves the page. */
-    function clearPreview(): void {
-      dragRef.current = null;
-      setPreviewColumns(null);
+    controller.replaceLayout(layout);
+  }, [controller, layout]);
+
+  useEffect(() => {
+    controller.cancel("session-reset");
+  }, [controller, sessionKey]);
+
+  useEffect(() => {
+    /** Cancel a transient edit when focus leaves the page. */
+    function cancelOnBlur(): void {
+      controller.cancel("blur");
     }
 
-    /** Cancel a divider preview when the player presses Escape. */
-    function cancelPreviewWithEscape(event: KeyboardEvent): void {
-      if (event.key !== "Escape" || dragRef.current === null) return;
+    /** Cancel a transient edit when the player presses Escape. */
+    function cancelWithEscape(event: KeyboardEvent): void {
+      if (
+        event.key !== "Escape"
+        || !["pending", "dragging"].includes(controller.getState().status)
+      ) {
+        return;
+      }
       event.preventDefault();
       event.stopPropagation();
-      clearPreview();
+      controller.cancel("escape");
     }
 
-    window.addEventListener("blur", clearPreview);
-    window.addEventListener("keydown", cancelPreviewWithEscape, true);
+    window.addEventListener("blur", cancelOnBlur);
+    window.addEventListener("keydown", cancelWithEscape, true);
     return () => {
-      window.removeEventListener("blur", clearPreview);
-      window.removeEventListener("keydown", cancelPreviewWithEscape, true);
+      window.removeEventListener("blur", cancelOnBlur);
+      window.removeEventListener("keydown", cancelWithEscape, true);
     };
-  }, []);
+  }, [controller]);
+
+  useEffect(() => () => controller.dispose(), [controller]);
+
+  useEffect(() => {
+    if (!editState.lockFeedback) return;
+    const timeout = globalThis.setTimeout(
+      () => controller.clearLockFeedback(),
+      520,
+    );
+    return () => globalThis.clearTimeout(timeout);
+  }, [controller, editState.lockFeedback]);
 
   /**
-   * Persist one validated layout update through the profile owner.
-   * @param patch - changed top-level layout fields.
+   * Begin one pointer-owned slot or divider edit.
+   * @param event - pointer-down event on the rendered source.
+   * @param source - stable source metadata independent of DOM identity.
    * @returns nothing.
    */
-  function updateLayout(patch: Partial<ActionBarLayout>): void {
-    onLayoutChange?.(validateActionBarLayout({ ...layout, ...patch }));
+  function beginPointerEdit(
+    event: ReactPointerEvent<HTMLElement>,
+    source: ActionBarDragSource,
+  ): void {
+    if (
+      blocked
+      || !controller.pointerDown({
+        button: event.button,
+        clientX: event.clientX,
+        clientY: event.clientY,
+        pointerId: event.pointerId,
+        source,
+      })
+    ) {
+      return;
+    }
+    event.currentTarget.setPointerCapture(event.pointerId);
   }
 
   /**
-   * Begin a preview-only divider gesture when editing is unlocked.
-   * @param event - divider pointer-down event.
-   * @param dividerIndex - divider between the indexed and following section.
+   * Update one captured pointer edit against the element below the pointer.
+   * @param event - pointer-move event from the captured source.
    * @returns nothing.
    */
-  function beginDivider(
-    event: ReactPointerEvent<HTMLDivElement>,
+  function movePointerEdit(event: ReactPointerEvent<HTMLElement>): void {
+    controller.pointerMove({
+      clientX: event.clientX,
+      clientY: event.clientY,
+      pointerId: event.pointerId,
+      target: actionDropTargetAt(event.clientX, event.clientY),
+    });
+    if (controller.getState().status === "dragging") event.preventDefault();
+  }
+
+  /**
+   * Finish one captured gesture and commit its final preview once.
+   * @param event - pointer-up event from the captured source.
+   * @returns nothing.
+   */
+  function finishPointerEdit(event: ReactPointerEvent<HTMLElement>): void {
+    movePointerEdit(event);
+    if (controller.getState().status === "dragging") {
+      suppressClickRef.current = true;
+      globalThis.setTimeout(() => {
+        suppressClickRef.current = false;
+      }, 0);
+    }
+    void controller.pointerUp(event.pointerId);
+    releaseActionPointer(event);
+  }
+
+  /**
+   * Cancel one interrupted pointer edit and release capture.
+   * @param event - interrupted pointer event.
+   * @param reason - stable cancellation reason.
+   */
+  function cancelPointerEdit(
+    event: ReactPointerEvent<HTMLElement>,
+    reason: "pointer-cancel" | "lost-pointer-capture",
+  ): void {
+    controller.cancel(reason, event.pointerId);
+    releaseActionPointer(event);
+  }
+
+  /**
+   * Provide keyboard equivalents for moving or removing a focused action.
+   * @param event - key event from one occupied slot.
+   * @param source - stable address of the focused action.
+   */
+  function handleSlotKeyDown(
+    event: ReactKeyboardEvent<HTMLButtonElement>,
+    source: ActionBarSlotAddress,
+  ): void {
+    if (event.key === "Delete" || event.key === "Backspace") {
+      event.preventDefault();
+      event.stopPropagation();
+      void controller.commit({
+        type: "drop",
+        source: { kind: "dock-action", slot: source },
+        target: { kind: "outside" },
+      });
+      return;
+    }
+    if (
+      !event.altKey
+      || !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(
+        event.key,
+      )
+    ) {
+      return;
+    }
+    const columns = source.area === "all"
+      ? activeGeometry.sections.find(
+        (section) => section.category === source.section,
+      )?.columns ?? 1
+      : categoryGeometry.sections[0]?.columns ?? 1;
+    const delta = {
+      ArrowLeft: -1,
+      ArrowRight: 1,
+      ArrowUp: -columns,
+      ArrowDown: columns,
+    }[event.key] ?? 0;
+    const destinationIndex = source.slotIndex + delta;
+    if (destinationIndex < 0) return;
+    const destination: ActionBarSlotAddress = source.area === "all"
+      ? { ...source, slotIndex: destinationIndex }
+      : { ...source, slotIndex: destinationIndex };
+    event.preventDefault();
+    event.stopPropagation();
+    void controller.commit({
+      type: "drop",
+      source: { kind: "dock-action", slot: source },
+      target: { kind: "dock-slot", slot: destination },
+    }).then(() => focusActionSlot(destination));
+  }
+
+  /**
+   * Resize one divider by keyboard in complete-column steps.
+   * @param event - key event from a focused separator.
+   * @param dividerIndex - divider between adjacent All sections.
+   */
+  function handleDividerKeyDown(
+    event: ReactKeyboardEvent<HTMLDivElement>,
     dividerIndex: number,
   ): void {
-    if (layout.locked) return;
-    dragRef.current = {
-      dividerIndex,
-      pointerId: event.pointerId,
-      startX: event.clientX,
-    };
-    event.currentTarget.setPointerCapture(event.pointerId);
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
     event.preventDefault();
-  }
-
-  /**
-   * Update snapped section widths without persisting the preview.
-   * @param event - captured divider pointer-move event.
-   * @returns nothing.
-   */
-  function moveDivider(event: ReactPointerEvent<HTMLDivElement>): void {
-    const drag = dragRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    setPreviewColumns(previewActionDivider({
-      dividerIndex: drag.dividerIndex,
-      pointerDelta: event.clientX - drag.startX,
-      sectionColumns: geometry.sections.map((section) => section.columns),
-      slotGap: 4,
-      slotSize: geometry.slotSize,
-    }));
-  }
-
-  /**
-   * Discard the stage-three divider preview when its gesture ends.
-   * @param event - captured divider completion event.
-   * @returns nothing.
-   */
-  function endDivider(event: ReactPointerEvent<HTMLDivElement>): void {
-    if (dragRef.current?.pointerId !== event.pointerId) return;
-    dragRef.current = null;
-    setPreviewColumns(null);
+    event.stopPropagation();
+    void controller.commit({
+      type: "move-divider",
+      columnDelta: event.key === "ArrowLeft" ? -1 : 1,
+      dividerIndex,
+    });
   }
 
   const gridStyle = {
     "--action-grid-width": `${activeGeometry.gridWidth}px`,
     "--action-slot-size": `${activeGeometry.slotSize}px`,
-    "--action-row-count": layout.rows,
+    "--action-row-count": displayedLayout.rows,
   } as CSSProperties;
 
   return (
@@ -400,7 +523,8 @@ export function ActionDock({
       data-horizontal-overflow={
         activeGeometry.horizontalOverflow ? "true" : "false"
       }
-      data-row-count={layout.rows}
+      data-layout-edit-status={editState.status}
+      data-row-count={displayedLayout.rows}
     >
       <div
         className="nh-action-dock-status"
@@ -413,7 +537,7 @@ export function ActionDock({
       <div className="nh-action-workspace">
         <div className="nh-action-grid-viewport" ref={viewportRef}>
           <div className="nh-action-grid" style={gridStyle}>
-            {layout.activeCategory === "all"
+            {displayedLayout.activeCategory === "all"
               ? displayedSections.flatMap((section, sectionIndex) => {
                 const children: ReactNode[] = [
                   <section
@@ -432,7 +556,34 @@ export function ActionDock({
                         key={`${section.category}:${slotIndex}`}
                         name={name}
                         onActionRequest={onActionRequest}
+                        onKeyDown={(event) =>
+                          handleSlotKeyDown(event, {
+                            area: "all",
+                            section: section.category,
+                            slotIndex,
+                          })}
+                        onPointerCancel={(event) =>
+                          cancelPointerEdit(event, "pointer-cancel")}
+                        onPointerDown={(event) =>
+                          beginPointerEdit(event, {
+                            kind: "dock-action",
+                            slot: {
+                              area: "all",
+                              section: section.category,
+                              slotIndex,
+                            },
+                          })}
+                        onPointerMove={movePointerEdit}
+                        onPointerUp={finishPointerEdit}
+                        onLostPointerCapture={(event) =>
+                          cancelPointerEdit(event, "lost-pointer-capture")}
+                        slotAddress={{
+                          area: "all",
+                          section: section.category,
+                          slotIndex,
+                        }}
                         slotIndex={slotIndex}
+                        suppressClickRef={suppressClickRef}
                       />
                     ))}
                   </section>,
@@ -446,14 +597,27 @@ export function ActionDock({
                       data-section-divider={sectionIndex}
                       data-snap="column"
                       key={`divider:${sectionIndex}`}
-                      onPointerCancel={endDivider}
+                      onLostPointerCapture={(event) =>
+                        cancelPointerEdit(event, "lost-pointer-capture")}
+                      onPointerCancel={(event) =>
+                        cancelPointerEdit(event, "pointer-cancel")}
                       onPointerDown={(event) => {
-                        beginDivider(event, sectionIndex);
+                        beginPointerEdit(event, {
+                          kind: "divider",
+                          dividerIndex: sectionIndex,
+                          slotGap: 4,
+                          slotSize: activeGeometry.slotSize,
+                        });
                       }}
-                      onPointerMove={moveDivider}
-                      onPointerUp={endDivider}
-                      onLostPointerCapture={endDivider}
+                      onPointerMove={movePointerEdit}
+                      onPointerUp={finishPointerEdit}
                       role="separator"
+                      tabIndex={0}
+                      aria-valuemax={8}
+                      aria-valuemin={1}
+                      aria-valuenow={section.columns}
+                      onKeyDown={(event) =>
+                        handleDividerKeyDown(event, sectionIndex)}
                     />,
                   );
                 }
@@ -462,7 +626,7 @@ export function ActionDock({
               : (
                 <section
                   className="nh-action-section nh-action-section-single"
-                  data-action-section={layout.activeCategory}
+                  data-action-section={displayedLayout.activeCategory}
                   style={{
                     "--action-section-columns":
                       categoryGeometry.sections[0].columns,
@@ -474,10 +638,43 @@ export function ActionDock({
                         active={name === activeActionName}
                         blocked={blocked}
                         catalog={catalog}
-                        key={`${layout.activeCategory}:${slotIndex}`}
+                        key={`${displayedLayout.activeCategory}:${slotIndex}`}
                         name={name}
                         onActionRequest={onActionRequest}
+                        onKeyDown={(event) =>
+                          handleSlotKeyDown(event, {
+                            area: "category",
+                            category: displayedLayout.activeCategory === "all"
+                              ? "custom"
+                              : displayedLayout.activeCategory,
+                            slotIndex,
+                          })}
+                        onPointerCancel={(event) =>
+                          cancelPointerEdit(event, "pointer-cancel")}
+                        onPointerDown={(event) =>
+                          beginPointerEdit(event, {
+                            kind: "dock-action",
+                            slot: {
+                              area: "category",
+                              category: displayedLayout.activeCategory === "all"
+                                ? "custom"
+                                : displayedLayout.activeCategory,
+                              slotIndex,
+                            },
+                          })}
+                        onPointerMove={movePointerEdit}
+                        onPointerUp={finishPointerEdit}
+                        onLostPointerCapture={(event) =>
+                          cancelPointerEdit(event, "lost-pointer-capture")}
+                        slotAddress={{
+                          area: "category",
+                          category: displayedLayout.activeCategory === "all"
+                            ? "custom"
+                            : displayedLayout.activeCategory,
+                          slotIndex,
+                        }}
                         slotIndex={slotIndex}
+                        suppressClickRef={suppressClickRef}
                       />
                     ),
                   )}
@@ -488,10 +685,16 @@ export function ActionDock({
         <nav aria-label="Action categories" className="nh-action-categories">
           {ACTION_BAR_CATEGORIES.map((category) => (
             <button
-              aria-pressed={layout.activeCategory === category}
+              aria-pressed={displayedLayout.activeCategory === category}
               data-action-category={category}
+              disabled={editState.status === "committing"}
               key={category}
-              onClick={() => updateLayout({ activeCategory: category })}
+              onClick={() => {
+                void controller.commitLayout(validateActionBarLayout({
+                  ...editState.layout,
+                  activeCategory: category,
+                }));
+              }}
               type="button"
             >
               {CATEGORY_LABELS[category]}
@@ -500,29 +703,58 @@ export function ActionDock({
         </nav>
         <div className="nh-action-dock-input" data-dock-region="input">
           {input}
+          {editState.error && (
+            <p className="nh-action-layout-error" role="alert">
+              {editState.error}
+            </p>
+          )}
         </div>
       </div>
       <div className="nh-action-dock-tools">
         <DockTool
-          disabled={layout.rows === 1}
+          disabled={
+            displayedLayout.rows === 1
+            || editState.status === "committing"
+          }
           icon={Minus}
           label="Decrease rows"
-          onClick={() => updateLayout({
-            rows: Math.max(1, layout.rows - 1) as ActionBarLayout["rows"],
-          })}
+          onClick={() => {
+            void controller.commit({
+              type: "set-rows",
+              rows: Math.max(
+                1,
+                displayedLayout.rows - 1,
+              ) as ActionBarLayout["rows"],
+            });
+          }}
         />
         <DockTool
-          disabled={layout.rows === 4}
+          disabled={
+            displayedLayout.rows === 4
+            || editState.status === "committing"
+          }
           icon={Plus}
           label="Increase rows"
-          onClick={() => updateLayout({
-            rows: Math.min(4, layout.rows + 1) as ActionBarLayout["rows"],
-          })}
+          onClick={() => {
+            void controller.commit({
+              type: "set-rows",
+              rows: Math.min(
+                4,
+                displayedLayout.rows + 1,
+              ) as ActionBarLayout["rows"],
+            });
+          }}
         />
         <DockTool
-          icon={layout.locked ? Lock : Unlock}
+          icon={displayedLayout.locked ? Lock : Unlock}
           label={layout.locked ? "Unlock action bar" : "Lock action bar"}
-          onClick={() => updateLayout({ locked: !layout.locked })}
+          lockRejected={editState.lockFeedback}
+          onClick={() => {
+            void controller.commitLayout(validateActionBarLayout({
+              ...editState.layout,
+              locked: !editState.layout.locked,
+            }));
+          }}
         />
         <DockTool icon={Ellipsis} label="All Actions" />
       </div>
@@ -541,7 +773,15 @@ function ActionSlot({
   catalog,
   name,
   onActionRequest,
+  onKeyDown,
+  onLostPointerCapture,
+  onPointerCancel,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+  slotAddress,
   slotIndex,
+  suppressClickRef,
 }: {
   active: boolean;
   blocked: boolean;
@@ -551,36 +791,46 @@ function ActionSlot({
     name: string;
     sessionCommandId: number;
   }) => void;
+  onKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>): void;
+  onLostPointerCapture(event: ReactPointerEvent<HTMLElement>): void;
+  onPointerCancel(event: ReactPointerEvent<HTMLElement>): void;
+  onPointerDown(event: ReactPointerEvent<HTMLElement>): void;
+  onPointerMove(event: ReactPointerEvent<HTMLElement>): void;
+  onPointerUp(event: ReactPointerEvent<HTMLElement>): void;
+  slotAddress: ActionBarSlotAddress;
   slotIndex: number;
+  suppressClickRef: { current: boolean };
 }) {
-  if (name === null) {
-    return (
-      <span
-        aria-hidden="true"
-        className="nh-action-slot nh-action-slot-empty"
-        data-action-slot
-        data-action-state="empty"
-        data-empty-action-slot
-        data-slot-index={slotIndex}
-      />
-    );
-  }
-  const presentation = catalog
+  const slotAddressAttributes = actionSlotAddressAttributes(slotAddress);
+  const presentation = name === null
+    ? null
+    : catalog
     ? resolveActionSlotPresentation(name, catalog, {
       blocked: blocked && !active,
     })
     : unavailablePresentation(name);
   return (
     <button
-      aria-label={`${presentation.name} (${presentation.key})`}
-      className="nh-action-slot"
-      data-action-icon={presentation.icon}
-      data-action-name={presentation.name}
+      aria-disabled={presentation?.state !== "available"}
+      aria-hidden={presentation === null ? "true" : undefined}
+      aria-keyshortcuts={presentation
+        ? "Alt+ArrowLeft Alt+ArrowRight Alt+ArrowUp Alt+ArrowDown Delete"
+        : undefined}
+      aria-label={presentation
+        ? `${presentation.name} (${presentation.key})`
+        : undefined}
+      className={`nh-action-slot${
+        presentation ? "" : " nh-action-slot-empty"
+      }`}
+      data-action-icon={presentation?.icon}
+      data-action-name={presentation?.name}
       data-action-slot
-      data-action-state={presentation.state}
+      data-action-state={presentation?.state ?? "empty"}
+      data-empty-action-slot={presentation === null ? "" : undefined}
       data-slot-index={slotIndex}
-      disabled={presentation.state !== "available"}
+      {...slotAddressAttributes}
       onClick={() => {
+        if (suppressClickRef.current || !presentation) return;
         if (
           presentation.state === "available"
           && presentation.sessionCommandId !== null
@@ -591,11 +841,24 @@ function ActionSlot({
           });
         }
       }}
-      title={`${presentation.name} (${presentation.key})`}
+      onKeyDown={presentation ? onKeyDown : undefined}
+      onLostPointerCapture={onLostPointerCapture}
+      onPointerCancel={onPointerCancel}
+      onPointerDown={presentation ? onPointerDown : undefined}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      tabIndex={presentation === null ? -1 : undefined}
+      title={presentation
+        ? `${presentation.name} (${presentation.key})`
+        : undefined}
       type="button"
     >
-      <ActionIcon name={presentation.icon} />
-      <span>{presentation.name}</span>
+      {presentation && (
+        <>
+          <ActionIcon name={presentation.icon} />
+          <span>{presentation.name}</span>
+        </>
+      )}
     </button>
   );
 }
@@ -609,11 +872,13 @@ function DockTool({
   disabled = false,
   icon: Icon,
   label,
+  lockRejected = false,
   onClick,
 }: {
   disabled?: boolean;
   icon: LucideIcon;
   label: string;
+  lockRejected?: boolean;
   onClick?(): void;
 }) {
   return (
@@ -621,6 +886,7 @@ function DockTool({
       aria-label={label}
       className="nh-action-dock-tool"
       data-action-dock-tool
+      data-lock-rejected={lockRejected ? "true" : undefined}
       disabled={disabled}
       onClick={onClick}
       title={label}
@@ -629,6 +895,99 @@ function DockTool({
       <Icon aria-hidden="true" size={18} />
     </button>
   );
+}
+
+/**
+ * Encode one stable slot address as DOM data for pointer hit testing.
+ * @param address - persisted action-bar slot address.
+ * @returns data attributes shared by occupied and empty slots.
+ */
+function actionSlotAddressAttributes(address: ActionBarSlotAddress) {
+  return {
+    "data-action-slot-area": address.area,
+    "data-action-slot-category": address.area === "all"
+      ? address.section
+      : address.category,
+  };
+}
+
+/**
+ * Restore keyboard focus to an action after a successful keyboard move.
+ * @param address - destination which now contains the moved action.
+ */
+function focusActionSlot(address: ActionBarSlotAddress): void {
+  globalThis.requestAnimationFrame(() => {
+    const category = address.area === "all"
+      ? address.section
+      : address.category;
+    document.querySelector<HTMLElement>(
+      `[data-action-slot-area="${address.area}"]`
+      + `[data-action-slot-category="${category}"]`
+      + `[data-slot-index="${address.slotIndex}"]`,
+    )?.focus({ preventScroll: true });
+  });
+}
+
+/**
+ * Resolve one viewport point to a dock, panel, or outside drop target.
+ * @param clientX - horizontal viewport coordinate.
+ * @param clientY - vertical viewport coordinate.
+ * @returns serializable target independent of pointer capture.
+ */
+function actionDropTargetAt(
+  clientX: number,
+  clientY: number,
+): ActionBarDropTarget {
+  const element = document.elementFromPoint(clientX, clientY);
+  const slot = element?.closest<HTMLElement>("[data-action-slot]");
+  if (slot) {
+    const slotIndex = Number(slot.dataset.slotIndex);
+    const category = slot.dataset.actionSlotCategory;
+    if (
+      slot.dataset.actionSlotArea === "all"
+      && ACTION_BAR_SECTION_CATEGORIES.includes(
+        category as (typeof ACTION_BAR_SECTION_CATEGORIES)[number],
+      )
+    ) {
+      return {
+        kind: "dock-slot",
+        slot: {
+          area: "all",
+          section: category as (typeof ACTION_BAR_SECTION_CATEGORIES)[number],
+          slotIndex,
+        },
+      };
+    }
+    if (
+      slot.dataset.actionSlotArea === "category"
+      && ACTION_BAR_SINGLE_CATEGORIES.includes(
+        category as (typeof ACTION_BAR_SINGLE_CATEGORIES)[number],
+      )
+    ) {
+      return {
+        kind: "dock-slot",
+        slot: {
+          area: "category",
+          category: category as (typeof ACTION_BAR_SINGLE_CATEGORIES)[number],
+          slotIndex,
+        },
+      };
+    }
+  }
+  if (element?.closest("[data-action-drop-zone=\"all-actions\"]")) {
+    return { kind: "all-actions" };
+  }
+  return { kind: "outside" };
+}
+
+/**
+ * Release a captured action edit pointer after controller state is cleared.
+ * @param event - pointer event whose current target may own capture.
+ */
+function releaseActionPointer(event: ReactPointerEvent<HTMLElement>): void {
+  if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+    event.currentTarget.releasePointerCapture(event.pointerId);
+  }
 }
 
 /**

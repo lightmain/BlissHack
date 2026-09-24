@@ -575,6 +575,7 @@
   font-size: 10px;
   letter-spacing: 0;
   cursor: pointer;
+  touch-action: none;
 }
 
 .nh-action-slot > span {
@@ -603,7 +604,7 @@
   background: #171c1e;
 }
 
-.nh-action-slot:hover:not(:disabled),
+.nh-action-slot:hover:not([aria-disabled="true"]),
 .nh-action-slot:focus-visible {
   border-color: #7ab7c9;
   outline: none;
@@ -611,13 +612,22 @@
   color: #fff;
 }
 
-.nh-action-slot:disabled {
+.nh-action-slot[aria-disabled="true"] {
   cursor: not-allowed;
   opacity: 0.42;
 }
 
 .nh-action-slot[data-action-state="available"][data-action-name] {
   transition: border-color 120ms ease, background-color 120ms ease;
+}
+
+.nh-action-dock[data-layout-edit-status="dragging"] .nh-action-slot {
+  cursor: grabbing;
+}
+
+.nh-action-dock[data-layout-edit-status="dragging"] .nh-action-slot:hover {
+  border-color: #72a9b8;
+  background: #20292d;
 }
 
 .nh-action-slot-empty {
@@ -682,6 +692,12 @@
   padding: 3px 2px 0;
 }
 
+.nh-action-layout-error {
+  margin: 2px 0 0;
+  color: #ff8b8f;
+  font-size: 11px;
+}
+
 .nh-action-dock-tools {
   min-height: 0;
   display: flex;
@@ -715,6 +731,12 @@
 .nh-action-dock-tool:disabled {
   color: #60696d;
   cursor: not-allowed;
+}
+
+.nh-action-dock-tool[data-lock-rejected="true"] {
+  border-color: #d45d62;
+  background: #4a2023;
+  color: #fff;
 }
 
 .nh-action-item-chooser {

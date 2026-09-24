@@ -429,6 +429,47 @@ describe("stage-five action bar layout reducer", () => {
     });
   });
 
+  it("keeps occupied slots editable when fewer rows expand rendered capacity", () => {
+    const api = requireLayoutApi();
+    const layout = editableLayout();
+    layout.rows = 1;
+
+    const removed = api.reduceActionBarLayout(layout, {
+      type: "drop",
+      source: {
+        kind: "dock-action",
+        slot: { area: "all", section: "common", slotIndex: 3 },
+      },
+      target: { kind: "outside" },
+    });
+
+    expect(removed.status).toBe("changed");
+    expect(removed.layout.all[0].slots).toEqual([
+      "eat",
+      "quaff",
+      "kick",
+      null,
+    ]);
+  });
+
+  it("expands the trailing All section for a visible edit slot", () => {
+    const api = requireLayoutApi();
+    const layout = editableLayout();
+
+    const inserted = api.reduceActionBarLayout(layout, {
+      type: "drop",
+      source: { kind: "all-actions", name: "kick" },
+      target: {
+        kind: "dock-slot",
+        slot: { area: "all", section: "items", slotIndex: 6 },
+      },
+    });
+
+    expect(inserted.status).toBe("changed");
+    expect(inserted.layout.all[3].columns).toBe(4);
+    expect(inserted.layout.all[3].slots[6]).toBe("kick");
+  });
+
   it("[defect-probing] changes rows without compacting actions or explicit empty slots", () => {
     const api = requireLayoutApi();
     const layout = editableLayout();

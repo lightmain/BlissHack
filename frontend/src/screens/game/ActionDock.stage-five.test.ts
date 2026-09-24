@@ -22,10 +22,10 @@ const GAME_CSS_SOURCE = readFileSync(
   "utf8",
 );
 const LAYOUT_PERSISTENCE_SOURCE = GAME_SCREEN_SOURCE.slice(
-  GAME_SCREEN_SOURCE.indexOf("function setActionBarLayout"),
+  GAME_SCREEN_SOURCE.indexOf("async function setActionBarLayout"),
   GAME_SCREEN_SOURCE.indexOf(
     "const onActionRequest",
-    GAME_SCREEN_SOURCE.indexOf("function setActionBarLayout"),
+    GAME_SCREEN_SOURCE.indexOf("async function setActionBarLayout"),
   ),
 );
 
@@ -77,7 +77,9 @@ describe("stage-five ActionDock editing contract", () => {
     );
     expect(lockTool).toMatch(/\b(?:lockRejected|rejected)=\{/);
     expect(
-      ACTION_DOCK_SOURCE.match(/\b(?:lockRejected|rejected)=\{/g) ?? [],
+      ACTION_DOCK_SOURCE.match(
+        /(?:^|\s)(?:lockRejected|rejected)=\{/gm,
+      ) ?? [],
     ).toHaveLength(1);
     expect(ACTION_DOCK_SOURCE).toContain("data-lock-rejected");
     expect(GAME_CSS_SOURCE).toMatch(

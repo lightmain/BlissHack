@@ -71,7 +71,9 @@ interface GameTerminalProps {
     name: string;
     sessionCommandId: number;
   }): void;
-  onActionBarLayoutChange?(layout: ActionBarLayout): void;
+  onActionBarLayoutChange?(
+    layout: ActionBarLayout,
+  ): Promise<ActionBarLayout>;
   onPrimaryClick(origin: MapInteractionOrigin): void;
   permanentInventory: GameSnapshot["permanentInventory"];
   permanentInventoryCollapsed: boolean;
@@ -175,6 +177,7 @@ export function GameTerminal({
         layout={actionBarLayout}
         onActionRequest={onActionRequest}
         onLayoutChange={onActionBarLayoutChange}
+        sessionKey={sessionId}
         status={statusArea}
       />
     )
