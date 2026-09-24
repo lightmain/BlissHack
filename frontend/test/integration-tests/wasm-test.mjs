@@ -1231,6 +1231,14 @@ async function run() {
     "getobj scopes action-menu provenance to the core candidate menu call",
   );
   assert(
+    getobjBlock !== null
+      && /\bdisplay_pickinv\s*\([^;]*?\baction_getobj\b[^;]*?\)\s*;/.test(
+        getobjBlock,
+      )
+      && /\bn\s*==\s*1\s*&&\s*!force_menu\b/.test(inventSource),
+    "action-owned getobj forces even a single candidate through select_menu",
+  );
+  assert(
     /\bCREATE_READONLY_GLOBAL\s*\(\s*program_state\.gameover\s*,\s*"b"\s*\)\s*;/.test(
       libnhMainSource,
     )

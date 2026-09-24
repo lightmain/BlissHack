@@ -294,7 +294,7 @@ describe("stage-four generic catalog actions", () => {
     expect(controller.getState().status).toBe("presenting-item-menu");
     expect(controller.chooseItem(31, 1)).toBe(true);
     expect(submitMenuSelection).toHaveBeenCalledWith([
-      { itemIndex: 1, count: 1 },
+      { itemIndex: 1, count: -1 },
     ]);
 
     controller.observe(observation({
@@ -398,8 +398,8 @@ describe("stage-four generic catalog actions", () => {
     expect(controller.chooseItem(32, 0)).toBe(true);
 
     expect(submitMenuSelection.mock.calls).toEqual([
-      [[{ itemIndex: 0, count: 1 }]],
-      [[{ itemIndex: 0, count: 1 }]],
+      [[{ itemIndex: 0, count: -1 }]],
+      [[{ itemIndex: 0, count: -1 }]],
     ]);
   });
 });
@@ -583,6 +583,42 @@ describe("stage-four cancellation and cleanup", () => {
       boundaryGeneration: ACCEPTED_BOUNDARY + 1,
       input: commandInput(),
     }));
+    expect(controller.getState()).toMatchObject({
+      status: "idle",
+      intent: null,
+      lastCancellationReason: "user-cancelled",
+    });
+    expect(onCancel).toHaveBeenCalledWith("user-cancelled");
+    expect(setActionIntentActive).toHaveBeenLastCalledWith(false);
+  });
+
+  it("finishes cancellation when resolver consumption and a later boundary are coalesced", () => {
+    const {
+      controller,
+      onCancel,
+      setActionIntentActive,
+    } = createHarness();
+    const direction: StageFourInput = {
+      kind: "yn",
+      query: "Choose a direction",
+      choices: null,
+      defaultCode: 0,
+      inputState: INPUT_STATE_GETDIR,
+    };
+    const intent = catalogIntent({
+      actionName: "open",
+      sessionCommandId: 67,
+      origin: { kind: "action-dock", actionName: "open" },
+    });
+    start(controller, intent);
+    controller.observe(observation({ input: direction }));
+    controller.cancel("user-cancelled");
+
+    controller.observe(observation({
+      boundaryGeneration: ACCEPTED_BOUNDARY + 1,
+      input: null,
+    }));
+
     expect(controller.getState()).toMatchObject({
       status: "idle",
       intent: null,
