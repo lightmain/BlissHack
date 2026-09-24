@@ -5,6 +5,7 @@ import type {
 } from "../../settings/profile";
 
 interface GameHudLayoutProps {
+  allActionsOpen?: boolean;
   actionBarStyle: ActionBarStyle;
   actionSlot?: ReactNode;
   inventory: ReactNode;
@@ -21,6 +22,7 @@ interface GameHudLayoutProps {
  * @returns the stable full-screen HUD grid.
  */
 export function GameHudLayout({
+  allActionsOpen = false,
   actionBarStyle,
   actionSlot,
   inventory,
@@ -33,6 +35,7 @@ export function GameHudLayout({
   return (
     <div
       className={`nh-hud-layout nh-hud-layout-${position}`}
+      data-all-actions-open={allActionsOpen ? "true" : "false"}
       data-has-inventory={inventory ? "true" : "false"}
       data-action-bar-style={actionBarStyle}
       data-inventory-collapsed={inventoryCollapsed ? "true" : "false"}
@@ -45,6 +48,7 @@ export function GameHudLayout({
       {status}
       <div
         className="nh-hud-action-slot"
+        data-bottom-region="true"
         data-hud-region="actions"
       >
         {actionSlot}

@@ -739,6 +739,239 @@
   color: #fff;
 }
 
+.nh-hud-layout[data-all-actions-open="true"] [data-game-content] {
+  opacity: 0.44;
+  filter: brightness(0.56);
+  pointer-events: none;
+  user-select: none;
+}
+
+.nh-all-actions-panel {
+  position: fixed;
+  top: clamp(12px, 8svh, 72px);
+  right: max(16px, calc((100vw - 70rem) / 2));
+  bottom: var(--all-actions-bottom);
+  left: max(16px, calc((100vw - 70rem) / 2));
+  z-index: 24;
+  min-width: 0;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  border: 1px solid #66747a;
+  border-radius: 5px;
+  background: #101516;
+  box-shadow: 0 14px 36px rgb(0 0 0 / 65%);
+  color: #edf0ed;
+}
+
+.nh-all-actions-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  min-height: 44px;
+  padding: 6px 8px 6px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid #343e42;
+  background: #151a1c;
+}
+
+.nh-all-actions-header h2,
+.nh-all-actions-section h3,
+.nh-all-actions-import-preview h3 {
+  margin: 0;
+  letter-spacing: 0;
+}
+
+.nh-all-actions-header h2 {
+  font-size: 0.9rem;
+}
+
+.nh-all-actions-tools,
+.nh-all-actions-import-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.nh-all-actions-tools button {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 1px solid #4e595e;
+  border-radius: 3px;
+  background: #1a2022;
+  color: #d9deda;
+}
+
+.nh-all-actions-tools button:hover:not(:disabled),
+.nh-all-actions-tools button:focus-visible {
+  border-color: #7ab7c9;
+  outline: none;
+  background: #20292d;
+  color: #fff;
+}
+
+.nh-all-actions-tools button:disabled {
+  opacity: 0.45;
+}
+
+.nh-all-actions-sections {
+  min-height: 0;
+}
+
+.nh-all-actions-section {
+  padding: 10px 12px 12px;
+  border-bottom: 1px solid #30383b;
+}
+
+.nh-all-actions-section:last-child {
+  border-bottom: 0;
+}
+
+.nh-all-actions-section h3 {
+  margin-bottom: 7px;
+  color: #d4bd79;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+}
+
+.nh-all-actions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
+  gap: 5px;
+}
+
+.nh-all-actions-slot {
+  width: 100%;
+  min-width: 0;
+  aspect-ratio: 1;
+  padding: 4px 3px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 2px;
+  overflow: hidden;
+  border: 1px solid #414b4f;
+  border-radius: 3px;
+  background: #192022;
+  color: #e2e5e3;
+  font: inherit;
+  font-size: 9px;
+  letter-spacing: 0;
+  cursor: grab;
+  touch-action: none;
+}
+
+.nh-all-actions-slot:hover,
+.nh-all-actions-slot:focus-visible {
+  z-index: 1;
+  border-color: #7ab7c9;
+  outline: none;
+  background: #232d30;
+  color: #fff;
+}
+
+.nh-all-actions-slot[aria-disabled="true"] {
+  opacity: 0.45;
+}
+
+.nh-all-actions-slot > span {
+  width: 100%;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nh-all-actions-slot kbd {
+  max-width: 100%;
+  overflow: hidden;
+  color: #ffcf5c;
+  font: inherit;
+  font-size: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nh-all-actions-error {
+  margin: 0;
+  padding: 8px 12px;
+  border-bottom: 1px solid #5f3034;
+  background: #321b1d;
+  color: #ffb1b4;
+  font-size: 0.72rem;
+}
+
+.nh-all-actions-import-preview {
+  padding: 10px 12px;
+  border-bottom: 1px solid #4c575c;
+  background: #131a1c;
+}
+
+.nh-all-actions-import-preview h3 {
+  margin-bottom: 8px;
+  font-size: 0.78rem;
+}
+
+.nh-all-actions-import-preview p {
+  margin: 5px 0;
+  color: #aeb7ba;
+  font-size: 0.72rem;
+}
+
+.nh-all-actions-differences {
+  display: grid;
+  gap: 1px;
+  overflow-x: auto;
+}
+
+.nh-all-actions-differences > div {
+  min-width: 32rem;
+  padding: 5px 7px;
+  display: grid;
+  grid-template-columns: minmax(9rem, 0.7fr) repeat(2, minmax(10rem, 1fr));
+  gap: 8px;
+  background: #1a2123;
+  font-size: 0.68rem;
+}
+
+.nh-all-actions-difference-heading {
+  color: #899398;
+}
+
+.nh-all-actions-import-actions {
+  justify-content: flex-end;
+  margin-top: 9px;
+}
+
+.nh-all-actions-import-actions button {
+  min-height: 30px;
+  padding: 4px 10px;
+  border: 1px solid #4e595e;
+  border-radius: 3px;
+  background: #1b2224;
+  color: #dfe4e1;
+}
+
+.nh-all-actions-import-actions button:last-child {
+  border-color: #4f7c61;
+  background: #1b3928;
+}
+
+.nh-all-actions-import-actions button:focus-visible {
+  outline: 2px solid #7ab7c9;
+  outline-offset: 1px;
+}
+
+.nh-all-actions-import-actions button:disabled {
+  opacity: 0.45;
+}
+
 .nh-action-item-chooser {
   position: fixed;
   right: clamp(12px, 4vw, 48px);

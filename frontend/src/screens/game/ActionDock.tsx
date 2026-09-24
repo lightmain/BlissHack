@@ -8,6 +8,7 @@ import {
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
+  type Ref,
   type ReactNode,
 } from "react";
 import {
@@ -126,6 +127,7 @@ import {
   type ActionPresentation,
 } from "../../action-bar/action-catalog-metadata";
 import type { SessionActionCatalog } from "../../game-actions/action-catalog";
+import { AllActionsPanel } from "./AllActionsPanel";
 
 const CATEGORY_LABELS: Readonly<Record<ActionBarCategory, string>> = {
   all: "All",
@@ -226,10 +228,12 @@ const ACTION_ICONS: Readonly<Record<string, LucideIcon>> = {
 
 interface ActionDockProps {
   activeActionName?: string | null;
+  allActionsOpen: boolean;
   blocked: boolean;
   catalog: SessionActionCatalog | null;
   input: ReactNode;
   layout: ActionBarLayout;
+  onAllActionsOpenChange(open: boolean): void;
   onActionRequest?: (request: {
     name: string;
     sessionCommandId: number;
@@ -246,15 +250,18 @@ interface ActionDockProps {
  */
 export function ActionDock({
   activeActionName = null,
+  allActionsOpen,
   blocked,
   catalog,
   input,
   layout,
+  onAllActionsOpenChange,
   onActionRequest,
   onLayoutChange,
   sessionKey,
   status,
 }: ActionDockProps) {
+  const allActionsTriggerRef = useRef<HTMLButtonElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const [availableWidth, setAvailableWidth] = useState(680);
   const suppressClickRef = useRef(false);
@@ -513,19 +520,68 @@ export function ActionDock({
     "--action-slot-size": `${activeGeometry.slotSize}px`,
     "--action-row-count": displayedLayout.rows,
   } as CSSProperties;
+  const layoutEditBlocksActions = [
+    "pending",
+    "dragging",
+    "committing",
+  ].includes(editState.status);
+  const actionsBlocked = blocked || layoutEditBlocksActions;
+
+  /**
+   * Forward one action only when no layout edit owns the dock.
+   * @param request - current session command identity.
+   * @returns nothing.
+   */
+  function requestAction(request: {
+    name: string;
+    sessionCommandId: number;
+  }): void {
+    if (
+      blocked
+      || ["pending", "dragging", "committing"].includes(
+        controller.getState().status,
+      )
+    ) {
+      return;
+    }
+    onActionRequest?.(request);
+  }
 
   return (
-    <section
-      aria-label="Action bar"
-      className="nh-action-dock"
-      data-action-dock
-      data-browser-keyboard
-      data-horizontal-overflow={
-        activeGeometry.horizontalOverflow ? "true" : "false"
-      }
-      data-layout-edit-status={editState.status}
-      data-row-count={displayedLayout.rows}
-    >
+    <>
+      {allActionsOpen && catalog && (
+        <AllActionsPanel
+          blocked={actionsBlocked}
+          catalog={catalog}
+          layout={editState.layout}
+          layoutBusy={editState.status === "committing"}
+          onActionRequest={requestAction}
+          onClose={() => onAllActionsOpenChange(false)}
+          onImportLayout={(incomingLayout) =>
+            controller.commitLayout(incomingLayout)}
+          onLostPointerCapture={(event) =>
+            cancelPointerEdit(event, "lost-pointer-capture")}
+          onPointerCancel={(event) =>
+            cancelPointerEdit(event, "pointer-cancel")}
+          onPointerDown={beginPointerEdit}
+          onPointerMove={movePointerEdit}
+          onPointerUp={finishPointerEdit}
+          renderIcon={(name) => <ActionIcon name={name} />}
+          suppressClickRef={suppressClickRef}
+          triggerRef={allActionsTriggerRef}
+        />
+      )}
+      <section
+        aria-label="Action bar"
+        className="nh-action-dock"
+        data-action-dock
+        data-browser-keyboard
+        data-horizontal-overflow={
+          activeGeometry.horizontalOverflow ? "true" : "false"
+        }
+        data-layout-edit-status={editState.status}
+        data-row-count={displayedLayout.rows}
+      >
       <div
         className="nh-action-dock-status"
         data-dock-region="status"
@@ -551,11 +607,11 @@ export function ActionDock({
                     {section.slots.map((name, slotIndex) => (
                       <ActionSlot
                         active={name === activeActionName}
-                        blocked={blocked}
+                        blocked={actionsBlocked}
                         catalog={catalog}
                         key={`${section.category}:${slotIndex}`}
                         name={name}
-                        onActionRequest={onActionRequest}
+                        onActionRequest={requestAction}
                         onKeyDown={(event) =>
                           handleSlotKeyDown(event, {
                             area: "all",
@@ -636,11 +692,11 @@ export function ActionDock({
                     (name, slotIndex) => (
                       <ActionSlot
                         active={name === activeActionName}
-                        blocked={blocked}
+                        blocked={actionsBlocked}
                         catalog={catalog}
                         key={`${displayedLayout.activeCategory}:${slotIndex}`}
                         name={name}
-                        onActionRequest={onActionRequest}
+                        onActionRequest={requestAction}
                         onKeyDown={(event) =>
                           handleSlotKeyDown(event, {
                             area: "category",
@@ -756,9 +812,19 @@ export function ActionDock({
             }));
           }}
         />
-        <DockTool icon={Ellipsis} label="All Actions" />
-      </div>
-    </section>
+          <DockTool
+            buttonRef={allActionsTriggerRef}
+            controls="nh-all-actions-panel"
+            disabled={!catalog}
+            expanded={allActionsOpen}
+            hasPopup="dialog"
+            icon={Ellipsis}
+            label="All Actions"
+            onClick={() => onAllActionsOpenChange(!allActionsOpen)}
+          />
+        </div>
+      </section>
+    </>
   );
 }
 
@@ -869,13 +935,21 @@ function ActionSlot({
  * @returns one circular icon button.
  */
 function DockTool({
+  buttonRef,
+  controls,
   disabled = false,
+  expanded,
+  hasPopup,
   icon: Icon,
   label,
   lockRejected = false,
   onClick,
 }: {
+  buttonRef?: Ref<HTMLButtonElement>;
+  controls?: string;
   disabled?: boolean;
+  expanded?: boolean;
+  hasPopup?: "dialog";
   icon: LucideIcon;
   label: string;
   lockRejected?: boolean;
@@ -883,12 +957,16 @@ function DockTool({
 }) {
   return (
     <button
+      aria-controls={controls}
+      aria-expanded={expanded}
+      aria-haspopup={hasPopup}
       aria-label={label}
       className="nh-action-dock-tool"
       data-action-dock-tool
       data-lock-rejected={lockRejected ? "true" : undefined}
       disabled={disabled}
       onClick={onClick}
+      ref={buttonRef}
       title={label}
       type="button"
     >

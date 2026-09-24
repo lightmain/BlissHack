@@ -16,6 +16,7 @@ import { useMapCamera } from "./use-map-camera";
 import { useRightDragPan } from "./use-right-drag-pan";
 
 interface MapViewportProps {
+  backgroundInert?: boolean;
   clipCenter: GameSnapshot["clipCenter"];
   commandInput: boolean;
   cursor: GameSnapshot["cursor"];
@@ -44,6 +45,7 @@ export type MapInteractionOrigin = Extract<
  * @returns the interactive map viewport.
  */
 export const MapViewport = memo(function MapViewport({
+  backgroundInert = false,
   clipCenter,
   commandInput,
   cursor,
@@ -184,11 +186,13 @@ export const MapViewport = memo(function MapViewport({
   return (
     <div
       className="nh-map-scroll"
+      data-game-content="true"
       data-hud-region="map"
       data-inventory-drop-zone="true"
       data-overflow-owner="map"
       data-player-x={cursor.x}
       data-player-y={cursor.y}
+      inert={backgroundInert}
       onScroll={handleScroll}
       ref={scrollRef}
     >

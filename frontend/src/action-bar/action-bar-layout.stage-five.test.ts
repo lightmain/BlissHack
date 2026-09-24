@@ -83,6 +83,7 @@ interface ActionBarLayoutControllerState {
 
 interface ActionBarLayoutController {
   cancel(reason: ActionBarEditCancellationReason, pointerId?: number): void;
+  commitLayout(layout: ActionBarLayout): Promise<boolean>;
   dispose(): void;
   getState(): ActionBarLayoutControllerState;
   pointerDown(input: {
@@ -492,6 +493,43 @@ describe("stage-five action bar layout reducer", () => {
 });
 
 describe("stage-five action bar layout controller", () => {
+  it("[defect-probing] reports busy and failed direct layout commits", async () => {
+    const api = requireControllerApi();
+    const deferred: {
+      resolve?: (layout: ActionBarLayout) => void;
+    } = {};
+    const onCommit = vi.fn((layout: ActionBarLayout) =>
+      new Promise<ActionBarLayout>((resolve) => {
+        deferred.resolve = () => resolve(layout);
+      }));
+    const controller = api.createActionBarLayoutController({
+      layout: editableLayout(),
+      onCommit,
+    });
+    const firstCandidate = editableLayout();
+    firstCandidate.rows = 3;
+    const secondCandidate = editableLayout();
+    secondCandidate.rows = 4;
+
+    const first = controller.commitLayout(firstCandidate);
+    expect(controller.getState().status).toBe("committing");
+    await expect(controller.commitLayout(secondCandidate)).resolves.toBe(false);
+    expect(onCommit).toHaveBeenCalledOnce();
+
+    expect(deferred.resolve).toBeTypeOf("function");
+    deferred.resolve?.(firstCandidate);
+    await expect(first).resolves.toBe(true);
+
+    const rejecting = api.createActionBarLayoutController({
+      layout: editableLayout(),
+      onCommit: async () => {
+        throw new Error("quota exceeded");
+      },
+    });
+    await expect(rejecting.commitLayout(firstCandidate)).resolves.toBe(false);
+    expect(rejecting.getState().status).toBe("error");
+  });
+
   it("[defect-probing] previews after five pixels and commits exactly once on pointer up", async () => {
     const api = requireControllerApi();
     const onCommit = vi.fn(async (layout: ActionBarLayout) =>

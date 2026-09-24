@@ -54,6 +54,13 @@ const GAME_CSS_SOURCE = readFileSync(
   new URL("../../styles/game.css", import.meta.url),
   "utf8",
 );
+const LAYOUT_PERSISTENCE_SOURCE = GAME_SCREEN_SOURCE.slice(
+  GAME_SCREEN_SOURCE.indexOf("async function setActionBarLayout"),
+  GAME_SCREEN_SOURCE.indexOf(
+    "const onActionRequest",
+    GAME_SCREEN_SOURCE.indexOf("async function setActionBarLayout"),
+  ),
+);
 const INDEX_CSS_SOURCE = readFileSync(
   new URL("../../index.css", import.meta.url),
   "utf8",
@@ -351,5 +358,22 @@ describe("stage-six All Actions shell contract", () => {
     expect(ALL_ACTIONS_PANEL_SOURCE).toContain("Cancel");
     expect(ALL_ACTIONS_PANEL_SOURCE).toContain("Import");
     expect(ALL_ACTIONS_PANEL_SOURCE).not.toContain("localStorage");
+  });
+
+  it("[defect-probing] blocks action races and preserves unrelated persisted fields", () => {
+    expect(ACTION_DOCK_SOURCE).toContain("layoutEditBlocksActions");
+    expect(ACTION_DOCK_SOURCE).toMatch(
+      /\["pending",\s*"dragging",\s*"committing"\][\s\S]*?controller\.getState\(\)\.status/,
+    );
+    expect(ALL_ACTIONS_PANEL_SOURCE).toContain(
+      "restoreTriggerFocusRef.current = false",
+    );
+    expect(ALL_ACTIONS_PANEL_SOURCE).toMatch(
+      /setImportError\(null\);\s*setPreview\(null\);\s*if \(!file\.name/,
+    );
+    expect(LAYOUT_PERSISTENCE_SOURCE).toMatch(
+      /\.\.\.profile,[\s\S]*?\.\.\.profile\.interface,[\s\S]*?actionBarLayout/,
+    );
+    expect(LAYOUT_PERSISTENCE_SOURCE).not.toContain("...gameProfile");
   });
 });

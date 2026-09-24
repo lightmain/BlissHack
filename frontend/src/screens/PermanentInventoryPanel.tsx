@@ -17,6 +17,7 @@ import type { PermanentInventoryPosition } from "../settings/profile";
 import { colorClass, textAttributeClass } from "../text-styling";
 
 interface PermanentInventoryPanelProps {
+  backgroundInert?: boolean;
   collapsed: boolean;
   dragController?: InventoryDragController;
   dragEnabled?: boolean;
@@ -66,6 +67,7 @@ export function InventoryItemContent({ item }: { item: MenuItem }) {
  * Render NetHack's committed permanent-inventory snapshot without actions.
  */
 export function PermanentInventoryPanel({
+  backgroundInert = false,
   collapsed,
   dragController,
   dragEnabled = false,
@@ -129,11 +131,13 @@ export function PermanentInventoryPanel({
     <aside
       aria-label="Inventory"
       className={`permanent-inventory permanent-inventory-${position}${collapsed ? " permanent-inventory-collapsed" : ""}`}
+      data-game-content="true"
       data-hud-region="inventory"
       data-inventory-revision={inventory.revision}
       data-overflow-owner="inventory"
       data-position={position}
       data-game-keyboard-pass-through
+      inert={backgroundInert}
       onFocus={handleFocus}
       onMouseDown={handleMouseDown}
       onMouseLeave={handleMouseEnd}
