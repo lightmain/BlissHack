@@ -11,6 +11,14 @@ interface ActionIntentBase {
 /** One UI request which must be coordinated with the core's input boundary. */
 export type ActionIntent =
   | (ActionIntentBase & {
+    kind: "catalog-action";
+    actionName: string;
+    sessionCommandId: number;
+    requestItemMenu: boolean;
+    prefix: boolean;
+    origin: Extract<InteractionOrigin, { kind: "action-dock" }>;
+  })
+  | (ActionIntentBase & {
     kind: "map-context";
     origin: Extract<InteractionOrigin, { kind: "map" }>;
   })

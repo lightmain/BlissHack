@@ -17,6 +17,7 @@ git diff --name-status upstream/NetHack-5.0...HEAD -- \
 git diff upstream/NetHack-5.0...HEAD -- \
   src/cmd.c \
   src/do.c \
+  src/invent.c \
   sys/libnh/libnhmain.c \
   sys/unix/hints/include/cross-pre2.500 \
   sys/unix/hints/include/cross-post.500 \
@@ -28,6 +29,7 @@ git diff upstream/NetHack-5.0...HEAD -- \
 ```text
 M src/cmd.c
 M src/do.c
+M src/invent.c
 M sys/libnh/libnhmain.c
 M sys/unix/hints/include/cross-pre2.500
 M sys/unix/hints/include/cross-post.500
@@ -308,6 +310,33 @@ M win/shim/winshim.c
 - **回归测试**：
   - `frontend/scripts/build-wasm-toolchain.test.mjs`
   - `frontend/test/integration-tests/browser/normal-exit.spec.ts`
+
+### 2.14 动作栏 getobj provenance 与完整输入状态
+
+- **文件**：
+  - `src/invent.c`
+  - `win/shim/winshim.c`
+- **引入提交**：alpha-2.3 阶段四提交
+  `feat: execute action bar commands through the core`
+- **目的**：
+  - item-menu bit 不再排入仅适用于部分命令的 `do_reqmenu` 前缀，而是在本次
+    catalog command 内请求 `getobj()` 使用真实 `display_pickinv()` 候选菜单。
+  - 只在该候选菜单调用期间设置 `action-getobj` provenance，并随 callback
+    复制 request nonce 和单调 menu generation；返回后立即清理 provenance。
+  - 在下一 command boundary、callback 重置和 session reset 时清理 action
+    request scope，避免后续普通菜单继承旧身份。
+  - Emscripten `shim_yn_function` 附加完整
+    `program_state.input_state`，让前端以 `getdirInp` 而非 prompt 文本识别
+    方向输入。
+- **ABI 范围**：只扩展 Emscripten 的 `shim_select_menu` 和
+  `shim_yn_function` callback 参数；原生 `struct window_procs` 和
+  `libnethack.a` ABI 不变，不暴露对象指针。
+- **行为依据**：
+  `doc/BlissHack/shim-interface-reference.md` 第 2.8 节和第 6.5 节。
+- **回归测试**：
+  - `frontend/src/nethack-bridge.test.ts`
+  - `frontend/src/game-actions/game-action-controller.stage-four.test.ts`
+  - `frontend/test/integration-tests/wasm-test.mjs`
 
 ## 3. 上游合并检查
 

@@ -7,43 +7,72 @@ import type { InteractionOrigin } from "./interaction-origin";
 
 /** Core input currently visible to the UI action coordinator. */
 export type ActionControllerInput =
-  | { kind: "command" }
-  | { kind: "key" }
-  | { kind: "position" }
+  | { kind: "command"; inputState?: number }
+  | { kind: "key"; inputState?: number }
+  | { kind: "position"; inputState?: number }
   | {
     kind: "yn";
     query: string;
     choices: string | null;
     defaultCode: number;
+    inputState?: number;
   }
-  | { kind: "line"; purpose: "name" | "getlin"; query: string }
-  | { kind: "display" }
-  | { kind: "extcmd" }
+  | {
+    kind: "line";
+    purpose: "name" | "getlin";
+    query: string;
+    inputState?: number;
+  }
+  | { kind: "display"; inputState?: number }
+  | { kind: "extcmd"; inputState?: number }
   | {
     kind: "menu";
     items: readonly MenuItem[];
     windowId?: number;
     how?: number;
+    provenance?: "none" | "action-getobj";
+    requestNonce?: number;
+    menuGeneration?: number;
   };
 
 export interface ContextMenuPresentation {
   how: number;
-  origin: InteractionOrigin;
+  origin: Exclude<InteractionOrigin, { kind: "action-dock" }>;
   windowId: number;
 }
 
+export interface ActionItemMenuPresentation {
+  items: readonly MenuItem[];
+  menuGeneration: number;
+  windowId: number;
+}
+
+export type GameActionStatus =
+  | "idle"
+  | "waiting-command-boundary"
+  | "starting-command"
+  | "waiting-expected-input"
+  | "waiting-prefix-continuation"
+  | "presenting-context-menu"
+  | "presenting-item-menu"
+  | "targeting-direction"
+  | "targeting-position"
+  | "handed-off-to-native-ui"
+  | "cancelling-core-input"
+  | "waiting-cancel-boundary"
+  | "completing";
+
 /** Observable state of the single active UI action. */
 export interface GameActionState {
-  status:
-    | "idle"
-    | "waiting-command-boundary"
-    | "starting-command"
-    | "waiting-expected-input"
-    | "presenting-context-menu"
-    | "completing";
+  status: GameActionStatus;
   intent: ActionIntent | null;
   targetSelected: boolean;
   contextMenu: ContextMenuPresentation | null;
+  itemMenu: ActionItemMenuPresentation | null;
+  activeInput: ActionControllerInput | null;
+  acceptedBoundaryGeneration: number | null;
+  startMenuGeneration: number;
+  pendingCancellationReason: ActionIntentCancellationReason | null;
   lastCancellationReason: ActionIntentCancellationReason | null;
 }
 
@@ -52,6 +81,16 @@ export type GameActionEvent =
   | { type: "starting" }
   | { type: "waiting"; targetSelected?: boolean }
   | { type: "presenting"; presentation: ContextMenuPresentation }
+  | {
+    type: "progress";
+    status: Exclude<GameActionStatus, "idle">;
+    acceptedBoundaryGeneration?: number | null;
+    activeInput?: ActionControllerInput | null;
+    itemMenu?: ActionItemMenuPresentation | null;
+    startMenuGeneration?: number;
+    pendingCancellationReason?: ActionIntentCancellationReason | null;
+    targetSelected?: boolean;
+  }
   | { type: "completing" }
   | { type: "completed" }
   | { type: "cancelled"; reason: ActionIntentCancellationReason };
@@ -62,6 +101,11 @@ export const INITIAL_GAME_ACTION_STATE: GameActionState = {
   intent: null,
   targetSelected: false,
   contextMenu: null,
+  itemMenu: null,
+  activeInput: null,
+  acceptedBoundaryGeneration: null,
+  startMenuGeneration: 0,
+  pendingCancellationReason: null,
   lastCancellationReason: null,
 };
 
@@ -82,6 +126,11 @@ export function reduceGameAction(
         intent: event.intent,
         targetSelected: false,
         contextMenu: null,
+        itemMenu: null,
+        activeInput: null,
+        acceptedBoundaryGeneration: null,
+        startMenuGeneration: 0,
+        pendingCancellationReason: null,
         lastCancellationReason: null,
       };
     case "starting":
@@ -97,6 +146,27 @@ export function reduceGameAction(
         ...state,
         status: "presenting-context-menu",
         contextMenu: event.presentation,
+      };
+    case "progress":
+      return {
+        ...state,
+        status: event.status,
+        acceptedBoundaryGeneration:
+          event.acceptedBoundaryGeneration
+          ?? state.acceptedBoundaryGeneration,
+        activeInput: event.activeInput === undefined
+          ? state.activeInput
+          : event.activeInput,
+        itemMenu: event.itemMenu === undefined
+          ? state.itemMenu
+          : event.itemMenu,
+        startMenuGeneration:
+          event.startMenuGeneration ?? state.startMenuGeneration,
+        pendingCancellationReason:
+          event.pendingCancellationReason === undefined
+            ? state.pendingCancellationReason
+            : event.pendingCancellationReason,
+        targetSelected: event.targetSelected ?? state.targetSelected,
       };
     case "completing":
       return { ...state, status: "completing" };

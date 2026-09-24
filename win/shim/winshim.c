@@ -9,8 +9,9 @@
  * forward status field metadata while preserving generic bookkeeping, and
  * provide authoritative resource percentages to the graphical status HUD;
  * consume nonce-bound catalog commands at the main command boundary and
- * publish its generation; expose the restore-only guard as a typed WASM
- * global for pending askname flows. */
+ * publish its generation; scope action-owned getobj menus with provenance,
+ * request identity, and menu generations; expose the restore-only guard as
+ * a typed WASM global for pending askname flows. */
 
 /* not an actual windowing port, but a fake win port for libnethack */
 
@@ -236,6 +237,9 @@ struct shim_command_request {
 
 static unsigned int command_boundary_generation = 0U;
 static unsigned int last_command_request_nonce = 0U;
+static unsigned int shim_action_getobj_request_nonce = 0U;
+static unsigned int shim_menu_generation = 0U;
+static boolean shim_action_getobj_provenance = FALSE;
 
 static const char shim_pickup_symbols[] = "$\")[%?+!=/(*`0_";
 static const int shim_numpad_modes[] = { 0, 1, 2, 3, 4, -1 };
@@ -444,6 +448,31 @@ shim_command_reset(void)
 {
     command_boundary_generation = 0U;
     last_command_request_nonce = 0U;
+    shim_action_getobj_request_nonce = 0U;
+    shim_menu_generation = 0U;
+    shim_action_getobj_provenance = FALSE;
+}
+
+/* Report whether the accepted catalog command requested menu-based getobj. */
+boolean
+shim_action_getobj_requested(void)
+{
+    return shim_action_getobj_request_nonce != 0U;
+}
+
+/* Mark only the active getobj candidate menu with action provenance. */
+void
+shim_action_getobj_begin(void)
+{
+    shim_action_getobj_provenance =
+        shim_action_getobj_request_nonce != 0U;
+}
+
+/* Clear candidate-menu provenance immediately after display_pickinv returns. */
+void
+shim_action_getobj_end(void)
+{
+    shim_action_getobj_provenance = FALSE;
 }
 
 /* Retrieve one complete command request for this command-loop boundary. */
@@ -534,7 +563,7 @@ shim_queue_command(const struct shim_command_request *request)
         return FALSE;
     last_command_request_nonce = request_nonce;
     if ((header & SHIM_COMMAND_REQUEST_ITEM_MENU) != 0)
-        cmdq_add_ec(CQ_CANNED, do_reqmenu);
+        shim_action_getobj_request_nonce = request_nonce;
     cmdq_add_ec(CQ_CANNED, entry->ef_funct);
     return TRUE;
 }
@@ -550,6 +579,8 @@ shim_get_nh_event(void)
     int command_available;
     unsigned int after;
 
+    shim_action_getobj_request_nonce = 0U;
+    shim_action_getobj_provenance = FALSE;
     if (command_boundary_generation == UINT_MAX)
         panic("BlissHack command boundary generation exhausted");
     ++command_boundary_generation;
@@ -598,7 +629,31 @@ VDECLCB(shim_add_menu,
     A2P window, P2V glyphinfo, P2V identifier, A2P ch, A2P gch, A2P attr, A2P clr, P2V str, A2P itemflags)
 VDECLCB(shim_end_menu,(winid window, const char *prompt), "vis", A2P window, P2V prompt)
 /* XXX: shim_select_menu menu_list is an output */
+#ifdef __EMSCRIPTEN__
+/* Copy action-menu identity without changing the native window-port ABI. */
+int
+shim_select_menu(winid window, int how, MENU_ITEM_P **menu_list)
+{
+    int provenance = shim_action_getobj_provenance ? 1 : 0, result = 0;
+    unsigned int request_nonce =
+        provenance ? shim_action_getobj_request_nonce : 0U;
+    unsigned int menu_generation;
+    void *args[] = {
+        &window, &how, P2V menu_list, &provenance, &request_nonce,
+        &menu_generation
+    };
+
+    if (shim_menu_generation == UINT_MAX)
+        panic("BlissHack menu generation exhausted");
+    menu_generation = ++shim_menu_generation;
+    if (shim_callback_name)
+        local_callback(shim_callback_name, "shim_select_menu",
+                       (void *) &result, "iiipiii", args);
+    return result;
+}
+#else
 DECLCB(int, shim_select_menu,(winid window, int how, MENU_ITEM_P **menu_list), "iiip", A2P window, A2P how, P2V menu_list)
+#endif
 DECLCB(char, shim_message_menu,(char let, int how, const char *mesg), "ciis", A2P let, A2P how, P2V mesg)
 VDECLCB(shim_mark_synch,(void), "v")
 VDECLCB(shim_wait_synch,(void), "v")
@@ -639,7 +694,24 @@ DECLCB(int, shim_nh_poskey,(coordxy *x, coordxy *y, int *mod), "ippp", P2V x, P2
 #endif
 VDECLCB(shim_nhbell,(void), "v")
 DECLCB(int, shim_doprev_message,(void),"iv")
+#ifdef __EMSCRIPTEN__
+/* Preserve input_state so unrestricted getdir input is not guessed by text. */
+char
+shim_yn_function(const char *query, const char *resp, char def)
+{
+    char result = '\0';
+    int input_state = program_state.input_state;
+    void *args[] = { P2V query, P2V resp, &def, &input_state };
+
+    if (shim_callback_name)
+        local_callback(shim_callback_name,
+                       "shim_yn_function", /* input_state is args[3] */
+                       (void *) &result, "css0i", args);
+    return result;
+}
+#else
 DECLCB(char, shim_yn_function,(const char *query, const char *resp, char def), "css0", P2V query, P2V resp, A2P def)
+#endif
 VDECLCB(shim_getlin,(const char *query, char *bufp), "vsp", P2V query, P2V bufp)
 DECLCB(int,shim_get_ext_cmd,(void),"iv")
 VDECLCB(shim_number_pad,(int state), "vi", A2P state)

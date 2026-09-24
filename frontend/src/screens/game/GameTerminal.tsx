@@ -38,6 +38,7 @@ import { StatusArea } from "./StatusArea";
 import { ActionDock } from "./ActionDock";
 
 interface GameTerminalProps {
+  activeActionName: string | null;
   actionBarLayout: ActionBarLayout;
   actionBarStyle: InterfaceSettings["actionBarStyle"];
   actionBlocked: boolean;
@@ -45,6 +46,7 @@ interface GameTerminalProps {
   clipCenter: GameSnapshot["clipCenter"];
   commandInput: boolean;
   cursor: GameSnapshot["cursor"];
+  directionTargeting: boolean;
   followPlayer: boolean;
   historyLines: InterfaceSettings["messageHistoryLines"];
   informationLevel: InterfaceSettings["informationLevel"];
@@ -65,6 +67,10 @@ interface GameTerminalProps {
   onInspectLeave?(key?: string): void;
   onInventoryCollapsedChange(collapsed: boolean): void;
   onMapRendererFallback?(reason: TileRendererFallbackReason): void;
+  onActionRequest(request: {
+    name: string;
+    sessionCommandId: number;
+  }): void;
   onActionBarLayoutChange?(layout: ActionBarLayout): void;
   onPrimaryClick(origin: MapInteractionOrigin): void;
   permanentInventory: GameSnapshot["permanentInventory"];
@@ -78,6 +84,7 @@ interface GameTerminalProps {
 
 /** Render the active terminal while keeping browser overlays outside its inert tree. */
 export function GameTerminal({
+  activeActionName,
   actionBarLayout,
   actionBarStyle,
   actionBlocked,
@@ -85,6 +92,7 @@ export function GameTerminal({
   clipCenter,
   commandInput,
   cursor,
+  directionTargeting,
   followPlayer,
   historyLines,
   informationLevel,
@@ -105,6 +113,7 @@ export function GameTerminal({
   onInspectLeave,
   onInventoryCollapsedChange,
   onMapRendererFallback,
+  onActionRequest,
   onActionBarLayoutChange,
   onPrimaryClick,
   permanentInventory,
@@ -159,10 +168,12 @@ export function GameTerminal({
   const actionDock = actionBarStyle === "blisshack"
     ? (
       <ActionDock
+        activeActionName={activeActionName}
         blocked={actionBlocked}
         catalog={actionCatalog}
         input={inputArea}
         layout={actionBarLayout}
+        onActionRequest={onActionRequest}
         onLayoutChange={onActionBarLayoutChange}
         status={statusArea}
       />
@@ -185,6 +196,7 @@ export function GameTerminal({
             clipCenter={clipCenter}
             commandInput={commandInput}
             cursor={cursor}
+            directionTargeting={directionTargeting}
             followPlayer={followPlayer}
             inventoryDropHighlight={
               inventoryDragState.preview?.highlightedCell ?? null

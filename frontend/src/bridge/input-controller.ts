@@ -3,6 +3,8 @@ import {
   NHW_MAP,
   NHW_MENU,
   NHW_MESSAGE,
+  INPUT_STATE_COMMAND,
+  INPUT_STATE_OTHER,
   PICK_NONE,
   appendWindowText,
   clearModal,
@@ -61,8 +63,15 @@ export type CoreCommandIntent =
     requestItemMenu: boolean;
   };
 
+export interface CoreCommandReceipt {
+  requestNonce: number;
+  acceptedBoundaryGeneration: number | null;
+}
+
 interface QueuedCoreCommand {
   payload: CoreCommandPayload;
+  receipt: CoreCommandReceipt;
+  synchronizedBoundaryGeneration: number | null;
 }
 
 type PendingAction =
@@ -415,14 +424,42 @@ export function normalizePlayerNameInput(value: string): string {
 /** Resolve the active keyboard-facing callback with one NetHack byte. */
 export function sendKey(value: number): void {
   if (!Number.isInteger(value) || value <= 0 || value > 0xff) return;
-  if (actionIntentActive) return;
-  const pending = pendingAction;
-  if (!pending) {
-    if (typeaheadEnabled && queuedKeys.length < KEY_QUEUE_LIMIT) {
-      queuedKeys.push(value);
-    }
+  if (actionIntentActive && pendingAction === null) return;
+  if (resolvePendingKey(value)) return;
+  if (
+    !actionIntentActive
+    && !pendingAction
+    && typeaheadEnabled
+    && queuedKeys.length < KEY_QUEUE_LIMIT
+  ) {
+    queuedKeys.push(value);
+  }
+}
+
+/**
+ * Resolve action-owned key or yn input while ordinary typeahead is frozen.
+ * @param value - one NetHack input byte.
+ */
+export function submitActionKey(value: number): void {
+  if (
+    !actionIntentActive
+    || !Number.isInteger(value)
+    || value <= 0
+    || value > 0xff
+  ) {
     return;
   }
+  resolvePendingKey(value);
+}
+
+/**
+ * Deliver one byte to the active keyboard-facing resolver.
+ * @param value - validated NetHack input byte.
+ * @returns whether a pending resolver consumed the byte.
+ */
+function resolvePendingKey(value: number): boolean {
+  const pending = pendingAction;
+  if (!pending) return false;
 
   if (pending.kind === "key") {
     pendingAction = null;
@@ -430,7 +467,7 @@ export function sendKey(value: number): void {
     setCommandInput(false);
     setInputRequest(null);
     pending.resolve(value);
-    return;
+    return true;
   }
   if (pending.kind === "yn") {
     const response = normalizeYnResponse(
@@ -438,11 +475,11 @@ export function sendKey(value: number): void {
       pending.choices,
       pending.defaultCode,
     );
-    if (response === null) return;
+    if (response === null) return false;
     pendingAction = null;
     setInputRequest(null);
     pending.resolve(response);
-    return;
+    return true;
   }
   if (pending.kind === "message") {
     const response = value === 27
@@ -453,14 +490,16 @@ export function sendKey(value: number): void {
     pendingAction = null;
     setInputRequest(null);
     pending.resolve(response);
-    return;
+    return true;
   }
   if (pending.kind === "display") {
     pendingAction = null;
     clearModal();
     setInputRequest(null);
     pending.resolve();
+    return true;
   }
+  return false;
 }
 
 /** Send the native save command from a top-level command prompt. */
@@ -474,12 +513,12 @@ export function requestSaveAndExit(): void {
  * Queue one command and advance to the next safe core boundary.
  * @param request - internal command or opaque current-catalog identity.
  * @param owner - required module/session identity for catalog commands.
- * @returns whether the current top-level input accepted the request.
+ * @returns a mutable receipt completed after the core accepts the request.
  */
 export function requestCoreCommand(
   request: CoreCommandIntent,
   owner?: CoreCommandOwner,
-): boolean {
+): CoreCommandReceipt | null {
   const pending = pendingAction;
   if (
     pending?.kind !== "key"
@@ -494,11 +533,17 @@ export function requestCoreCommand(
       )
     )
   ) {
-    return false;
+    return null;
   }
   const requestNonce = allocateCoreCommandNonce();
+  const receipt: CoreCommandReceipt = {
+    requestNonce,
+    acceptedBoundaryGeneration: null,
+  };
   pendingCoreCommand = {
     payload: encodeCoreCommandRequest({ ...request, requestNonce }),
+    receipt,
+    synchronizedBoundaryGeneration: null,
   };
   pendingAction = null;
   queuedKeys.length = 0;
@@ -506,7 +551,7 @@ export function requestCoreCommand(
   setCommandInput(false);
   setInputRequest(null);
   pending.resolve(27);
-  return true;
+  return receipt;
 }
 
 /** Resolve nh_poskey with a map position and mouse button modifier. */
@@ -711,6 +756,7 @@ export function synchronizeCoreCommand(
   }
   activeCoreCommand = pendingCoreCommand;
   pendingCoreCommand = null;
+  activeCoreCommand.synchronizedBoundaryGeneration = boundaryGeneration;
   const [header, requestNonce, argument] = activeCoreCommand.payload;
   module.setValue(requestPtr, header, "i32");
   module.setValue(requestPtr + 4, requestNonce, "i32");
@@ -732,10 +778,11 @@ export function acceptCoreCommandResult(
   accepted: number,
 ): void {
   const payload = [header >>> 0, requestNonce >>> 0, argument >>> 0] as const;
+  const active = activeCoreCommand;
   if (
-    activeCoreCommand === null
+    active === null
     || payload.some(
-      (word, index) => word !== activeCoreCommand?.payload[index],
+      (word, index) => word !== active.payload[index],
     )
   ) {
     throw new Error("Core command result does not match the active request");
@@ -744,6 +791,12 @@ export function acceptCoreCommandResult(
   if (accepted !== 1) {
     throw new Error("Core rejected a validated command request");
   }
+  const acceptedBoundaryGeneration =
+    active.synchronizedBoundaryGeneration;
+  if (acceptedBoundaryGeneration === null) {
+    throw new Error("Core command result has no synchronized boundary");
+  }
+  active.receipt.acceptedBoundaryGeneration = acceptedBoundaryGeneration;
 }
 
 /**
@@ -802,6 +855,11 @@ export function selectMenu(
   winid: number,
   how: number,
   menuListPtr: number,
+  metadata?: {
+    provenance: "none" | "action-getobj";
+    requestNonce: number;
+    menuGeneration: number;
+  },
 ): Promise<number> | number {
   if (menuListPtr !== 0) module.setValue(menuListPtr, 0, "*");
   const window = getWindow(winid);
@@ -850,7 +908,7 @@ export function selectMenu(
     }
   }
   characterSelectionAutomation = null;
-  showMenu(winid, how);
+  showMenu(winid, how, metadata);
   return new Promise<number>((resolve) => {
     setPending({
       kind: "menu",
@@ -881,8 +939,9 @@ export function messageMenu(
 export function waitForKey(
   module: EmscriptenModule,
   positionPointers: { x: number; y: number; modifier: number } | null,
-  commandInput: boolean,
+  inputState: number,
 ): Promise<number> {
+  const commandInput = inputState === INPUT_STATE_COMMAND;
   if (commandInput && saveExitAutomation !== null) {
     saveExitAutomation = null;
   }
@@ -892,7 +951,10 @@ export function waitForKey(
     setCommandInput(false);
     return Promise.resolve(queued);
   }
-  setInputRequest({ kind: positionPointers ? "position" : "key" });
+  setInputRequest(
+    { kind: positionPointers ? "position" : "key" },
+    inputState,
+  );
   return new Promise<number>((resolve) => {
     setPending({
       kind: "key",
@@ -909,6 +971,7 @@ export function waitForYn(
   query: string | null,
   choices: string | null,
   defaultCode: number,
+  inputState: number = INPUT_STATE_OTHER,
 ): Promise<number> {
   if (characterSelectionResponse !== null) {
     if (
@@ -951,7 +1014,7 @@ export function waitForYn(
     query: normalizedQuery,
     choices,
     defaultCode,
-  });
+  }, inputState);
   return new Promise<number>((resolve) => {
     setPending({ kind: "yn", resolve, choices, defaultCode });
   });

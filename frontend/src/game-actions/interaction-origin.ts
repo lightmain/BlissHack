@@ -3,6 +3,7 @@ import type { InputRequest } from "../game-state";
 /** Stable interaction metadata without retaining DOM element references. */
 export type InteractionOrigin =
   | { kind: "keyboard" }
+  | { kind: "action-dock"; actionName: string }
   | {
     kind: "map";
     clientX: number;

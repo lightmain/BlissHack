@@ -19,6 +19,11 @@ export const PICK_ANY = 2;
 export const MENU_BEHAVE_STANDARD = 0;
 export const MENU_BEHAVE_PERMINV = 1;
 
+export const INPUT_STATE_OTHER = 0;
+export const INPUT_STATE_COMMAND = 1;
+export const INPUT_STATE_GETPOS = 2;
+export const INPUT_STATE_GETDIR = 3;
+
 export const ATR_NONE = 0;
 export const ATR_BOLD = 1;
 export const ATR_DIM = 2;
@@ -116,7 +121,14 @@ export interface ExtendedCommand {
 
 /** Modal content which pauses or overlays the game. */
 export type GameModal =
-  | { kind: "menu"; windowId: number; how: number }
+  | {
+    kind: "menu";
+    windowId: number;
+    how: number;
+    provenance?: "none" | "action-getobj";
+    requestNonce?: number;
+    menuGeneration?: number;
+  }
   | { kind: "text"; title: string; lines: TextLine[] }
   | { kind: "history"; lines: TextLine[] }
   | { kind: "extcmd"; commands: ExtendedCommand[] };
@@ -150,8 +162,10 @@ export interface GameSnapshot {
   statusMetadata: Record<number, StatusFieldMetadata>;
   modal: GameModal | null;
   inputRequest: InputRequest | null;
+  inputState: number;
   commandInput: boolean;
   commandBoundaryGeneration: number;
+  menuGeneration: number;
   runtimeSettings: RuntimeNetHackSettings | null;
   runtimeSettingsStatus: "idle" | "pending" | "applied";
   numberPad: boolean;
@@ -210,8 +224,10 @@ function createInitialSnapshot(): GameSnapshot {
     statusMetadata: {},
     modal: null,
     inputRequest: null,
+    inputState: INPUT_STATE_OTHER,
     commandInput: false,
     commandBoundaryGeneration: 0,
+    menuGeneration: 0,
     runtimeSettings: null,
     runtimeSettingsStatus: "idle",
     numberPad: false,
@@ -595,9 +611,33 @@ export function endMenu(winid: number, prompt: string): void {
  * Present a menu as the active modal.
  * @param winid - menu window ID.
  * @param how - PICK_NONE, PICK_ONE, or PICK_ANY.
+ * @param metadata - optional action-menu identity copied by the WASM shim.
  */
-export function showMenu(winid: number, how: number): void {
-  publish({ modal: { kind: "menu", windowId: winid, how } });
+export function showMenu(
+  winid: number,
+  how: number,
+  metadata?: {
+    provenance: "none" | "action-getobj";
+    requestNonce: number;
+    menuGeneration: number;
+  },
+): void {
+  if (
+    metadata
+    && (
+      !Number.isInteger(metadata.menuGeneration)
+      || metadata.menuGeneration <= 0
+      || metadata.menuGeneration < snapshot.menuGeneration
+    )
+  ) {
+    throw new Error("Invalid menu generation");
+  }
+  publish({
+    modal: metadata
+      ? { kind: "menu", windowId: winid, how, ...metadata }
+      : { kind: "menu", windowId: winid, how },
+    menuGeneration: metadata?.menuGeneration ?? snapshot.menuGeneration,
+  });
 }
 
 /**
@@ -634,9 +674,13 @@ export function clearModal(): void {
 /**
  * Set or clear the active core input request.
  * @param request - pending request, or null after it resolves.
+ * @param inputState - complete program_state.input_state value.
  */
-export function setInputRequest(request: InputRequest | null): void {
-  publish({ inputRequest: request });
+export function setInputRequest(
+  request: InputRequest | null,
+  inputState: number = request === null ? INPUT_STATE_OTHER : snapshot.inputState,
+): void {
+  publish({ inputRequest: request, inputState });
 }
 
 /** Record whether the core is waiting for a top-level command key. */

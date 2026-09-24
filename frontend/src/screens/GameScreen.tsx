@@ -39,6 +39,7 @@ import {
   validateActionBarLayout,
   type ActionBarLayout,
 } from "../action-bar/action-bar-layout";
+import { actionRequestsItemMenu } from "../action-bar/action-catalog-metadata";
 import { runtimeSettingsFromProfile } from "../settings/runtime-settings-protocol";
 import type { ProfileLoadStatus } from "../settings/profile-store";
 import {
@@ -50,6 +51,9 @@ import {
   sendKey,
   sendPosition,
   setActionIntentActive,
+  submitActionKey,
+  submitExtendedCommand,
+  submitLine,
   submitMenuSelection,
   updateEndgameCollectionStyle,
 } from "../nethack-bridge";
@@ -74,6 +78,7 @@ import { SettingsScreen } from "./SettingsScreen";
 import { CharacterSetupScreen } from "./CharacterSetupScreen";
 import { GameModalRenderer } from "./game/GameModals";
 import { GameTerminal } from "./game/GameTerminal";
+import { ActionItemChooser } from "./game/ActionItemChooser";
 import { PauseOverlay } from "./game/PauseOverlay";
 import type { InventoryContextRequest } from "./PermanentInventoryPanel";
 
@@ -170,7 +175,7 @@ export function GameScreen({
       /**
        * Start map commands only after the controller reaches a safe boundary.
        */
-      startCommand(intent): void {
+      startCommand(intent) {
         if (intent.kind === "map-context") {
           sendPosition(intent.origin.mapX, intent.origin.mapY, 2);
           return;
@@ -208,9 +213,40 @@ export function GameScreen({
           }
           return;
         }
+        if (intent.kind === "catalog-action") {
+          const receipt = requestCoreCommand({
+            command: "catalog",
+            sessionCommandId: intent.sessionCommandId,
+            requestItemMenu: intent.requestItemMenu,
+          }, { moduleId, sessionId });
+          if (!receipt) {
+            throw new Error("Core command boundary rejected catalog action");
+          }
+          return receipt;
+        }
         throw new Error("Unsupported action intent");
       },
       submitMenuSelection,
+      submitDirection: submitActionKey,
+      submitPosition: sendPosition,
+      cancelCoreInput(input): void {
+        if (input.kind === "menu") {
+          submitMenuSelection(null);
+        } else if (
+          input.kind === "key"
+          || input.kind === "position"
+          || input.kind === "yn"
+          || input.kind === "command"
+        ) {
+          submitActionKey(27);
+        } else if (input.kind === "line") {
+          submitLine(null);
+        } else if (input.kind === "extcmd") {
+          submitExtendedCommand(null);
+        } else {
+          dismissDisplay();
+        }
+      },
       releaseInputToUi: () => {
         // Unexpected input remains published in the normal game snapshot.
       },
@@ -280,6 +316,8 @@ export function GameScreen({
       snapshotRevision: snapshot.revision,
       inventoryRevision: snapshot.permanentInventory?.revision ?? null,
       mapRevision: snapshot.mapRevision,
+      boundaryGeneration: snapshot.commandBoundaryGeneration,
+      menuGeneration: snapshot.menuGeneration,
       input: actionInputFromSnapshot(snapshot),
       fatal: snapshot.phase === "error",
     });
@@ -381,6 +419,41 @@ export function GameScreen({
       }
       if (pauseView !== null) return;
       if (snapshot.inputRequest?.kind === "line") return;
+      const value = keyboardEventToNetHackKey(event, {
+        numberPad: snapshot.numberPad,
+      });
+      if (value === null) return;
+      const currentAction = actionController.getState();
+      if (currentAction.intent !== null) {
+        if (
+          value === 27
+          && (
+            currentAction.status === "presenting-item-menu"
+            || currentAction.status === "targeting-direction"
+            || currentAction.status === "targeting-position"
+          )
+        ) {
+          event.preventDefault();
+          actionController.cancel("user-cancelled");
+          return;
+        }
+        if (
+          currentAction.status === "targeting-direction"
+          && isDirectionKey(value, snapshot.numberPad)
+        ) {
+          event.preventDefault();
+          actionController.chooseDirection(value);
+          return;
+        }
+        if (
+          currentAction.status === "targeting-position"
+          && isDirectionKey(value, snapshot.numberPad)
+        ) {
+          event.preventDefault();
+          submitActionKey(value);
+          return;
+        }
+      }
       if (
         event.target instanceof Element
         && event.target.closest("[data-browser-keyboard]")
@@ -394,17 +467,20 @@ export function GameScreen({
       ) {
         return;
       }
+      if (currentAction.intent !== null) {
+        if (currentAction.status === "waiting-prefix-continuation") {
+          event.preventDefault();
+          submitActionKey(value);
+          return;
+        }
+        if (currentAction.status !== "handed-off-to-native-ui") {
+          event.preventDefault();
+          return;
+        }
+      }
       if (snapshot.modal?.kind === "menu" || snapshot.modal?.kind === "extcmd") {
         return;
       }
-      if (actionController.getState().intent !== null) {
-        event.preventDefault();
-        return;
-      }
-      const value = keyboardEventToNetHackKey(event, {
-        numberPad: snapshot.numberPad,
-      });
-      if (value === null) return;
       event.preventDefault();
       if (
         value === 27
@@ -484,6 +560,75 @@ export function GameScreen({
   }
 
   /**
+   * Start or cancel one semantic action-dock request.
+   * @param request - current catalog name and opaque session command ID.
+   */
+  const onActionRequest = useCallback((request: {
+    name: string;
+    sessionCommandId: number;
+  }): void => {
+    const current = snapshotRef.current;
+    const active = actionController.getState();
+    if (
+      active.intent?.kind === "catalog-action"
+      && active.intent.actionName === request.name
+    ) {
+      actionController.cancel("user-cancelled");
+      return;
+    }
+    const command = actionCatalog?.commands.find(
+      (entry) =>
+        entry.name === request.name
+        && entry.sessionCommandId === request.sessionCommandId,
+    );
+    if (
+      !command
+      || readOnly
+      || !current.commandInput
+      || current.modal !== null
+      || pauseView !== null
+      || active.intent !== null
+      || inventoryDragController.getState().status !== "idle"
+    ) {
+      return;
+    }
+    if (!actionController.request({
+      kind: "catalog-action",
+      moduleId,
+      sessionId,
+      snapshotRevision: current.revision,
+      actionName: command.name,
+      sessionCommandId: command.sessionCommandId,
+      requestItemMenu: actionRequestsItemMenu(command.name),
+      prefix: (command.flags & 0x0200) !== 0,
+      origin: {
+        kind: "action-dock",
+        actionName: command.name,
+      },
+    })) {
+      return;
+    }
+    actionController.observe({
+      moduleId,
+      sessionId,
+      snapshotRevision: current.revision,
+      inventoryRevision: current.permanentInventory?.revision ?? null,
+      mapRevision: current.mapRevision,
+      boundaryGeneration: current.commandBoundaryGeneration,
+      menuGeneration: current.menuGeneration,
+      input: actionInputFromSnapshot(current),
+    });
+  }, [
+    actionCatalog,
+    actionController,
+    inventoryDragController,
+    moduleId,
+    pauseView,
+    readOnly,
+    sessionId,
+  ]);
+
+  /**
    * Return keyboard ownership to the game when its non-browser UI is clicked.
    * @param event - mouse event captured by the active game shell.
    */
@@ -514,6 +659,21 @@ export function GameScreen({
     origin: MapInteractionOrigin,
   ): void => {
     hoverController.leave();
+    const action = actionController.getState();
+    if (action.status === "targeting-position") {
+      actionController.choosePosition(origin.mapX, origin.mapY, 1);
+      return;
+    }
+    if (action.status === "targeting-direction") {
+      const current = snapshotRef.current;
+      const key = directionKeyFromMapTarget(
+        origin.mapX - current.cursor.x,
+        origin.mapY - current.cursor.y,
+        current.numberPad,
+      );
+      if (key !== null) actionController.chooseDirection(key);
+      return;
+    }
     const current = snapshotRef.current;
     const resolution = resolveMapPrimaryInteraction({
       commandInput: current.commandInput,
@@ -526,7 +686,7 @@ export function GameScreen({
     if (resolution) {
       sendPosition(resolution.x, resolution.y, resolution.modifier);
     }
-  }, [hoverController, moduleId, sessionId]);
+  }, [actionController, hoverController, moduleId, sessionId]);
 
   /**
    * Route a secondary click through explicit-position priority and the intent owner.
@@ -537,6 +697,19 @@ export function GameScreen({
     origin: MapInteractionOrigin,
   ): boolean => {
     hoverController.leave();
+    const action = actionController.getState();
+    if (action.status === "targeting-position") {
+      return actionController.choosePosition(origin.mapX, origin.mapY, 2);
+    }
+    if (action.status === "targeting-direction") {
+      const current = snapshotRef.current;
+      const key = directionKeyFromMapTarget(
+        origin.mapX - current.cursor.x,
+        origin.mapY - current.cursor.y,
+        current.numberPad,
+      );
+      return key !== null && actionController.chooseDirection(key);
+    }
     const current = snapshotRef.current;
     const resolution = resolveMapSecondaryInteraction({
       completion: "click",
@@ -687,6 +860,16 @@ export function GameScreen({
         />
       ) : (
         <GameTerminal
+          activeActionName={
+            actionState.intent?.kind === "catalog-action"
+            && (
+              actionState.status === "presenting-item-menu"
+              || actionState.status === "targeting-direction"
+              || actionState.status === "targeting-position"
+            )
+              ? actionState.intent.actionName
+              : null
+          }
           actionBarLayout={settings.actionBarLayout}
           actionBarStyle={settings.actionBarStyle}
           actionBlocked={
@@ -701,6 +884,7 @@ export function GameScreen({
           clipCenter={snapshot.clipCenter}
           commandInput={snapshot.commandInput}
           cursor={snapshot.cursor}
+          directionTargeting={actionState.status === "targeting-direction"}
           followPlayer={settings.followPlayer}
           historyLines={settings.messageHistoryLines}
           informationLevel={settings.informationLevel}
@@ -727,6 +911,7 @@ export function GameScreen({
           onInspectLeave={handleInspectLeave}
           onInventoryCollapsedChange={setInventoryCollapsed}
           onMapRendererFallback={onMapRendererFallback}
+          onActionRequest={onActionRequest}
           onActionBarLayoutChange={setActionBarLayout}
           onPrimaryClick={handlePrimaryClick}
           permanentInventory={snapshot.permanentInventory}
@@ -757,12 +942,28 @@ export function GameScreen({
               modal={snapshot.modal}
             />
           )}
+        {!readOnly
+          && actionState.status === "presenting-item-menu"
+          && actionState.itemMenu
+          && (
+            <ActionItemChooser
+              menu={actionState.itemMenu}
+              onCancel={() => actionController.cancel("user-cancelled")}
+              onChoose={(itemIndex) => {
+                actionController.chooseItem(
+                  actionState.itemMenu?.menuGeneration ?? 0,
+                  itemIndex,
+                );
+              }}
+            />
+          )}
       </OverlayRoot>
       {!readOnly
         && snapshot.modal
         && !(
           snapshot.modal.kind === "menu"
           && actionState.intent !== null
+          && actionState.status !== "handed-off-to-native-ui"
         )
         && <GameModalRenderer modal={snapshot.modal} />}
       {!readOnly && pauseView === "pause" && (
@@ -835,7 +1036,7 @@ function requestCatalogCommandByName(
       command: "catalog",
       sessionCommandId: command.sessionCommandId,
       requestItemMenu,
-    }, owner);
+    }, owner) !== null;
   } catch {
     return false;
   }
@@ -1074,7 +1275,9 @@ function activeTooltipFromHover(
 function actionInputFromSnapshot(
   snapshot: GameSnapshot,
 ): ActionControllerInput | null {
-  if (snapshot.commandInput) return { kind: "command" };
+  if (snapshot.commandInput) {
+    return { kind: "command", inputState: snapshot.inputState };
+  }
   if (snapshot.modal?.kind === "menu") {
     const window = getWindow(snapshot.modal.windowId);
     return {
@@ -1082,15 +1285,70 @@ function actionInputFromSnapshot(
       items: window?.menuItems ?? [],
       windowId: snapshot.modal.windowId,
       how: snapshot.modal.how,
+      provenance: snapshot.modal.provenance,
+      requestNonce: snapshot.modal.requestNonce,
+      menuGeneration: snapshot.modal.menuGeneration,
     };
   }
-  if (snapshot.modal?.kind === "extcmd") return { kind: "extcmd" };
-  if (snapshot.modal !== null) return { kind: "display" };
+  if (snapshot.modal?.kind === "extcmd") {
+    return { kind: "extcmd", inputState: snapshot.inputState };
+  }
+  if (snapshot.modal !== null) {
+    return { kind: "display", inputState: snapshot.inputState };
+  }
   const request = snapshot.inputRequest;
   if (request === null) return null;
   if (request.kind === "player-selection") return null;
-  if (request.kind === "message") return { kind: "display" };
-  return request;
+  if (request.kind === "message") {
+    return { kind: "display", inputState: snapshot.inputState };
+  }
+  return { ...request, inputState: snapshot.inputState };
+}
+
+/**
+ * Restrict getdir keyboard handling to movement bytes for the current mode.
+ * @param value - encoded keyboard byte.
+ * @param numberPad - active NetHack number-pad setting.
+ * @returns whether the byte represents an adjacent direction or self.
+ */
+function isDirectionKey(value: number, numberPad: boolean): boolean {
+  const choices = numberPad ? "1234567895" : "hjklyubn.";
+  return choices.includes(String.fromCharCode(value));
+}
+
+/**
+ * Convert an adjacent map target into the current NetHack direction binding.
+ * @param xDelta - target column relative to the player.
+ * @param yDelta - target row relative to the player.
+ * @param numberPad - active NetHack number-pad setting.
+ * @returns encoded direction byte, or null outside the adjacent ring.
+ */
+function directionKeyFromMapTarget(
+  xDelta: number,
+  yDelta: number,
+  numberPad: boolean,
+): number | null {
+  if (
+    xDelta < -1
+    || xDelta > 1
+    || yDelta < -1
+    || yDelta > 1
+    || (xDelta === 0 && yDelta === 0)
+  ) {
+    return null;
+  }
+  const key = numberPad
+    ? [
+      ["7", "8", "9"],
+      ["4", "5", "6"],
+      ["1", "2", "3"],
+    ][yDelta + 1]?.[xDelta + 1]
+    : [
+      ["y", "k", "u"],
+      ["h", ".", "l"],
+      ["b", "j", "n"],
+    ][yDelta + 1]?.[xDelta + 1];
+  return key ? key.charCodeAt(0) : null;
 }
 
 /**

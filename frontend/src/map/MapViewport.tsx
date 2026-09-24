@@ -19,6 +19,7 @@ interface MapViewportProps {
   clipCenter: GameSnapshot["clipCenter"];
   commandInput: boolean;
   cursor: GameSnapshot["cursor"];
+  directionTargeting?: boolean;
   followPlayer: boolean;
   inventoryDropHighlight?: { x: number; y: number } | null;
   layoutKey: string;
@@ -46,6 +47,7 @@ export const MapViewport = memo(function MapViewport({
   clipCenter,
   commandInput,
   cursor,
+  directionTargeting = false,
   followPlayer,
   inventoryDropHighlight,
   layoutKey,
@@ -108,6 +110,9 @@ export const MapViewport = memo(function MapViewport({
     },
     viewportRef: scrollRef,
   });
+  const directionTargets = directionTargeting && cursor.visible
+    ? adjacentMapTargets(cursor.x, cursor.y)
+    : [];
 
   /**
    * Submit a primary map click while nh_poskey is pending.
@@ -194,6 +199,7 @@ export const MapViewport = memo(function MapViewport({
         data-cursor-x={cursor.x}
         data-cursor-y={cursor.y}
         data-dragging={rightDrag.dragging ? "true" : "false"}
+        data-direction-targeting={directionTargeting ? "true" : "false"}
         onLostPointerCapture={handleLostPointerCapture}
         onMouseDown={handleMouseDown}
         onContextMenu={handleContextMenu}
@@ -227,7 +233,44 @@ export const MapViewport = memo(function MapViewport({
             }}
           />
         )}
+        {directionTargets.map((target) => (
+          <div
+            aria-hidden="true"
+            className="nh-direction-target-highlight"
+            data-direction-target-highlight="true"
+            data-map-x={target.x}
+            data-map-y={target.y}
+            key={`${target.x}:${target.y}`}
+            style={{
+              left: `${(target.x / 80) * 100}%`,
+              top: `${(target.y / 21) * 100}%`,
+            }}
+          />
+        ))}
       </div>
     </div>
   );
 });
+
+/**
+ * Enumerate in-bounds adjacent cells around the visible player cursor.
+ * @param x - player map column.
+ * @param y - player map row.
+ * @returns up to eight adjacent map coordinates.
+ */
+function adjacentMapTargets(
+  x: number,
+  y: number,
+): Array<{ x: number; y: number }> {
+  const targets: Array<{ x: number; y: number }> = [];
+  for (let yDelta = -1; yDelta <= 1; yDelta += 1) {
+    for (let xDelta = -1; xDelta <= 1; xDelta += 1) {
+      if (xDelta === 0 && yDelta === 0) continue;
+      const target = { x: x + xDelta, y: y + yDelta };
+      if (target.x >= 1 && target.x < 80 && target.y >= 0 && target.y < 21) {
+        targets.push(target);
+      }
+    }
+  }
+  return targets;
+}
