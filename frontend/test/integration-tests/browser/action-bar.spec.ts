@@ -35,6 +35,15 @@ interface RenderedActionGrid {
   viewportScrollWidth: number;
 }
 
+interface TwoRowDockGeometry {
+  actionNaturalHeight: number;
+  buttonSizes: Array<{ height: number; width: number }>;
+  rowCount: string | undefined;
+  slotSizes: Array<{ height: number; width: number }>;
+  toolCount: number;
+  toolNaturalHeight: number;
+}
+
 /** Start a real game with the BlissHack action bar selected. */
 async function startActionBarGame(page: Page, marker: string): Promise<void> {
   await openHome(page, marker);
@@ -153,6 +162,50 @@ async function readPersistedLayout(
       interface?: { actionBarLayout?: unknown };
     }).interface?.actionBarLayout ?? null;
   }) as Promise<ActionBarLayoutDocument["actionBarLayout"] | null>;
+}
+
+/** Read the vertical fit contract shared by two-row dock viewports. */
+async function readTwoRowDockGeometry(
+  dock: Locator,
+): Promise<TwoRowDockGeometry> {
+  return dock.evaluate((element) => {
+    const actionGrid = element.querySelector<HTMLElement>(".nh-action-grid");
+    const categories = element.querySelector<HTMLElement>(
+      ".nh-action-categories",
+    );
+    const tools = element.querySelector<HTMLElement>(".nh-action-dock-tools");
+    const workspace = element.querySelector<HTMLElement>(
+      ".nh-action-workspace",
+    );
+    if (!actionGrid || !categories || !tools || !workspace) {
+      throw new Error("Expected complete two-row action dock");
+    }
+    const buttons = [...tools.querySelectorAll<HTMLElement>(
+      "[data-action-dock-tool]",
+    )];
+    const slots = [...actionGrid.querySelectorAll<HTMLElement>(
+      "[data-action-slot]",
+    )];
+    const buttonBounds = buttons.map((button) => button.getBoundingClientRect());
+    const toolGap = Number.parseFloat(getComputedStyle(tools).rowGap);
+    const workspaceGap = Number.parseFloat(getComputedStyle(workspace).rowGap);
+    return {
+      actionNaturalHeight: actionGrid.getBoundingClientRect().height
+        + categories.getBoundingClientRect().height
+        + workspaceGap,
+      buttonSizes: buttonBounds.map(({ height, width }) => ({ height, width })),
+      rowCount: element.dataset.rowCount,
+      slotSizes: slots.map((slot) => {
+        const { height, width } = slot.getBoundingClientRect();
+        return { height, width };
+      }),
+      toolCount: buttons.length,
+      toolNaturalHeight: buttonBounds.reduce(
+        (height, bounds) => height + bounds.height,
+        0,
+      ) + toolGap * Math.max(0, buttons.length - 1),
+    };
+  });
 }
 
 test("Action bar integration: keeps geometry, focus, Pointer Events, and a real WASM command coherent", async ({
@@ -431,58 +484,118 @@ test("[defect-probing] Action bar integration: dock drag preview follows the poi
   expect(errors).toEqual({ console: [], page: [] });
 });
 
-test("[defect-probing] Action bar integration: two-row tools fit the action grid and category tags without stretching the dock", async ({
+test("[regression] Action bar integration: Escape cancels a captured dock drag without executing its action", async ({
   page,
 }) => {
   const errors = captureErrors(page);
-  await startActionBarGame(page, "ActionBarTwoRowTools");
+  await startActionBarGame(page, "ActionBarEscapeDockDrag");
   const dock = page.getByRole("region", {
     name: "Action bar",
     exact: true,
   });
-  const geometry = await dock.evaluate((element) => {
-    const actionGrid = element.querySelector<HTMLElement>(".nh-action-grid");
-    const categories = element.querySelector<HTMLElement>(
-      ".nh-action-categories",
-    );
-    const tools = element.querySelector<HTMLElement>(".nh-action-dock-tools");
-    const workspace = element.querySelector<HTMLElement>(
-      ".nh-action-workspace",
-    );
-    if (!actionGrid || !categories || !tools || !workspace) {
-      throw new Error("Expected complete two-row action dock");
-    }
-    const buttons = [...tools.querySelectorAll<HTMLElement>(
-      "[data-action-dock-tool]",
-    )];
-    const buttonBounds = buttons.map((button) => button.getBoundingClientRect());
-    const toolGap = Number.parseFloat(getComputedStyle(tools).rowGap);
-    const workspaceGap = Number.parseFloat(getComputedStyle(workspace).rowGap);
-    return {
-      actionNaturalHeight: actionGrid.getBoundingClientRect().height
-        + categories.getBoundingClientRect().height
-        + workspaceGap,
-      buttonSizes: buttonBounds.map(({ height, width }) => ({ height, width })),
-      rowCount: element.dataset.rowCount,
-      toolCount: buttons.length,
-      toolNaturalHeight: buttonBounds.reduce(
-        (height, bounds) => height + bounds.height,
-        0,
-      ) + toolGap * Math.max(0, buttons.length - 1),
-    };
+  await page.getByRole("button", { name: "Unlock action bar" }).click();
+  await expect(page.getByRole("button", { name: "Lock action bar" }))
+    .toBeVisible();
+  const source = dock.locator(
+    '[data-action-slot-area="all"][data-action-slot-category="common"]'
+      + '[data-slot-index="0"]',
+  );
+  await expect(source).toHaveAttribute("data-action-name", "eat");
+  const preview = page.locator("[data-action-drag-preview]");
+  const chooser = page.getByRole("dialog", { name: "Choose an item" });
+  const baselineLayout = await readPersistedLayout(page);
+  const sourceBounds = await source.boundingBox();
+  expect(sourceBounds).not.toBeNull();
+  const origin = {
+    x: sourceBounds!.x + sourceBounds!.width / 2,
+    y: sourceBounds!.y + sourceBounds!.height / 2,
+  };
+
+  await page.mouse.move(origin.x, origin.y);
+  await page.mouse.down();
+  await page.mouse.move(origin.x + 12, origin.y + 8);
+  await expect(preview).toBeVisible();
+  await page.mouse.move(origin.x, origin.y);
+  await page.mouse.up();
+  await expect(preview).toHaveCount(0);
+  await expect(dock).toHaveAttribute("data-layout-edit-status", "idle");
+  await expect(source).toHaveAttribute("data-action-name", "eat");
+  expect(await readPersistedLayout(page)).toEqual(baselineLayout);
+
+  await source.evaluate((element) => {
+    element.dataset.testClickCount = "0";
+    element.addEventListener("pointerdown", (event) => {
+      element.dataset.testPointerId = String((event as PointerEvent).pointerId);
+    }, { once: true });
+    element.addEventListener("click", () => {
+      element.dataset.testClickCount = String(
+        Number(element.dataset.testClickCount ?? "0") + 1,
+      );
+    }, { once: true });
   });
 
-  expect(geometry.rowCount).toBe("2");
-  expect(geometry.toolCount).toBe(4);
-  expect(new Set(
-    geometry.buttonSizes.map(({ height, width }) => `${width}:${height}`),
-  ).size).toBe(1);
-  expect(geometry.buttonSizes.every(({ height, width }) => height === width))
-    .toBe(true);
-  expect(geometry.toolNaturalHeight)
-    .toBeLessThanOrEqual(geometry.actionNaturalHeight + 0.5);
+  const revision = await readShellRevision(page);
+  await page.mouse.move(origin.x, origin.y);
+  await page.mouse.down();
+  await page.mouse.move(origin.x + 12, origin.y + 8);
+  await expect(preview).toBeVisible();
+  const pointerId = Number(await source.getAttribute("data-test-pointer-id"));
+  expect(Number.isInteger(pointerId)).toBe(true);
+  await page.keyboard.press("Escape");
+  const retainedCapture = await source.evaluate(
+    (element, activePointerId) =>
+      element.hasPointerCapture(activePointerId),
+    pointerId,
+  );
+  await expect(preview).toHaveCount(0);
+  await expect(dock).toHaveAttribute("data-layout-edit-status", "idle");
+  await page.mouse.up();
+
+  expect.soft(retainedCapture, "Escape must release pointer capture").toBe(false);
+  expect.soft(await source.getAttribute("data-test-click-count")).toBe("0");
+  expect.soft(await chooser.count()).toBe(0);
+  expect.soft(await readShellRevision(page)).toBe(revision);
+  expect.soft(await readPersistedLayout(page)).toEqual(baselineLayout);
   expect(errors).toEqual({ console: [], page: [] });
 });
+
+for (const viewport of [
+  { height: 700, width: 900 },
+  { height: 700, width: 500 },
+] as const) {
+  test(`[regression] Action bar integration: two-row tools fit ${viewport.width}x${viewport.height} without stretching the dock`, async ({
+    page,
+  }) => {
+    const errors = captureErrors(page);
+    await page.setViewportSize(viewport);
+    await startActionBarGame(
+      page,
+      `ActionBarTwoRowTools-${viewport.width}x${viewport.height}`,
+    );
+    const dock = page.getByRole("region", {
+      name: "Action bar",
+      exact: true,
+    });
+    const geometry = await readTwoRowDockGeometry(dock);
+
+    expect(geometry.rowCount).toBe("2");
+    expect(geometry.toolCount).toBe(4);
+    expect(new Set(
+      geometry.buttonSizes.map(({ height, width }) => `${width}:${height}`),
+    ).size).toBe(1);
+    expect(geometry.buttonSizes.every(({ height, width }) => height === width))
+      .toBe(true);
+    if (viewport.width === 500) {
+      expect(Math.min(...geometry.slotSizes.map(({ width }) => width)))
+        .toBeGreaterThanOrEqual(32);
+      expect(Math.max(...geometry.slotSizes.map(({ width }) => width)))
+        .toBeLessThanOrEqual(33);
+    }
+    expect(geometry.toolNaturalHeight)
+      .toBeLessThanOrEqual(geometry.actionNaturalHeight + 0.5);
+    expect(errors).toEqual({ console: [], page: [] });
+  });
+}
 
 test("Action bar layout transfer: exports, cancels, rejects damage, and rolls back atomically", async ({
   page,
