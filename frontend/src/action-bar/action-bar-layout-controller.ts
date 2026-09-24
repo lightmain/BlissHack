@@ -124,7 +124,7 @@ export function createActionBarLayoutController(
     });
     try {
       const saved = validateActionBarLayout(await options.onCommit(candidate));
-      if (disposed) return false;
+      if (disposed) return true;
       publish({
         error: null,
         lastCancellationReason: null,

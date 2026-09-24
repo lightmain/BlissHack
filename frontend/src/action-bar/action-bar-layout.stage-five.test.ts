@@ -530,6 +530,25 @@ describe("stage-five action bar layout controller", () => {
     expect(rejecting.getState().status).toBe("error");
   });
 
+  it("[defect-probing] reports successful persistence after disposal", async () => {
+    const api = requireControllerApi();
+    let resolveCommit: ((layout: ActionBarLayout) => void) | undefined;
+    const controller = api.createActionBarLayoutController({
+      layout: editableLayout(),
+      onCommit: (layout) => new Promise<ActionBarLayout>((resolve) => {
+        resolveCommit = () => resolve(layout);
+      }),
+    });
+    const candidate = editableLayout();
+    candidate.rows = 3;
+
+    const commit = controller.commitLayout(candidate);
+    controller.dispose();
+    resolveCommit?.(candidate);
+
+    await expect(commit).resolves.toBe(true);
+  });
+
   it("[defect-probing] previews after five pixels and commits exactly once on pointer up", async () => {
     const api = requireControllerApi();
     const onCommit = vi.fn(async (layout: ActionBarLayout) =>

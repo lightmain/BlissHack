@@ -46,7 +46,10 @@ async function startActionBarGame(page: Page, marker: string): Promise<void> {
   await startNewGameFromHome(page, `${marker}-Arc-Hum-Mal-Law`);
   await expect(page.locator(".nh-shell"))
     .toHaveAttribute("data-command-input", "ready");
-  await expect(page.getByRole("region", { name: "Action bar" })).toBeVisible();
+  await expect(page.getByRole("region", {
+    name: "Action bar",
+    exact: true,
+  })).toBeVisible();
 }
 
 /** Read the complete-column and overflow contract from the rendered grid. */
@@ -158,7 +161,10 @@ test("Action bar integration: keeps geometry, focus, Pointer Events, and a real 
   test.slow();
   const errors = captureErrors(page);
   await startActionBarGame(page, "ActionBarContract");
-  const dock = page.getByRole("region", { name: "Action bar" });
+  const dock = page.getByRole("region", {
+    name: "Action bar",
+    exact: true,
+  });
 
   await expectActionGrid(dock, 2);
   await page.getByRole("button", { name: "Unlock action bar" }).click();
@@ -238,13 +244,12 @@ test("Action bar integration: keeps geometry, focus, Pointer Events, and a real 
 test("Action bar layout transfer: exports, cancels, rejects damage, and rolls back atomically", async ({
   page,
 }) => {
-  test.fail(
-    true,
-    "A successful import persists but is reported as failed after its controller is replaced.",
-  );
   const errors = captureErrors(page);
   await startActionBarGame(page, "ActionBarTransfer");
-  const dock = page.getByRole("region", { name: "Action bar" });
+  const dock = page.getByRole("region", {
+    name: "Action bar",
+    exact: true,
+  });
   await page.getByRole("button", { name: "All Actions" }).click();
   const panel = page.getByRole("dialog", { name: "All Actions" });
   const fileInput = panel.locator('input[type="file"]');
@@ -322,16 +327,17 @@ test("Action bar layout transfer: exports, cancels, rejects damage, and rolls ba
     .toBeVisible();
   await expect.poll(() => readPersistedLayout(page))
     .toEqual(incoming.actionBarLayout);
-  const successfulImportError = await panel.locator(
-    ".nh-all-actions-error",
-  ).textContent().catch(() => null);
-  expect.soft(
-    successfulImportError,
-    "a successful import must close its preview without a failure message",
-  ).toBeNull();
-  if (await preview.count() > 0) {
-    await preview.getByRole("button", { name: "Cancel" }).click();
-  }
+  await expect(preview).toHaveCount(0);
+  await expect(panel.locator(".nh-all-actions-error")).toHaveCount(0);
+  const revisionAfterImport = await readShellRevision(page);
+  await page.keyboard.press("Tab");
+  await expect(panel.getByRole("button", {
+    name: "Export action bar layout",
+  })).toBeFocused();
+  await page.waitForTimeout(100);
+  expect(await readShellRevision(page)).toBe(revisionAfterImport);
+  await expect(page.locator(".nh-shell"))
+    .toHaveAttribute("data-command-input", "ready");
 
   const rejected = structuredClone(incoming);
   rejected.actionBarLayout.rows = 4;
