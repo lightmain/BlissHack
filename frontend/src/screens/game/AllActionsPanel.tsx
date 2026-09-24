@@ -240,12 +240,19 @@ export function AllActionsPanel({
   /**
    * Close the panel before starting one available catalog command.
    * @param presentation - current session command presentation.
+   * @param pointerClick - whether a pointer generated the click.
    * @returns nothing.
    */
-  function requestAction(presentation: ActionPresentation): void {
+  function requestAction(
+    presentation: ActionPresentation,
+    pointerClick: boolean,
+  ): void {
+    if (suppressClickRef.current) {
+      suppressClickRef.current = false;
+      if (pointerClick) return;
+    }
     if (
-      suppressClickRef.current
-      || presentation.state !== "available"
+      presentation.state !== "available"
       || presentation.sessionCommandId === null
     ) {
       return;
@@ -386,7 +393,8 @@ export function AllActionsPanel({
                     data-action-name={presentation.name}
                     data-action-state={presentation.state}
                     key={presentation.name}
-                    onClick={() => requestAction(presentation)}
+                    onClick={(event) =>
+                      requestAction(presentation, event.detail > 0)}
                     onLostPointerCapture={onLostPointerCapture}
                     onPointerCancel={onPointerCancel}
                     onPointerDown={(event) =>

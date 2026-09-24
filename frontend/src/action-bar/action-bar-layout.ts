@@ -294,21 +294,15 @@ export function reduceActionBarLayout(
     ) {
       return unchangedEdit(current);
     }
-    const left = current.all[edit.dividerIndex];
-    const right = current.all[edit.dividerIndex + 1];
-    const minimumDelta = Math.max(1 - left.columns, right.columns - 8);
-    const maximumDelta = Math.min(8 - left.columns, right.columns - 1);
+    const section = current.all[edit.dividerIndex];
     const delta = Math.max(
-      minimumDelta,
-      Math.min(maximumDelta, edit.columnDelta),
+      1 - section.columns,
+      Math.min(8 - section.columns, edit.columnDelta),
     );
     if (delta === 0) return unchangedEdit(current);
     const all = current.all.map((section, index) => {
       if (index === edit.dividerIndex) {
         return { ...section, columns: section.columns + delta };
-      }
-      if (index === edit.dividerIndex + 1) {
-        return { ...section, columns: section.columns - delta };
       }
       return section;
     });

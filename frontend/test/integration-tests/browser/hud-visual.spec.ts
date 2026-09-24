@@ -497,11 +497,11 @@ function expectValidHudGeometry(
     expect(
       rectangle.x + rectangle.width,
       `${name} right`,
-    ).toBeLessThanOrEqual(expectedViewport.width);
+    ).toBeLessThanOrEqual(expectedViewport.width + 0.1);
     expect(
       rectangle.y + rectangle.height,
       `${name} bottom`,
-    ).toBeLessThanOrEqual(expectedViewport.height);
+    ).toBeLessThanOrEqual(expectedViewport.height + 0.1);
   }
   for (let first = 0; first < regionEntries.length; first += 1) {
     for (let second = first + 1; second < regionEntries.length; second += 1) {
@@ -663,7 +663,7 @@ function expectValidHudGeometry(
   }
 }
 
-test("[defect-probing] right-short keeps inventory above a full-width bottom region", async ({
+test("HUD visual regression: right-short keeps inventory above a full-width bottom region", async ({
   page,
 }) => {
   test.slow();

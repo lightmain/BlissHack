@@ -374,6 +374,17 @@ describe("profile defaults and validation", () => {
     ]);
   });
 
+  it.each([1, 2, 3] as const)(
+    "rejects right-short in historical schema v%s",
+    (schemaVersion) => {
+      const profile = createProfileDocument(schemaVersion);
+      (profile.interface as Record<string, unknown>)
+        .permanentInventoryPosition = "right-short";
+
+      expectProfileError(() => validateProfile(profile), "invalid-profile");
+    },
+  );
+
   it.each(["all", "full", "in-use"] as const)(
     "accepts permanent inventory mode %s",
     (perminvMode) => {

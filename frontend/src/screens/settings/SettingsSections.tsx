@@ -319,7 +319,8 @@ export function InventorySettingsSection({
                 onInterfaceChange({ permanentInventoryPosition });
               }}
               options={[
-                { value: "right", label: "Right" },
+                { value: "right", label: "Right (Long)" },
+                { value: "right-short", label: "Right (Short)" },
                 { value: "below", label: "Below" },
               ]}
               value={draft.interface.permanentInventoryPosition}

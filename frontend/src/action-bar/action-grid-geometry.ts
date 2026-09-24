@@ -63,9 +63,9 @@ export function calculateActionGridGeometry({
   }
 
   const required = sections.map((section, index) => {
+    if (index < sections.length - 1) return section.columns;
     const occupiedColumns = Math.ceil(section.slots.length / rows);
-    const trailingEditColumn = index === sections.length - 1 ? 1 : 0;
-    return Math.max(section.columns, occupiedColumns + trailingEditColumn);
+    return Math.max(section.columns, occupiedColumns + 1);
   });
   const requiredColumns = required.reduce((total, value) => total + value, 0);
   const fixedDividerWidth = Math.max(0, sections.length - 1) * dividerWidth;
@@ -109,7 +109,7 @@ export function calculateActionGridGeometry({
 /**
  * Preview a divider drag snapped to a complete slot-column step.
  * @param options - divider index, pointer delta, and current section widths.
- * @returns a detached width array with adjacent sections rebalanced.
+ * @returns a detached width array with only the divider's left section resized.
  */
 export function previewActionDivider({
   dividerIndex,
@@ -137,9 +137,8 @@ export function previewActionDivider({
   const requestedDelta = Math.round(pointerDelta / (slotSize + slotGap));
   const delta = Math.max(
     1 - next[dividerIndex],
-    Math.min(next[dividerIndex + 1] - 1, requestedDelta),
+    Math.min(8 - next[dividerIndex], requestedDelta),
   );
   next[dividerIndex] += delta;
-  next[dividerIndex + 1] -= delta;
   return next;
 }

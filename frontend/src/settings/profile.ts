@@ -36,7 +36,12 @@ export type TerminalFontSize = (typeof TERMINAL_FONT_SIZES)[number];
 export const MESSAGE_HISTORY_LINES = [3, 5] as const;
 export type MessageHistoryLines = (typeof MESSAGE_HISTORY_LINES)[number];
 
-export const PERMANENT_INVENTORY_POSITIONS = ["right", "below"] as const;
+export const PERMANENT_INVENTORY_POSITIONS = [
+  "right",
+  "right-short",
+  "below",
+] as const;
+const LEGACY_PERMANENT_INVENTORY_POSITIONS = ["right", "below"] as const;
 export type PermanentInventoryPosition =
   (typeof PERMANENT_INVENTORY_POSITIONS)[number];
 
@@ -608,7 +613,7 @@ function validateInterfaceSettingsV2(value: unknown): InterfaceSettingsV2 {
   assertBoolean(settings.followPlayer, "interface.followPlayer");
   if (!isOneOf(
     settings.permanentInventoryPosition,
-    PERMANENT_INVENTORY_POSITIONS,
+    LEGACY_PERMANENT_INVENTORY_POSITIONS,
   )) {
     throw invalidProfile("interface.permanentInventoryPosition is invalid");
   }

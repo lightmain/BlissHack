@@ -21,7 +21,9 @@ test("edits, persists, and cancels Home Settings without replacing the module", 
   await expect(page.getByRole("radio", { name: "5 lines" })).toBeChecked();
   await expect(page.getByRole("radio", { name: "Tiles" })).toBeChecked();
   await expect(page.getByRole("combobox", { name: "Contents" })).toBeDisabled();
-  await expect(page.getByRole("radio", { name: "Right" })).toBeDisabled();
+  await expect(
+    page.getByRole("radio", { name: "Right (Long)", exact: true }),
+  ).toBeDisabled();
   await expect(
     page.getByRole("checkbox", { name: "Start collapsed" }),
   ).toBeDisabled();
