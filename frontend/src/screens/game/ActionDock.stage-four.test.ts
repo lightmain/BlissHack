@@ -15,6 +15,10 @@ const GAME_SCREEN_SOURCE = readFileSync(
   new URL("../GameScreen.tsx", import.meta.url),
   "utf8",
 );
+const GAME_CSS_SOURCE = readFileSync(
+  new URL("../../styles/game.css", import.meta.url),
+  "utf8",
+);
 const KEYBOARD_HANDLER_SOURCE = GAME_SCREEN_SOURCE.slice(
   GAME_SCREEN_SOURCE.indexOf("function handleKeyDown"),
   GAME_SCREEN_SOURCE.indexOf(
@@ -72,6 +76,12 @@ describe("stage-four ActionDock execution contract", () => {
   it("passes prefix continuation keys through the action-owned core input path", () => {
     expect(KEYBOARD_HANDLER_SOURCE).toMatch(
       /currentAction\.status\s*===\s*"waiting-prefix-continuation"[\s\S]*?\bsubmitActionKey\s*\(\s*value\s*\)/,
+    );
+  });
+
+  it("keeps the action item chooser interactive above the pointer-transparent overlay", () => {
+    expect(GAME_CSS_SOURCE).toMatch(
+      /\.nh-action-item-chooser\s*\{[^}]*\bpointer-events\s*:\s*auto\s*;/,
     );
   });
 });
