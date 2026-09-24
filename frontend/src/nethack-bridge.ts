@@ -51,6 +51,7 @@ import {
   requestSaveAndExit,
   resetInputController,
   selectMenu,
+  submitActionKey,
   sendKey,
   sendPosition,
   setActionIntentActive,
@@ -164,6 +165,7 @@ export {
   requestCoreCommand,
   requestNativeCharacterSelection,
   requestSaveAndExit,
+  submitActionKey,
   sendKey,
   sendPosition,
   setActionIntentActive,
@@ -372,7 +374,21 @@ async function dispatchShimCallback(
         if (menuListPtr !== 0) module.setValue(menuListPtr, 0, "*");
         return decision.value ?? 0;
       }
-      return selectMenu(module, windowId, how, asNumber(args[2]));
+      return selectMenu(
+        module,
+        windowId,
+        how,
+        asNumber(args[2]),
+        args.length >= 6
+          ? {
+            provenance: asNumber(args[3]) === 1
+              ? "action-getobj"
+              : "none",
+            requestNonce: asNumber(args[4]) >>> 0,
+            menuGeneration: asNumber(args[5]) >>> 0,
+          }
+          : undefined,
+      );
     }
     case "shim_message_menu":
       if (asNumber(args[1]) !== PICK_NONE) {
@@ -415,7 +431,7 @@ async function dispatchShimCallback(
         type: "input-request",
         inputKind: "key",
       });
-      return waitForKey(module, null, asNumber(args[0]) === 1);
+      return waitForKey(module, null, asNumber(args[0]));
     case "shim_nh_poskey":
       handleEndgameCollectorEvent({
         type: "input-request",
@@ -425,7 +441,7 @@ async function dispatchShimCallback(
         x: asNumber(args[0]),
         y: asNumber(args[1]),
         modifier: asNumber(args[2]),
-      }, asNumber(args[3]) === 1);
+      }, asNumber(args[3]));
     case "shim_nhbell":
       ringBell();
       return undefined;
@@ -447,7 +463,7 @@ async function dispatchShimCallback(
       });
       return decision.kind === "resolve"
         ? decision.value
-        : waitForYn(query || null, choices, defaultCode);
+        : waitForYn(query || null, choices, defaultCode, asNumber(args[3]));
     }
     case "shim_getlin":
       handleEndgameCollectorEvent({

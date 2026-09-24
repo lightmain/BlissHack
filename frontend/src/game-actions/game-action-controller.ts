@@ -1,4 +1,9 @@
-import { PICK_ONE, type MenuItem } from "../game-state";
+import {
+  INPUT_STATE_GETDIR,
+  INPUT_STATE_GETPOS,
+  PICK_ONE,
+  type MenuItem,
+} from "../game-state";
 import type {
   ActionIntent,
   ActionIntentCancellationReason,
@@ -15,10 +20,16 @@ export type {
   ActionIntentCancellationReason,
 } from "./action-intents";
 export type {
+  ActionItemMenuPresentation,
   ActionControllerInput,
   ContextMenuPresentation,
   GameActionState,
 } from "./game-action-reducer";
+
+export interface CoreCommandReceipt {
+  requestNonce: number;
+  acceptedBoundaryGeneration: number | null;
+}
 
 export interface ActionControllerObservation {
   moduleId: string;
@@ -26,16 +37,21 @@ export interface ActionControllerObservation {
   snapshotRevision: number;
   inventoryRevision: number | null;
   mapRevision?: number;
+  boundaryGeneration?: number;
+  menuGeneration?: number;
   input: ActionControllerInput | null;
   fatal?: boolean;
 }
 
 interface GameActionControllerOptions {
   scope?: { moduleId: string; sessionId: string };
-  startCommand(intent: ActionIntent): void;
+  startCommand(intent: ActionIntent): CoreCommandReceipt | void;
   submitMenuSelection(
     selection: Array<{ itemIndex: number; count: number }> | null,
   ): void;
+  submitDirection?(key: number): void;
+  submitPosition?(x: number, y: number, modifier: 1 | 2): void;
+  cancelCoreInput?(input: ActionControllerInput): void;
   releaseInputToUi(input: ActionControllerInput): void;
   onCancel?(reason: ActionIntentCancellationReason): void;
   onComplete?(intent: ActionIntent): void;
@@ -46,6 +62,9 @@ export interface GameActionController {
   request(intent: ActionIntent): boolean;
   observe(observation: ActionControllerObservation): void;
   cancel(reason: ActionIntentCancellationReason): void;
+  chooseItem(menuGeneration: number, itemIndex: number): boolean;
+  chooseDirection(key: number): boolean;
+  choosePosition(x: number, y: number, modifier: 1 | 2): boolean;
   complete(): void;
   dispose(): void;
   getState(): GameActionState;
@@ -62,6 +81,7 @@ export function createGameActionController(
 ): GameActionController {
   let state = INITIAL_GAME_ACTION_STATE;
   let disposed = false;
+  let commandReceipt: CoreCommandReceipt | null = null;
   const listeners = new Set<() => void>();
 
   /** Publish a reducer event and notify state subscribers. */
@@ -72,12 +92,33 @@ export function createGameActionController(
     for (const listener of listeners) listener();
   }
 
-  /** Cancel the current intent and report its reason once. */
-  function cancel(reason: ActionIntentCancellationReason): void {
+  /** Clear the active intent immediately and report its reason once. */
+  function finishCancellation(reason: ActionIntentCancellationReason): void {
     if (state.intent === null) return;
     transition({ type: "cancelled", reason });
+    commandReceipt = null;
     options.setActionIntentActive?.(false);
     options.onCancel?.(reason);
+  }
+
+  /** Cancel through the active core resolver when a catalog action owns it. */
+  function cancel(reason: ActionIntentCancellationReason): void {
+    if (state.intent === null) return;
+    if (
+      reason === "user-cancelled"
+      && state.intent.kind === "catalog-action"
+      && state.activeInput !== null
+      && options.cancelCoreInput
+    ) {
+      options.cancelCoreInput(state.activeInput);
+      transition({
+        type: "progress",
+        status: "cancelling-core-input",
+        pendingCancellationReason: reason,
+      });
+      return;
+    }
+    finishCancellation(reason);
   }
 
   /** Complete the active intent and release its input barrier. */
@@ -85,6 +126,7 @@ export function createGameActionController(
     const intent = state.intent;
     if (intent === null) return;
     transition({ type: "completed" });
+    commandReceipt = null;
     options.setActionIntentActive?.(false);
     options.onComplete?.(intent);
   }
@@ -99,7 +141,7 @@ export function createGameActionController(
       observation.moduleId !== intent.moduleId
       || observation.sessionId !== intent.sessionId
     ) {
-      cancel("session-reset");
+      finishCancellation("session-reset");
       return false;
     }
     if (
@@ -107,7 +149,7 @@ export function createGameActionController(
       && observation.inventoryRevision !== intent.inventoryRevision
       && !(intent.kind === "drop-item" && state.targetSelected)
     ) {
-      cancel("inventory-revision-changed");
+      finishCancellation("inventory-revision-changed");
       return false;
     }
     if (
@@ -115,7 +157,7 @@ export function createGameActionController(
       && intent.kind === "map-context"
       && observation.snapshotRevision !== intent.snapshotRevision
     ) {
-      cancel("target-stale");
+      finishCancellation("target-stale");
       return false;
     }
     if (
@@ -123,11 +165,11 @@ export function createGameActionController(
       && state.status === "waiting-command-boundary"
       && observation.mapRevision !== intent.mapRevision
     ) {
-      cancel("target-stale");
+      finishCancellation("target-stale");
       return false;
     }
     if (observation.fatal) {
-      cancel("fatal");
+      finishCancellation("fatal");
       return false;
     }
     return true;
@@ -135,8 +177,20 @@ export function createGameActionController(
 
   /** Cancel automation before exposing an unexpected core prompt normally. */
   function releaseUnexpectedInput(input: ActionControllerInput): void {
-    cancel("unexpected-input");
+    finishCancellation("unexpected-input");
     options.releaseInputToUi(input);
+  }
+
+  /** Hand an unclaimed catalog input to the existing native UI once. */
+  function handOffCatalogInput(input: ActionControllerInput): void {
+    if (state.status === "handed-off-to-native-ui") return;
+    options.releaseInputToUi(input);
+    transition({
+      type: "progress",
+      status: "handed-off-to-native-ui",
+      activeInput: input,
+      itemMenu: null,
+    });
   }
 
   /** Present or automate the expected menu for the active intent. */
@@ -145,6 +199,10 @@ export function createGameActionController(
   ): void {
     const intent = state.intent;
     if (!intent) return;
+    if (intent.kind === "catalog-action") {
+      handOffCatalogInput(input);
+      return;
+    }
     if (!isPickOneMenu(input) || intent.kind === "map-inspect") {
       releaseUnexpectedInput(input);
       return;
@@ -179,6 +237,152 @@ export function createGameActionController(
     });
   }
 
+  /** Read the accepted generation from the live mutable command receipt. */
+  function acceptedBoundaryGeneration(): number | null {
+    return commandReceipt?.acceptedBoundaryGeneration ?? null;
+  }
+
+  /** Handle one authoritative input emitted by a catalog action. */
+  function handleCatalogInput(
+    observation: ActionControllerObservation,
+    input: ActionControllerInput,
+  ): void {
+    const intent = state.intent;
+    if (intent?.kind !== "catalog-action") return;
+    const acceptedGeneration = acceptedBoundaryGeneration();
+    if (
+      acceptedGeneration !== null
+      && (observation.boundaryGeneration ?? 0) > acceptedGeneration
+    ) {
+      complete();
+      return;
+    }
+    if (state.status === "handed-off-to-native-ui") return;
+    if (input.kind === "command") {
+      if (
+        intent.prefix
+        && state.status !== "waiting-prefix-continuation"
+      ) {
+        options.releaseInputToUi(input);
+        transition({
+          type: "progress",
+          status: "waiting-prefix-continuation",
+          activeInput: input,
+        });
+      }
+      return;
+    }
+    if (
+      input.kind === "menu"
+      && intent.requestItemMenu
+      && input.how === PICK_ONE
+      && input.provenance === "action-getobj"
+      && input.requestNonce === commandReceipt?.requestNonce
+      && Number.isInteger(input.menuGeneration)
+      && (input.menuGeneration ?? 0) > state.startMenuGeneration
+      && Number.isSafeInteger(input.windowId)
+      && (input.windowId ?? -1) > 0
+    ) {
+      transition({
+        type: "progress",
+        status: "presenting-item-menu",
+        activeInput: input,
+        itemMenu: {
+          items: input.items,
+          menuGeneration: input.menuGeneration as number,
+          windowId: input.windowId as number,
+        },
+      });
+      return;
+    }
+    if (
+      "inputState" in input
+      && input.inputState === INPUT_STATE_GETDIR
+    ) {
+      transition({
+        type: "progress",
+        status: "targeting-direction",
+        activeInput: input,
+        itemMenu: null,
+      });
+      return;
+    }
+    if (
+      input.kind === "position"
+      && input.inputState === INPUT_STATE_GETPOS
+    ) {
+      transition({
+        type: "progress",
+        status: "targeting-position",
+        activeInput: input,
+        itemMenu: null,
+      });
+      return;
+    }
+    handOffCatalogInput(input);
+  }
+
+  /** Advance a generic catalog action from command acceptance to completion. */
+  function observeCatalogAction(
+    observation: ActionControllerObservation,
+  ): void {
+    if (state.status === "cancelling-core-input") {
+      const acceptedGeneration = acceptedBoundaryGeneration();
+      if (
+        acceptedGeneration !== null
+        && (observation.boundaryGeneration ?? 0) > acceptedGeneration
+      ) {
+        finishCancellation(
+          state.pendingCancellationReason ?? "user-cancelled",
+        );
+        return;
+      }
+      if (observation.input === null) {
+        transition({
+          type: "progress",
+          status: "waiting-cancel-boundary",
+          activeInput: null,
+        });
+      }
+      return;
+    }
+    if (state.status === "waiting-cancel-boundary") {
+      const acceptedGeneration = acceptedBoundaryGeneration();
+      if (
+        acceptedGeneration !== null
+        && (observation.boundaryGeneration ?? 0) > acceptedGeneration
+      ) {
+        finishCancellation(
+          state.pendingCancellationReason ?? "user-cancelled",
+        );
+      }
+      return;
+    }
+    const acceptedGeneration = acceptedBoundaryGeneration();
+    if (
+      acceptedGeneration !== null
+      && state.acceptedBoundaryGeneration !== acceptedGeneration
+    ) {
+      transition({
+        type: "progress",
+        status: state.status === "starting-command" || state.status === "idle"
+          ? "waiting-expected-input"
+          : state.status,
+        acceptedBoundaryGeneration: acceptedGeneration,
+      });
+    }
+    if (
+      acceptedGeneration !== null
+      && (observation.boundaryGeneration ?? 0) > acceptedGeneration
+    ) {
+      complete();
+      return;
+    }
+    if (observation.input !== null) {
+      handleCatalogInput(observation, observation.input);
+    }
+  }
+
   /** Observe the latest authoritative core/session state. */
   function observe(observation: ActionControllerObservation): void {
     if (disposed || state.intent === null) return;
@@ -193,12 +397,34 @@ export function createGameActionController(
       const intent = state.intent;
       transition({ type: "starting" });
       try {
-        options.startCommand(intent);
+        const receipt = options.startCommand(intent);
+        if (intent.kind === "catalog-action") {
+          if (
+            !receipt
+            || !Number.isInteger(receipt.requestNonce)
+            || receipt.requestNonce <= 0
+          ) {
+            throw new Error("Catalog command did not return a request receipt");
+          }
+          commandReceipt = receipt;
+          transition({
+            type: "progress",
+            status: "waiting-expected-input",
+            acceptedBoundaryGeneration:
+              receipt.acceptedBoundaryGeneration,
+            startMenuGeneration: observation.menuGeneration ?? 0,
+          });
+          return;
+        }
       } catch {
-        cancel("busy");
+        finishCancellation("busy");
         return;
       }
       transition({ type: "waiting" });
+      return;
+    }
+    if (state.intent.kind === "catalog-action") {
+      observeCatalogAction(observation);
       return;
     }
     if (state.status === "presenting-context-menu") {
@@ -260,11 +486,86 @@ export function createGameActionController(
     },
     observe,
     cancel,
+    /**
+     * Submit one row from the currently matched action-owned item menu.
+     * @param menuGeneration - identity of the rendered chooser contents.
+     * @param itemIndex - source row index in the core-generated menu.
+     * @returns whether the current chooser accepted the selection.
+     */
+    chooseItem(menuGeneration: number, itemIndex: number): boolean {
+      const menu = state.itemMenu;
+      if (
+        state.status !== "presenting-item-menu"
+        || !menu
+        || menu.menuGeneration !== menuGeneration
+        || !Number.isInteger(itemIndex)
+        || itemIndex < 0
+        || itemIndex >= menu.items.length
+        || menu.items[itemIndex]?.identifier === null
+      ) {
+        return false;
+      }
+      options.submitMenuSelection([{ itemIndex, count: -1 }]);
+      transition({
+        type: "progress",
+        status: "waiting-expected-input",
+        activeInput: null,
+        itemMenu: null,
+      });
+      return true;
+    },
+    /**
+     * Submit one core-compatible direction byte for active getdir input.
+     * @param key - current number-pad mode direction byte.
+     * @returns whether direction targeting owned the input.
+     */
+    chooseDirection(key: number): boolean {
+      if (
+        state.status !== "targeting-direction"
+        || !Number.isInteger(key)
+        || key <= 0
+        || key > 0xff
+        || !options.submitDirection
+      ) {
+        return false;
+      }
+      options.submitDirection(key);
+      transition({
+        type: "progress",
+        status: "waiting-expected-input",
+        activeInput: null,
+      });
+      return true;
+    },
+    /**
+     * Submit one map coordinate for active getpos input.
+     * @param x - map column.
+     * @param y - map row.
+     * @param modifier - primary or secondary click.
+     * @returns whether position targeting owned the input.
+     */
+    choosePosition(x: number, y: number, modifier: 1 | 2): boolean {
+      if (
+        state.status !== "targeting-position"
+        || !Number.isInteger(x)
+        || !Number.isInteger(y)
+        || !options.submitPosition
+      ) {
+        return false;
+      }
+      options.submitPosition(x, y, modifier);
+      transition({
+        type: "progress",
+        status: "waiting-expected-input",
+        activeInput: null,
+      });
+      return true;
+    },
     complete,
     /** Cancel outstanding work and prevent future observations. */
     dispose(): void {
       if (disposed) return;
-      cancel("unmount");
+      finishCancellation("unmount");
       disposed = true;
       listeners.clear();
     },

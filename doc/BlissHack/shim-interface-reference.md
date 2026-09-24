@@ -650,8 +650,8 @@ DECLCB(char, shim_yn_function,
 
 | 项目 | 说明 |
 |------|------|
-| **fmt** | `"css0"` — 返回 char，两个 string + 一个 byte(int8) 参数 |
-| **参数** | `query` (string): 问题文本（如 "Really quit?"）；`resp` (string): 可接受的回答字符串（如 "ynq"），可能为 NULL；`def` (int8/number): 默认回答字符的 ASCII 码 |
+| **fmt** | 原生 shim 为 `"css0"`；BlissHack WASM 为 `"css0i"` |
+| **参数** | `query` (string): 问题文本（如 "Really quit?"）；`resp` (string): 可接受的回答字符串（如 "ynq"），可能为 NULL；`def` (int8/number): 默认回答字符的 ASCII 码；WASM 末尾附加完整 `program_state.input_state` int |
 | **返回值** | 用户选择的字符的 ASCII 码 |
 | **调用时机** | 需要用户回答 yes/no 或从有限选项中选择时 |
 | **JS 侧处理** | 显示问题和选项，等待用户选择，返回所选字符的 ASCII 码 |
@@ -672,6 +672,10 @@ DECLCB(char, shim_yn_function,
 此外，当前 `setPointerValue()` 对 `c` 返回类型只接受 `0..128`，不能
 写回完整的 `0x80..0xff` Meta 字节。`yn_function` 应只解析该问题允许的
 ASCII 回答；不能把任意 `nhgetch` 输入直接转交给这个返回槽。
+
+`getdir()` 会在调用 unrestricted `yn_function` 前把状态设为 `getdirInp`
+(`3`)。前端必须使用附加的 `input_state` 识别方向 targeting，不能匹配英文
+prompt；普通 unrestricted `yn` 保持普通输入。
 
 #### shim_getlin
 
@@ -839,8 +843,8 @@ DECLCB(int, shim_select_menu,
 
 | 项目 | 说明 |
 |------|------|
-| **fmt** | `"iiip"` — 返回 int，两个 int + 一个 pointer |
-| **参数** | `window` (int): 菜单窗口 ID；`how` (int): 选择模式；`menu_list` (pointer): 输出参数，指向选中项数组的指针 |
+| **fmt** | 原生 shim 为 `"iiip"`；BlissHack WASM 为 `"iiipiii"` |
+| **参数** | `window` (int): 菜单窗口 ID；`how` (int): 选择模式；`menu_list` (pointer): 输出参数，指向选中项数组的指针；WASM 末尾附加 `provenance`、`request_nonce` 和 `menu_generation` 三个 int |
 | **返回值** | 选中的项数（-1 = 取消/ESC，0 = 无选中） |
 | **调用时机** | 显示菜单并等待用户选择 |
 
@@ -861,6 +865,12 @@ identifier 的高 32 位必须清零。
 返回数组中。`PICK_NONE` 只能返回 0 或 -1。同一菜单在下一次 `start_menu()`
 或 `destroy_nhwindow()` 前可以被多次 `select_menu()`，也可能从不调用
 `select_menu()`，所以不能在第一次选择后丢弃菜单内容。
+
+WASM 的 `provenance` 只有 `0`（普通菜单）和 `1`（当前 action request 的
+`getobj()` 候选菜单）。后者同时携带该 action 的非零 request nonce。
+`menu_generation` 对每次 `shim_select_menu()` 单调递增且不回绕。前端只有在
+`PICK_ONE`、provenance、nonce 和新 generation 全部匹配时才能用轻量 chooser
+接管；window ID、prompt 或动作名都不是身份依据。原生 callback ABI 不变。
 
 #### shim_message_menu
 
@@ -2028,10 +2038,19 @@ argument 0..1023   当前 session 的 catalog command ID
 新顶层边界。callback 注册和 session reset 会清理 generation、nonce、pending
 及 active 状态；计数耗尽时进入明确错误路径，不发生回绕。
 
-inventory 和 drop 已从旧固定 ID 迁移为当前 catalog ID。drop request 设置
-item-menu bit，C 在命令前排入原生 `do_reqmenu` 前缀；`dodrop()` 仍只在该前缀
-存在时临时启用并随后恢复 `force_invmenu`，使 `getobj()` 直接提供可验证的
-`PICK_ONE` 菜单。其余物品过滤、数量、装备/诅咒拒绝和回合语义仍由核心执行。
+inventory 和 drop 已从旧固定 ID 迁移为当前 catalog ID。catalog request 的
+item-menu bit 记录 command-scoped request nonce，不再排入只适用于部分命令的
+`do_reqmenu` 前缀。该命令执行期间，每次 `getobj()` 都沿真实
+`display_pickinv()` 路径生成候选；只有该调用栈内的 `shim_select_menu()` 标为
+`action-getobj`，返回后立即清理 provenance。下一 command boundary、callback
+重置或 session reset 会清理 request scope。候选过滤、数量、hands/nothing、
+装备或诅咒拒绝、取消和回合语义仍由核心执行。
+
+前端收到 `shim_command_result(success=1)` 后把当次同步的 boundary generation
+写入同一个 request receipt。直接命令、原生 UI 回退和 prefix continuation
+都只能在观察到严格大于该 generation 的新边界后完成。item chooser 还要求
+`PICK_ONE`、`action-getobj`、receipt nonce 和递增 menu generation 四项匹配；
+普通菜单和 stale window 重用保持在原生 UI。
 
 浏览器运行时配置固定绑定 `mouse1:mouseaction,mouse2:therecmdmenu`。上游
 `click_to_cmd()` 原本没有为预置坐标保留具体鼠标 modifier，而

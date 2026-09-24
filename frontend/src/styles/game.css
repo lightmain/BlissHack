@@ -616,6 +616,10 @@
   opacity: 0.42;
 }
 
+.nh-action-slot[data-action-state="available"][data-action-name] {
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+
 .nh-action-slot-empty {
   border-style: dashed;
   background: #101415;
@@ -711,6 +715,105 @@
 .nh-action-dock-tool:disabled {
   color: #60696d;
   cursor: not-allowed;
+}
+
+.nh-action-item-chooser {
+  position: fixed;
+  right: clamp(12px, 4vw, 48px);
+  bottom: var(--action-chooser-bottom);
+  z-index: 30;
+  width: min(30rem, calc(100vw - 24px));
+  max-height: min(22rem, calc(100svh - var(--action-chooser-bottom) - 12px));
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid #66747a;
+  border-radius: 6px;
+  background: #111719;
+  box-shadow: 0 14px 34px rgb(0 0 0 / 55%);
+  color: #edf0ed;
+  pointer-events: auto;
+}
+
+.nh-action-item-chooser-header {
+  min-height: 38px;
+  padding: 5px 7px 5px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #343e42;
+}
+
+.nh-action-item-chooser-header strong {
+  font-size: 0.82rem;
+  letter-spacing: 0;
+}
+
+.nh-action-item-chooser-header button {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: #bec6c8;
+}
+
+.nh-action-item-chooser-header button:hover,
+.nh-action-item-chooser-header button:focus-visible {
+  border-color: #84595b;
+  outline: none;
+  background: #2f1e20;
+  color: #fff;
+}
+
+.nh-action-item-list {
+  min-height: 0;
+  padding: 5px;
+  display: grid;
+  gap: 3px;
+  overflow-y: auto;
+}
+
+.nh-action-item-list > button {
+  min-width: 0;
+  min-height: 34px;
+  padding: 5px 8px;
+  display: grid;
+  grid-template-columns: 2rem minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  overflow: hidden;
+  border: 1px solid #333d41;
+  border-radius: 3px;
+  background: #171d1f;
+  color: #e0e5e2;
+  font: inherit;
+  text-align: left;
+}
+
+.nh-action-item-list > button:hover,
+.nh-action-item-list > button:focus-visible {
+  border-color: #72a9b8;
+  outline: none;
+  background: #20292d;
+}
+
+.nh-action-item-list kbd {
+  min-width: 1.7rem;
+  padding: 2px 4px;
+  border: 1px solid #59656a;
+  border-radius: 2px;
+  color: #ffcf5c;
+  font: inherit;
+  text-align: center;
+}
+
+.nh-action-item-list span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .nh-messages {
@@ -895,6 +998,17 @@
   outline: 2px solid #f5c451;
   outline-offset: -2px;
   background: rgb(245 196 81 / 24%);
+}
+
+.nh-direction-target-highlight {
+  position: absolute;
+  z-index: 3;
+  width: calc(100% / 80);
+  height: calc(100% / 21);
+  pointer-events: none;
+  outline: 1px solid #7de0df;
+  outline-offset: -1px;
+  background: rgb(85 182 182 / 18%);
 }
 
 .nh-map.nh-map-tiles {

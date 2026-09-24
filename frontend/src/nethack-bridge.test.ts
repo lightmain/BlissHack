@@ -72,7 +72,7 @@ interface StageOneCoreCommandBridge {
   requestCoreCommand(
     request: CoreCommandIntent,
     owner?: CoreCommandOwner,
-  ): boolean;
+  ): StageFourCoreCommandReceipt | null;
 }
 
 interface StageFourCoreCommandReceipt {
@@ -1387,7 +1387,7 @@ describe("core command synchronization", () => {
         catalogIntent(29),
         CURRENT_COMMAND_OWNER,
       ),
-    ).toBe(false);
+    ).toBeNull();
 
     const ordinaryInput = shimCallback("shim_nhgetch", 0);
     expect(
@@ -1395,7 +1395,7 @@ describe("core command synchronization", () => {
         catalogIntent(29),
         CURRENT_COMMAND_OWNER,
       ),
-    ).toBe(false);
+    ).toBeNull();
     sendKey("i".charCodeAt(0));
     await expect(ordinaryInput).resolves.toBe("i".charCodeAt(0));
 
@@ -1411,7 +1411,7 @@ describe("core command synchronization", () => {
         catalogIntent(29),
         CURRENT_COMMAND_OWNER,
       ),
-    ).toBe(false);
+    ).toBeNull();
     sendKey("h".charCodeAt(0));
     await expect(directionInput).resolves.toBe("h".charCodeAt(0));
 
@@ -1427,19 +1427,19 @@ describe("core command synchronization", () => {
         moduleId: "module-stale",
         sessionId: CURRENT_COMMAND_OWNER.sessionId,
       }),
-    ).toBe(false);
+    ).toBeNull();
     expect(
       stageOneCoreCommandBridge.requestCoreCommand(catalogIntent(29), {
         moduleId: CURRENT_COMMAND_OWNER.moduleId,
         sessionId: "session-stale",
       }),
-    ).toBe(false);
+    ).toBeNull();
     expect(
       stageOneCoreCommandBridge.requestCoreCommand(
         catalogIntent(29),
         CURRENT_COMMAND_OWNER,
       ),
-    ).toBe(true);
+    ).not.toBeNull();
 
     await expect(commandInput).resolves.toBe(27);
     expect(getSnapshot().commandInput).toBe(false);
@@ -1460,7 +1460,7 @@ describe("core command synchronization", () => {
         catalogIntent(29),
         CURRENT_COMMAND_OWNER,
       ),
-    ).toBe(true);
+    ).not.toBeNull();
     await expect(firstInput).resolves.toBe(27);
 
     const first = await synchronizeCoreCommandAt(1);
@@ -1488,7 +1488,7 @@ describe("core command synchronization", () => {
         catalogIntent(15, true),
         CURRENT_COMMAND_OWNER,
       ),
-    ).toBe(true);
+    ).not.toBeNull();
     await expect(secondInput).resolves.toBe(27);
 
     await expect(synchronizeCoreCommandAt(1)).resolves.toMatchObject({
@@ -1521,7 +1521,7 @@ describe("core command synchronization", () => {
           catalogIntent(29),
           CURRENT_COMMAND_OWNER,
         ),
-      ).toBe(true);
+      ).not.toBeNull();
       await expect(input).resolves.toBe(27);
       const { available, payload } = await synchronizeCoreCommandAt(1);
       expect(available).toBe(1);
@@ -1555,7 +1555,7 @@ describe("core command synchronization", () => {
         catalogIntent(29),
         CURRENT_COMMAND_OWNER,
       ),
-    ).toBe(true);
+    ).not.toBeNull();
     await expect(input).resolves.toBe(27);
     const { available, payload } = await synchronizeCoreCommandAt(1);
     expect(available).toBe(1);
@@ -1586,7 +1586,7 @@ describe("core command synchronization", () => {
         catalogIntent(29),
         CURRENT_COMMAND_OWNER,
       ),
-    ).toBe(true);
+    ).not.toBeNull();
     await expect(pendingInput).resolves.toBe(27);
 
     resetBridgeState();
@@ -1608,7 +1608,7 @@ describe("core command synchronization", () => {
         catalogIntent(29),
         CURRENT_COMMAND_OWNER,
       ),
-    ).toBe(true);
+    ).not.toBeNull();
     await expect(activeInput).resolves.toBe(27);
     const active = await synchronizeCoreCommandAt(2);
     expect(active.available).toBe(1);
@@ -1642,7 +1642,7 @@ describe("core command synchronization", () => {
         catalogIntent(30),
         CURRENT_COMMAND_OWNER,
       ),
-    ).toBe(true);
+    ).not.toBeNull();
     await expect(freshInput).resolves.toBe(27);
     const fresh = await synchronizeCoreCommandAt(1);
     expect(fresh.available).toBe(1);
@@ -1735,7 +1735,7 @@ describe("core command synchronization", () => {
         catalogIntent(29),
         CURRENT_COMMAND_OWNER,
       ),
-    ).toBe(true);
+    ).not.toBeNull();
     await expect(intentInput).resolves.toBe(27);
     const { available, payload } = await synchronizeCoreCommandAt(1);
     expect(available).toBe(1);

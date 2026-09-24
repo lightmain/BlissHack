@@ -34,6 +34,34 @@ interface ActionMetadata {
 
 const CMD_PARAM = 0x4000;
 
+const ACTION_ITEM_MENU_NAMES = new Set([
+  "apply",
+  "call",
+  "cast",
+  "dip",
+  "drop",
+  "droptype",
+  "eat",
+  "engrave",
+  "invoke",
+  "loot",
+  "name",
+  "offer",
+  "pickup",
+  "puton",
+  "quaff",
+  "quiver",
+  "read",
+  "remove",
+  "rub",
+  "takeoff",
+  "throw",
+  "tip",
+  "wear",
+  "wield",
+  "zap",
+]);
+
 const ACTION_METADATA_SOURCE = [
   ["#", "system", "hash"],
   ["?", "system", "list"],
@@ -207,6 +235,15 @@ export function resolveActionSlotPresentation(
 export function getActionMetadata(name: string): ActionMetadata | null {
   const metadata = ACTION_METADATA.get(name);
   return metadata ? { ...metadata } : null;
+}
+
+/**
+ * Report whether the prototype contract requests menu-based getobj input.
+ * @param name - canonical action catalog name.
+ * @returns whether the command should force its real getobj candidate menu.
+ */
+export function actionRequestsItemMenu(name: string): boolean {
+  return ACTION_ITEM_MENU_NAMES.has(name);
 }
 
 /**

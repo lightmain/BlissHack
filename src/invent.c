@@ -2,8 +2,17 @@
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /*-Copyright (c) Derek S. Ray, 2015. */
 /* NetHack may be freely redistributed.  See license for details. */
+/* Modified for BlissHack by lightmain, 2026-09-23:
+ * force action-owned getobj selection through the real candidate menu and
+ * scope WASM provenance to that menu callback. */
 
 #include "hack.h"
+
+#ifdef __EMSCRIPTEN__
+extern boolean shim_action_getobj_requested(void);
+extern void shim_action_getobj_begin(void);
+extern void shim_action_getobj_end(void);
+#endif
 
 staticfn void inuse_classify(Loot *, struct obj *);
 staticfn char *loot_xname(struct obj *);
@@ -27,7 +36,7 @@ staticfn int ckunpaid(struct obj *);
 staticfn char *safeq_xprname(struct obj *);
 staticfn char *safeq_shortxprname(struct obj *);
 staticfn char display_pickinv(const char *, const char *, const char *,
-                            boolean, boolean, long *);
+                            boolean, boolean, boolean, long *);
 staticfn char display_used_invlets(char);
 staticfn boolean this_type_only(struct obj *);
 staticfn void dounpaid(int, int, int);
@@ -1762,7 +1771,7 @@ getobj(
     char *bp = buf, *ap = altlets;
     boolean allowcnt = (ctrlflags & GETOBJ_ALLOWCNT),
             forceprompt = (ctrlflags & GETOBJ_PROMPT),
-            allownone = FALSE;
+            allownone = FALSE, action_getobj = FALSE;
     int inaccess = 0; /* counts GETOBJ_EXCLUDE_INACCESS items to decide
                        * between "you don't have anything to <foo>"
                        * versus "you don't have anything _else_ to <foo>"
@@ -1774,6 +1783,10 @@ getobj(
     Loot *sortedinvent, *srtinv;
     struct _cmd_queue cq, *cmdq;
     boolean need_more_cq = FALSE;
+
+#ifdef __EMSCRIPTEN__
+    action_getobj = shim_action_getobj_requested();
+#endif
 
  need_more_cq:
     if ((cmdq = cmdq_pop()) != 0) {
@@ -1919,7 +1932,7 @@ getobj(
         Sprintf(qbuf, "What do you want to %s?", word);
         if (gi.in_doagain) {
             ilet = readchar();
-        } else if (iflags.force_invmenu) {
+        } else if (iflags.force_invmenu || action_getobj) {
             /* don't overwrite a possible quitchars */
             if (!oneloop)
                 ilet = (*lets || *altlets) ? '?' : '*';
@@ -1970,15 +1983,23 @@ getobj(
                 allowed_choices = altlets;
 
             menuquery[0] = qbuf[0] = '\0';
-            if (iflags.force_invmenu)
+            if (iflags.force_invmenu || action_getobj)
                 Snprintf(menuquery, sizeof menuquery,
                          "What do you want to %s?", word);
             if (!allowed_choices || *allowed_choices == HANDS_SYM
                 || *buf == HANDS_SYM)
                 handsbuf = getobj_hands_txt(word, qbuf);
-            ilet = display_pickinv(allowed_choices, handsbuf,
-                                   menuquery, allownone, TRUE,
+#ifdef __EMSCRIPTEN__
+            if (action_getobj)
+                shim_action_getobj_begin();
+#endif
+            ilet = display_pickinv(allowed_choices, handsbuf, menuquery,
+                                   allownone, TRUE, action_getobj,
                                    allowcnt ? &ctmp : (long *) 0);
+#ifdef __EMSCRIPTEN__
+            if (action_getobj)
+                shim_action_getobj_end();
+#endif
             if (!ilet) {
                 if (oneloop)
                     return (struct obj *) 0;
@@ -3101,6 +3122,7 @@ display_pickinv(
     const char *query,       /* optional; prompt string for menu */
     boolean allowxtra,       /* hands are allowed (maybe alternate) choice */
     boolean want_reply,      /* True: select an item, False: just display */
+    boolean force_menu,      /* bypass single-item message_menu shortcut */
     long *out_cnt) /* optional; count player entered when selecting an item */
 {
     static const char /* potential entries for perm_invent window */
@@ -3187,7 +3209,8 @@ display_pickinv(
     if (!flags.invlet_constant)
         reassign();
 
-    if (n == 1 && !iflags.force_invmenu && !iflags.menu_requested) {
+    if (n == 1 && !force_menu && !iflags.force_invmenu
+        && !iflags.menu_requested) {
         /* when only one item of interest, use pline instead of menus;
            we actually use a fake message-line menu in order to allow
            the user to perform selection at the --More-- prompt for tty */
@@ -3495,14 +3518,14 @@ display_inventory(const char *lets, boolean want_reply)
         return '\0';
     }
     return display_pickinv(lets, (char *) 0, (char *) 0,
-                           FALSE, want_reply, (long *) 0);
+                           FALSE, want_reply, FALSE, (long *) 0);
 }
 
 void
 repopulate_perminvent(void)
 {
         (void) display_pickinv(NULL, (char *) 0, (char *) 0,
-                               FALSE, FALSE, (long *) 0);
+                               FALSE, FALSE, FALSE, (long *) 0);
 }
 
 /*

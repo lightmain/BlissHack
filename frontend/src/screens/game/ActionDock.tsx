@@ -216,10 +216,15 @@ const ACTION_ICONS: Readonly<Record<string, LucideIcon>> = {
 };
 
 interface ActionDockProps {
+  activeActionName?: string | null;
   blocked: boolean;
   catalog: SessionActionCatalog | null;
   input: ReactNode;
   layout: ActionBarLayout;
+  onActionRequest?: (request: {
+    name: string;
+    sessionCommandId: number;
+  }) => void;
   onLayoutChange?(layout: ActionBarLayout): void;
   status: ReactNode;
 }
@@ -236,10 +241,12 @@ interface DividerDrag {
  * @returns the responsive bottom dock.
  */
 export function ActionDock({
+  activeActionName = null,
   blocked,
   catalog,
   input,
   layout,
+  onActionRequest,
   onLayoutChange,
   status,
 }: ActionDockProps) {
@@ -419,10 +426,12 @@ export function ActionDock({
                   >
                     {section.slots.map((name, slotIndex) => (
                       <ActionSlot
+                        active={name === activeActionName}
                         blocked={blocked}
                         catalog={catalog}
                         key={`${section.category}:${slotIndex}`}
                         name={name}
+                        onActionRequest={onActionRequest}
                         slotIndex={slotIndex}
                       />
                     ))}
@@ -462,10 +471,12 @@ export function ActionDock({
                   {categoryGeometry.sections[0].slots.map(
                     (name, slotIndex) => (
                       <ActionSlot
+                        active={name === activeActionName}
                         blocked={blocked}
                         catalog={catalog}
                         key={`${layout.activeCategory}:${slotIndex}`}
                         name={name}
+                        onActionRequest={onActionRequest}
                         slotIndex={slotIndex}
                       />
                     ),
@@ -525,14 +536,21 @@ export function ActionDock({
  * @returns one fixed-format action grid cell.
  */
 function ActionSlot({
+  active,
   blocked,
   catalog,
   name,
+  onActionRequest,
   slotIndex,
 }: {
+  active: boolean;
   blocked: boolean;
   catalog: SessionActionCatalog | null;
   name: string | null;
+  onActionRequest?: (request: {
+    name: string;
+    sessionCommandId: number;
+  }) => void;
   slotIndex: number;
 }) {
   if (name === null) {
@@ -548,7 +566,9 @@ function ActionSlot({
     );
   }
   const presentation = catalog
-    ? resolveActionSlotPresentation(name, catalog, { blocked })
+    ? resolveActionSlotPresentation(name, catalog, {
+      blocked: blocked && !active,
+    })
     : unavailablePresentation(name);
   return (
     <button
@@ -560,6 +580,17 @@ function ActionSlot({
       data-action-state={presentation.state}
       data-slot-index={slotIndex}
       disabled={presentation.state !== "available"}
+      onClick={() => {
+        if (
+          presentation.state === "available"
+          && presentation.sessionCommandId !== null
+        ) {
+          onActionRequest?.({
+            name: presentation.name,
+            sessionCommandId: presentation.sessionCommandId,
+          });
+        }
+      }}
       title={`${presentation.name} (${presentation.key})`}
       type="button"
     >
