@@ -402,6 +402,54 @@ async function readActionGridGeometry(
 }
 
 /**
+ * Wait for ResizeObserver-driven action sizing to settle before measurement.
+ * @param page - Playwright page with a visible BlissHack action dock.
+ */
+async function expectStableActionSizing(page: Page): Promise<void> {
+  const tolerance = 0.1;
+  let previous: {
+    slotWidth: number;
+    toolWidths: number[];
+  } | null = null;
+  let stableSamples = 0;
+
+  await expect.poll(async () => {
+    const current = await page.locator("[data-action-dock]").evaluate((dock) => {
+      const slot = dock.querySelector<HTMLElement>("[data-action-slot]");
+      const tools = [...dock.querySelectorAll<HTMLElement>(
+        "[data-action-dock-tool]",
+      )];
+      if (!slot || tools.length === 0) {
+        throw new Error("Expected action slots and dock tools");
+      }
+      return {
+        slotWidth: slot.getBoundingClientRect().width,
+        toolWidths: tools.map((tool) => tool.getBoundingClientRect().width),
+      };
+    });
+    const expectedToolWidth = Math.min(28, current.slotWidth / 2 + 4.25);
+    const matchesSlot = current.toolWidths.every(
+      (width) => Math.abs(width - expectedToolWidth) <= tolerance,
+    );
+    const previousSample = previous;
+    const matchesPrevious = previousSample !== null
+      && Math.abs(current.slotWidth - previousSample.slotWidth) <= tolerance
+      && current.toolWidths.length === previousSample.toolWidths.length
+      && current.toolWidths.every(
+        (width, index) =>
+          Math.abs(width - previousSample.toolWidths[index]) <= tolerance,
+      );
+    stableSamples = matchesSlot
+      ? matchesPrevious ? stableSamples + 1 : 1
+      : 0;
+    previous = current;
+    return stableSamples;
+  }, {
+    message: "Action slot and tool sizing did not stabilize",
+  }).toBeGreaterThanOrEqual(3);
+}
+
+/**
  * Assert the browser-rendered row contract and its real overflow state.
  * @param geometry - current action grid measurements.
  * @param rows - persisted row count rendered by the dock.
@@ -689,6 +737,7 @@ test("HUD visual regression: right-short keeps inventory above a full-width bott
   await page.getByRole("button", { name: "Apply" }).click();
   await page.getByRole("button", { name: "Resume" }).click();
   await expectReadyHud(page, "tiles", "right-short", "blisshack");
+  await expectStableActionSizing(page);
   expectValidHudGeometry(
     await readHudGeometry(page),
     viewport,
@@ -820,6 +869,7 @@ for (const { renderer, position } of HUD_VARIANTS) {
             expect(await readShellRevision(page)).toBeGreaterThanOrEqual(
               readyRevision,
             );
+            await expectStableActionSizing(page);
             if (!["firefox", "webkit"].includes(testInfo.project.name)) {
               await expect(page).toHaveScreenshot(
                 `hud-blisshack-${renderer}-${position}-${rows}-rows-${viewport.width}x${viewport.height}.png`,
