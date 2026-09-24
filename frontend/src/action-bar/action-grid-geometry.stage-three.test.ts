@@ -192,4 +192,65 @@ describe("stage-three action grid geometry", () => {
     expect(preview).toEqual([3, 2, 3, 3]);
     expect(persistedColumns).toEqual([2, 3, 3, 3]);
   });
+
+  it.each([
+    [1, [4, 6, 6, 7]],
+    [2, [2, 3, 3, 4]],
+    [3, [2, 3, 3, 3]],
+    [4, [2, 3, 3, 3]],
+  ] as const)(
+    "keeps rows=%s in complete columns with trailing empty slots at the 32px boundary",
+    (rows, expectedColumns) => {
+      const geometryApi = requireApi();
+      const defaults = createDefaultActionBarLayout();
+      const totalColumns = expectedColumns.reduce(
+        (total, columns) => total + columns,
+        0,
+      );
+      const minimumGridWidth = totalColumns * MINIMUM_SLOT_SIZE
+        + (totalColumns - defaults.all.length) * SLOT_GAP
+        + (defaults.all.length - 1) * DIVIDER_WIDTH;
+      const fitted = geometryApi.calculateActionGridGeometry({
+        availableWidth: minimumGridWidth,
+        dividerWidth: DIVIDER_WIDTH,
+        minimumSlotSize: MINIMUM_SLOT_SIZE,
+        rows,
+        sections: defaults.all,
+        slotGap: SLOT_GAP,
+        targetSlotSize: TARGET_SLOT_SIZE,
+      });
+
+      expect(fitted.horizontalOverflow).toBe(false);
+      expect(fitted.slotSize).toBe(MINIMUM_SLOT_SIZE);
+      expect(fitted.sections.map(({ columns }) => columns))
+        .toEqual(expectedColumns);
+      for (const section of fitted.sections) {
+        expect(section.slots).toHaveLength(section.columns * rows);
+        expect(section.slots.length % rows).toBe(0);
+      }
+      const trailingSection = fitted.sections.at(-1);
+      expect(trailingSection?.slots.at(-1)).toBeNull();
+      expect(
+        trailingSection?.slots.filter((slot) => slot === null).length,
+      ).toBeGreaterThanOrEqual(rows);
+
+      const overflowing = geometryApi.calculateActionGridGeometry({
+        availableWidth: minimumGridWidth - 0.5,
+        dividerWidth: DIVIDER_WIDTH,
+        minimumSlotSize: MINIMUM_SLOT_SIZE,
+        rows,
+        sections: defaults.all,
+        slotGap: SLOT_GAP,
+        targetSlotSize: TARGET_SLOT_SIZE,
+      });
+      expect(overflowing).toMatchObject({
+        gridWidth: minimumGridWidth,
+        horizontalOverflow: true,
+        slotSize: MINIMUM_SLOT_SIZE,
+        totalColumns,
+      });
+      expect(overflowing.sections.map(({ columns }) => columns))
+        .toEqual(expectedColumns);
+    },
+  );
 });
