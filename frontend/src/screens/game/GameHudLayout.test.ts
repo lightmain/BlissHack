@@ -233,6 +233,37 @@ describe("GameHudLayout contract", () => {
     }
   });
 
+  it("[defect-probing] defines distinct long and short right-side topologies", () => {
+    const rightLong = cssFor(".nh-hud-layout-right");
+    const rightShort = cssFor(".nh-hud-layout-right-short");
+    const rightShortBlissHack = cssFor(
+      '.nh-hud-layout-right-short[data-action-bar-style="blisshack"]',
+    );
+
+    expect(rightLong).toContain('"messages inventory"');
+    expect(rightLong).toContain('"map inventory"');
+    expect(rightLong).toContain('"status inventory"');
+    expect(rightLong).toContain('"actions inventory"');
+
+    expect(rightShort).toContain('"messages inventory"');
+    expect(rightShort).toContain('"map inventory"');
+    expect(rightShort).toContain('"status status"');
+    expect(rightShort).toContain('"actions actions"');
+    expect(rightShort).toMatch(
+      /\bgrid-template-columns\s*:\s*minmax\(0,\s*1fr\)\s+clamp\(22rem,\s*42vw,\s*38rem\)\s*;/,
+    );
+
+    expect(rightShortBlissHack).toContain('"messages inventory"');
+    expect(rightShortBlissHack).toContain('"map inventory"');
+    expect(rightShortBlissHack).toContain('"actions actions"');
+
+    const html = renderGame({
+      position: "right-short" as PermanentInventoryPosition,
+    });
+    expect(html).toContain("nh-hud-layout-right-short");
+    expect(html).toContain('data-inventory-position="right-short"');
+  });
+
   it("does not reserve a collapsed track when permanent inventory is disabled", () => {
     resetGameState();
     const html = renderGame({

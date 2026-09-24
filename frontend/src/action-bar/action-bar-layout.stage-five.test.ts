@@ -367,7 +367,7 @@ describe("stage-five action bar layout reducer", () => {
     });
   });
 
-  it("[defect-probing] snaps divider edits to bounded columns without moving slots", () => {
+  it("[defect-probing] resizes only the left section and preserves hidden slots", () => {
     const api = requireLayoutApi();
     const layout = editableLayout();
     layout.all[0].slots.splice(1, 0, null);
@@ -379,7 +379,7 @@ describe("stage-five action bar layout reducer", () => {
       dividerIndex: 0,
     });
     expect(moved.layout.all.map(({ columns }) => columns))
-      .toEqual([3, 2, 3, 3]);
+      .toEqual([3, 3, 3, 3]);
     expect(moved.layout.all.map(({ slots }) => slots)).toEqual(originalSlots);
 
     const clamped = api.reduceActionBarLayout(layout, {
@@ -388,10 +388,20 @@ describe("stage-five action bar layout reducer", () => {
       dividerIndex: 0,
     });
     expect(clamped.layout.all.map(({ columns }) => columns))
-      .toEqual([1, 4, 3, 3]);
+      .toEqual([1, 3, 3, 3]);
+    expect(clamped.layout.all.map(({ slots }) => slots)).toEqual(originalSlots);
     expect(clamped.layout.all.every(({ columns }) =>
       columns >= 1 && columns <= 8
     )).toBe(true);
+
+    const restored = api.reduceActionBarLayout(clamped.layout, {
+      type: "move-divider",
+      columnDelta: 1,
+      dividerIndex: 0,
+    });
+    expect(restored.layout.all.map(({ columns }) => columns))
+      .toEqual([2, 3, 3, 3]);
+    expect(restored.layout.all.map(({ slots }) => slots)).toEqual(originalSlots);
 
     const full = editableLayout();
     full.all[0].columns = 8;

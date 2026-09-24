@@ -7,6 +7,7 @@ import {
   NUMBER_PAD_MODES,
   parseProfileImport,
   parseStoredProfile,
+  PERMANENT_INVENTORY_POSITIONS,
   PICKUP_CLASS_SYMBOLS,
   PROFILE_IMPORT_MAX_BYTES,
   ProfileFormatError,
@@ -348,12 +349,14 @@ describe("profile defaults and validation", () => {
 
   it.each([
     ["right", true],
+    ["right-short", false],
     ["below", false],
   ] as const)(
     "accepts permanent inventory position %s with collapsed=%s",
     (permanentInventoryPosition, permanentInventoryCollapsed) => {
       const profile = createDefaultProfile();
-      profile.interface.permanentInventoryPosition = permanentInventoryPosition;
+      (profile.interface as unknown as Record<string, unknown>)
+        .permanentInventoryPosition = permanentInventoryPosition;
       profile.interface.permanentInventoryCollapsed = permanentInventoryCollapsed;
 
       expect(validateProfile(profile).interface).toMatchObject({
@@ -362,6 +365,14 @@ describe("profile defaults and validation", () => {
       });
     },
   );
+
+  it("[defect-probing] exposes only the three reviewed inventory positions", () => {
+    expect(PERMANENT_INVENTORY_POSITIONS).toEqual([
+      "right",
+      "right-short",
+      "below",
+    ]);
+  });
 
   it.each(["all", "full", "in-use"] as const)(
     "accepts permanent inventory mode %s",
@@ -490,6 +501,7 @@ describe("profile import and export", () => {
   it("round-trips empty slots and unknown actions in a v4 .bhprofile", () => {
     const profile = createDefaultProfile() as any;
     profile.interface.actionBarStyle = "blisshack";
+    profile.interface.permanentInventoryPosition = "right-short";
     profile.interface.actionBarLayout.rows = 4;
     profile.interface.actionBarLayout.locked = false;
     profile.interface.actionBarLayout.activeCategory = "custom";
@@ -508,6 +520,7 @@ describe("profile import and export", () => {
       schemaVersion: 4,
       interface: {
         actionBarStyle: "blisshack",
+        permanentInventoryPosition: "right-short",
         actionBarLayout: {
           rows: 4,
           locked: false,

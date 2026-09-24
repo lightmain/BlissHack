@@ -74,7 +74,7 @@ describe("stage-three action grid geometry", () => {
     const geometryApi = requireApi();
     const defaults = createDefaultActionBarLayout();
     const expectedColumns = new Map([
-      [1, [4, 6, 6, 7]],
+      [1, [2, 3, 3, 7]],
       [2, [2, 3, 3, 4]],
       [3, [2, 3, 3, 3]],
       [4, [2, 3, 3, 3]],
@@ -83,7 +83,7 @@ describe("stage-three action grid geometry", () => {
     for (const rows of [1, 2, 3, 4] as const) {
       const sectionColumns = expectedColumns.get(rows);
       expect(sectionColumns).toBeDefined();
-      const totalColumns = sectionColumns!.reduce(
+      const totalColumns = (sectionColumns as readonly number[]).reduce(
         (total, columns) => total + columns,
         0,
       );
@@ -189,12 +189,12 @@ describe("stage-three action grid geometry", () => {
       slotGap: SLOT_GAP,
       slotSize: TARGET_SLOT_SIZE,
     });
-    expect(preview).toEqual([3, 2, 3, 3]);
+    expect(preview).toEqual([3, 3, 3, 3]);
     expect(persistedColumns).toEqual([2, 3, 3, 3]);
   });
 
   it.each([
-    [1, [4, 6, 6, 7]],
+    [1, [2, 3, 3, 7]],
     [2, [2, 3, 3, 4]],
     [3, [2, 3, 3, 3]],
     [4, [2, 3, 3, 3]],
@@ -203,7 +203,7 @@ describe("stage-three action grid geometry", () => {
     (rows, expectedColumns) => {
       const geometryApi = requireApi();
       const defaults = createDefaultActionBarLayout();
-      const totalColumns = expectedColumns.reduce(
+      const totalColumns = (expectedColumns as readonly number[]).reduce(
         (total, columns) => total + columns,
         0,
       );
@@ -253,4 +253,43 @@ describe("stage-three action grid geometry", () => {
         .toEqual(expectedColumns);
     },
   );
+
+  it("[defect-probing] allows a section narrower than its slots and restores hidden slots", () => {
+    const geometryApi = requireApi();
+    const narrowed = createDefaultActionBarLayout();
+    narrowed.all[0].columns = 1;
+    const originalSlots = [...narrowed.all[0].slots];
+    const availableWidth = widthForColumns(11);
+
+    const hidden = geometryApi.calculateActionGridGeometry({
+      availableWidth,
+      dividerWidth: DIVIDER_WIDTH,
+      minimumSlotSize: MINIMUM_SLOT_SIZE,
+      rows: 2,
+      sections: narrowed.all,
+      slotGap: SLOT_GAP,
+      targetSlotSize: TARGET_SLOT_SIZE,
+    });
+
+    expect(hidden.sections[0]).toMatchObject({
+      columns: 1,
+      slots: originalSlots.slice(0, 2),
+    });
+    expect(narrowed.all[0].slots).toEqual(originalSlots);
+
+    narrowed.all[0].columns = 2;
+    const restored = geometryApi.calculateActionGridGeometry({
+      availableWidth,
+      dividerWidth: DIVIDER_WIDTH,
+      minimumSlotSize: MINIMUM_SLOT_SIZE,
+      rows: 2,
+      sections: narrowed.all,
+      slotGap: SLOT_GAP,
+      targetSlotSize: TARGET_SLOT_SIZE,
+    });
+    expect(restored.sections[0]).toMatchObject({
+      columns: 2,
+      slots: originalSlots,
+    });
+  });
 });

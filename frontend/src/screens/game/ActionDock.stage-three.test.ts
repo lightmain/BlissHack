@@ -21,6 +21,11 @@ import {
 } from "../../settings/profile";
 import { GameScreen } from "../GameScreen";
 
+const GAME_CSS_SOURCE = readFileSync(
+  new URL("../../styles/game.css", import.meta.url),
+  "utf8",
+);
+
 vi.mock("../../map/MapViewport", async () => {
   const { createElement: createReactElement } = await import("react");
   return {
@@ -292,5 +297,38 @@ describe("stage-three ActionDock and GameTerminal structure", () => {
     );
     expect(originalLayoutKey?.split(":")).toContain("original");
     expect(originalLayoutKey?.split(":")).toContain("1");
+  });
+
+  it("[defect-probing] fills each All section vertically by column", () => {
+    const sectionRule = GAME_CSS_SOURCE.match(
+      /\.nh-action-section\s*\{([^}]*)\}/,
+    )?.[1];
+
+    expect(sectionRule).toBeDefined();
+    expect(sectionRule).toMatch(/\bgrid-auto-flow\s*:\s*column\s*;/);
+    expect(sectionRule).toMatch(
+      /\bgrid-template-rows\s*:\s*repeat\(var\(--action-row-count\),\s*var\(--action-slot-size\)\)\s*;/,
+    );
+  });
+
+  it("[defect-probing] omits the input row at a clean command boundary", () => {
+    setInputRequest(null);
+    setCommandInput(true);
+
+    for (const style of ["original", "blisshack"] as const) {
+      const html = renderGame({
+        position: "right",
+        renderer: "tiles",
+        rows: 2,
+        style,
+      });
+
+      expect(classTokenCount(html, "nh-prompt")).toBe(0);
+      if (style === "blisshack") {
+        expect(tagsWithAttribute(html, "data-dock-region")
+          .map((tag) => attribute(tag, "data-dock-region")))
+          .toEqual(["status"]);
+      }
+    }
   });
 });
