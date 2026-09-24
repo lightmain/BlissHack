@@ -344,6 +344,146 @@ test("Action bar integration: All Actions drag preview follows the pointer and c
   expect(errors).toEqual({ console: [], page: [] });
 });
 
+test("[defect-probing] Action bar integration: dock drag preview follows the pointer with All Actions closed or open and clears after each drop", async ({
+  page,
+}) => {
+  const errors = captureErrors(page);
+  await startActionBarGame(page, "ActionBarDockDragPreview");
+  const dock = page.getByRole("region", {
+    name: "Action bar",
+    exact: true,
+  });
+  await page.getByRole("button", { name: "Unlock action bar" }).click();
+  const commonSlot = (slotIndex: number) => dock.locator(
+    '[data-action-slot-area="all"][data-action-slot-category="common"]'
+      + `[data-slot-index="${slotIndex}"]`,
+  );
+  const first = commonSlot(0);
+  const second = commonSlot(1);
+  const preview = page.locator("[data-action-drag-preview]");
+  const firstBounds = await first.boundingBox();
+  const secondBounds = await second.boundingBox();
+  expect(firstBounds).not.toBeNull();
+  expect(secondBounds).not.toBeNull();
+  const origin = {
+    x: firstBounds!.x + firstBounds!.width / 2,
+    y: firstBounds!.y + firstBounds!.height / 2,
+  };
+
+  await page.mouse.move(origin.x, origin.y);
+  await page.mouse.down();
+  await page.mouse.move(origin.x + 4, origin.y);
+  await expect(preview).toHaveCount(0);
+
+  const firstPointer = { x: origin.x + 12, y: origin.y + 8 };
+  await page.mouse.move(firstPointer.x, firstPointer.y);
+  await expect(preview).toBeVisible();
+  await expect(preview).toHaveAttribute("data-action-name", "eat");
+  const firstPreviewBounds = await preview.boundingBox();
+  expect(firstPreviewBounds).not.toBeNull();
+
+  const secondPointer = {
+    x: secondBounds!.x + secondBounds!.width / 2,
+    y: secondBounds!.y + secondBounds!.height / 2,
+  };
+  await page.mouse.move(secondPointer.x, secondPointer.y);
+  await expect.poll(async () => {
+    const moved = await preview.boundingBox();
+    return moved
+      ? {
+          x: Math.round(moved.x - firstPreviewBounds!.x),
+          y: Math.round(moved.y - firstPreviewBounds!.y),
+        }
+      : null;
+  }).toEqual({
+    x: Math.round(secondPointer.x - firstPointer.x),
+    y: Math.round(secondPointer.y - firstPointer.y),
+  });
+  await page.mouse.up();
+  await expect(preview).toHaveCount(0);
+  await expect(first).toHaveAttribute("data-action-name", "quaff");
+  await expect(second).toHaveAttribute("data-action-name", "eat");
+
+  await page.getByRole("button", { name: "All Actions" }).click();
+  const panel = page.getByRole("dialog", { name: "All Actions" });
+  const panelBounds = await panel.boundingBox();
+  const dockSourceBounds = await first.boundingBox();
+  expect(panelBounds).not.toBeNull();
+  expect(dockSourceBounds).not.toBeNull();
+  const dockOrigin = {
+    x: dockSourceBounds!.x + dockSourceBounds!.width / 2,
+    y: dockSourceBounds!.y + dockSourceBounds!.height / 2,
+  };
+
+  await page.mouse.move(dockOrigin.x, dockOrigin.y);
+  await page.mouse.down();
+  await page.mouse.move(dockOrigin.x + 12, dockOrigin.y + 8);
+  await expect(preview).toBeVisible();
+  await expect(preview).toHaveAttribute("data-action-name", "quaff");
+  await page.mouse.move(
+    panelBounds!.x + panelBounds!.width / 2,
+    panelBounds!.y + panelBounds!.height / 2,
+  );
+  await page.mouse.up();
+  await expect(preview).toHaveCount(0);
+  await expect(panel).toBeVisible();
+  await expect(first).toHaveAttribute("data-action-state", "empty");
+  expect(errors).toEqual({ console: [], page: [] });
+});
+
+test("[defect-probing] Action bar integration: two-row tools fit the action grid and category tags without stretching the dock", async ({
+  page,
+}) => {
+  const errors = captureErrors(page);
+  await startActionBarGame(page, "ActionBarTwoRowTools");
+  const dock = page.getByRole("region", {
+    name: "Action bar",
+    exact: true,
+  });
+  const geometry = await dock.evaluate((element) => {
+    const actionGrid = element.querySelector<HTMLElement>(".nh-action-grid");
+    const categories = element.querySelector<HTMLElement>(
+      ".nh-action-categories",
+    );
+    const tools = element.querySelector<HTMLElement>(".nh-action-dock-tools");
+    const workspace = element.querySelector<HTMLElement>(
+      ".nh-action-workspace",
+    );
+    if (!actionGrid || !categories || !tools || !workspace) {
+      throw new Error("Expected complete two-row action dock");
+    }
+    const buttons = [...tools.querySelectorAll<HTMLElement>(
+      "[data-action-dock-tool]",
+    )];
+    const buttonBounds = buttons.map((button) => button.getBoundingClientRect());
+    const toolGap = Number.parseFloat(getComputedStyle(tools).rowGap);
+    const workspaceGap = Number.parseFloat(getComputedStyle(workspace).rowGap);
+    return {
+      actionNaturalHeight: actionGrid.getBoundingClientRect().height
+        + categories.getBoundingClientRect().height
+        + workspaceGap,
+      buttonSizes: buttonBounds.map(({ height, width }) => ({ height, width })),
+      rowCount: element.dataset.rowCount,
+      toolCount: buttons.length,
+      toolNaturalHeight: buttonBounds.reduce(
+        (height, bounds) => height + bounds.height,
+        0,
+      ) + toolGap * Math.max(0, buttons.length - 1),
+    };
+  });
+
+  expect(geometry.rowCount).toBe("2");
+  expect(geometry.toolCount).toBe(4);
+  expect(new Set(
+    geometry.buttonSizes.map(({ height, width }) => `${width}:${height}`),
+  ).size).toBe(1);
+  expect(geometry.buttonSizes.every(({ height, width }) => height === width))
+    .toBe(true);
+  expect(geometry.toolNaturalHeight)
+    .toBeLessThanOrEqual(geometry.actionNaturalHeight + 0.5);
+  expect(errors).toEqual({ console: [], page: [] });
+});
+
 test("Action bar layout transfer: exports, cancels, rejects damage, and rolls back atomically", async ({
   page,
 }) => {
