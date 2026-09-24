@@ -11,7 +11,7 @@ import {
 } from "./helpers/map-viewport-state";
 
 type HudRenderer = "tiles" | "ascii";
-type InventoryPosition = "right" | "below";
+type InventoryPosition = "right" | "right-short" | "below";
 type ActionBarStyle = "original" | "blisshack";
 type RegionName = "messages" | "map" | "inventory" | "status";
 
@@ -122,9 +122,15 @@ async function configureHud(
   }).check();
   await page.getByRole("combobox", { name: "Contents" })
     .selectOption("in-use");
-  await page.getByRole("radio", {
-    name: position === "right" ? "Right" : "Below",
-  }).check();
+  const inventoryPosition = page.getByRole("radio", {
+    name: position === "right"
+      ? /^Right(?: \(Long\))?$/
+      : position === "right-short"
+      ? "Right (Short)"
+      : "Below",
+  });
+  await expect(inventoryPosition).toBeVisible();
+  await inventoryPosition.check();
   await page.getByRole("group", { name: "Action bar" })
     .getByRole("radio", {
       name: actionBarStyle === "original" ? "Original" : "BlissHack",
@@ -555,6 +561,19 @@ function expectValidHudGeometry(
       for (const region of [messages, map, status]) {
         expect(region.x + region.width).toBeLessThanOrEqual(inventory.x);
       }
+      expect(inventory.y).toBeCloseTo(0, 0);
+      expect(inventory.y + inventory.height).toBeCloseTo(
+        expectedViewport.height,
+        0,
+      );
+    } else if (position === "right-short") {
+      for (const region of [messages, map]) {
+        expect(region.x + region.width).toBeLessThanOrEqual(inventory.x);
+      }
+      expect(inventory.y).toBeCloseTo(0, 0);
+      expect(inventory.y + inventory.height).toBeCloseTo(status.y, 0);
+      expect(status.x).toBeCloseTo(0, 0);
+      expect(status.width).toBeCloseTo(expectedViewport.width, 0);
     } else {
       expect(map.y + map.height).toBeCloseTo(status.y, 0);
       expect(inventory.y).toBeCloseTo(status.y, 0);
@@ -599,6 +618,25 @@ function expectValidHudGeometry(
       for (const region of [messages, map, geometry.actionSlot]) {
         expect(region.x + region.width).toBeLessThanOrEqual(inventory.x);
       }
+      expect(inventory.y).toBeCloseTo(0, 0);
+      expect(inventory.y + inventory.height).toBeCloseTo(
+        expectedViewport.height,
+        0,
+      );
+    } else if (position === "right-short") {
+      for (const region of [messages, map]) {
+        expect(region.x + region.width).toBeLessThanOrEqual(inventory.x);
+      }
+      expect(inventory.y).toBeCloseTo(0, 0);
+      expect(inventory.y + inventory.height).toBeCloseTo(
+        geometry.actionSlot.y,
+        0,
+      );
+      expect(geometry.actionSlot.x).toBeCloseTo(0, 0);
+      expect(geometry.actionSlot.width).toBeCloseTo(
+        expectedViewport.width,
+        0,
+      );
     } else {
       expect(map.y + map.height).toBeCloseTo(inventory.y, 0);
       expect(inventory.x).toBeCloseTo(0, 0);
@@ -624,6 +662,45 @@ function expectValidHudGeometry(
     expect(owner.overflowY, `${owner.name} overflow-y`).toBe(expected);
   }
 }
+
+test("[defect-probing] right-short keeps inventory above a full-width bottom region", async ({
+  page,
+}) => {
+  test.slow();
+  const errors = captureErrors(page);
+  const viewport = VIEWPORTS[1];
+  await page.setViewportSize(viewport);
+  await configureHud(page, "tiles", "right-short");
+  await startNewGameFromHome(
+    page,
+    "HudRightShort-Arc-Hum-Mal-Law",
+  );
+  await expectReadyHud(page, "tiles", "right-short");
+  expectValidHudGeometry(
+    await readHudGeometry(page),
+    viewport,
+    "right-short",
+    "original",
+  );
+
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog", { name: "Game paused" })).toBeVisible();
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("group", { name: "Action bar" })
+    .getByRole("radio", { name: "BlissHack" })
+    .check();
+  await page.getByRole("button", { name: "Apply" }).click();
+  await page.getByRole("button", { name: "Resume" }).click();
+  await expectReadyHud(page, "tiles", "right-short", "blisshack");
+  expectValidHudGeometry(
+    await readHudGeometry(page),
+    viewport,
+    "right-short",
+    "blisshack",
+  );
+
+  expect(errors).toEqual({ console: [], page: [] });
+});
 
 for (const { renderer, position } of HUD_VARIANTS) {
   test(`HUD visual regression: original ${renderer} with inventory ${position}`, async ({

@@ -241,6 +241,72 @@ test("Action bar integration: keeps geometry, focus, Pointer Events, and a real 
   expect(errors).toEqual({ console: [], page: [] });
 });
 
+test("[defect-probing] All Actions drag preview follows the pointer and clears on completion", async ({
+  page,
+}) => {
+  const errors = captureErrors(page);
+  await startActionBarGame(page, "ActionBarDragPreview");
+  await page.getByRole("button", { name: "All Actions" }).click();
+  const panel = page.getByRole("dialog", { name: "All Actions" });
+  const source = panel.locator('[data-action-name="kick"]');
+  const preview = page.locator("[data-action-drag-preview]");
+  const sourceBounds = await source.boundingBox();
+  expect(sourceBounds).not.toBeNull();
+  const origin = {
+    x: sourceBounds!.x + sourceBounds!.width / 2,
+    y: sourceBounds!.y + sourceBounds!.height / 2,
+  };
+
+  await page.mouse.move(origin.x, origin.y);
+  await page.mouse.down();
+  await page.mouse.move(origin.x + 4, origin.y);
+  await expect(preview).toHaveCount(0);
+
+  const firstPointer = { x: origin.x + 18, y: origin.y + 12 };
+  await page.mouse.move(firstPointer.x, firstPointer.y);
+  await expect(preview).toBeVisible();
+  await expect(preview).toHaveAttribute("data-action-name", "kick");
+  await expect(preview.getByText("kick", { exact: true })).toBeVisible();
+  await expect(preview.locator("svg")).toHaveCount(1);
+  const firstPreviewBounds = await preview.boundingBox();
+  expect(firstPreviewBounds).not.toBeNull();
+
+  const secondPointer = {
+    x: firstPointer.x + 72,
+    y: firstPointer.y + 44,
+  };
+  await page.mouse.move(secondPointer.x, secondPointer.y);
+  await expect.poll(async () => {
+    const moved = await preview.boundingBox();
+    return moved
+      ? {
+          x: Math.round(moved.x - firstPreviewBounds!.x),
+          y: Math.round(moved.y - firstPreviewBounds!.y),
+        }
+      : null;
+  }).toEqual({ x: 72, y: 44 });
+
+  await page.mouse.up();
+  await expect(preview).toHaveCount(0);
+  await expect(panel).toBeVisible();
+
+  await page.mouse.move(origin.x, origin.y);
+  await page.mouse.down();
+  await page.mouse.move(origin.x + 18, origin.y + 12);
+  await expect(preview).toBeVisible();
+  await source.dispatchEvent("pointercancel", {
+    bubbles: true,
+    clientX: origin.x + 18,
+    clientY: origin.y + 12,
+    pointerId: 1,
+    pointerType: "mouse",
+  });
+  await expect(preview).toHaveCount(0);
+  await page.mouse.up();
+  await expect(panel).toBeVisible();
+  expect(errors).toEqual({ console: [], page: [] });
+});
+
 test("Action bar layout transfer: exports, cancels, rejects damage, and rolls back atomically", async ({
   page,
 }) => {

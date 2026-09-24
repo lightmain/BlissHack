@@ -139,6 +139,27 @@ describe("SettingsScreen", () => {
       .toContain(">BlissHack</span>");
   });
 
+  it("[defect-probing] labels all three permanent inventory positions", () => {
+    const html = renderSettings();
+    const positions = [...html.matchAll(
+      /<label><input(?=[^>]*\bname="inventory-position")([^>]*)\/><span>([^<]+)<\/span><\/label>/g,
+    )];
+
+    expect(positions.map((match) => match[2])).toEqual([
+      "Right (Long)",
+      "Right (Short)",
+      "Below",
+    ]);
+    expect(positions.map((match) => ({
+      checked: match[1].includes('checked=""'),
+      value: match[1].match(/\bvalue="([^"]+)"/)?.[1],
+    }))).toEqual([
+      { checked: true, value: "right" },
+      { checked: false, value: "right-short" },
+      { checked: false, value: "below" },
+    ]);
+  });
+
   it("disables persistence actions and shows a warning when storage is unavailable", () => {
     const html = renderSettings("unavailable");
 
