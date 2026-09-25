@@ -120,6 +120,9 @@ interface InterfaceSettingsV3 {
 | `characterSetupStyle` | `original` |
 
 选择默认 `original` 是为了让旧用户升级后不被自动切换到新的交互流程。
+该表记录 alpha-2.2 引入这些字段时的默认值；当前新建 profile 已改为
+`detailed`、`blisshack`、`blisshack`，历史 profile 迁移仍保持
+`original`。
 
 ### 4.2 profile v3 迁移
 

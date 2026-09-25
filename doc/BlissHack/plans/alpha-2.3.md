@@ -93,7 +93,7 @@ Action bar  [ Original | BlissHack ]
 规则：
 
 - v1、v2、v3 profile 迁移到 v4 时使用 `original`，避免升级后突然改变 HUD。
-- 新建默认 profile 也使用 `original`；玩家显式选择 `BlissHack` 后启用动作栏。
+- 新建 profile 默认使用 `BlissHack` 动作栏；旧 profile 的迁移结果不变。
 - Home Settings 的选择用于下一局。
 - 游戏内 Settings 的选择保存后立即生效，不进入 WASM，也不改变回合。
 - 从 `BlissHack` 切回 `Original` 不删除自定义布局；再次切回时恢复原布局。

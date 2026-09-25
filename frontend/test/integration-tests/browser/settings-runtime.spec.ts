@@ -527,17 +527,28 @@ test("leaves status tooltip Tab navigation to the browser", async ({ page }) => 
 /** Start a random character when !tutorial removes the final prompt. */
 async function startWithoutTutorial(page: Page, name: string): Promise<void> {
   await page.getByRole("button", { name: "New Game" }).click();
-  const nameInput = page.getByRole("textbox", { name: "Who are you?" });
-  await expect(nameInput).toBeVisible();
-  await nameInput.fill(name);
-  await nameInput.press("Enter");
-
-  await expect(page.getByText(/Shall I pick/)).toBeVisible();
-  await page.keyboard.press("y");
-  await expect(
-    page.getByRole("dialog", { name: "Is this ok? [ynq]" }),
-  ).toBeVisible();
-  await page.keyboard.press("y");
+  const unifiedNameInput = page.getByRole("textbox", {
+    name: "Name",
+    exact: true,
+  });
+  const originalNameInput = page.getByRole("textbox", {
+    name: "Who are you?",
+    exact: true,
+  });
+  await expect(unifiedNameInput.or(originalNameInput)).toBeVisible();
+  if (await unifiedNameInput.isVisible()) {
+    await unifiedNameInput.fill(name);
+    await page.getByRole("button", { name: "Auto & Start" }).click();
+  } else {
+    await originalNameInput.fill(name);
+    await originalNameInput.press("Enter");
+    await expect(page.getByText(/Shall I pick/)).toBeVisible();
+    await page.keyboard.press("y");
+    await expect(
+      page.getByRole("dialog", { name: "Is this ok? [ynq]" }),
+    ).toBeVisible();
+    await page.keyboard.press("y");
+  }
   await expect(page.locator(".nh-text-dialog")).toBeVisible();
   await page.keyboard.press("Enter");
   await expect(statusField(page, "title")).toBeVisible();

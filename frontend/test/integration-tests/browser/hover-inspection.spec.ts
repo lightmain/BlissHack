@@ -65,9 +65,13 @@ async function startConfiguredGame(
 ): Promise<void> {
   await openHome(page, marker);
   await page.getByRole("button", { name: "Settings" }).click();
-  if (settings.informationLevel === "detailed") {
+  if (settings.informationLevel) {
     await page.getByRole("group", { name: "Information level" })
-      .getByRole("radio", { name: "Detailed" })
+      .getByRole("radio", {
+        name: settings.informationLevel === "detailed"
+          ? "Detailed"
+          : "Original",
+      })
       .check();
   }
   if (settings.permanentInventory) {
@@ -82,7 +86,12 @@ async function startConfiguredGame(
   if (settings.showTime) {
     await page.getByRole("checkbox", { name: "Show turn count" }).check();
   }
-  await page.getByRole("button", { name: "Apply" }).click();
+  const apply = page.getByRole("button", { name: "Apply" });
+  if (await apply.isEnabled()) {
+    await apply.click();
+  } else {
+    await page.getByRole("button", { name: "Back to Home" }).click();
+  }
   await startNewGameFromHome(page, marker);
   await expectCommandReady(page);
 }
@@ -253,6 +262,7 @@ test("applies status information level immediately without changing other inspec
 }) => {
   const errors = captureErrors(page);
   await startConfiguredGame(page, "StatusInformationLevel", {
+    informationLevel: "original",
     permanentInventory: true,
     showExperience: true,
   });

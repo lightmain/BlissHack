@@ -33,8 +33,12 @@ function actionBarControl(
   control: SegmentedControlContract;
   onInterfaceChange: ReturnType<typeof vi.fn>;
 } {
+  const profile = createDefaultProfile();
+  (profile.interface as unknown as Record<string, unknown>).actionBarLayout = {
+    retained: "layout-sentinel",
+  };
   const tree = InterfaceSettingsSection({
-    draft: profileWithActionBarStyle("original"),
+    draft: profile,
     isGameSettings,
     onInterfaceChange,
     onNetHackChange: vi.fn(),
@@ -64,13 +68,13 @@ function findElement(
 }
 
 describe("stage-two Action bar Settings control", () => {
-  it("renders Original and BlissHack choices with Original selected by default", () => {
+  it("renders Original and BlissHack choices with BlissHack selected by default", () => {
     const { control } = actionBarControl(false);
 
     expect(control).toMatchObject({
       label: "Action bar",
       name: "action-bar-style",
-      value: "original",
+      value: "blisshack",
       options: [
         { value: "original", label: "Original" },
         { value: "blisshack", label: "BlissHack" },
@@ -81,11 +85,11 @@ describe("stage-two Action bar Settings control", () => {
   it("emits only the selected mode so the saved layout remains intact", () => {
     const { control, onInterfaceChange } = actionBarControl(false);
 
-    control.onChange("blisshack");
+    control.onChange("original");
 
     expect(onInterfaceChange).toHaveBeenCalledOnce();
     expect(onInterfaceChange).toHaveBeenCalledWith({
-      actionBarStyle: "blisshack",
+      actionBarStyle: "original",
     });
     expect(onInterfaceChange).not.toHaveBeenCalledWith(
       expect.objectContaining({ actionBarLayout: expect.anything() }),

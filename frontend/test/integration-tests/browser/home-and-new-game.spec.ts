@@ -163,6 +163,11 @@ test("starts no NetHack session before the player begins a game", async ({
 test("q quits character selection and returns home", async ({ page }) => {
   const errors = captureErrors(page);
   await page.goto("?integration=quit-role-selection");
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("group", { name: "Character setup style" })
+    .getByRole("radio", { name: "Original" })
+    .check();
+  await page.getByRole("button", { name: "Apply" }).click();
   await page.getByRole("button", { name: "New Game" }).click();
 
   const nameInput = page.getByRole("textbox", { name: "Who are you?" });
@@ -183,6 +188,11 @@ test("keeps the original manual character selection sequence", async ({
   const errors = captureErrors(page);
   const name = "E2EManual";
   await openHome(page, "manual-character-selection");
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("group", { name: "Character setup style" })
+    .getByRole("radio", { name: "Original" })
+    .check();
+  await page.getByRole("button", { name: "Apply" }).click();
   await page.getByRole("button", { name: "New Game" }).click();
 
   const nameInput = page.getByRole("textbox", { name: "Who are you?" });
@@ -244,10 +254,10 @@ test("plays through startup and routes terminal UI input", async ({ page }) => {
   const errors = captureErrors(page);
   await openHome(page, "E2E_Ada");
   await page.getByRole("button", { name: "Settings" }).click();
-  await page.getByRole("group", { name: "Action bar" })
-    .getByRole("radio", { name: "BlissHack" })
-    .check();
-  await page.getByRole("button", { name: "Apply" }).click();
+  await expect(page.getByRole("group", { name: "Action bar" })
+    .getByRole("radio", { name: "BlissHack" }))
+    .toBeChecked();
+  await page.getByRole("button", { name: "Back to Home" }).click();
   await startNewGameFromHome(page, "E2E_Ada");
 
   const messageMetrics = await page.locator(".nh-messages").evaluate((element) => {
@@ -358,6 +368,11 @@ test("warns that a New Game name will continue an existing save", async ({
   await startNewGame(page, name);
   await saveAndReturnHome(page);
 
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("group", { name: "Character setup style" })
+    .getByRole("radio", { name: "Original" })
+    .check();
+  await page.getByRole("button", { name: "Apply" }).click();
   await page.getByRole("button", { name: "New Game" }).click();
   const nameInput = page.getByRole("textbox", { name: "Who are you?" });
   await nameInput.fill("DifferentName");

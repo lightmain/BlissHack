@@ -63,9 +63,10 @@ test("exports, clears, and restores a complete BlissHack backup", async ({
       interface: {
         mapRenderer: "tiles",
         terminalFontSize: "large",
-        informationLevel: "original",
-        endgameStyle: "original",
-        characterSetupStyle: "original",
+        informationLevel: "detailed",
+        endgameStyle: "blisshack",
+        characterSetupStyle: "blisshack",
+        actionBarStyle: "blisshack",
       },
     },
     ranking: {

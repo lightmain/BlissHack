@@ -4,6 +4,7 @@ import {
   openHome,
   saveAndReturnHome,
   startNewGame,
+  startNewGameFromHome,
   statusField,
 } from "./helpers/game-flow";
 import { openSavePicker } from "./helpers/save-flow";
@@ -20,7 +21,7 @@ test("blocks a second game and retries after the owning page closes", async ({
   expect(await page.evaluate(() => typeof navigator.locks?.request))
     .toBe("function");
   await page.getByRole("button", { name: "New Game" }).click();
-  await expect(page.getByRole("textbox", { name: "Who are you?" })).toBeVisible();
+  await expect(page.getByRole("textbox")).toBeVisible();
 
   const second = await context.newPage();
   const secondErrors = captureErrors(second);
@@ -42,13 +43,11 @@ test("blocks a second game and retries after the owning page closes", async ({
   });
   await expect(conflict).toBeVisible();
   await expect(conflict.getByRole("button", { name: "Cancel" })).toBeFocused();
-  await expect(second.getByRole("textbox", { name: "Who are you?" }))
-    .toHaveCount(0);
+  await expect(second.getByRole("textbox")).toHaveCount(0);
 
   await page.close();
   await conflict.getByRole("button", { name: "Try Again" }).click();
-  await expect(second.getByRole("textbox", { name: "Who are you?" }))
-    .toBeVisible();
+  await expect(second.getByRole("textbox")).toBeVisible();
   await expect(conflict).toHaveCount(0);
   expect(errors).toEqual({ console: [], page: [] });
   expect(secondErrors).toEqual({ console: [], page: [] });
@@ -110,7 +109,7 @@ test("releases the game lock after fatal session cleanup", async ({
   const errors = captureErrors(page);
   await openHome(page, "lock-owner-fatal");
   await page.getByRole("button", { name: "New Game" }).click();
-  await expect(page.getByRole("textbox", { name: "Who are you?" })).toBeVisible();
+  await expect(page.getByRole("textbox")).toBeVisible();
 
   const second = await context.newPage();
   const secondErrors = captureErrors(second);
@@ -130,8 +129,7 @@ test("releases the game lock after fatal session cleanup", async ({
     page.getByRole("heading", { name: "BlissHack could not continue" }),
   ).toBeVisible();
   await conflict.getByRole("button", { name: "Try Again" }).click();
-  await expect(second.getByRole("textbox", { name: "Who are you?" }))
-    .toBeVisible();
+  await expect(second.getByRole("textbox")).toBeVisible();
   expect(errors.page.filter(
     (message) => message !== "test fatal lock release",
   )).toEqual([]);
@@ -147,21 +145,7 @@ test("refreshes a stale Home save list after acquiring a short lock", async ({
   await openHome(second, "stale-list-reader");
   const name = "CrossPageRefresh";
 
-  await page.getByRole("button", { name: "New Game" }).click();
-  const nameInput = page.getByRole("textbox", { name: "Who are you?" });
-  await nameInput.fill(name);
-  await nameInput.press("Enter");
-  await expect(page.getByText(/Shall I pick character's/)).toBeVisible();
-  await page.keyboard.press("y");
-  await expect(page.getByRole("dialog", { name: "Is this ok? [ynq]" }))
-    .toBeVisible();
-  await page.keyboard.press("y");
-  await expect(page.locator(".nh-text-dialog")).toBeVisible();
-  await page.keyboard.press("Enter");
-  await expect(page.getByRole("dialog", { name: "Do you want a tutorial?" }))
-    .toBeVisible();
-  await page.keyboard.press("n");
-  await expect(statusField(page, "title")).toBeVisible();
+  await startNewGameFromHome(page, name);
   await saveAndReturnHome(page);
 
   const picker = await openSavePicker(second);
@@ -335,7 +319,7 @@ test("keeps single-page play and profile storage available without Web Locks", a
   await page.getByRole("button", { name: "Back to Home" }).click();
 
   await page.getByRole("button", { name: "New Game" }).click();
-  await expect(page.getByRole("textbox", { name: "Who are you?" })).toBeVisible();
+  await expect(page.getByRole("textbox")).toBeVisible();
   expect(errors).toEqual({ console: [], page: [] });
 });
 
@@ -359,8 +343,7 @@ test("reports a browser lock request failure without starting a session", async 
     name: "BlissHack could not coordinate browser pages",
   });
   await expect(dialog).toBeVisible();
-  await expect(page.getByRole("textbox", { name: "Who are you?" }))
-    .toHaveCount(0);
+  await expect(page.getByRole("textbox")).toHaveCount(0);
   await dialog.getByRole("button", { name: "Cancel" }).click();
   await expect(page.getByRole("button", { name: "New Game" })).toBeVisible();
   await expect(page.getByRole("heading", {

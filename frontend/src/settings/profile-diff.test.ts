@@ -29,6 +29,9 @@ describe("profile differences", () => {
   it("reports all presentation settings with user-facing labels", () => {
     const current = createDefaultProfile();
     const incoming = createDefaultProfile();
+    current.interface.informationLevel = "original";
+    current.interface.endgameStyle = "original";
+    current.interface.characterSetupStyle = "original";
     const incomingInterface = incoming.interface as unknown as
       Record<string, unknown>;
     incomingInterface.informationLevel = "detailed";
@@ -60,6 +63,7 @@ describe("profile differences", () => {
   it("reports information level independently from Show experience", () => {
     const current = createDefaultProfile();
     const incoming = createDefaultProfile();
+    current.interface.informationLevel = "original";
     (incoming.interface as unknown as Record<string, unknown>)
       .informationLevel = "detailed";
     incoming.nethack.showExperience = true;
@@ -73,6 +77,7 @@ describe("profile differences", () => {
   it("reports the Action bar mode with user-facing labels", () => {
     const current = createDefaultProfile();
     const incoming = createDefaultProfile();
+    current.interface.actionBarStyle = "original";
     (incoming.interface as unknown as Record<string, unknown>).actionBarStyle =
       "blisshack";
 

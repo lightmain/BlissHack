@@ -359,13 +359,13 @@ test("collects a real unified-character quit into the BlissHack summary", async 
   const name = "E2EBlissEnd";
   await openHome(page, "blisshack-endgame-collection");
   await page.getByRole("button", { name: "Settings" }).click();
-  await page.getByRole("group", { name: "Endgame style" })
-    .getByRole("radio", { name: "BlissHack" })
-    .check();
-  await page.getByRole("group", { name: "Character setup style" })
-    .getByRole("radio", { name: "BlissHack" })
-    .check();
-  await page.getByRole("button", { name: "Apply" }).click();
+  await expect(page.getByRole("group", { name: "Endgame style" })
+    .getByRole("radio", { name: "BlissHack" }))
+    .toBeChecked();
+  await expect(page.getByRole("group", { name: "Character setup style" })
+    .getByRole("radio", { name: "BlissHack" }))
+    .toBeChecked();
+  await page.getByRole("button", { name: "Back to Home" }).click();
 
   await page.getByRole("button", { name: "New Game" }).click();
   const nameInput = page.getByRole("textbox", { name: "Name" });
