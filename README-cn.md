@@ -18,13 +18,16 @@ BlissHack 对 NetHack C 代码进行了少量有针对性的修改，主要用�
 
 ## 项目状态
 
-**alpha-2.3 已完成实现、自动门禁和独立复审，等待人工验收。**
+**alpha-2.3 已完成实现、自动门禁、独立复审和人工验收；当前进入 alpha-2.4
+规划阶段。**
 
 alpha-2.3 已加入 profile v4 和由核心命令目录驱动的可选 BlissHack 动作栏。
 Original 模式改为结构化的 TTY 两行状态，BlissHack 模式继续使用图形状态。
 启用 BlissHack 动作栏时，核心实际请求的物品、方向、确认和普通单选输入使用
 紧凑的动作次级弹窗。部署分支与 GitHub Pages 可能落后，实际线上版本以页面
 显示为准。
+
+alpha-2.4 的产品范围尚未确定，当前只建立规划入口，不提前承诺或实现具体功能。
 
 当前里程碑已经实现：
 
@@ -145,6 +148,7 @@ Tiles/ASCII、Right/Below 在 1280×900 和 900×700 下的 HUD 组合。
 - [alpha-2.1 焦点与 Below HUD 计划](doc/BlissHack/plans/alpha-2.1.md)
 - [alpha-2.2 信息与流程体验计划](doc/BlissHack/plans/alpha-2.2.md)
 - [alpha-2.3 动作栏计划](doc/BlissHack/plans/alpha-2.3.md)
+- [alpha-2.4 规划入口](doc/BlissHack/plans/alpha-2.4.md)
 - [alpha-1 渲染架构](doc/BlissHack/plans/in-alpha-1/rendering-architecture.md)
 - [alpha-1 profile v2](doc/BlissHack/plans/in-alpha-1/profile-v2.md)
 - [alpha-1 发布验收](doc/BlissHack/plans/in-alpha-1/release-acceptance.md)

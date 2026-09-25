@@ -3,8 +3,8 @@ import { PRODUCT_VERSION, resolveBuildId } from "./version";
 
 describe("version metadata", () => {
   it("uses the canonical product version and explicit development build ID", () => {
-    expect(PRODUCT_VERSION).toBe("alpha-2.3");
-    expect(resolveBuildId(undefined)).toBe("alpha-2.3-development");
+    expect(PRODUCT_VERSION).toBe("alpha-2.4");
+    expect(resolveBuildId(undefined)).toBe("alpha-2.4-development");
     expect(resolveBuildId("commit-id")).toBe("commit-id");
   });
 });

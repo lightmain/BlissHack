@@ -13,7 +13,10 @@
    alpha-2.1 的焦点与 Below HUD 调整、alpha-2.2 的 profile v3、信息量、统一
    角色选择、终局结果页和本地 Ranking 也已完成人工验收。alpha-2.3 的
    profile v4、动作栏、动作次级弹窗和 Original TTY 两行状态已完成实现、
-   自动门禁与独立复审，当前停在人工验收门槛。最新验收记录见
+   自动门禁、独立复审和人工验收。当前 `VERSION` 为 `alpha-2.4`，处于范围
+   尚未确定的规划准备阶段；先阅读
+   `doc/BlissHack/plans/alpha-2.4.md`，不得把候选需求直接当作已确认范围。
+   alpha-2.3 最终验收记录见
    `doc/BlissHack/plans/in-alpha-2.3/release-acceptance.md`。
    GitHub Pages 可能落后，应以页面版本为准。维护当前架构时阅读
    `doc/BlissHack/plans/prealpha-4.md`；进行 tileset、Canvas 地图、
