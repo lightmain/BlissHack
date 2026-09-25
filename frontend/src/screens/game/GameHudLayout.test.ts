@@ -51,6 +51,7 @@ function renderGame({
   profile.interface.messageHistoryLines = historyLines;
   profile.interface.permanentInventoryPosition = position;
   profile.interface.permanentInventoryCollapsed = collapsed;
+  profile.interface.actionBarStyle = "original";
   profile.nethack.permInvent = inventoryEnabled;
   if (inventoryEnabled) seedPermanentInventory();
   return renderGameScreen(profile);

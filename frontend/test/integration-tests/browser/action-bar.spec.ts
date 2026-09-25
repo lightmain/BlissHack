@@ -333,10 +333,14 @@ test("Action tooltip is shared across dock and All Actions hover and focus", asy
   expect(tooltipBounds!.y + tooltipBounds!.height)
     .toBeLessThanOrEqual(viewport!.height);
 
-  await apply.focus();
+  const scrollTarget = panel.locator(
+    '.nh-all-actions-slot[data-action-name="fight"]',
+  );
+  await scrollTarget.focus();
   await page.mouse.move(1, 1);
   await expect(tooltip).toBeVisible();
-  const scrolled = await apply.evaluate((button) => {
+  await expect(tooltip.locator("strong")).toHaveText("fight");
+  const scrolled = await scrollTarget.evaluate((button) => {
     let candidate = button.parentElement;
     while (candidate) {
       const overflowY = getComputedStyle(candidate).overflowY;
@@ -353,7 +357,7 @@ test("Action tooltip is shared across dock and All Actions hover and focus", asy
   });
   expect(scrolled).toBe(true);
   await expect(tooltip).toBeHidden();
-  await apply.evaluate((button) => {
+  await scrollTarget.evaluate((button) => {
     let candidate = button.parentElement;
     while (candidate) {
       const overflowY = getComputedStyle(candidate).overflowY;
@@ -369,9 +373,9 @@ test("Action tooltip is shared across dock and All Actions hover and focus", asy
     throw new Error("Expected an All Actions scroll container");
   });
   await expect(tooltip).toBeVisible();
-  await expect(tooltip.locator("strong")).toHaveText("apply");
+  await expect(tooltip.locator("strong")).toHaveText("fight");
   await tooltipNode?.dispose();
-  expect(errors).toEqual([]);
+  expect(errors).toEqual({ console: [], page: [] });
 });
 
 test("Action bar integration: keeps geometry, focus, Pointer Events, and a real WASM command coherent", async ({
@@ -843,6 +847,7 @@ test("Action bar layout transfer: exports, cancels, rejects damage, and rolls ba
     name: "Action bar",
     exact: true,
   });
+  const persistedBeforeImport = await readPersistedLayout(page);
   await page.getByRole("button", { name: "All Actions" }).click();
   const panel = page.getByRole("dialog", { name: "All Actions" });
   const fileInput = panel.locator('input[type="file"]');
@@ -902,7 +907,7 @@ test("Action bar layout transfer: exports, cancels, rejects damage, and rolls ba
   await expect(preview).toContainText("Slots");
   await preview.getByRole("button", { name: "Cancel" }).click();
   await expect(preview).toHaveCount(0);
-  expect((await readPersistedLayout(page))?.rows).toBe(2);
+  expect(await readPersistedLayout(page)).toEqual(persistedBeforeImport);
 
   await fileInput.setInputFiles({
     name: "custom.bhactions",

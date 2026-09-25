@@ -29,7 +29,7 @@ test("pauses only at command input and synchronizes in-game settings", async ({
   await expect(page.getByRole("button", { name: "Back to Pause" })).toBeVisible();
   await page.getByRole("radio", { name: "Large" }).check();
   await page.getByRole("checkbox", { name: "Show turn count" }).check();
-  await page.getByRole("button", { name: "Apply" }).click();
+  await page.getByRole("button", { name: "Apply", exact: true }).click();
 
   await expect(pause).toBeVisible();
   await expect(page.locator(".nh-shell")).toHaveClass(/nh-font-large/);
