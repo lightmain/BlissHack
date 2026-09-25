@@ -5,6 +5,7 @@ import {
   openHome,
   startNewGameFromHome,
 } from "./helpers/game-flow";
+import { readCursorPosition } from "./helpers/map-viewport-state";
 
 test.use({ screenshot: "off", trace: "off" });
 
@@ -48,7 +49,111 @@ async function clickTarget(page: Page, target: Locator): Promise<void> {
   );
 }
 
-test("[defect-probing] BlissHack routes keyboard getdir through a compact overlay without moving the dock", async ({
+/**
+ * Click the center of one renderer-independent map cell.
+ * @param page - running game page.
+ * @param mapX - NetHack map column.
+ * @param mapY - NetHack map row.
+ */
+async function clickMapCell(
+  page: Page,
+  mapX: number,
+  mapY: number,
+): Promise<void> {
+  const box = await page.locator(".nh-map-interaction").boundingBox();
+  expect(box).not.toBeNull();
+  await page.mouse.click(
+    box!.x + ((mapX + 0.5) / 80) * box!.width,
+    box!.y + ((mapY + 0.5) / 21) * box!.height,
+  );
+}
+
+/**
+ * Confirm a real default-No save prompt from its focused Yes button.
+ * @param page - running game page.
+ * @param marker - unique navigation and character marker.
+ * @param activationKey - native button activation key under test.
+ */
+async function saveWithFocusedYes(
+  page: Page,
+  marker: string,
+  activationKey: "Enter" | "Space",
+): Promise<void> {
+  await startBlissHackGame(page, marker);
+  await page.keyboard.press("S");
+
+  const prompt = page.getByRole("dialog", { name: "Really save?" });
+  const yes = prompt.getByRole("button", { name: "Yes" });
+  await expect(prompt.getByRole("button", { name: "No" })).toBeFocused();
+  await yes.focus();
+  await expect(yes).toBeFocused();
+  await page.keyboard.press(activationKey);
+
+  const more = page.getByText("--More--", { exact: true });
+  await expect(more).toBeVisible();
+  await page.keyboard.press("Space");
+  await expect(page.getByRole("button", { name: "New Game" })).toBeVisible({
+    timeout: 15_000,
+  });
+}
+
+/**
+ * Quit a real game and stop at the first original endgame ynq disclosure.
+ * @param page - running game page.
+ * @param marker - unique navigation and character marker.
+ * @returns the first disclosure dialog.
+ */
+async function openYnqDisclosure(
+  page: Page,
+  marker: string,
+): Promise<Locator> {
+  await startBlissHackGame(page, marker);
+  await page.keyboard.press("#");
+  const commandDialog = page.getByRole("dialog", { name: "Extended command" });
+  await expect(commandDialog).toBeVisible();
+  await commandDialog.locator("input").fill("quit");
+  await commandDialog.locator("input").press("Enter");
+
+  const quitPrompt = page.getByRole("dialog", {
+    name: "Really quit without saving?",
+  });
+  await expect(quitPrompt).toBeVisible();
+  await page.keyboard.press("y");
+
+  const disclosure = page.getByRole("dialog", {
+    name: /Do you want (your possessions identified|to see what you had)/,
+  });
+  await expect(disclosure).toBeVisible();
+  await expect(disclosure.getByRole("button", { name: "Quit" })).toBeVisible();
+  return disclosure;
+}
+
+/**
+ * Advance non-interactive quit output until the next Home module is ready.
+ * @param page - page finishing a real NetHack quit.
+ */
+async function finishQuit(page: Page): Promise<void> {
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    const home = page.getByRole("button", { name: "New Game" });
+    if (await home.isVisible()) return;
+
+    const text = page.locator(".nh-text-dialog");
+    const more = page.getByText("--More--", { exact: true });
+    if (await text.isVisible()) {
+      await text.getByRole("button", { name: "Close" }).click();
+    } else if (await more.isVisible()) {
+      await page.keyboard.press("Space");
+    } else {
+      await page.waitForTimeout(100);
+    }
+  }
+
+  await expect(page.getByRole("button", { name: "New Game" })).toBeVisible({
+    timeout: 15_000,
+  });
+}
+
+test("[defect-probing] BlissHack keeps getdir map clicks on adjacent cells without moving the dock", async ({
   page,
 }) => {
   const errors = captureErrors(page);
@@ -75,6 +180,12 @@ test("[defect-probing] BlissHack routes keyboard getdir through a compact overla
   expect.soft(targetCount).toBe(8);
 
   if (targetCount === 8) {
+    const cursor = await readCursorPosition(page);
+    const distantX = cursor.x <= 77 ? cursor.x + 2 : cursor.x - 2;
+    await clickMapCell(page, distantX, cursor.y);
+    await expect(dialog).toBeVisible();
+    await expect(targets).toHaveCount(8);
+
     await clickTarget(page, targets.first());
     await expect(dialog).toHaveCount(0);
     await expect(targets).toHaveCount(0);
@@ -83,6 +194,64 @@ test("[defect-probing] BlissHack routes keyboard getdir through a compact overla
   }
   await expect(page.locator(".nh-shell"))
     .toHaveAttribute("data-command-input", "ready");
+  expect(errors).toEqual({ console: [], page: [] });
+});
+
+test("[defect-probing] BlissHack passes getdir help to the core and retries direction input", async ({
+  page,
+}) => {
+  const errors = captureErrors(page);
+  await startBlissHackGame(page, "SecondaryKeyboardDirectionHelp");
+
+  await page.keyboard.press("Alt+u");
+  const dialog = page.getByRole("dialog", { name: "In what direction?" });
+  const targets = page.locator('[data-direction-target-highlight="true"]');
+  await expect(dialog).toBeVisible();
+  await expect(targets).toHaveCount(8);
+
+  await page.keyboard.press("Shift+Slash");
+  const help = page.locator(".nh-text-dialog");
+  await expect(help).toContainText("Valid direction keys");
+  await help.getByRole("button", { name: "Close" }).click();
+  await expect(help).toHaveCount(0);
+  await expect(dialog).toBeVisible();
+  await expect(targets).toHaveCount(8);
+
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(targets).toHaveCount(0);
+  await expect(page.locator(".nh-shell"))
+    .toHaveAttribute("data-command-input", "ready");
+  expect(errors).toEqual({ console: [], page: [] });
+});
+
+test("[defect-probing] getdir buttons preserve Tab and native keyboard activation", async ({
+  browserName,
+  page,
+}) => {
+  const errors = captureErrors(page);
+  await startBlissHackGame(page, "SecondaryDirectionButtonKeyboard");
+
+  for (const activationKey of ["Enter", "Space"] as const) {
+    await page.keyboard.press("Alt+u");
+    const dialog = page.getByRole("dialog", { name: "In what direction?" });
+    const northwest = dialog.getByRole("button", { name: "Northwest" });
+    const north = dialog.getByRole("button", { name: "North", exact: true });
+    await expect(northwest).toBeFocused();
+
+    if (browserName === "chromium") {
+      await page.keyboard.press("Tab");
+      await expect(north).toBeFocused();
+      await page.keyboard.press("Shift+Tab");
+      await expect(northwest).toBeFocused();
+    }
+    await northwest.focus();
+    await page.keyboard.press(activationKey);
+
+    await expect(dialog).toHaveCount(0);
+    await expect(page.locator(".nh-shell"))
+      .toHaveAttribute("data-command-input", "ready");
+  }
   expect(errors).toEqual({ console: [], page: [] });
 });
 
@@ -125,6 +294,58 @@ test("[defect-probing] action item selection still advances into the shared dire
     .toHaveCount(0);
   await expect(page.locator(".nh-shell"))
     .toHaveAttribute("data-command-input", "ready");
+  expect(errors).toEqual({ console: [], page: [] });
+});
+
+test("[defect-probing] ynq focuses its default and accepts direct q", async ({
+  page,
+}) => {
+  const errors = captureErrors(page);
+  const firstDisclosure = await openYnqDisclosure(
+    page,
+    "SecondaryYnqDefaultAndQuit",
+  );
+  await expect(firstDisclosure.getByRole("button", { name: "No" }))
+    .toBeFocused();
+  await page.keyboard.press("Enter");
+
+  const secondDisclosure = page.getByRole("dialog", {
+    name: "Do you want to see your attributes?",
+  });
+  await expect(secondDisclosure).toBeVisible();
+  await page.keyboard.press("q");
+  await expect(secondDisclosure).toHaveCount(0);
+  await finishQuit(page);
+  expect(errors).toEqual({ console: [], page: [] });
+});
+
+test("[defect-probing] Escape selects Quit from a real ynq prompt", async ({
+  page,
+}) => {
+  const errors = captureErrors(page);
+  const disclosure = await openYnqDisclosure(
+    page,
+    "SecondaryYnqEscape",
+  );
+  await page.keyboard.press("Escape");
+  await expect(disclosure).toHaveCount(0);
+  await finishQuit(page);
+  expect(errors).toEqual({ console: [], page: [] });
+});
+
+test("[defect-probing] focused Yes submits a default-No yn prompt with Enter", async ({
+  page,
+}) => {
+  const errors = captureErrors(page);
+  await saveWithFocusedYes(page, "SecondaryYnFocusedYesEnter", "Enter");
+  expect(errors).toEqual({ console: [], page: [] });
+});
+
+test("[defect-probing] focused Yes submits a default-No yn prompt with Space", async ({
+  page,
+}) => {
+  const errors = captureErrors(page);
+  await saveWithFocusedYes(page, "SecondaryYnFocusedYesSpace", "Space");
   expect(errors).toEqual({ console: [], page: [] });
 });
 
@@ -238,8 +459,8 @@ test("[defect-probing] compact PICK_ONE cancel keeps native keyboard activation"
   await expect(dialog.locator(".nh-secondary-dialog-option").first())
     .toBeFocused();
 
-  await page.keyboard.press("Shift+Tab");
   const cancel = dialog.getByRole("button", { name: "Cancel" });
+  await cancel.focus();
   await expect(cancel).toBeFocused();
   await page.keyboard.press("Enter");
 
@@ -249,8 +470,8 @@ test("[defect-probing] compact PICK_ONE cancel keeps native keyboard activation"
 
   await page.keyboard.press("i");
   await expect(dialog).toBeVisible();
-  await page.keyboard.press("Shift+Tab");
-  await expect(dialog.getByRole("button", { name: "Cancel" })).toBeFocused();
+  await cancel.focus();
+  await expect(cancel).toBeFocused();
   await page.keyboard.press("Space");
   await expect(dialog).toHaveCount(0);
   await expect(page.locator(".nh-shell"))

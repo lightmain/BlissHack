@@ -60,9 +60,9 @@ manifest 记录 Node 24.19.0、Emscripten 6.0.9、Lua 5.4.8、
 | `npm run lint` | 0 warnings，0 errors |
 | `npm run build` | TypeScript 与 Vite production build 通过 |
 | `npm run test:integration:wasm` | 152/152 |
-| `npm run test:integration:browser` | Chromium 135/135 |
-| `npm run test:integration:compat` | Firefox + WebKit 150/150 |
-| `npm run test:performance` | 2/2；Canvas 全图 p95 4.8 ms |
+| `npm run test:integration:browser` | Chromium 141/141 |
+| `npm run test:integration:compat` | Firefox + WebKit 172/172 |
+| `npm run test:performance` | 2/2；Canvas 全图 p95 4.7 ms |
 | `npm run test:long` | 4/4 |
 | `git diff --check` | 通过 |
 
@@ -74,16 +74,21 @@ Right/Below、1280×900 和 900×700；BlissHack 还覆盖 2 行与 4 行动作�
 新增真实 Chromium 流程确认：
 
 - 快捷键启动 `getdir()` 时动作栏不跳动，次级弹窗和八个邻格目标同时出现。
+- `getdir()` 保留核心的 `?` 帮助键，关闭帮助后重新进入方向输入；方向按钮保留
+  Tab 导航以及 Enter、Space 原生激活。
 - `throw` 按物品后再进入方向步骤，两个阻塞输入严格串行。
-- `yn` 按钮、键盘 `y`/`n`/`q` 与 Escape 保持核心原有语义。
+- `yn`/`ynq` 默认与非默认按钮、键盘 `y`/`n`/`q` 与 Escape 保持核心原有
+  语义。
 - Messages 按钮通过 `prevmsg` 打开扩大后的真实消息历史窗口。
 
 ## 6. 独立复审
 
 首轮独立复审发现并修正了 `yn` 默认按钮、Messages 历史按钮键盘事件、
 紧凑单选菜单取消键、动作方向取消状态机和验收文档状态五类问题。第二轮独立
-复审未发现剩余 P1/P2 问题；修正后的 Enter、Space、Escape、方向取消和消息
-历史路径均有 Chromium 回归覆盖。
+复审发现方向弹窗会吞掉核心合法特殊键，以及非默认 `yn` 按钮的 Enter、Space
+会提交默认答案。补充真实浏览器回归并修正后，最终独立复审未发现剩余 P1/P2
+问题；修正后的方向帮助、Tab、Enter、Space、Escape、`ynq`、方向取消和消息
+历史路径均有 Chromium、Firefox 和 WebKit 覆盖。
 
 ## 7. 待人工验收
 
