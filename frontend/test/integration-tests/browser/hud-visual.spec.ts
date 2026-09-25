@@ -434,7 +434,7 @@ async function expectStableActionSizing(page: Page): Promise<void> {
           === "true",
         slotWidth: slot.getBoundingClientRect().width,
         toolWidths: tools.map((tool) => tool.getBoundingClientRect().width),
-        viewportClientWidth: viewport.clientWidth,
+        viewportWidth: viewport.getBoundingClientRect().width,
       };
     });
     const expectedToolWidth = Math.min(28, current.slotWidth / 2 + 4.25);
@@ -443,7 +443,7 @@ async function expectStableActionSizing(page: Page): Promise<void> {
     );
     const matchesViewport = current.horizontalOverflow
       ? Math.abs(current.slotWidth - 32) <= tolerance
-      : Math.abs(current.gridWidth - current.viewportClientWidth) <= tolerance;
+      : Math.abs(current.gridWidth - current.viewportWidth) <= tolerance;
     const previousSample = previous;
     const matchesPrevious = previousSample !== null
       && Math.abs(current.slotWidth - previousSample.slotWidth) <= tolerance
