@@ -546,7 +546,7 @@
   min-height: 0;
   padding: 6px 8px;
   display: grid;
-  grid-template-columns: minmax(11rem, 0.42fr) minmax(0, 1fr) 36px;
+  grid-template-columns: minmax(11rem, 0.42fr) minmax(0, 1fr) 30px;
   gap: 8px;
   overflow: hidden;
   border-top: 1px solid #3e464a;
@@ -797,9 +797,9 @@
 }
 
 .nh-action-dock-tool {
-  width: 34px;
-  height: 34px;
-  flex: 0 0 34px;
+  width: var(--action-tool-size);
+  height: var(--action-tool-size);
+  flex: 0 0 var(--action-tool-size);
   padding: 0;
   display: grid;
   place-items: center;

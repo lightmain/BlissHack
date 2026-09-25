@@ -118,6 +118,7 @@ import {
 } from "../../action-bar/action-bar-layout";
 import {
   createActionBarLayoutController,
+  type ActionBarEditCancellationReason,
 } from "../../action-bar/action-bar-layout-controller";
 import {
   calculateActionGridGeometry,
@@ -249,6 +250,12 @@ interface ActionDragPreviewState {
   name: string;
 }
 
+interface ActionPointerCapture {
+  element: HTMLElement;
+  pointerId: number;
+  source: ActionBarDragSource;
+}
+
 /**
  * Render the combined BlissHack status and action dock.
  * @param props - current layout, catalog, status/input content, and persistence callback.
@@ -272,6 +279,7 @@ export function ActionDock({
   const [availableWidth, setAvailableWidth] = useState(680);
   const [dragPreview, setDragPreview] =
     useState<ActionDragPreviewState | null>(null);
+  const activePointerCaptureRef = useRef<ActionPointerCapture | null>(null);
   const suppressClickRef = useRef(false);
   const controller = useMemo(
     () => createActionBarLayoutController({
@@ -341,13 +349,39 @@ export function ActionDock({
   }, [controller, layout]);
 
   useEffect(() => {
-    controller.cancel("session-reset");
+    const capture = activePointerCaptureRef.current;
+    activePointerCaptureRef.current = null;
+    controller.cancel("session-reset", capture?.pointerId);
+    if (capture) {
+      suppressClickRef.current = true;
+      releaseCapturedActionPointer(capture);
+    }
   }, [controller, sessionKey]);
 
   useEffect(() => {
+    /**
+     * Cancel one captured edit without allowing its trailing click through.
+     * @param reason - browser interruption which owns the cancellation.
+     */
+    function cancelCapturedEdit(
+      reason: Extract<ActionBarEditCancellationReason, "blur" | "escape">,
+    ): void {
+      if (
+        !["pending", "dragging"].includes(controller.getState().status)
+      ) {
+        return;
+      }
+      const capture = activePointerCaptureRef.current;
+      activePointerCaptureRef.current = null;
+      suppressClickRef.current = true;
+      controller.cancel(reason, capture?.pointerId);
+      setDragPreview(null);
+      if (capture) releaseCapturedActionPointer(capture);
+    }
+
     /** Cancel a transient edit when focus leaves the page. */
     function cancelOnBlur(): void {
-      controller.cancel("blur");
+      cancelCapturedEdit("blur");
     }
 
     /** Cancel a transient edit when the player presses Escape. */
@@ -360,7 +394,7 @@ export function ActionDock({
       }
       event.preventDefault();
       event.stopPropagation();
-      controller.cancel("escape");
+      cancelCapturedEdit("escape");
     }
 
     window.addEventListener("blur", cancelOnBlur);
@@ -371,7 +405,12 @@ export function ActionDock({
     };
   }, [controller]);
 
-  useEffect(() => () => controller.dispose(), [controller]);
+  useEffect(() => () => {
+    const capture = activePointerCaptureRef.current;
+    activePointerCaptureRef.current = null;
+    if (capture) releaseCapturedActionPointer(capture);
+    controller.dispose();
+  }, [controller]);
 
   useEffect(() => {
     if (!editState.lockFeedback) return;
@@ -406,11 +445,27 @@ export function ActionDock({
       return;
     }
     event.currentTarget.setPointerCapture(event.pointerId);
-    setDragPreview(source.kind === "all-actions"
+    activePointerCaptureRef.current = {
+      element: event.currentTarget,
+      pointerId: event.pointerId,
+      source,
+    };
+    let actionName: string | null = null;
+    if (source.kind === "all-actions") {
+      actionName = source.name;
+    } else if (source.kind === "dock-action") {
+      const slot = source.slot;
+      actionName = slot.area === "all"
+        ? displayedLayout.all.find(
+          (section) => section.category === slot.section,
+        )?.slots[slot.slotIndex] ?? null
+        : displayedLayout.categories[slot.category][slot.slotIndex] ?? null;
+    }
+    setDragPreview(actionName
       ? {
         clientX: event.clientX,
         clientY: event.clientY,
-        name: source.name,
+        name: actionName,
       }
       : null);
   }
@@ -449,6 +504,7 @@ export function ActionDock({
     if (controller.getState().status === "dragging") {
       suppressClickRef.current = true;
     }
+    activePointerCaptureRef.current = null;
     void controller.pointerUp(event.pointerId);
     setDragPreview(null);
     releaseActionPointer(event);
@@ -469,6 +525,9 @@ export function ActionDock({
     controller.cancel(reason, event.pointerId);
     if (ownedPointer) {
       suppressClickRef.current = true;
+    }
+    if (activePointerCaptureRef.current?.pointerId === event.pointerId) {
+      activePointerCaptureRef.current = null;
     }
     setDragPreview(null);
     releaseActionPointer(event);
@@ -563,6 +622,11 @@ export function ActionDock({
     "--action-slot-size": `${activeGeometry.slotSize}px`,
     "--action-row-count": displayedLayout.rows,
   } as CSSProperties;
+  const dockStyle = {
+    "--action-tool-size": `${
+      Math.min(28, activeGeometry.slotSize / 2 + 4.25)
+    }px`,
+  } as CSSProperties;
   const layoutEditBlocksActions = [
     "pending",
     "dragging",
@@ -575,6 +639,21 @@ export function ActionDock({
       blocked: false,
     })
     : null;
+
+  /**
+   * Close All Actions after cancelling a drag whose source will be unmounted.
+   */
+  function closeAllActionsPanel(): void {
+    const capture = activePointerCaptureRef.current;
+    if (capture?.source.kind === "all-actions") {
+      activePointerCaptureRef.current = null;
+      suppressClickRef.current = true;
+      controller.cancel("unmount", capture.pointerId);
+      setDragPreview(null);
+      releaseCapturedActionPointer(capture);
+    }
+    onAllActionsOpenChange(false);
+  }
 
   /**
    * Forward one action only when no layout edit owns the dock.
@@ -605,7 +684,7 @@ export function ActionDock({
           layout={editState.layout}
           layoutBusy={editState.status === "committing"}
           onActionRequest={requestAction}
-          onClose={() => onAllActionsOpenChange(false)}
+          onClose={closeAllActionsPanel}
           onImportLayout={(incomingLayout) =>
             controller.commitLayout(incomingLayout)}
           onLostPointerCapture={(event) =>
@@ -648,6 +727,7 @@ export function ActionDock({
         }
         data-layout-edit-status={editState.status}
         data-row-count={displayedLayout.rows}
+        style={dockStyle}
       >
       <div
         className="nh-action-dock-status"
@@ -967,10 +1047,16 @@ function ActionSlot({
       data-empty-action-slot={presentation === null ? "" : undefined}
       data-slot-index={slotIndex}
       {...slotAddressAttributes}
-      onClick={(event) => {
+      onClickCapture={(event) => {
+        if (suppressClickRef.current && event.detail > 0) {
+          suppressClickRef.current = false;
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      }}
+      onClick={() => {
         if (suppressClickRef.current) {
           suppressClickRef.current = false;
-          if (event.detail > 0) return;
         }
         if (!presentation) return;
         if (
@@ -1132,6 +1218,16 @@ function actionDropTargetAt(
     return { kind: "all-actions" };
   }
   return { kind: "outside" };
+}
+
+/**
+ * Release a stored action pointer capture after a non-pointer cancellation.
+ * @param capture - element and pointer identity retained for the active edit.
+ */
+function releaseCapturedActionPointer(capture: ActionPointerCapture): void {
+  if (capture.element.hasPointerCapture(capture.pointerId)) {
+    capture.element.releasePointerCapture(capture.pointerId);
+  }
 }
 
 /**
