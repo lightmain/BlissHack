@@ -441,10 +441,6 @@ sys/unix/hints/macOS.500
 `rebuild-wasm.yml`，用 Ubuntu 24.04 产物替换候选三件套，并再次执行生产构建
 和浏览器测试，才满足第 3.3 节规定的正式二进制来源。
 
-本地 Playwright 的全部断言通过后，TRAE 执行沙箱在关闭测试进程时报告了对
-根目录 `/` 的访问限制并把命令包装层标为退出码 1。测试报告本身分别为
-`15 passed` 和 `4 passed`；该沙箱提示不来自 BlissHack 或 Playwright 测试
-失败。
 
 严格代码审查后又完成以下加固：
 

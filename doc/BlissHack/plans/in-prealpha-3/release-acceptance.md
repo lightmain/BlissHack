@@ -15,10 +15,6 @@
 - 视口：1280 × 900。
 - 构建路径：`/BlissHack/`。
 
-Firefox 在当前 TRAE macOS 沙箱内无头启动会触发 Software WebRender
-framebuffer 映射失败，因此本地 Firefox 使用 headed 模式。GitHub Actions
-在 Ubuntu 上使用标准无头模式。
-
 ## 2. 浏览器兼容性
 
 Chromium 运行完整浏览器回归。Firefox 和 WebKit 使用
