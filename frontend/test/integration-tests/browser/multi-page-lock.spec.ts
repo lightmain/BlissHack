@@ -4,6 +4,7 @@ import {
   openHome,
   saveAndReturnHome,
   startNewGame,
+  statusField,
 } from "./helpers/game-flow";
 import { openSavePicker } from "./helpers/save-flow";
 
@@ -69,9 +70,7 @@ test("blocks save and profile exports while another page is playing", async ({
 
   await page.getByRole("button", { name: "Continue" }).click();
   await page.getByRole("button", { name: new RegExp(`^${name}\\b`) }).click();
-  await expect(
-    page.getByRole("progressbar", { name: /^Hit points:/ }),
-  ).toBeVisible();
+  await expect(statusField(page, "title")).toBeVisible();
 
   await second.getByRole("button", {
     name: `Export save ${name}`,
@@ -162,9 +161,7 @@ test("refreshes a stale Home save list after acquiring a short lock", async ({
   await expect(page.getByRole("dialog", { name: "Do you want a tutorial?" }))
     .toBeVisible();
   await page.keyboard.press("n");
-  await expect(
-    page.getByRole("progressbar", { name: /^Hit points:/ }),
-  ).toBeVisible();
+  await expect(statusField(page, "title")).toBeVisible();
   await saveAndReturnHome(page);
 
   const picker = await openSavePicker(second);

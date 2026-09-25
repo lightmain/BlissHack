@@ -19,7 +19,10 @@ import {
   type StatusTooltip,
 } from "../../status-metrics";
 import type { InformationLevel } from "../../settings/profile";
-import { colorClass } from "../../text-styling";
+import {
+  statusAttributeClass,
+  statusColorClass,
+} from "./status-presentation";
 
 const GROUP_ORDER: readonly StatusMetricGroup[] = [
   "identity",
@@ -130,6 +133,7 @@ function renderStatusMetric(
       <span
         className="nh-status-conditions"
         data-change={metric.change}
+        data-status-field={metric.id}
         key={metric.field}
       >
         {metric.conditions.map((condition) =>
@@ -179,6 +183,7 @@ function renderResourceMetric(
     <StatusEntry
       className={`nh-status-metric nh-status-resource ${statusClasses(metric)}`}
       dataChange={metric.change}
+      dataStatusField={metric.id}
       informationLevel={informationLevel}
       key={metric.field}
       inspectKey={`status:${metric.id}`}
@@ -223,6 +228,7 @@ function renderCompactMetric(
     <StatusEntry
       className={`nh-status-metric ${statusClasses(metric)}`}
       dataChange={metric.change}
+      dataStatusField={metric.id}
       informationLevel={informationLevel}
       key={metric.field}
       inspectKey={`status:${metric.id}`}
@@ -276,10 +282,12 @@ function renderCondition(
  * @param props - status content, semantic change, and optional inspect callbacks.
  * @returns a plain status value or a focusable detailed-inspection target.
  */
-function StatusEntry({
+export function StatusEntry({
   children,
   className,
   dataChange,
+  dataStatusCondition,
+  dataStatusField,
   informationLevel,
   inspectKey,
   onInspect,
@@ -290,6 +298,8 @@ function StatusEntry({
   children: ReactNode;
   className: string;
   dataChange: number;
+  dataStatusCondition?: string;
+  dataStatusField?: string;
   informationLevel: InformationLevel;
   inspectKey: string;
   onInspect?: (request: LocalInspectRequest) => void;
@@ -299,7 +309,12 @@ function StatusEntry({
 }) {
   if (informationLevel === "original") {
     return (
-      <span className={className} data-change={dataChange}>
+      <span
+        className={className}
+        data-change={dataChange}
+        data-status-condition={dataStatusCondition}
+        data-status-field={dataStatusField}
+      >
         {children}
       </span>
     );
@@ -308,6 +323,8 @@ function StatusEntry({
     <InspectableStatus
       className={className}
       dataChange={dataChange}
+      dataStatusCondition={dataStatusCondition}
+      dataStatusField={dataStatusField}
       describedBy={tooltipId}
       inspectKey={inspectKey}
       onInspect={onInspect}
@@ -349,6 +366,8 @@ function InspectableStatus({
   children,
   className,
   dataChange,
+  dataStatusCondition,
+  dataStatusField,
   describedBy,
   inspectKey,
   onInspect,
@@ -358,6 +377,8 @@ function InspectableStatus({
   children: ReactNode;
   className: string;
   dataChange: number;
+  dataStatusCondition?: string;
+  dataStatusField?: string;
   describedBy: string;
   inspectKey: string;
   onInspect?: (request: LocalInspectRequest) => void;
@@ -409,6 +430,8 @@ function InspectableStatus({
       data-browser-tab-navigation
       data-change={dataChange}
       data-inspect-target={inspectKey}
+      data-status-condition={dataStatusCondition}
+      data-status-field={dataStatusField}
       onBlur={() => updateActivity("blur")}
       onFocus={() => updateActivity("focus")}
       onPointerEnter={() => updateActivity("pointer-enter")}
@@ -434,15 +457,6 @@ function statusClasses(metric: StatusMetric): string {
 }
 
 /**
- * Treat NetHack's NO_COLOR sentinel as inherited HUD text color.
- * @param color - core color index.
- * @returns a color class or an empty string for NO_COLOR.
- */
-function statusColorClass(color: number): string {
-  return color === 8 ? "" : colorClass(color);
-}
-
-/**
  * Order metrics for scanning while keeping unknown future fields stable.
  * @param metrics - active metrics from one semantic group.
  * @returns a display-ordered copy.
@@ -453,20 +467,4 @@ function sortStatusMetrics(
   return [...metrics].sort((left, right) =>
     (METRIC_DISPLAY_INDEX.get(left.id) ?? Number.MAX_SAFE_INTEGER)
     - (METRIC_DISPLAY_INDEX.get(right.id) ?? Number.MAX_SAFE_INTEGER));
-}
-
-/**
- * Convert composable NetHack HL_* bits into CSS classes.
- * @param attributes - highlight mask from status_update or cond_hilites.
- * @returns space-separated presentation classes.
- */
-function statusAttributeClass(attributes: number): string {
-  const classes: string[] = [];
-  if ((attributes & 0x02) !== 0) classes.push("nh-bold");
-  if ((attributes & 0x04) !== 0) classes.push("nh-dim");
-  if ((attributes & 0x08) !== 0) classes.push("nh-italic");
-  if ((attributes & 0x10) !== 0) classes.push("nh-underline");
-  if ((attributes & 0x20) !== 0) classes.push("nh-blink");
-  if ((attributes & 0x40) !== 0) classes.push("nh-inverse");
-  return classes.join(" ");
 }

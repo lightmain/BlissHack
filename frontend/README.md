@@ -28,9 +28,11 @@ React and TypeScript frontend for the NetHack WebAssembly build.
   character-setup, and action-bar presentation preferences.
 - `interface.informationLevel` controls only explanatory status inspection;
   map and inventory inspection remain available in both modes.
-- `src/screens/game/` contains the fullscreen HUD layout, fixed message and
-  status regions, and the future action-bar slot. `src/screens/settings/`
-  contains the profile and in-game Settings presentation.
+- `src/screens/game/` contains the fullscreen HUD layout, the Original
+  two-line status, the BlissHack graphical status and action dock, shared
+  secondary input dialogs, fixed messages, and modal presentation.
+  `src/screens/settings/` contains the profile and in-game Settings
+  presentation.
 - `src/styles/` contains page-scoped global styles loaded through `src/App.css`.
 
 The checked-in `public/nethack.js`, `public/nethack.wasm`, and
@@ -70,8 +72,9 @@ npm run test:long
 ```
 
 The Chromium browser suite includes screenshot baselines for Tiles/ASCII and
-Right/Below HUD layouts at 1280x900 and 900x700. Firefox and WebKit run the
-same geometry and overflow contracts without comparing Chromium pixels.
+Right/Below HUD layouts at 1280x900 and 900x700, including both Original and
+BlissHack action-bar modes. Firefox and WebKit run the same geometry and
+overflow contracts without comparing Chromium pixels.
 
 Check the pinned Node.js and Emscripten environment without building:
 

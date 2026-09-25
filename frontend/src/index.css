@@ -123,3 +123,130 @@ input {
   line-height: 1.15;
   text-align: left;
 }
+
+.nh-secondary-dialog {
+  position: fixed;
+  right: clamp(12px, 4vw, 48px);
+  bottom: var(--secondary-dialog-bottom);
+  z-index: 30;
+  width: min(30rem, calc(100vw - 24px));
+  max-height: min(
+    22rem,
+    calc(100svh - var(--secondary-dialog-bottom) - 12px)
+  );
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid #66747a;
+  border-radius: 6px;
+  background: #111719;
+  box-shadow: 0 14px 34px rgb(0 0 0 / 55%);
+  color: #edf0ed;
+  pointer-events: auto;
+}
+
+.nh-secondary-dialog-header {
+  min-height: 38px;
+  padding: 5px 7px 5px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #343e42;
+}
+
+.nh-secondary-dialog-header strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.82rem;
+  letter-spacing: 0;
+}
+
+.nh-secondary-dialog-close {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: #bec6c8;
+}
+
+.nh-secondary-dialog-close:hover,
+.nh-secondary-dialog-close:focus-visible {
+  border-color: #84595b;
+  outline: none;
+  background: #2f1e20;
+  color: #fff;
+}
+
+.nh-secondary-dialog-list {
+  min-height: 0;
+  padding: 5px;
+  display: grid;
+  gap: 3px;
+  overflow-y: auto;
+}
+
+.nh-secondary-dialog-option {
+  min-width: 0;
+  min-height: 34px;
+  padding: 5px 8px;
+  display: grid;
+  grid-template-columns: 2rem minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  overflow: hidden;
+  border: 1px solid #333d41;
+  border-radius: 3px;
+  background: #171d1f;
+  color: #e0e5e2;
+  font: inherit;
+  text-align: left;
+}
+
+.nh-secondary-dialog-option:hover,
+.nh-secondary-dialog-option:focus-visible,
+.nh-secondary-dialog-option.focused {
+  border-color: #72a9b8;
+  outline: none;
+  background: #20292d;
+}
+
+.nh-secondary-dialog-option kbd {
+  min-width: 1.7rem;
+  padding: 2px 4px;
+  border: 1px solid #59656a;
+  border-radius: 2px;
+  color: #7ddc8c;
+  font: inherit;
+  text-align: center;
+}
+
+.nh-secondary-dialog-option > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.nh-secondary-dialog-heading {
+  min-height: 1.5em;
+  margin: 3px 4px;
+  color: #fff;
+}
+
+.nh-secondary-dialog-list-confirmation {
+  grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
+}
+
+.nh-secondary-dialog-list-direction {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(3, minmax(34px, auto));
+}
+
+.nh-secondary-dialog-list-direction .nh-secondary-dialog-option {
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+  text-align: center;
+}

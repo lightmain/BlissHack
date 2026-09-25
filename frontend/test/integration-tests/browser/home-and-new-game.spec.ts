@@ -7,6 +7,7 @@ import {
   saveAndReturnHome,
   startNewGame,
   startNewGameFromHome,
+  statusField,
 } from "./helpers/game-flow";
 import { readExpectedProductVersion } from "./helpers/product-version";
 import { openSavePicker } from "./helpers/save-flow";
@@ -235,17 +236,19 @@ test("keeps the original manual character selection sequence", async ({
     name: "Do you want a tutorial?",
   })).toBeVisible();
   await page.keyboard.press("n");
-  await expect(
-    page.getByRole("region", { name: "Character status" })
-      .locator(".nh-status-value")
-      .filter({ hasText: `${name} the Digger` }),
-  ).toBeVisible();
+  await expect(statusField(page, "title")).toHaveText(`${name} the Digger`);
   expect(errors).toEqual({ console: [], page: [] });
 });
 
 test("plays through startup and routes terminal UI input", async ({ page }) => {
   const errors = captureErrors(page);
-  await startNewGame(page, "E2E_Ada");
+  await openHome(page, "E2E_Ada");
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("group", { name: "Action bar" })
+    .getByRole("radio", { name: "BlissHack" })
+    .check();
+  await page.getByRole("button", { name: "Apply" }).click();
+  await startNewGameFromHome(page, "E2E_Ada");
 
   const messageMetrics = await page.locator(".nh-messages").evaluate((element) => {
     const style = getComputedStyle(element);
@@ -260,12 +263,7 @@ test("plays through startup and routes terminal UI input", async ({ page }) => {
     messageMetrics.requiredHeight - 0.5,
   );
 
-  const status = page.getByRole("region", { name: "Character status" });
-  await expect(
-    status.locator(".nh-status-value").filter({
-      hasText: /^E2E_Ada the .+$/,
-    }),
-  ).toBeVisible();
+  await expect(statusField(page, "title")).toHaveText(/^E2E_Ada the .+$/);
   const hitPointProgressbar = page.getByRole("progressbar", {
     name: /^Hit points:/,
   });
@@ -368,8 +366,9 @@ test("warns that a New Game name will continue an existing save", async ({
   await nameInput.fill(`  ${name}  `);
   await expect(page.getByText(hint, { exact: true })).toBeVisible();
   await nameInput.press("Enter");
-  await expect(
-    page.getByRole("progressbar", { name: /^Hit points:/ }),
-  ).toBeVisible({ timeout: 15_000 });
+  await expect(statusField(page, "title")).toHaveText(
+    new RegExp(`^${name} the .+$`),
+    { timeout: 15_000 },
+  );
   expect(errors).toEqual({ console: [], page: [] });
 });

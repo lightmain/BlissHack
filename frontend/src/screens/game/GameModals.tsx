@@ -30,8 +30,10 @@ import {
   type AnchoredOverlayPosition,
 } from "../../interactions/anchored-overlay";
 import type { ContextMenuPresentation } from "../../game-actions/game-action-controller";
+import type { ActionBarStyle } from "../../settings/profile";
 import { colorClass, textAttributeClass } from "../../text-styling";
 import { filterExtendedCommands } from "./extended-command-search";
+import { SecondaryDialog } from "./SecondaryDialog";
 
 const AUTO_ACCELERATORS =
   "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -45,9 +47,11 @@ const DESCRIPTION_SEARCH_TOOLTIP_ID =
  * @returns the corresponding overlay.
  */
 export const GameModalRenderer = memo(function GameModalRenderer({
+  actionBarStyle = "original",
   contextMenu,
   modal,
 }: {
+  actionBarStyle?: ActionBarStyle;
   contextMenu?: ContextMenuPresentation | null;
   modal: GameModal;
 }) {
@@ -56,6 +60,7 @@ export const GameModalRenderer = memo(function GameModalRenderer({
     return window
       ? (
         <MenuOverlay
+          compact={actionBarStyle === "blisshack" && !contextMenu}
           contextMenu={contextMenu}
           how={modal.how}
           window={window}
@@ -68,6 +73,7 @@ export const GameModalRenderer = memo(function GameModalRenderer({
   }
   return (
     <TextOverlay
+      history={modal.kind === "history"}
       lines={modal.lines}
       title={modal.kind === "text" ? modal.title : "Message history"}
     />
@@ -79,12 +85,24 @@ export const GameModalRenderer = memo(function GameModalRenderer({
  * @param props - title and styled lines.
  * @returns text overlay.
  */
-function TextOverlay({ title, lines }: { title: string; lines: TextLine[] }) {
+function TextOverlay({
+  history,
+  title,
+  lines,
+}: {
+  history: boolean;
+  title: string;
+  lines: TextLine[];
+}) {
   return (
     <div className="nh-overlay" role="presentation" onMouseDown={dismissDisplay}>
       <section
         aria-label={title || "Text"}
-        className="nh-dialog nh-text-dialog"
+        className={[
+          "nh-dialog",
+          "nh-text-dialog",
+          history ? "nh-history-dialog" : "",
+        ].filter(Boolean).join(" ")}
         onMouseDown={(event) => event.stopPropagation()}
         role="dialog"
       >
@@ -111,10 +129,12 @@ function TextOverlay({ title, lines }: { title: string; lines: TextLine[] }) {
  * @returns menu overlay.
  */
 function MenuOverlay({
+  compact,
   contextMenu,
   window,
   how,
 }: {
+  compact: boolean;
   contextMenu?: ContextMenuPresentation | null;
   window: WindowState;
   how: number;
@@ -352,6 +372,7 @@ function MenuOverlay({
   }
 
   const anchored = anchor !== null;
+  const compactPickOne = compact && how === PICK_ONE;
   const resolvedPosition = position ?? (
     anchor
       ? {
@@ -362,6 +383,57 @@ function MenuOverlay({
       }
       : null
   );
+  if (compactPickOne) {
+    const title = window.menuPrompt || "Choose an option";
+    return (
+      <SecondaryDialog
+        ariaLabel={title}
+        focusKey={window.id}
+        onCancel={() => submitMenuSelection(null)}
+        title={title}
+      >
+        <div className="nh-secondary-dialog-list">
+          {rows.map(({ item, index, accelerator }) =>
+            item.identifier === null
+              ? (
+                <div
+                  className={[
+                    "nh-secondary-dialog-heading",
+                    textAttributeClass(item.attribute),
+                  ].filter(Boolean).join(" ")}
+                  key={`${index}:${item.text}`}
+                >
+                  {item.text || "\u00a0"}
+                </div>
+              )
+              : (
+                <button
+                  className={[
+                    "nh-secondary-dialog-option",
+                    focusIndex === index ? "focused" : "",
+                    colorClass(item.color),
+                    textAttributeClass(item.attribute),
+                  ].filter(Boolean).join(" ")}
+                  data-core-identifier={item.identifier}
+                  data-menu-index={index}
+                  key={`${index}:${item.text}`}
+                  onClick={() => chooseMenuItem(index)}
+                  onFocus={() => setFocusIndex(index)}
+                  onMouseEnter={() => setFocusIndex(index)}
+                  type="button"
+                >
+                  <kbd>
+                    {accelerator ? String.fromCharCode(accelerator) : " "}
+                  </kbd>
+                  <span>{item.text}</span>
+                </button>
+              ),
+          )}
+          {count && <output className="nh-count">{count}</output>}
+        </div>
+      </SecondaryDialog>
+    );
+  }
   const menu = (
     <section
       aria-hidden={anchored && position === null ? "true" : undefined}

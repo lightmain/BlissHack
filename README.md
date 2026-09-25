@@ -21,14 +21,14 @@ frontend. These changes are documented in
 
 ## Project Status
 
-**Alpha-2.2 implementation, automated gates, and manual acceptance are
-complete.**
+**Alpha-2.3 implementation, automated gates, and independent review are
+complete. Manual acceptance is pending.**
 
-Alpha-2.1 refines keyboard focus and the Below layout on top of the alpha-2.0
-fullscreen desktop HUD. Permanent inventory is mouse-only, while Below places
-the fixed-size map above a split status and permanent-inventory workspace; that
-release has passed manual acceptance. Alpha-2.2 adds profile v3, unified
-character setup, a tabbed end-game summary, and browser-local Ranking. The
+Alpha-2.3 adds profile v4 and an optional BlissHack action bar backed by the
+core's command catalog. The Original mode now uses a structured two-line TTY
+status display, while BlissHack keeps the graphical status presentation.
+Core-authored item, direction, confirmation, and ordinary single-choice inputs
+use compact secondary dialogs when the BlissHack action bar is enabled. The
 deployment branch and GitHub Pages may lag; use the version displayed by the
 site as the authority.
 
@@ -38,8 +38,16 @@ The current milestone provides:
   renderer retained.
 - A viewport-owned HUD with fixed message and status regions plus Right and
   Below permanent-inventory layouts.
-- Graphical HP, Energy, XP, attributes, conditions, location, and turn status
-  driven by structured core fields.
+- Original two-line TTY status and BlissHack graphical HP, Energy, XP,
+  attributes, conditions, location, and turn status, both driven by structured
+  core fields.
+- An optional, persistent action bar covering the core's visible command
+  catalog, with configurable rows, categories, locking, drag layout editing,
+  import/export, and searchable All Actions.
+- Compact secondary dialogs for item selection, direction selection,
+  `yn`/`ynq` confirmation, and ordinary single-choice menus. Direction input
+  highlights and accepts clicks on the eight adjacent map cells even when the
+  command was started with a keyboard shortcut.
 - Shared delayed tooltips for status, inventory, and authoritative core map
   inspection without adding inspection text to message history.
 - Core-generated map and inventory context menus, with mouse actions routed
@@ -56,9 +64,10 @@ The current milestone provides:
   pet/pile marker, and cursor rendering.
 - Automatic ASCII fallback for atlas or Canvas failures without changing the
   saved display preference.
-- Immediate Tiles/ASCII switching in Settings and v1-to-v2 profile migration.
-- Message history, text windows, menus, prompts, extended commands, and
-  position input.
+- Immediate Tiles/ASCII switching in Settings and strict
+  v1-to-v2-to-v3-to-v4 profile migration.
+- Message history from both the core command and the Messages-region button,
+  plus text windows, menus, prompts, extended commands, and position input.
 - A choice of the original sequential character flow or a unified name, role,
   race, gender, and alignment screen with direct same-name save continuation.
 - Accurate ASCII, Control, Alt/Meta, direction, and numeric keypad input.
@@ -155,6 +164,7 @@ combinations at 1280x900 and 900x700.
 - [alpha-2.0 interactive HUD plan](doc/BlissHack/plans/alpha-2.0.md)
 - [alpha-2.1 focus and Below HUD plan](doc/BlissHack/plans/alpha-2.1.md)
 - [alpha-2.2 information and workflow plan](doc/BlissHack/plans/alpha-2.2.md)
+- [alpha-2.3 action bar plan](doc/BlissHack/plans/alpha-2.3.md)
 - [alpha-1 rendering architecture](doc/BlissHack/plans/in-alpha-1/rendering-architecture.md)
 - [alpha-1 profile v2](doc/BlissHack/plans/in-alpha-1/profile-v2.md)
 - [alpha-1 release acceptance](doc/BlissHack/plans/in-alpha-1/release-acceptance.md)
@@ -162,6 +172,7 @@ combinations at 1280x900 and 900x700.
 - [alpha-2.0 release acceptance](doc/BlissHack/plans/in-alpha-2.0/release-acceptance.md)
 - [alpha-2.1 release acceptance](doc/BlissHack/plans/in-alpha-2.1/release-acceptance.md)
 - [alpha-2.2 release acceptance](doc/BlissHack/plans/in-alpha-2.2/release-acceptance.md)
+- [alpha-2.3 release acceptance](doc/BlissHack/plans/in-alpha-2.3/release-acceptance.md)
 - [Upstream modification inventory](doc/BlissHack/upstream-modifications.md)
 - [Fatal errors and diagnostic log design](doc/BlissHack/plans/in-prealpha-2/fatal-errors-and-diagnostics.md)
 - [Browser end-to-end test design](doc/BlissHack/plans/in-prealpha-2/browser-end-to-end-tests.md)
@@ -174,9 +185,12 @@ combinations at 1280x900 and 900x700.
 ## Known Interface Limits
 
 The current upstream shim ABI cannot safely return non-empty message history
-strings and does not expose `yn_number`. BlissHack preserves safe behavior
-instead of guessing unexposed memory or callback semantics. Details are
-recorded in the [shim interface reference](doc/BlissHack/shim-interface-reference.md).
+strings and does not expose `yn_number`. The extended `getdir` callback exposes
+that direction input is active, but not whether the originating operation is
+adjacent or ranged, nor its obstruction and visibility semantics. BlissHack
+therefore shows the reliable eight-direction target UI and does not infer a
+ray from prompt text, action names, or item names. Details are recorded in the
+[shim interface reference](doc/BlissHack/shim-interface-reference.md).
 
 ## License
 

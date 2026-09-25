@@ -4,6 +4,7 @@ import {
   continueSavedGame,
   saveAndReturnHome,
   startNewGame,
+  statusField,
 } from "./helpers/game-flow";
 import {
   deleteSave,
@@ -88,10 +89,8 @@ test("exports, deletes, imports, and continues identical raw save bytes", async 
   await page.reload();
   await continueSavedGame(page, name);
   await expect(
-    page.getByRole("region", { name: "Character status" })
-      .locator(".nh-status-value")
-      .filter({ hasText: new RegExp(`^${name} the .+$`) }),
-  ).toBeVisible({ timeout: 15_000 });
+    statusField(page, "title"),
+  ).toHaveText(new RegExp(`^${name} the .+$`), { timeout: 15_000 });
   expect(errors).toEqual({ console: [], page: [] });
 });
 

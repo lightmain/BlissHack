@@ -337,6 +337,11 @@ M win/shim/winshim.c
   - `frontend/src/nethack-bridge.test.ts`
   - `frontend/src/game-actions/game-action-controller.stage-four.test.ts`
   - `frontend/test/integration-tests/wasm-test.mjs`
+- **阶段八前端消费边界**：
+  - 快捷键和动作栏启动的方向输入都只按真实 `getdirInp` 显示八方向 UI，不匹配
+    prompt 或动作名。
+  - 当前 callback 没有远程/近程、射程或阻挡元数据，因此前端不绘制推测射线。
+  - 此阶段没有继续修改上游 C 或 WASM；已验证的运行时三件套保持不变。
 
 ## 3. 上游合并检查
 

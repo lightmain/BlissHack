@@ -1,4 +1,4 @@
-import { expect, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 import {
   readCursorPosition,
   readShellRevision,
@@ -155,6 +155,17 @@ export async function continueSavedGame(
   await expect(page.getByRole("region", {
     name: "Character status",
   })).toBeVisible({ timeout: 15_000 });
+}
+
+/**
+ * Locate one structured status field in either Original or BlissHack mode.
+ * @param page - running game page.
+ * @param id - semantic field identifier supplied by buildStatusMetrics.
+ * @returns locator for the currently rendered status field.
+ */
+export function statusField(page: Page, id: string): Locator {
+  return page.getByRole("region", { name: "Character status" })
+    .locator(`[data-status-field="${id}"]`);
 }
 
 /**

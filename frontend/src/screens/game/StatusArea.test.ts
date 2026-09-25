@@ -126,6 +126,8 @@ describe("StatusArea", () => {
 
     expect(html).toContain('data-status-group="resource"');
     expect(html).toContain('data-status-group="condition"');
+    expect(html).toContain('data-status-field="hitpoints"');
+    expect(html).toContain('data-status-field="condition"');
     expect(html).toContain('data-change="-1"');
     expect(html).toContain('data-change="0"');
     expect(html).toContain('data-change="1"');

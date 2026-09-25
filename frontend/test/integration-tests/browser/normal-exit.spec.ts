@@ -8,6 +8,7 @@ import {
   saveAndReturnHome,
   startNewGame,
   startNewGameFromHome,
+  statusField,
 } from "./helpers/game-flow";
 import {
   readCursorPosition,
@@ -33,13 +34,13 @@ function directionKey(deltaX: number, deltaY: number): string {
 
 /** Earn a positive core score by force-fighting the visible starting pet. */
 async function earnRankingScore(page: Page): Promise<void> {
-  const experience = page.getByRole("region", { name: "Character status" })
-    .locator(".nh-status-value")
-    .filter({ hasText: /^\/\d+$/ });
+  const experience = statusField(page, "experience");
   await expect(experience).toBeVisible();
 
   for (let attempt = 0; attempt < 30; attempt += 1) {
-    const currentExperience = Number((await experience.textContent())?.slice(1));
+    const currentExperience = Number(
+      (await experience.textContent())?.match(/\d+/)?.[0],
+    );
     if (currentExperience > 0) return;
 
     const pet = page.locator(".nh-map-run.nh-pet").first();
@@ -130,11 +131,9 @@ test("quits an active game and starts a clean second session", async ({
 
   await expect(page.locator(".nh-shell")).toHaveCount(0);
   await startNewGameFromHome(page, "E2E_AfterQuit");
-  await expect(
-    page.getByRole("region", { name: "Character status" })
-      .locator(".nh-status-value")
-      .filter({ hasText: /^E2E_AfterQuit the .+$/ }),
-  ).toBeVisible();
+  await expect(statusField(page, "title")).toHaveText(
+    /^E2E_AfterQuit the .+$/,
+  );
   await saveAndReturnHome(page);
 
   const { diagnostic } = await exportDiagnosticLog(page);
@@ -399,11 +398,9 @@ test("collects a real unified-character quit into the BlissHack summary", async 
     name: "Do you want a tutorial?",
   })).toBeVisible();
   await page.keyboard.press("n");
-  await expect(
-    page.getByRole("region", { name: "Character status" })
-      .locator(".nh-status-value")
-      .filter({ hasText: new RegExp(`^${name} the .+$`) }),
-  ).toBeVisible();
+  await expect(statusField(page, "title")).toHaveText(
+    new RegExp(`^${name} the .+$`),
+  );
 
   await page.evaluate(() => {
     type CallbackRecord = {

@@ -5,6 +5,7 @@ import {
   openHome,
   saveAndReturnHome,
   startNewGame,
+  statusField,
 } from "./helpers/game-flow";
 import { readCursorPosition } from "./helpers/map-viewport-state";
 
@@ -80,9 +81,7 @@ test("restores the saved identity and map position", async ({ page }) => {
   })).toBeVisible();
   await page.keyboard.press("n");
 
-  const statusTitle = page.getByRole("region", { name: "Character status" })
-    .locator(".nh-status-value")
-    .filter({ hasText: new RegExp(`^${name} the .+$`) });
+  const statusTitle = statusField(page, "title");
   const savedTitle = (await statusTitle.textContent())?.trim();
   expect(savedTitle).toMatch(new RegExp(`^${name} the .+$`));
   const savedPosition = await moveToAdjacentFloor(page);

@@ -223,6 +223,7 @@ describe("stage-three ActionDock and GameTerminal structure", () => {
         .map((tag) => attribute(tag, "data-action-section")))
         .toEqual(EXPECTED_SECTIONS);
       expect(tagsWithAttribute(html, "data-action-name")
+        .filter((tag) => attribute(tag, "data-action-slot") === "true")
         .map((tag) => attribute(tag, "data-action-name")))
         .toEqual(EXPECTED_DEFAULT_ACTIONS);
       expect(tagsWithAttribute(html, "data-empty-action-slot").length)
@@ -289,7 +290,8 @@ describe("stage-three ActionDock and GameTerminal structure", () => {
     expect(tagsWithAttribute(original, "data-action-dock")).toHaveLength(0);
     expect(tagsWithAttribute(original, "data-action-category")).toHaveLength(0);
     expect(tagsWithAttribute(original, "data-action-dock-tool")).toHaveLength(0);
-    expect(classTokenCount(original, "nh-status")).toBe(1);
+    expect(classTokenCount(original, "nh-original-status")).toBe(1);
+    expect(classTokenCount(original, "nh-status")).toBe(0);
     expect(original.match(/Stage three input prompt/g) ?? []).toHaveLength(1);
     const originalLayoutKey = attribute(
       tagsWithAttribute(original, "data-map-layout-key")[0] ?? "",

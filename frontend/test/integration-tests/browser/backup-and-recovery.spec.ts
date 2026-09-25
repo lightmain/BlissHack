@@ -5,6 +5,7 @@ import {
   openHome,
   saveAndReturnHome,
   startNewGame,
+  statusField,
 } from "./helpers/game-flow";
 import {
   exportSave,
@@ -142,10 +143,8 @@ test("exports, clears, and restores a complete BlissHack backup", async ({
 
   await continueSavedGame(page, name);
   await expect(
-    page.getByRole("region", { name: "Character status" })
-      .locator(".nh-status-value")
-      .filter({ hasText: new RegExp(`^${name} the .+$`) }),
-  ).toBeVisible({ timeout: 15_000 });
+    statusField(page, "title"),
+  ).toHaveText(new RegExp(`^${name} the .+$`), { timeout: 15_000 });
   expect(errors).toEqual({ console: [], page: [] });
 });
 

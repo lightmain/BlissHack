@@ -7,6 +7,7 @@ import { captureErrors } from "./helpers/browser-errors";
 import {
   openHome,
   startNewGameFromHome,
+  statusField,
 } from "./helpers/game-flow";
 import {
   readCursorPosition,
@@ -65,9 +66,7 @@ function wornItem(inventory: Locator): Locator {
 
 /** Return the core-owned turn counter. */
 function turnCounter(page: Page): Locator {
-  return page.locator(
-    "[data-status-group='world'] .nh-status-value",
-  ).filter({ hasText: /^T:\d+$/ });
+  return statusField(page, "time");
 }
 
 /** Read the numeric core turn counter from its status value. */

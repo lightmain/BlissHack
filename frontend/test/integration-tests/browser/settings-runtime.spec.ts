@@ -5,6 +5,7 @@ import {
   continueSavedGame,
   openHome,
   saveAndReturnHome,
+  statusField,
 } from "./helpers/game-flow";
 import { readShellRevision } from "./helpers/map-viewport-state";
 
@@ -35,7 +36,7 @@ test("installs current settings for new and continued games", async ({ page }) =
     "data-number-pad",
     "on",
   );
-  await expect(page.locator(".nh-status")).toContainText(/T:\d+/);
+  await expect(statusField(page, "time")).toHaveText(/T:\d+/);
   await expect(
     page.getByRole("dialog", { name: "Do you want a tutorial?" }),
   ).toHaveCount(0);
@@ -51,16 +52,15 @@ test("installs current settings for new and continued games", async ({ page }) =
   await continueSavedGame(page, name);
   await expect(inventory).toBeVisible();
   await expect(inventory).toContainText(retainedItem ?? "");
-  await expect(
-    page.getByRole("region", { name: "Character status" })
-      .locator(".nh-status-value")
-      .filter({ hasText: new RegExp(`^${name} the .+$`) }),
-  ).toBeVisible({ timeout: 15_000 });
+  await expect(statusField(page, "title")).toHaveText(
+    new RegExp(`^${name} the .+$`),
+    { timeout: 15_000 },
+  );
   await expect(page.locator(".nh-shell")).toHaveAttribute(
     "data-number-pad",
     "off",
   );
-  await expect(page.locator(".nh-status")).toContainText(/T:\d+/);
+  await expect(statusField(page, "time")).toHaveText(/T:\d+/);
   expect(errors).toEqual({ console: [], page: [] });
 });
 
@@ -74,16 +74,15 @@ test("removes the XP progress bar when Experience is disabled at runtime", async
     name: "Offer tutorial for new games",
   }).uncheck();
   await page.getByRole("checkbox", { name: "Show experience" }).check();
-  await page.getByRole("button", { name: "Apply" }).click();
+  await page.getByRole("group", { name: "Action bar" })
+    .getByRole("radio", { name: "BlissHack" })
+    .check();
+  await page.getByRole("button", { name: "Apply", exact: true }).click();
   await startWithoutTutorial(page, "ExperienceRuntime");
 
   const status = page.getByRole("region", { name: "Character status" });
-  const experienceLevel = status.locator(
-    ".nh-status-resource-value, .nh-status-value",
-  )
-    .filter({ hasText: /^Xp:\d+$/ });
-  const experiencePoints = status.locator(".nh-status-value")
-    .filter({ hasText: /^\/\d+$/ });
+  const experienceLevel = statusField(page, "experience-level");
+  const experiencePoints = statusField(page, "experience");
   await expect(experienceLevel).toBeVisible();
   await expect(experiencePoints).toBeVisible();
   await expect(
@@ -95,7 +94,7 @@ test("removes the XP progress bar when Experience is disabled at runtime", async
   await expect(pause).toBeVisible();
   await page.getByRole("button", { name: "Settings" }).click();
   await page.getByRole("checkbox", { name: "Show experience" }).uncheck();
-  await page.getByRole("button", { name: "Apply" }).click();
+  await page.getByRole("button", { name: "Apply", exact: true }).click();
   await expect(page.locator(".nh-shell")).toHaveAttribute(
     "data-settings-status",
     "applied",
@@ -223,7 +222,7 @@ test("renders and collapses the core permanent inventory without a modal", async
   ] = await Promise.all([
     page.locator(".nh-map-scroll").boundingBox(),
     inventory.boundingBox(),
-    page.locator(".nh-status").boundingBox(),
+    page.getByRole("region", { name: "Character status" }).boundingBox(),
   ]);
   expect(compactViewport).not.toBeNull();
   expect(compactMapViewportBox).not.toBeNull();
@@ -244,21 +243,16 @@ test("renders and collapses the core permanent inventory without a modal", async
     compactMapViewportBox!.y + compactMapViewportBox!.height,
   ).toBeLessThanOrEqual(compactStatusBox!.y);
 
-  const statusGroupDimensions = await page.locator(
-    ".nh-status-group",
-  ).evaluateAll((groups) => groups.map((group) => ({
-    clientHeight: group.clientHeight,
-    clientWidth: group.clientWidth,
-    scrollHeight: group.scrollHeight,
-    scrollWidth: group.scrollWidth,
+  const statusLineStyles = await page.locator(
+    ".nh-original-status-line",
+  ).evaluateAll((lines) => lines.map((line) => ({
+    overflowX: getComputedStyle(line).overflowX,
+    overflowY: getComputedStyle(line).overflowY,
   })));
-  expect(statusGroupDimensions.length).toBeGreaterThan(0);
-  for (const dimensions of statusGroupDimensions) {
-    expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth);
-    expect(dimensions.scrollHeight).toBeLessThanOrEqual(
-      dimensions.clientHeight,
-    );
-  }
+  expect(statusLineStyles).toEqual([
+    { overflowX: "auto", overflowY: "hidden" },
+    { overflowX: "auto", overflowY: "hidden" },
+  ]);
   await page.setViewportSize({ width: 1280, height: 900 });
 
   const permanentHeading = inventory.locator(".nh-menu-heading").first();
@@ -389,7 +383,7 @@ test("renders and collapses the core permanent inventory without a modal", async
   );
   const [promptBox, statusBox] = await Promise.all([
     page.locator(".nh-prompt").boundingBox(),
-    page.locator(".nh-status").boundingBox(),
+    page.getByRole("region", { name: "Character status" }).boundingBox(),
   ]);
   expect(promptBox).not.toBeNull();
   expect(statusBox).not.toBeNull();
@@ -501,10 +495,9 @@ test("leaves status tooltip Tab navigation to the browser", async ({ page }) => 
   await page.getByRole("button", { name: "Apply" }).click();
 
   await startWithoutTutorial(page, "StatusTooltipTab");
-  const statusItems = page.locator(
-    ".nh-status-metric[tabindex='0'], "
-      + ".nh-status-condition-entry[tabindex='0']",
-  );
+  const statusItems = page.getByRole("region", {
+    name: "Character status",
+  }).locator("[data-inspect-target][tabindex='0']");
   expect(await statusItems.count()).toBeGreaterThanOrEqual(2);
 
   const firstStatusItem = statusItems.first();
@@ -547,9 +540,7 @@ async function startWithoutTutorial(page: Page, name: string): Promise<void> {
   await page.keyboard.press("y");
   await expect(page.locator(".nh-text-dialog")).toBeVisible();
   await page.keyboard.press("Enter");
-  await expect(
-    page.getByRole("progressbar", { name: /^Hit points:/ }),
-  ).toBeVisible();
+  await expect(statusField(page, "title")).toBeVisible();
 }
 
 /**

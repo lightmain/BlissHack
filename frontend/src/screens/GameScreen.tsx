@@ -13,6 +13,7 @@ import {
   finishMapInspectMessageCapture,
   getSnapshot,
   getWindow,
+  INPUT_STATE_GETDIR,
   subscribe,
   type GameSnapshot,
   type TextLine,
@@ -80,6 +81,12 @@ import { GameModalRenderer } from "./game/GameModals";
 import { GameTerminal } from "./game/GameTerminal";
 import { ActionItemChooser } from "./game/ActionItemChooser";
 import { PauseOverlay } from "./game/PauseOverlay";
+import { SecondaryInputDialog } from "./game/SecondaryInputDialog";
+import {
+  directionKeyFromMapTarget,
+  isDirectionKey,
+} from "./game/direction-input";
+import { supportsSecondaryInputDialog } from "./game/secondary-input";
 import type { InventoryContextRequest } from "./PermanentInventoryPanel";
 
 interface GameScreenProps {
@@ -265,6 +272,16 @@ export function GameScreen({
     actionController.getState,
     actionController.getState,
   );
+  const secondaryInputRequest =
+    settings.actionBarStyle === "blisshack"
+    && supportsSecondaryInputDialog(
+      snapshot.inputRequest,
+      snapshot.inputState,
+    )
+      ? snapshot.inputRequest
+      : null;
+  const directionTargeting = secondaryInputRequest !== null
+    && snapshot.inputState === INPUT_STATE_GETDIR;
   const inventoryDropRuntime = useMemo(
     () => createInventoryDropRuntime(
       moduleId,
@@ -757,6 +774,19 @@ export function GameScreen({
       return;
     }
     const current = snapshotRef.current;
+    if (
+      settings.actionBarStyle === "blisshack"
+      && current.inputState === INPUT_STATE_GETDIR
+      && current.inputRequest?.kind === "yn"
+    ) {
+      const key = directionKeyFromMapTarget(
+        origin.mapX - current.cursor.x,
+        origin.mapY - current.cursor.y,
+        current.numberPad,
+      );
+      if (key !== null) sendKey(key);
+      return;
+    }
     const resolution = resolveMapPrimaryInteraction({
       commandInput: current.commandInput,
       inputRequest: current.inputRequest,
@@ -768,7 +798,13 @@ export function GameScreen({
     if (resolution) {
       sendPosition(resolution.x, resolution.y, resolution.modifier);
     }
-  }, [actionController, hoverController, moduleId, sessionId]);
+  }, [
+    actionController,
+    hoverController,
+    moduleId,
+    sessionId,
+    settings.actionBarStyle,
+  ]);
 
   /**
    * Route a secondary click through explicit-position priority and the intent owner.
@@ -793,6 +829,20 @@ export function GameScreen({
       return key !== null && actionController.chooseDirection(key);
     }
     const current = snapshotRef.current;
+    if (
+      settings.actionBarStyle === "blisshack"
+      && current.inputState === INPUT_STATE_GETDIR
+      && current.inputRequest?.kind === "yn"
+    ) {
+      const key = directionKeyFromMapTarget(
+        origin.mapX - current.cursor.x,
+        origin.mapY - current.cursor.y,
+        current.numberPad,
+      );
+      if (key === null) return false;
+      sendKey(key);
+      return true;
+    }
     const resolution = resolveMapSecondaryInteraction({
       completion: "click",
       commandInput: current.commandInput,
@@ -817,7 +867,13 @@ export function GameScreen({
       input: { kind: "command" },
     });
     return true;
-  }, [actionController, hoverController, moduleId, sessionId]);
+  }, [
+    actionController,
+    hoverController,
+    moduleId,
+    sessionId,
+    settings.actionBarStyle,
+  ]);
 
   /**
    * Start itemactions only for the exact permanent-inventory snapshot shown.
@@ -967,12 +1023,12 @@ export function GameScreen({
           clipCenter={snapshot.clipCenter}
           commandInput={snapshot.commandInput}
           cursor={snapshot.cursor}
-          directionTargeting={actionState.status === "targeting-direction"}
+          directionTargeting={directionTargeting}
           followPlayer={settings.followPlayer}
           historyLines={settings.messageHistoryLines}
           informationLevel={settings.informationLevel}
           inert={readOnly || snapshot.modal !== null || pauseView !== null}
-          inputRequest={snapshot.inputRequest}
+          inputRequest={secondaryInputRequest ? null : snapshot.inputRequest}
           inventoryDragController={inventoryDragController}
           inventoryDragState={inventoryDragState}
           layoutKey={[
@@ -1022,6 +1078,7 @@ export function GameScreen({
           && actionState.contextMenu?.windowId === snapshot.modal.windowId
           && (
             <GameModalRenderer
+              actionBarStyle={settings.actionBarStyle}
               contextMenu={actionState.contextMenu}
               modal={snapshot.modal}
             />
@@ -1041,6 +1098,33 @@ export function GameScreen({
               }}
             />
           )}
+        {!readOnly && secondaryInputRequest && (
+          <SecondaryInputDialog
+            inputState={snapshot.inputState}
+            numberPad={snapshot.numberPad}
+            onCancel={() => {
+              if (
+                snapshot.inputState === INPUT_STATE_GETDIR
+                && actionController.getState().status === "targeting-direction"
+              ) {
+                actionController.cancel("user-cancelled");
+              } else {
+                sendKey(27);
+              }
+            }}
+            onSubmit={(value) => {
+              if (
+                snapshot.inputState === INPUT_STATE_GETDIR
+                && actionController.getState().status === "targeting-direction"
+              ) {
+                actionController.chooseDirection(value);
+              } else {
+                sendKey(value);
+              }
+            }}
+            request={secondaryInputRequest}
+          />
+        )}
       </OverlayRoot>
       {!readOnly
         && snapshot.modal
@@ -1049,7 +1133,12 @@ export function GameScreen({
           && actionState.intent !== null
           && actionState.status !== "handed-off-to-native-ui"
         )
-        && <GameModalRenderer modal={snapshot.modal} />}
+        && (
+          <GameModalRenderer
+            actionBarStyle={settings.actionBarStyle}
+            modal={snapshot.modal}
+          />
+        )}
       {!readOnly && pauseView === "pause" && (
         <PauseOverlay
           ready={
@@ -1387,52 +1476,6 @@ function actionInputFromSnapshot(
     return { kind: "display", inputState: snapshot.inputState };
   }
   return { ...request, inputState: snapshot.inputState };
-}
-
-/**
- * Restrict getdir keyboard handling to movement bytes for the current mode.
- * @param value - encoded keyboard byte.
- * @param numberPad - active NetHack number-pad setting.
- * @returns whether the byte represents an adjacent direction or self.
- */
-function isDirectionKey(value: number, numberPad: boolean): boolean {
-  const choices = numberPad ? "1234567895" : "hjklyubn.";
-  return choices.includes(String.fromCharCode(value));
-}
-
-/**
- * Convert an adjacent map target into the current NetHack direction binding.
- * @param xDelta - target column relative to the player.
- * @param yDelta - target row relative to the player.
- * @param numberPad - active NetHack number-pad setting.
- * @returns encoded direction byte, or null outside the adjacent ring.
- */
-function directionKeyFromMapTarget(
-  xDelta: number,
-  yDelta: number,
-  numberPad: boolean,
-): number | null {
-  if (
-    xDelta < -1
-    || xDelta > 1
-    || yDelta < -1
-    || yDelta > 1
-    || (xDelta === 0 && yDelta === 0)
-  ) {
-    return null;
-  }
-  const key = numberPad
-    ? [
-      ["7", "8", "9"],
-      ["4", "5", "6"],
-      ["1", "2", "3"],
-    ][yDelta + 1]?.[xDelta + 1]
-    : [
-      ["y", "k", "u"],
-      ["h", ".", "l"],
-      ["b", "j", "n"],
-    ][yDelta + 1]?.[xDelta + 1];
-  return key ? key.charCodeAt(0) : null;
 }
 
 /**
