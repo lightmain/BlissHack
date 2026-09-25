@@ -35,23 +35,63 @@ export async function startNewGameFromHome(
 ): Promise<void> {
   await page.getByRole("button", { name: "New Game" }).click();
 
-  const nameInput = page.getByRole("textbox", { name: "Who are you?" });
-  await expect(nameInput).toBeVisible();
+  const unifiedNameInput = page.getByRole("textbox", {
+    name: "Name",
+    exact: true,
+  });
+  const originalNameInput = page.getByRole("textbox", {
+    name: "Who are you?",
+    exact: true,
+  });
+  await expect(unifiedNameInput.or(originalNameInput)).toBeVisible();
   const selectionPrompt = page.getByText(
     /Shall I pick (?:character's|your .+'s)/,
   );
-  await expect(selectionPrompt).toHaveCount(0);
-  await nameInput.fill(name);
-  await nameInput.press("Enter");
-
-  const confirmation = page.getByRole("dialog", { name: "Is this ok? [ynq]" });
   const introduction = page.locator(".nh-text-dialog");
-  await expect(selectionPrompt.or(confirmation).or(introduction)).toBeVisible();
-  if (await selectionPrompt.isVisible()) {
-    await page.keyboard.press("y");
-    await expect(confirmation).toBeVisible();
+  if (await unifiedNameInput.isVisible()) {
+    const specified = name.match(
+      /^(.*)-(Arc|Bar)-Hum-(Mal|Fem)-(Law|Neu|Cha)$/,
+    );
+    await unifiedNameInput.fill(specified?.[1] ?? name);
+    if (specified) {
+      const shortcuts = {
+        Arc: "a",
+        Bar: "b",
+        Cha: "c",
+        Fem: "f",
+        Hum: "h",
+        Law: "l",
+        Mal: "m",
+        Neu: "n",
+      } as const;
+      await unifiedNameInput.press("Enter");
+      await expect(page.locator('[data-character-column="role"]'))
+        .toBeFocused();
+      await page.keyboard.press(shortcuts[specified[2] as "Arc" | "Bar"]);
+      await page.keyboard.press(shortcuts.Hum);
+      await page.keyboard.press(shortcuts[specified[3] as "Mal" | "Fem"]);
+      await page.keyboard.press(
+        shortcuts[specified[4] as "Law" | "Neu" | "Cha"],
+      );
+      await page.keyboard.press("Enter");
+    } else {
+      await page.getByRole("button", { name: "Auto & Start" }).click();
+    }
+  } else {
+    await expect(selectionPrompt).toHaveCount(0);
+    await originalNameInput.fill(name);
+    await originalNameInput.press("Enter");
+
+    const confirmation = page.getByRole("dialog", {
+      name: "Is this ok? [ynq]",
+    });
+    await expect(selectionPrompt.or(confirmation).or(introduction)).toBeVisible();
+    if (await selectionPrompt.isVisible()) {
+      await page.keyboard.press("y");
+      await expect(confirmation).toBeVisible();
+    }
+    if (await confirmation.isVisible()) await page.keyboard.press("y");
   }
-  if (await confirmation.isVisible()) await page.keyboard.press("y");
 
   await expect(introduction).toBeVisible();
   await page.keyboard.press("Enter");

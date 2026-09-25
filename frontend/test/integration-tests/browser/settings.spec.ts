@@ -146,9 +146,10 @@ test("exports, previews, imports, and restores a complete profile", async ({
     productVersion: expectedProductVersion,
     interface: {
       mapRenderer: "tiles",
-      informationLevel: "original",
-      endgameStyle: "original",
-      characterSetupStyle: "original",
+      informationLevel: "detailed",
+      endgameStyle: "blisshack",
+      characterSetupStyle: "blisshack",
+      actionBarStyle: "blisshack",
     },
   });
 
@@ -216,9 +217,10 @@ test("exports, previews, imports, and restores a complete profile", async ({
       messageHistoryLines: 5,
       mapRenderer: "tiles",
       followPlayer: true,
-      informationLevel: "original",
-      endgameStyle: "original",
-      characterSetupStyle: "original",
+      informationLevel: "detailed",
+      endgameStyle: "blisshack",
+      characterSetupStyle: "blisshack",
+      actionBarStyle: "blisshack",
     },
     nethack: {
       autopickup: true,

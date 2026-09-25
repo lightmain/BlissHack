@@ -13,10 +13,10 @@ test.use({ screenshot: "off", trace: "off" });
 async function startBlissHackGame(page: Page, marker: string): Promise<void> {
   await openHome(page, marker);
   await page.getByRole("button", { name: "Settings" }).click();
-  await page.getByRole("group", { name: "Action bar" })
-    .getByRole("radio", { name: "BlissHack" })
-    .check();
-  await page.getByRole("button", { name: "Apply" }).click();
+  await expect(page.getByRole("group", { name: "Action bar" })
+    .getByRole("radio", { name: "BlissHack" }))
+    .toBeChecked();
+  await page.getByRole("button", { name: "Back to Home" }).click();
   await startNewGameFromHome(page, `${marker}-Arc-Hum-Mal-Law`);
   await expect(page.locator(".nh-shell"))
     .toHaveAttribute("data-command-input", "ready");

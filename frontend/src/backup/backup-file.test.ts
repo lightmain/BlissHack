@@ -42,10 +42,10 @@ describe("full backup format", () => {
       schemaVersion: 4,
       interface: {
         mapRenderer: "tiles",
-        informationLevel: "original",
-        endgameStyle: "original",
-        characterSetupStyle: "original",
-        actionBarStyle: "original",
+        informationLevel: "detailed",
+        endgameStyle: "blisshack",
+        characterSetupStyle: "blisshack",
+        actionBarStyle: "blisshack",
         actionBarLayout: {
           rows: 2,
           locked: true,

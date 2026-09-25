@@ -23,6 +23,11 @@ function saveDigest(bytes: Buffer): string {
 test("creates and normally exits ten consecutive sessions", async ({ page }) => {
   const errors = captureErrors(page);
   await openHome(page, "long-session-cycle");
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("group", { name: "Character setup style" })
+    .getByRole("radio", { name: "Original" })
+    .check();
+  await page.getByRole("button", { name: "Apply" }).click();
 
   for (let round = 1; round <= 10; round += 1) {
     await test.step(`round ${round}/10`, async () => {

@@ -25,13 +25,18 @@ async function enableUnifiedSetup(
   mapRenderer: "tiles" | "ascii" = "tiles",
 ): Promise<void> {
   await page.getByRole("button", { name: "Settings" }).click();
-  await page.getByRole("group", { name: "Character setup style" })
-    .getByRole("radio", { name: "BlissHack" })
-    .check();
+  await expect(page.getByRole("group", { name: "Character setup style" })
+    .getByRole("radio", { name: "BlissHack" }))
+    .toBeChecked();
   await page.getByRole("radio", {
     name: mapRenderer === "tiles" ? "Tiles" : "ASCII",
   }).check();
-  await page.getByRole("button", { name: "Apply" }).click();
+  const apply = page.getByRole("button", { name: "Apply" });
+  if (await apply.isEnabled()) {
+    await apply.click();
+  } else {
+    await page.getByRole("button", { name: "Back to Home" }).click();
+  }
   await expect(page.getByRole("button", { name: "New Game" })).toBeVisible();
 }
 

@@ -48,6 +48,11 @@ test("restores the saved identity and map position", async ({ page }) => {
   const errors = captureErrors(page);
   const name = "E2ERestore";
   await openHome(page, "restore-known-identity");
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("group", { name: "Character setup style" })
+    .getByRole("radio", { name: "Original" })
+    .check();
+  await page.getByRole("button", { name: "Apply" }).click();
   await page.getByRole("button", { name: "New Game" }).click();
   const nameInput = page.getByRole("textbox", { name: "Who are you?" });
   await nameInput.fill(name);

@@ -113,30 +113,24 @@ describe("SettingsScreen", () => {
     expect(buttonMarkup(html, "Apply")).toMatch(/\sdisabled(?:=""|>)/i);
   });
 
-  it("renders all four presentation settings as segmented controls defaulting to Original", () => {
+  it("defaults the four presentation settings to the enhanced interface", () => {
     const html = renderSettings();
 
-    for (const legend of [
-      "Information level",
-      "Endgame style",
-      "Character setup style",
-      "Action bar",
-    ]) {
+    for (const [legend, value, label] of [
+      ["Information level", "detailed", "Detailed"],
+      ["Endgame style", "blisshack", "BlissHack"],
+      ["Character setup style", "blisshack", "BlissHack"],
+      ["Action bar", "blisshack", "BlissHack"],
+    ] as const) {
       const fieldset = fieldsetMarkup(html, legend);
       expect(fieldset).toContain(">Original</span>");
+      expect(fieldset).toContain(`>${label}</span>`);
       expect(fieldset).toMatch(
-        /<input(?=[^>]*checked="")(?=[^>]*value="original")[^>]*>/,
+        new RegExp(
+          `<input(?=[^>]*checked="")(?=[^>]*value="${value}")[^>]*>`,
+        ),
       );
     }
-
-    expect(fieldsetMarkup(html, "Information level"))
-      .toContain(">Detailed</span>");
-    expect(fieldsetMarkup(html, "Endgame style"))
-      .toContain(">BlissHack</span>");
-    expect(fieldsetMarkup(html, "Character setup style"))
-      .toContain(">BlissHack</span>");
-    expect(fieldsetMarkup(html, "Action bar"))
-      .toContain(">BlissHack</span>");
   });
 
   it("[defect-probing] labels all three permanent inventory positions", () => {

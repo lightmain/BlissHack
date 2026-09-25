@@ -203,10 +203,10 @@ describe("profile defaults and validation", () => {
         followPlayer: true,
         permanentInventoryPosition: "right",
         permanentInventoryCollapsed: false,
-        informationLevel: "original",
-        endgameStyle: "original",
-        characterSetupStyle: "original",
-        actionBarStyle: "original",
+        informationLevel: "detailed",
+        endgameStyle: "blisshack",
+        characterSetupStyle: "blisshack",
+        actionBarStyle: "blisshack",
         actionBarLayout: expect.objectContaining({
           rows: 2,
           locked: true,
@@ -566,7 +566,7 @@ describe("profile import and export", () => {
         informationLevel: "detailed",
         endgameStyle: "blisshack",
         characterSetupStyle: "blisshack",
-        actionBarStyle: "original",
+        actionBarStyle: "blisshack",
         actionBarLayout: {
           rows: 2,
           locked: true,

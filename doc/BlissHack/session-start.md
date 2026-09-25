@@ -63,7 +63,8 @@
   内使用图形状态。两者不切换 window port。
 - 当前个人配置是严格 profile schema v4，持久 key 为
   `blisshack.profile.v4`；仅在没有 v4 时依次读取 v3、v2、v1，v1 迁移后
-  保持 ASCII 显示，旧版本的新展示设置均迁移为 `original`。
+  保持 ASCII 显示，旧版本的新展示设置均迁移为 `original`。新建 profile
+  默认使用 `detailed` 信息量以及 BlissHack 终局、角色创建和动作栏。
 - `interface.informationLevel` 只控制状态栏的解释性 Tooltip；地图、背包和
   `nethack.showExperience` 不受其影响。
 - `frontend/src/session/session-manager.ts` 是稳定 façade；
