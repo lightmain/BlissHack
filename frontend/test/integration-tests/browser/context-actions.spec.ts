@@ -7,6 +7,7 @@ import { captureErrors } from "./helpers/browser-errors";
 import {
   openHome,
   startNewGameFromHome,
+  statusField,
 } from "./helpers/game-flow";
 import { readCursorPosition } from "./helpers/map-viewport-state";
 
@@ -113,9 +114,7 @@ test("opens an anchored core map menu and cancels it without a turn", async ({
   await startContextGame(page, "MapContext", { showTime: true });
   const cursor = await readCursorPosition(page);
   const anchor = await mapCellPoint(page, cursor.x, cursor.y);
-  const turn = page.locator(
-    "[data-status-group='world'] .nh-status-value",
-  ).filter({ hasText: /^T:\d+$/ });
+  const turn = statusField(page, "time");
   const turnBefore = await turn.textContent();
 
   await page.mouse.click(anchor.x, anchor.y, { button: "right" });

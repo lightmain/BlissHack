@@ -10,10 +10,11 @@
 1. 完整阅读仓库根目录的 `AGENTS.md` 和 `AGENTS-cn.md`。
 2. 阅读 `README-cn.md`，确认当前产品定位、运行方式、测试入口和许可证说明。
 3. `BlissHack` 已包含完成人工验收的 alpha-1.1 Tileset、地图交互和定向基建；
-   alpha-2.1 的焦点与 Below HUD 调整已完成人工验收；alpha-2.2 的 profile
-   v3、信息量、统一角色选择、终局结果页和本地 Ranking 也已完成自动门禁与
-   人工验收。验收记录见
-   `doc/BlissHack/plans/in-alpha-2.2/release-acceptance.md`。
+   alpha-2.1 的焦点与 Below HUD 调整、alpha-2.2 的 profile v3、信息量、统一
+   角色选择、终局结果页和本地 Ranking 也已完成人工验收。alpha-2.3 的
+   profile v4、动作栏、动作次级弹窗和 Original TTY 两行状态已完成实现、
+   自动门禁与独立复审，当前停在人工验收门槛。最新验收记录见
+   `doc/BlissHack/plans/in-alpha-2.3/release-acceptance.md`。
    GitHub Pages 可能落后，应以页面版本为准。维护当前架构时阅读
    `doc/BlissHack/plans/prealpha-4.md`；进行 tileset、Canvas 地图、
    `TILES_IN_GLYPHMAP` 或 profile v2 工作时完整阅读
@@ -55,9 +56,14 @@
   原生 drop 流程决定。
 - `frontend/src/screens/game/GameHudLayout.tsx` 拥有 viewport HUD Grid；
   消息、地图、状态和永久背包分别拥有自己的区域和 overflow。
-- 当前个人配置是严格 profile schema v3，持久 key 为
-  `blisshack.profile.v3`；仅在没有 v3 时依次读取 v2、v1，v1 迁移后保持
-  ASCII 显示，两个旧版本的新展示设置均迁移为 `original`。
+- `frontend/src/screens/game/SecondaryDialog.tsx` 统一提供 BlissHack 动作栏的
+  物品、方向、`yn`/`ynq` 和普通 `PICK_ONE` 次级弹窗；真实
+  `program_state.input_state == getdirInp` 是方向 UI 的唯一识别依据。
+- Original 使用结构化 BL 字段绘制 TTY 风格两行状态；BlissHack 继续在动作栏
+  内使用图形状态。两者不切换 window port。
+- 当前个人配置是严格 profile schema v4，持久 key 为
+  `blisshack.profile.v4`；仅在没有 v4 时依次读取 v3、v2、v1，v1 迁移后
+  保持 ASCII 显示，旧版本的新展示设置均迁移为 `original`。
 - `interface.informationLevel` 只控制状态栏的解释性 Tooltip；地图、背包和
   `nethack.showExperience` 不受其影响。
 - `frontend/src/session/session-manager.ts` 是稳定 façade；

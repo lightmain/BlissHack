@@ -1,6 +1,9 @@
 import { expect, test } from "./fixtures";
 import { captureErrors } from "./helpers/browser-errors";
-import { startNewGame } from "./helpers/game-flow";
+import {
+  startNewGame,
+  statusField,
+} from "./helpers/game-flow";
 
 test("pauses only at command input and synchronizes in-game settings", async ({
   page,
@@ -30,7 +33,7 @@ test("pauses only at command input and synchronizes in-game settings", async ({
 
   await expect(pause).toBeVisible();
   await expect(page.locator(".nh-shell")).toHaveClass(/nh-font-large/);
-  await expect(page.locator(".nh-status")).toContainText(/T:\d+/);
+  await expect(statusField(page, "time")).toHaveText(/T:\d+/);
   const resume = page.getByRole("button", { name: "Resume" });
   await expect(page.locator(".nh-shell")).toHaveAttribute(
     "data-settings-status",

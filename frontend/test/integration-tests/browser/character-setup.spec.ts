@@ -5,6 +5,7 @@ import {
   openHome,
   saveAndReturnHome,
   startNewGame,
+  statusField,
 } from "./helpers/game-flow";
 import {
   exportDiagnosticLog,
@@ -61,9 +62,7 @@ async function finishStartup(page: Page): Promise<void> {
     name: "Do you want a tutorial?",
   })).toBeVisible();
   await page.keyboard.press("n");
-  await expect(
-    page.getByRole("progressbar", { name: /^Hit points:/ }),
-  ).toBeVisible();
+  await expect(statusField(page, "title")).toBeVisible();
 }
 
 type RejectedShortcutGuard = "repeat" | "isComposing" | "defaultPrevented";
@@ -285,11 +284,9 @@ test("uses the unified keyboard character setup flow", async ({ page }) => {
   await page.keyboard.press("Enter");
 
   await finishStartup(page);
-  await expect(
-    page.getByRole("region", { name: "Character status" })
-      .locator(".nh-status-value")
-      .filter({ hasText: new RegExp(`^${name} the `) }),
-  ).toBeVisible();
+  await expect(statusField(page, "title")).toHaveText(
+    new RegExp(`^${name} the `),
+  );
   expect(errors).toEqual({ console: [], page: [] });
 });
 
@@ -688,9 +685,7 @@ test("cancels an existing-save name without restoring it", async ({ page }) => {
     timeout: 15_000,
   });
   await expect(page.locator(".nh-shell")).toHaveCount(0);
-  await expect(
-    page.getByRole("progressbar", { name: /^Hit points:/ }),
-  ).toHaveCount(0);
+  await expect(statusField(page, "title")).toHaveCount(0);
   expect(errors).toEqual({ console: [], page: [] });
 });
 
@@ -726,11 +721,10 @@ test("locks an existing save identity and restores it by name", async ({
   await expect(page.getByRole("button", { name: "Confirm" })).toBeEnabled();
   await input.press("Enter");
 
-  await expect(
-    page.getByRole("region", { name: "Character status" })
-      .locator(".nh-status-value")
-      .filter({ hasText: new RegExp(`^${name} the `) }),
-  ).toBeVisible({ timeout: 15_000 });
+  await expect(statusField(page, "title")).toHaveText(
+    new RegExp(`^${name} the `),
+    { timeout: 15_000 },
+  );
   expect(errors).toEqual({ console: [], page: [] });
 });
 

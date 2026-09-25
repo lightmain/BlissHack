@@ -156,10 +156,28 @@ test("[defect-probing] BlissHack yn buttons preserve keyboard and Escape semanti
   }
 
   if (await firstPrompt.getByRole("button", { name: "No" }).count()) {
-    await firstPrompt.getByRole("button", { name: "No" }).click();
+    await expect(firstPrompt.getByRole("button", { name: "No" }))
+      .toBeFocused();
+    await page.keyboard.press("Enter");
   } else {
     await page.keyboard.press("n");
   }
+  await expect(page.locator(".nh-shell"))
+    .toHaveAttribute("data-command-input", "ready");
+
+  await page.keyboard.press("S");
+  await expect(page.getByText("Really save?", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("dialog", { name: "Really save?" })
+      .getByRole("button", { name: "No" }),
+  ).toBeFocused();
+  await page.keyboard.press("Space");
+  await expect(page.locator(".nh-shell"))
+    .toHaveAttribute("data-command-input", "ready");
+
+  await page.keyboard.press("S");
+  await expect(page.getByText("Really save?", { exact: true })).toBeVisible();
+  await page.keyboard.press("n");
   await expect(page.locator(".nh-shell"))
     .toHaveAttribute("data-command-input", "ready");
 
@@ -187,7 +205,9 @@ test("[defect-probing] Messages invokes the real prevmsg action and opens the la
   if (historyButtonCount === 1) {
     expect.soft(await historyButton.getAttribute("data-action-name"))
       .toBe("prevmsg");
-    await historyButton.click();
+    await historyButton.focus();
+    await expect(historyButton).toBeFocused();
+    await page.keyboard.press("Enter");
   } else {
     await page.keyboard.press("Control+p");
   }
@@ -197,6 +217,42 @@ test("[defect-probing] Messages invokes the real prevmsg action and opens the la
   await expect(history).toHaveClass(/nh-history-dialog/);
   await expect(history.locator("pre")).not.toBeEmpty();
   await history.getByRole("button", { name: "Close" }).click();
+  await historyButton.focus();
+  await page.keyboard.press("Space");
+  await expect(history).toBeVisible();
+  await history.getByRole("button", { name: "Close" }).click();
+  await expect(page.locator(".nh-shell"))
+    .toHaveAttribute("data-command-input", "ready");
+  expect(errors).toEqual({ console: [], page: [] });
+});
+
+test("[defect-probing] compact PICK_ONE cancel keeps native keyboard activation", async ({
+  page,
+}) => {
+  const errors = captureErrors(page);
+  await startBlissHackGame(page, "SecondaryPickOneCancel");
+
+  await page.keyboard.press("i");
+  const dialog = page.locator(".nh-secondary-dialog");
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator(".nh-secondary-dialog-option").first())
+    .toBeFocused();
+
+  await page.keyboard.press("Shift+Tab");
+  const cancel = dialog.getByRole("button", { name: "Cancel" });
+  await expect(cancel).toBeFocused();
+  await page.keyboard.press("Enter");
+
+  await expect(dialog).toHaveCount(0);
+  await expect(page.locator(".nh-shell"))
+    .toHaveAttribute("data-command-input", "ready");
+
+  await page.keyboard.press("i");
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press("Shift+Tab");
+  await expect(dialog.getByRole("button", { name: "Cancel" })).toBeFocused();
+  await page.keyboard.press("Space");
+  await expect(dialog).toHaveCount(0);
   await expect(page.locator(".nh-shell"))
     .toHaveAttribute("data-command-input", "ready");
   expect(errors).toEqual({ console: [], page: [] });

@@ -18,17 +18,24 @@ BlissHack 对 NetHack C 代码进行了少量有针对性的修改，主要用�
 
 ## 项目状态
 
-**alpha-2.2 已完成实现、自动门禁和人工验收。**
+**alpha-2.3 已完成实现、自动门禁和独立复审，等待人工验收。**
 
-alpha-2.2 已加入 profile v3、三项界面风格设置、统一角色选择、终局结果页和
-浏览器本地 Ranking。信息量只控制状态栏说明，并与 Show experience 独立。
-部署分支与 GitHub Pages 可能落后，实际线上版本以页面显示为准。
+alpha-2.3 已加入 profile v4 和由核心命令目录驱动的可选 BlissHack 动作栏。
+Original 模式改为结构化的 TTY 两行状态，BlissHack 模式继续使用图形状态。
+启用 BlissHack 动作栏时，核心实际请求的物品、方向、确认和普通单选输入使用
+紧凑的动作次级弹窗。部署分支与 GitHub Pages 可能落后，实际线上版本以页面
+显示为准。
 
 当前里程碑已经实现：
 
 - 默认使用官方 tiles 的 80×21 Canvas 地图，并长期保留 ASCII renderer。
 - viewport 全屏 HUD 固定消息区和状态区，并支持永久背包 Right 与 Below 布局。
-- HP、Energy、XP、属性、状态、地点和回合由核心结构化字段驱动显示。
+- Original 的 TTY 两行状态和 BlissHack 的 HP、Energy、XP 图形状态均由核心
+  结构化字段驱动显示。
+- 可选动作栏覆盖核心公开命令目录，支持行数、分类、锁定、拖动布局、布局
+  导入导出和可搜索的 All Actions。
+- 物品选择、方向选择、`yn`/`ynq` 确认和普通单选菜单共用紧凑次级弹窗；即使
+  使用快捷键开始方向操作，也会高亮角色周围八格并允许点击选择。
 - Detailed 信息量下，状态、背包和地图共用延迟 Tooltip；Original 只关闭状态
   说明，地图与背包不受影响。
 - 地图和背包右键菜单完全由核心生成，鼠标动作由高层动作控制器安全编排。
@@ -40,8 +47,10 @@ alpha-2.2 已加入 profile v3、三项界面风格设置、统一角色选择�
   target 的坐标变化后重新居中。
 - WASM 提供权威 `tileIndex`；Canvas 绘制背景、前景、宠物/物品堆标记和光标。
 - atlas 或 Canvas 失败时自动回退 ASCII，不修改玩家保存的显示偏好。
-- Settings 可即时切换 Tiles/ASCII；旧 profile v1 迁移后保持 ASCII。
-- 消息历史、文本窗口、菜单、提示、扩展命令和位置输入。
+- Settings 可即时切换 Tiles/ASCII；profile 严格按 v1→v2→v3→v4 迁移，旧
+  profile v1 迁移后保持 ASCII。
+- 可从核心命令或 Messages 区域按钮打开消息历史，并支持文本窗口、菜单、
+  提示、扩展命令和位置输入。
 - 可选择原版串行角色流程，或在统一界面完成姓名、职业、种族、性别和阵营，
   并直接继续同名存档。
 - 准确的 ASCII、Ctrl、Alt/Meta、方向键和数字小键盘输入。
@@ -135,6 +144,7 @@ Tiles/ASCII、Right/Below 在 1280×900 和 900×700 下的 HUD 组合。
 - [alpha-2.0 交互式 HUD 计划](doc/BlissHack/plans/alpha-2.0.md)
 - [alpha-2.1 焦点与 Below HUD 计划](doc/BlissHack/plans/alpha-2.1.md)
 - [alpha-2.2 信息与流程体验计划](doc/BlissHack/plans/alpha-2.2.md)
+- [alpha-2.3 动作栏计划](doc/BlissHack/plans/alpha-2.3.md)
 - [alpha-1 渲染架构](doc/BlissHack/plans/in-alpha-1/rendering-architecture.md)
 - [alpha-1 profile v2](doc/BlissHack/plans/in-alpha-1/profile-v2.md)
 - [alpha-1 发布验收](doc/BlissHack/plans/in-alpha-1/release-acceptance.md)
@@ -142,6 +152,7 @@ Tiles/ASCII、Right/Below 在 1280×900 和 900×700 下的 HUD 组合。
 - [alpha-2.0 发布验收](doc/BlissHack/plans/in-alpha-2.0/release-acceptance.md)
 - [alpha-2.1 发布验收](doc/BlissHack/plans/in-alpha-2.1/release-acceptance.md)
 - [alpha-2.2 发布验收](doc/BlissHack/plans/in-alpha-2.2/release-acceptance.md)
+- [alpha-2.3 发布验收](doc/BlissHack/plans/in-alpha-2.3/release-acceptance.md)
 - [prealpha-3 发布验收](doc/BlissHack/plans/in-prealpha-3/release-acceptance.md)
 - [上游修改清单](doc/BlissHack/upstream-modifications.md)
 - [存档存储与读取方案评审](doc/BlissHack/plans/in-prealpha-2/save-format-review.md)
@@ -157,7 +168,9 @@ Tiles/ASCII、Right/Below 在 1280×900 和 900×700 下的 HUD 组合。
 ## 已知接口限制
 
 当前上游 shim ABI 无法安全返回非空消息历史字符串，也没有暴露 `yn_number`。
-BlissHack 会维持安全行为，而不会猜测未公开的内存或回调语义。详情记录在
+扩展后的 `getdir` 回调能可靠说明方向输入正在进行，却不能说明发起操作属于邻格
+还是远程，也没有暴露射线的阻挡与可见性语义。因此 BlissHack 只显示可靠的
+八方向目标，不根据提示、动作名或物品名猜测射线。详情记录在
 [Shim 接口参考](doc/BlissHack/shim-interface-reference.md)中。
 
 ## 许可证

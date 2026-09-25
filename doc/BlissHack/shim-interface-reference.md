@@ -677,6 +677,11 @@ ASCII 回答；不能把任意 `nhgetch` 输入直接转交给这个返回槽。
 (`3`)。前端必须使用附加的 `input_state` 识别方向 targeting，不能匹配英文
 prompt；普通 unrestricted `yn` 保持普通输入。
 
+该状态只说明当前回调属于 `getdir()`，不包含发起命令、物品、预期距离、
+远程/近程分类、未知区域或固体阻挡信息。前端可以可靠提供通用八方向输入和邻格
+点击，但不能据此绘制权威射线。除非未来增加明确的核心元数据，否则不得根据
+prompt、动作名或物品名猜测射程。
+
 #### shim_getlin
 
 ```c
@@ -871,6 +876,11 @@ WASM 的 `provenance` 只有 `0`（普通菜单）和 `1`（当前 action reques
 `menu_generation` 对每次 `shim_select_menu()` 单调递增且不回绕。前端只有在
 `PICK_ONE`、provenance、nonce 和新 generation 全部匹配时才能用轻量 chooser
 接管；window ID、prompt 或动作名都不是身份依据。原生 callback ABI 不变。
+
+这里的身份校验专指动作控制器在普通 modal 之前接管 `getobj()` 候选菜单。
+控制器已经明确 handoff 的普通 `PICK_ONE` 仍可按选择模式使用同一紧凑视觉，
+但必须继续通过标准 `submitMenuSelection()` 返回原始 item index，不能借此
+恢复或伪造 action provenance。`PICK_ANY` 与 `PICK_NONE` 保持完整菜单。
 
 #### shim_message_menu
 

@@ -4,6 +4,7 @@ import { exportDiagnosticLog } from "./helpers/diagnostic-artifact";
 import {
   startNewGame,
   startNewGameFromHome,
+  statusField,
 } from "./helpers/game-flow";
 import { readExpectedProductVersion } from "./helpers/product-version";
 
@@ -105,9 +106,10 @@ test("allows a temporary new game when IndexedDB is unavailable", async ({
   await expect(page.getByRole("button", { name: "New Game" })).toBeEnabled();
   await startNewGameFromHome(page, "E2E_Temporary");
   await expect(
-    page.getByRole("region", { name: "Character status" })
-      .locator(".nh-status-value")
-      .filter({ hasText: /^E2E_Temporary the .+$/ }),
+    statusField(page, "title"),
   ).toBeVisible();
+  await expect(statusField(page, "title")).toHaveText(
+    /^E2E_Temporary the .+$/,
+  );
   expect(errors).toEqual({ console: [], page: [] });
 });

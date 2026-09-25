@@ -8,6 +8,7 @@ import {
   openHome,
   startNewGame,
   startNewGameFromHome,
+  statusField,
 } from "./helpers/game-flow";
 import {
   readCursorPosition,
@@ -214,7 +215,9 @@ test("delays status inspection and keeps pointer and focus tooltips in the share
   });
   const shell = await expectCommandReady(page);
   const tooltip = inspectTooltip(page);
-  const statusTargets = page.locator(".nh-status [data-inspect-target]");
+  const statusTargets = page.getByRole("region", {
+    name: "Character status",
+  }).locator("[data-inspect-target]");
   expect(await statusTargets.count()).toBeGreaterThanOrEqual(2);
   const edgeTarget = statusTargets.last();
   await expect(edgeTarget).toBeVisible();
@@ -256,9 +259,8 @@ test("applies status information level immediately without changing other inspec
   const shell = await expectCommandReady(page);
   const tooltip = inspectTooltip(page);
   const status = page.getByRole("region", { name: "Character status" });
-  const experiencePoints = status.locator(".nh-status-value")
-    .filter({ hasText: /^\/\d+$/ });
-  const hitPoints = page.getByRole("progressbar", { name: /^Hit points:/ });
+  const experiencePoints = statusField(page, "experience");
+  const hitPoints = statusField(page, "hitpoints");
 
   await expect(experiencePoints).toBeVisible();
   await hitPoints.hover();
@@ -352,9 +354,7 @@ test("inspects the player cell without changing visible messages or turn count",
   });
   const shell = await expectCommandReady(page);
   const messages = page.locator(".nh-messages");
-  const turn = page.locator(
-    "[data-inspect-target='status:time'] .nh-status-value",
-  );
+  const turn = statusField(page, "time");
   await expect(turn).toBeVisible();
   await expect(
     page.locator(".nh-map-interaction [data-map-renderer-state]:visible"),

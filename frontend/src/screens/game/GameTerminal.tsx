@@ -5,6 +5,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type SyntheticEvent,
 } from "react";
+import { MessageSquareMore } from "lucide-react";
 import {
   type GameSnapshot,
   type MapCell,
@@ -36,6 +37,7 @@ import {
 import { GameHudLayout } from "./GameHudLayout";
 import { StatusArea } from "./StatusArea";
 import { ActionDock } from "./ActionDock";
+import { OriginalStatusArea } from "./OriginalStatusArea";
 
 interface GameTerminalProps {
   activeActionName: string | null;
@@ -151,14 +153,23 @@ export function GameTerminal({
       />
     )
     : null;
-  const statusArea = (
-    <StatusArea
-      informationLevel={informationLevel}
-      metrics={statusMetrics}
-      onInspect={onInspect}
-      onInspectLeave={onInspectLeave}
-    />
-  );
+  const statusArea = actionBarStyle === "original"
+    ? (
+      <OriginalStatusArea
+        informationLevel={informationLevel}
+        metrics={statusMetrics}
+        onInspect={onInspect}
+        onInspectLeave={onInspectLeave}
+      />
+    )
+    : (
+      <StatusArea
+        informationLevel={informationLevel}
+        metrics={statusMetrics}
+        onInspect={onInspect}
+        onInspectLeave={onInspectLeave}
+      />
+    );
   const showInputArea = inputRequest?.kind === "line"
     || inputRequest?.kind === "yn"
     || inputRequest?.kind === "message";
@@ -229,9 +240,12 @@ export function GameTerminal({
         )}
         messages={(
           <MessageArea
+            actionBlocked={actionBlocked}
+            actionCatalog={actionCatalog}
             allActionsOpen={allActionsOpen}
             historyLines={historyLines}
             messages={messages}
+            onActionRequest={onActionRequest}
           />
         )}
         position={permanentInventoryPosition}
@@ -247,15 +261,27 @@ export function GameTerminal({
  * @returns message region.
  */
 const MessageArea = memo(function MessageArea({
+  actionBlocked,
+  actionCatalog,
   allActionsOpen,
   historyLines,
   messages: allMessages,
+  onActionRequest,
 }: {
+  actionBlocked: boolean;
+  actionCatalog: SessionActionCatalog | null;
   allActionsOpen: boolean;
   historyLines: InterfaceSettings["messageHistoryLines"];
   messages: TextLine[];
+  onActionRequest(request: {
+    name: string;
+    sessionCommandId: number;
+  }): void;
 }) {
   const messages = allMessages.slice(-historyLines);
+  const historyCommand = actionCatalog?.commands.find(
+    (command) => command.name === "prevmsg",
+  );
   return (
     <section
       className={`nh-messages nh-messages-${historyLines}`}
@@ -266,6 +292,24 @@ const MessageArea = memo(function MessageArea({
       data-overflow-owner="messages"
       inert={allActionsOpen}
     >
+      <button
+        aria-label="Message history"
+        className="nh-message-history-button"
+        data-action-name="prevmsg"
+        data-browser-keyboard
+        disabled={actionBlocked || !historyCommand}
+        onClick={() => {
+          if (!historyCommand) return;
+          onActionRequest({
+            name: historyCommand.name,
+            sessionCommandId: historyCommand.sessionCommandId,
+          });
+        }}
+        title="Message history"
+        type="button"
+      >
+        <MessageSquareMore aria-hidden="true" size={16} />
+      </button>
       {messages.length === 0
         ? <div className="nh-message">&nbsp;</div>
         : messages.map((line, index) => (

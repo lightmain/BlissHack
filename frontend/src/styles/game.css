@@ -1062,112 +1062,48 @@
 }
 
 .nh-action-item-chooser {
-  position: fixed;
-  right: clamp(12px, 4vw, 48px);
-  bottom: var(--action-chooser-bottom);
-  z-index: 30;
-  width: min(30rem, calc(100vw - 24px));
-  max-height: min(22rem, calc(100svh - var(--action-chooser-bottom) - 12px));
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  overflow: hidden;
-  border: 1px solid #66747a;
-  border-radius: 6px;
-  background: #111719;
-  box-shadow: 0 14px 34px rgb(0 0 0 / 55%);
-  color: #edf0ed;
   pointer-events: auto;
 }
 
-.nh-action-item-chooser-header {
-  min-height: 38px;
-  padding: 5px 7px 5px 12px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  border-bottom: 1px solid #343e42;
-}
-
-.nh-action-item-chooser-header strong {
-  font-size: 0.82rem;
-  letter-spacing: 0;
-}
-
-.nh-action-item-chooser-header button {
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  display: grid;
-  place-items: center;
-  border: 1px solid transparent;
-  border-radius: 3px;
-  background: transparent;
-  color: #bec6c8;
-}
-
-.nh-action-item-chooser-header button:hover,
-.nh-action-item-chooser-header button:focus-visible {
-  border-color: #84595b;
-  outline: none;
-  background: #2f1e20;
-  color: #fff;
-}
-
-.nh-action-item-list {
-  min-height: 0;
-  padding: 5px;
-  display: grid;
-  gap: 3px;
-  overflow-y: auto;
-}
-
-.nh-action-item-list > button {
-  min-width: 0;
-  min-height: 34px;
-  padding: 5px 8px;
-  display: grid;
-  grid-template-columns: 2rem minmax(0, 1fr);
-  align-items: center;
-  gap: 7px;
-  overflow: hidden;
-  border: 1px solid #333d41;
-  border-radius: 3px;
-  background: #171d1f;
-  color: #e0e5e2;
-  font: inherit;
-  text-align: left;
-}
-
-.nh-action-item-list > button:hover,
-.nh-action-item-list > button:focus-visible {
-  border-color: #72a9b8;
-  outline: none;
-  background: #20292d;
-}
-
-.nh-action-item-list kbd {
-  min-width: 1.7rem;
-  padding: 2px 4px;
-  border: 1px solid #59656a;
-  border-radius: 2px;
-  color: #ffcf5c;
-  font: inherit;
-  text-align: center;
-}
-
-.nh-action-item-list span {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
 .nh-messages {
+  position: relative;
   grid-area: messages;
   width: 100%;
-  padding: 6px 12px;
+  padding: 6px 42px 6px 12px;
   overflow: hidden;
   border-bottom: 1px solid #30363a;
   background: #111416;
   color: #f1f1eb;
+}
+
+.nh-message-history-button {
+  position: absolute;
+  z-index: 1;
+  top: 5px;
+  right: 8px;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 1px solid #454f54;
+  border-radius: 3px;
+  background: #171c1e;
+  color: #bec6c8;
+  cursor: pointer;
+}
+
+.nh-message-history-button:hover:not(:disabled),
+.nh-message-history-button:focus-visible {
+  border-color: #7ddc8c;
+  outline: none;
+  background: #20292d;
+  color: #fff;
+}
+
+.nh-message-history-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
 }
 
 .permanent-inventory {
@@ -1397,6 +1333,60 @@
   overflow: hidden;
   border-top: 1px solid #30363a;
   background: #0d1011;
+}
+
+.nh-original-status {
+  width: 100%;
+  min-width: 0;
+  padding: 5px 10px 6px;
+  display: grid;
+  gap: 2px;
+  color: #c9c9c3;
+  line-height: 1.15;
+}
+
+.nh-original-status-line {
+  min-width: 0;
+  min-height: 1.15em;
+  display: flex;
+  align-items: center;
+  gap: 1ch;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+}
+
+.nh-original-status-field,
+.nh-original-status-condition,
+.nh-original-status-conditions {
+  position: relative;
+  flex: 0 0 auto;
+  outline: none;
+}
+
+.nh-original-status-conditions {
+  display: inline-flex;
+  gap: 1ch;
+}
+
+.nh-original-status-field:focus-visible,
+.nh-original-status-condition:focus-visible {
+  outline: 1px solid #d8d8d2;
+  outline-offset: 1px;
+}
+
+.nh-original-status-field[data-change="-1"],
+.nh-original-status-conditions[data-change="-1"] {
+  text-decoration: underline;
+  text-decoration-color: #d34b4b;
+  text-underline-offset: 2px;
+}
+
+.nh-original-status-field[data-change="1"],
+.nh-original-status-conditions[data-change="1"] {
+  text-decoration: underline;
+  text-decoration-color: #7ddc8c;
+  text-underline-offset: 2px;
 }
 
 .nh-status {
@@ -1847,6 +1837,11 @@
   font: inherit;
   letter-spacing: 0;
   white-space: pre-wrap;
+}
+
+.nh-history-dialog {
+  width: min(104ch, 100%);
+  max-height: min(92svh, 64rem);
 }
 
 .nh-menu-items {
