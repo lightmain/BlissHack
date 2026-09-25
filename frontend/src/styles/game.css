@@ -695,6 +695,26 @@
   opacity: 0.5;
 }
 
+.nh-action-tooltip {
+  position: fixed;
+  z-index: 30;
+  left: var(--action-tooltip-left, 8px);
+  top: var(--action-tooltip-top, 8px);
+  display: grid;
+  gap: 4px;
+  font-size: 11px;
+  pointer-events: none;
+}
+
+.nh-action-tooltip[aria-hidden="true"] {
+  visibility: hidden;
+}
+
+.nh-action-tooltip kbd {
+  color: #7ddc8c;
+  font: inherit;
+}
+
 .nh-action-drag-preview {
   position: fixed;
   z-index: 26;
