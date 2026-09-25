@@ -1,15 +1,16 @@
 # BlissHack alpha-2.3 发布验收
 
-本文记录 alpha-2.3 动作栏、动作次级输入和 Original TTY 状态的自动验收结果
-及待人工检查项目。自动测试通过不代表已经发布；当前不 push、不部署。
+本文记录 alpha-2.3 动作栏、动作次级输入和 Original TTY 状态的自动与人工
+验收结果。完成验收不代表已经发布；当前不 push、不部署。
 
 ## 1. 状态
 
-alpha-2.3 实现、独立复审和自动门禁已完成，当前停在人工验收门槛。
+alpha-2.3 实现、独立复审、自动门禁和人工验收均已完成。2026-09-26，用户确认
+该版本完成并开始准备 alpha-2.4。
 
 ## 2. 测试环境
 
-- 日期：2026-09-25。
+- 最终复验日期：2026-09-26。
 - 机器：Apple M4 Pro，arm64。
 - 系统：macOS 26.5.1。
 - 固定工具链：Node.js 24.19.0、Emscripten 6.0.9、GNU Make 3.81、
@@ -56,13 +57,13 @@ manifest 记录 Node 24.19.0、Emscripten 6.0.9、Lua 5.4.8、
 | --- | --- |
 | `npm run check:toolchain` | Node.js 24.19.0、Emscripten 6.0.9 及同源 wrappers 通过 |
 | `npm run verify:tiles` | 2307 tiles 与输入 checksum 通过 |
-| `npm test` | 82 files，894/894 |
+| `npm test` | 82 files，896/896 |
 | `npm run lint` | 0 warnings，0 errors |
 | `npm run build` | TypeScript 与 Vite production build 通过 |
 | `npm run test:integration:wasm` | 152/152 |
-| `npm run test:integration:browser` | Chromium 141/141 |
+| `npm run test:integration:browser` | Chromium 142/142 |
 | `npm run test:integration:compat` | Firefox + WebKit 172/172 |
-| `npm run test:performance` | 2/2；Canvas 全图 p95 4.7 ms |
+| `npm run test:performance` | 2/2；Canvas 全图 p95 5.1 ms |
 | `npm run test:long` | 4/4 |
 | `git diff --check` | 通过 |
 
@@ -90,7 +91,9 @@ Right/Below、1280×900 和 900×700；BlissHack 还覆盖 2 行与 4 行动作�
 问题；修正后的方向帮助、Tab、Enter、Space、Escape、`ynq`、方向取消和消息
 历史路径均有 Chromium、Firefox 和 WebKit 覆盖。
 
-## 7. 待人工验收
+## 7. 人工验收
+
+以下项目已由用户完成检查并确认 alpha-2.3 可以结束：
 
 1. 在 1280×900 与 900×700 下分别检查 Original/BlissHack、Tiles/ASCII、
    Right/Below，确认消息、地图、状态、背包和动作栏无重叠。
@@ -109,5 +112,5 @@ Right/Below、1280×900 和 900×700；BlissHack 还覆盖 2 行与 4 行动作�
 
 ## 8. 当前结论
 
-alpha-2.3 的实现、自动门禁和独立复审已完成，当前等待用户人工验收。在用户确认
-前不 push、不部署 GitHub Pages。
+alpha-2.3 已满足完成定义。后续工作进入 alpha-2.4 规划阶段；是否 push 或部署
+GitHub Pages 仍需单独指令。

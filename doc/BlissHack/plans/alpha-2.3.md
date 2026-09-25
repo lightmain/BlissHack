@@ -3,7 +3,10 @@
 ## 1. 文档状态
 
 本文定义 alpha-2.3 的产品范围、交互契约、数据模型、核心边界、实施阶段和验收
-门禁。alpha-2.2 已完成实现、自动门禁和人工验收；当前经确认的动作栏原型为：
+门禁。alpha-2.3 已于 2026-09-26 完成实现、自动门禁、独立复审和人工验收；
+最终验收记录见
+`doc/BlissHack/plans/in-alpha-2.3/release-acceptance.md`。本版本经确认的动作栏
+原型为：
 
 - `doc/BlissHack/prototypes/alpha-2.3-action-bar.html`
 - `doc/BlissHack/prototypes/alpha-2.3-action-bar.test.mjs`
@@ -1065,3 +1068,10 @@ test: complete action bar integration coverage
 feat: add the original tty status layout
 docs: complete alpha-2.3 acceptance
 ```
+
+## 15. 完成记录
+
+alpha-2.3 已完成全部必需阶段和人工验收。远程方向射线未纳入本版本，也不作为
+alpha-2.4 的默认待办；现有方向输入继续使用可靠的八个邻格目标。实现范围、
+最终验证和人工验收结论记录在
+`doc/BlissHack/plans/in-alpha-2.3/release-acceptance.md`。
