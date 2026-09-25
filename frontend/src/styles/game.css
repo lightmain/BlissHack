@@ -702,7 +702,6 @@
   top: var(--action-tooltip-top, 8px);
   display: grid;
   gap: 4px;
-  font-size: 11px;
   pointer-events: none;
 }
 

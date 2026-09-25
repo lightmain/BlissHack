@@ -66,7 +66,7 @@ interface AllActionsPanelProps {
   ): void;
   renderIcon(name: string): ReactNode;
   suppressClickRef: RefObject<boolean>;
-  tooltipTarget: HTMLElement | null;
+  tooltipOwnerId: string | null;
   triggerRef: RefObject<HTMLButtonElement | null>;
 }
 
@@ -97,7 +97,7 @@ export function AllActionsPanel({
   onTooltipShow,
   renderIcon,
   suppressClickRef,
-  tooltipTarget,
+  tooltipOwnerId,
   triggerRef,
 }: AllActionsPanelProps) {
   const panelRef = useRef<HTMLElement>(null);
@@ -112,10 +112,6 @@ export function AllActionsPanel({
     () => buildActionPresentations(catalog, { blocked }),
     [blocked, catalog],
   );
-  const tooltipActionName = tooltipTarget
-      ?.closest("[data-all-actions-panel]")
-    ? tooltipTarget.dataset.actionName
-    : undefined;
 
   useEffect(() => {
     const trigger = triggerRef.current;
@@ -405,7 +401,7 @@ export function AllActionsPanel({
                 .map((presentation) => (
                   <button
                     aria-describedby={
-                      tooltipActionName === presentation.name
+                      tooltipOwnerId === `all-actions:${presentation.name}`
                         ? "action-hover-tooltip"
                         : undefined
                     }
@@ -414,6 +410,9 @@ export function AllActionsPanel({
                     className="nh-all-actions-slot"
                     data-action-name={presentation.name}
                     data-action-state={presentation.state}
+                    data-action-tooltip-owner={
+                      `all-actions:${presentation.name}`
+                    }
                     key={presentation.name}
                     onBlur={(event) =>
                       onTooltipHide(event.currentTarget, "focus")}

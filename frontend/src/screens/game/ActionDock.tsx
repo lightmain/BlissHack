@@ -1120,7 +1120,7 @@ function ActionSlot({
   slotAddress,
   slotIndex,
   suppressClickRef,
-  tooltipTarget,
+  tooltipOwnerId,
 }: {
   active: boolean;
   blocked: boolean;
@@ -1145,10 +1145,10 @@ function ActionSlot({
   slotAddress: ActionBarSlotAddress;
   slotIndex: number;
   suppressClickRef: { current: boolean };
-  tooltipTarget: HTMLElement | null;
+  tooltipOwnerId: string | null;
 }) {
-  const buttonRef = useRef<HTMLButtonElement>(null);
   const slotAddressAttributes = actionSlotAddressAttributes(slotAddress);
+  const slotTooltipOwnerId = actionSlotTooltipOwnerId(slotAddress);
   const presentation = name === null
     ? null
     : catalog
@@ -1159,7 +1159,7 @@ function ActionSlot({
   return (
     <button
       aria-describedby={
-        presentation && buttonRef.current === tooltipTarget
+        presentation && slotTooltipOwnerId === tooltipOwnerId
           ? ACTION_TOOLTIP_ID
           : undefined
       }
@@ -1178,6 +1178,7 @@ function ActionSlot({
       data-action-name={presentation?.name}
       data-action-slot
       data-action-state={presentation?.state ?? "empty"}
+      data-action-tooltip-owner={slotTooltipOwnerId}
       data-empty-action-slot={presentation === null ? "" : undefined}
       data-slot-index={slotIndex}
       {...slotAddressAttributes}
@@ -1222,7 +1223,6 @@ function ActionSlot({
         onTooltipHide(event.currentTarget, "pointer")}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
-      ref={buttonRef}
       tabIndex={presentation === null ? -1 : undefined}
       type="button"
     >
@@ -1370,6 +1370,18 @@ function DockTool({
       <Icon aria-hidden="true" size={18} />
     </button>
   );
+}
+
+/**
+ * Encode one dock slot as a unique shared-tooltip owner.
+ * @param address - stable layout address for the rendered slot.
+ * @returns owner token which distinguishes duplicate actions across slots.
+ */
+function actionSlotTooltipOwnerId(address: ActionBarSlotAddress): string {
+  const category = address.area === "all"
+    ? address.section
+    : address.category;
+  return `dock:${address.area}:${category}:${address.slotIndex}`;
 }
 
 /**
