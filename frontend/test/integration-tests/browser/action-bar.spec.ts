@@ -208,6 +208,172 @@ async function readTwoRowDockGeometry(
   });
 }
 
+test("Action tooltip is shared across dock and All Actions hover and focus", async ({
+  page,
+}) => {
+  test.slow();
+  const errors = captureErrors(page);
+  await startActionBarGame(page, "ActionTooltipContract");
+
+  const dock = page.getByRole("region", {
+    name: "Action bar",
+    exact: true,
+  });
+  const eat = dock.locator(
+    '.nh-action-slot[data-action-name="eat"]',
+  );
+  const quaff = dock.locator(
+    '.nh-action-slot[data-action-name="quaff"]',
+  );
+  const tooltip = page.locator("#action-hover-tooltip");
+
+  await expect(eat).toBeVisible();
+  expect(await eat.getAttribute("title")).toBeNull();
+  await eat.hover();
+  await expect(tooltip).toBeVisible();
+  await expect(tooltip.locator("strong")).toHaveText("eat");
+  await expect(tooltip.locator("kbd")).toHaveText("e");
+  await expect(eat).toHaveAttribute(
+    "aria-describedby",
+    "action-hover-tooltip",
+  );
+  await expect(tooltip).toHaveCount(1);
+
+  const tooltipNode = await tooltip.elementHandle();
+  expect(tooltipNode).not.toBeNull();
+  const tooltipStyles = await tooltip.evaluate((element) => {
+    const readStyles = (target: Element) => {
+      const styles = getComputedStyle(target);
+      return {
+        backgroundColor: styles.backgroundColor,
+        borderTopColor: styles.borderTopColor,
+        borderTopStyle: styles.borderTopStyle,
+        borderTopWidth: styles.borderTopWidth,
+      };
+    };
+    const sharedTooltip = document.createElement("div");
+    sharedTooltip.className = "nh-tooltip";
+    sharedTooltip.style.position = "fixed";
+    sharedTooltip.style.visibility = "hidden";
+    document.body.append(sharedTooltip);
+    const result = {
+      action: readStyles(element),
+      classes: [...element.classList],
+      position: getComputedStyle(element).position,
+      shared: readStyles(sharedTooltip),
+    };
+    sharedTooltip.remove();
+    return result;
+  });
+  expect(tooltipStyles.position).toBe("fixed");
+  expect(tooltipStyles.classes).toContain("nh-tooltip");
+  expect(tooltipStyles.action).toEqual(tooltipStyles.shared);
+  expect(tooltipStyles.action.backgroundColor).not.toBe("rgba(0, 0, 0, 0)");
+  expect(tooltipStyles.action.borderTopStyle).not.toBe("none");
+  expect(Number.parseFloat(tooltipStyles.action.borderTopWidth))
+    .toBeGreaterThan(0);
+
+  await eat.focus();
+  await page.mouse.move(1, 1);
+  await expect(tooltip).toBeVisible();
+  await expect(tooltip.locator("strong")).toHaveText("eat");
+
+  await quaff.hover();
+  await expect(quaff).toHaveAttribute(
+    "aria-describedby",
+    "action-hover-tooltip",
+  );
+  await expect(eat).not.toHaveAttribute("aria-describedby", /.+/);
+  await expect(tooltip.locator("strong")).toHaveText("quaff");
+  await expect(tooltip.locator("kbd")).toHaveText("q");
+  await page.mouse.move(1, 1);
+  await expect(eat).toHaveAttribute(
+    "aria-describedby",
+    "action-hover-tooltip",
+  );
+  await expect(quaff).not.toHaveAttribute("aria-describedby", /.+/);
+  await expect(tooltip.locator("strong")).toHaveText("eat");
+
+  await eat.hover();
+  await eat.click();
+  await expect(tooltip).toBeHidden();
+  await page.keyboard.press("Escape");
+
+  await page.getByRole("button", {
+    name: "All Actions",
+    exact: true,
+  }).click();
+  const panel = page.locator("[data-all-actions-panel]");
+  const apply = panel.locator(
+    '.nh-all-actions-slot[data-action-name="apply"]',
+  );
+  await expect(apply).toBeVisible();
+  expect(await apply.getAttribute("title")).toBeNull();
+  await apply.hover();
+  await expect(tooltip).toBeVisible();
+  await expect(tooltip.locator("strong")).toHaveText("apply");
+  await expect(tooltip.locator("kbd")).toHaveText("a");
+  await expect(apply).toHaveAttribute(
+    "aria-describedby",
+    "action-hover-tooltip",
+  );
+  expect(await tooltip.evaluate(
+    (element, original) => element === original,
+    tooltipNode,
+  )).toBe(true);
+
+  const tooltipBounds = await tooltip.boundingBox();
+  const viewport = page.viewportSize();
+  expect(tooltipBounds).not.toBeNull();
+  expect(viewport).not.toBeNull();
+  expect(tooltipBounds!.x).toBeGreaterThanOrEqual(0);
+  expect(tooltipBounds!.y).toBeGreaterThanOrEqual(0);
+  expect(tooltipBounds!.x + tooltipBounds!.width)
+    .toBeLessThanOrEqual(viewport!.width);
+  expect(tooltipBounds!.y + tooltipBounds!.height)
+    .toBeLessThanOrEqual(viewport!.height);
+
+  await apply.focus();
+  await page.mouse.move(1, 1);
+  await expect(tooltip).toBeVisible();
+  const scrolled = await apply.evaluate((button) => {
+    let candidate = button.parentElement;
+    while (candidate) {
+      const overflowY = getComputedStyle(candidate).overflowY;
+      if (
+        candidate.scrollHeight > candidate.clientHeight
+        && (overflowY === "auto" || overflowY === "scroll")
+      ) {
+        candidate.scrollTop = candidate.scrollHeight;
+        return true;
+      }
+      candidate = candidate.parentElement;
+    }
+    return false;
+  });
+  expect(scrolled).toBe(true);
+  await expect(tooltip).toBeHidden();
+  await apply.evaluate((button) => {
+    let candidate = button.parentElement;
+    while (candidate) {
+      const overflowY = getComputedStyle(candidate).overflowY;
+      if (
+        candidate.scrollHeight > candidate.clientHeight
+        && (overflowY === "auto" || overflowY === "scroll")
+      ) {
+        candidate.scrollTop = 0;
+        return;
+      }
+      candidate = candidate.parentElement;
+    }
+    throw new Error("Expected an All Actions scroll container");
+  });
+  await expect(tooltip).toBeVisible();
+  await expect(tooltip.locator("strong")).toHaveText("apply");
+  await tooltipNode?.dispose();
+  expect(errors).toEqual([]);
+});
+
 test("Action bar integration: keeps geometry, focus, Pointer Events, and a real WASM command coherent", async ({
   page,
 }) => {

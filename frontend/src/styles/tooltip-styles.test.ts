@@ -95,7 +95,7 @@ describe("shared tooltip CSS contract", () => {
     expect(action).toMatch(/\bz-index\s*:\s*\d+\s*;/);
     expect(action).toMatch(/\bpointer-events\s*:\s*none\s*;/);
     expect(action).not.toMatch(
-      /\b(?:background|border|border-radius|box-shadow|color|font-weight|max-width|padding|white-space|width)\s*:/,
+      /\b(?:background|border|border-radius|box-shadow|color|font-size|font-weight|max-width|padding|white-space|width)\s*:/,
     );
   });
 });

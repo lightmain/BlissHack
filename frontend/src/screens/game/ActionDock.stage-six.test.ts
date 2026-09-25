@@ -215,9 +215,7 @@ describe("stage-six All Actions shell contract", () => {
     for (const action of [dockAction, panelAction]) {
       expect(action).not.toBe("");
       expect(action).not.toContain("title=");
-      expect(action).toContain(
-        'aria-describedby="action-hover-tooltip"',
-      );
+      expect(action).not.toContain("aria-describedby=");
     }
     expect(tooltipMatches).toHaveLength(1);
     const tooltip = tooltipMatches[0];
@@ -229,9 +227,6 @@ describe("stage-six All Actions shell contract", () => {
     expect(tooltip?.[3]).toMatch(/<kbd>[\s\S]*<\/kbd>/);
     expect(tooltip?.[3]).not.toMatch(
       /<(?:a|button|input|select|textarea)\b/,
-    );
-    expect(ACTION_DOCK_SOURCE).toMatch(
-      /action-hover-tooltip[\s\S]*?<strong>\{[^}]*\.name\}<\/strong>[\s\S]*?<kbd>\{[^}]*\.key\}<\/kbd>/,
     );
   });
 
