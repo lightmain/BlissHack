@@ -55,8 +55,18 @@ interface AllActionsPanelProps {
   ): void;
   onPointerMove(event: ReactPointerEvent<HTMLElement>): void;
   onPointerUp(event: ReactPointerEvent<HTMLElement>): void;
+  onTooltipHide(
+    target: HTMLElement,
+    source: "focus" | "pointer",
+  ): void;
+  onTooltipShow(
+    target: HTMLElement,
+    presentation: ActionPresentation,
+    source: "focus" | "pointer",
+  ): void;
   renderIcon(name: string): ReactNode;
   suppressClickRef: RefObject<boolean>;
+  tooltipTarget: HTMLElement | null;
   triggerRef: RefObject<HTMLButtonElement | null>;
 }
 
@@ -83,8 +93,11 @@ export function AllActionsPanel({
   onPointerDown,
   onPointerMove,
   onPointerUp,
+  onTooltipHide,
+  onTooltipShow,
   renderIcon,
   suppressClickRef,
+  tooltipTarget,
   triggerRef,
 }: AllActionsPanelProps) {
   const panelRef = useRef<HTMLElement>(null);
@@ -99,6 +112,10 @@ export function AllActionsPanel({
     () => buildActionPresentations(catalog, { blocked }),
     [blocked, catalog],
   );
+  const tooltipActionName = tooltipTarget
+      ?.closest("[data-all-actions-panel]")
+    ? tooltipTarget.dataset.actionName
+    : undefined;
 
   useEffect(() => {
     const trigger = triggerRef.current;
@@ -387,14 +404,27 @@ export function AllActionsPanel({
                 .filter((presentation) => presentation.category === category)
                 .map((presentation) => (
                   <button
+                    aria-describedby={
+                      tooltipActionName === presentation.name
+                        ? "action-hover-tooltip"
+                        : undefined
+                    }
                     aria-disabled={presentation.state !== "available"}
                     aria-label={`${presentation.name} (${presentation.key})`}
                     className="nh-all-actions-slot"
                     data-action-name={presentation.name}
                     data-action-state={presentation.state}
                     key={presentation.name}
+                    onBlur={(event) =>
+                      onTooltipHide(event.currentTarget, "focus")}
                     onClick={(event) =>
                       requestAction(presentation, event.detail > 0)}
+                    onFocus={(event) =>
+                      onTooltipShow(
+                        event.currentTarget,
+                        presentation,
+                        "focus",
+                      )}
                     onLostPointerCapture={onLostPointerCapture}
                     onPointerCancel={onPointerCancel}
                     onPointerDown={(event) =>
@@ -402,9 +432,16 @@ export function AllActionsPanel({
                         kind: "all-actions",
                         name: presentation.name,
                       })}
+                    onPointerEnter={(event) =>
+                      onTooltipShow(
+                        event.currentTarget,
+                        presentation,
+                        "pointer",
+                      )}
+                    onPointerLeave={(event) =>
+                      onTooltipHide(event.currentTarget, "pointer")}
                     onPointerMove={onPointerMove}
                     onPointerUp={onPointerUp}
-                    title={`${presentation.name} (${presentation.key})`}
                     type="button"
                   >
                     {renderIcon(presentation.icon)}

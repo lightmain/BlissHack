@@ -87,4 +87,15 @@ describe("shared tooltip CSS contract", () => {
       );
     }
   });
+
+  it("[defect-probing] keeps the shared action tooltip outside layout and pointer flow", () => {
+    const action = cssFor(gameCss, ".nh-action-tooltip");
+
+    expect(action).toMatch(/\bposition\s*:\s*fixed\s*;/);
+    expect(action).toMatch(/\bz-index\s*:\s*\d+\s*;/);
+    expect(action).toMatch(/\bpointer-events\s*:\s*none\s*;/);
+    expect(action).not.toMatch(
+      /\b(?:background|border|border-radius|box-shadow|color|font-weight|max-width|padding|white-space|width)\s*:/,
+    );
+  });
 });

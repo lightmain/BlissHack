@@ -34,6 +34,7 @@ import {
   type MapRenderer,
 } from "../../settings/profile";
 import { GameScreen } from "../GameScreen";
+import { ActionDock } from "./ActionDock";
 
 const ACTION_DOCK_SOURCE = readFileSync(
   new URL("./ActionDock.tsx", import.meta.url),
@@ -163,6 +164,34 @@ function actionCatalogFixture() {
   );
 }
 
+/** Render the dock and optional catalog panel in one shared tooltip scope. */
+function renderActionSurfaces(allActionsOpen: boolean): string {
+  const profile = createDefaultProfile();
+  return renderToStaticMarkup(createElement(ActionDock, {
+    allActionsOpen,
+    blocked: false,
+    catalog: actionCatalogFixture(),
+    input: null,
+    layout: profile.interface.actionBarLayout,
+    onAllActionsOpenChange: () => undefined,
+    sessionKey: "session-stage-six",
+    status: null,
+  }));
+}
+
+/** Return one action button opening tag by class and catalog name. */
+function actionButtonTag(
+  html: string,
+  className: string,
+  actionName: string,
+): string {
+  return [...html.matchAll(/<button\b[^>]*>/g)]
+    .find((match) =>
+      match[0].includes(`class="${className}"`)
+      && match[0].includes(`data-action-name="${actionName}"`)
+    )?.[0] ?? "";
+}
+
 beforeEach(() => {
   resetGameState();
   setRuntimePhase("running");
@@ -171,6 +200,41 @@ beforeEach(() => {
 });
 
 describe("stage-six All Actions shell contract", () => {
+  it("[defect-probing] shares one accessible action tooltip across dock and catalog actions", () => {
+    const html = renderActionSurfaces(true);
+    const dockAction = actionButtonTag(html, "nh-action-slot", "eat");
+    const panelAction = actionButtonTag(
+      html,
+      "nh-all-actions-slot",
+      "eat",
+    );
+    const tooltipMatches = [...html.matchAll(
+      /<([a-z]+)(?=[^>]*\bid="action-hover-tooltip")(?=[^>]*\brole="tooltip")([^>]*)>([\s\S]*?)<\/\1>/g,
+    )];
+
+    for (const action of [dockAction, panelAction]) {
+      expect(action).not.toBe("");
+      expect(action).not.toContain("title=");
+      expect(action).toContain(
+        'aria-describedby="action-hover-tooltip"',
+      );
+    }
+    expect(tooltipMatches).toHaveLength(1);
+    const tooltip = tooltipMatches[0];
+    expect(tooltip?.[1]).toBe("div");
+    expect(tooltip?.[2].match(/\bclass="([^"]+)"/)?.[1].split(/\s+/))
+      .toEqual(expect.arrayContaining(["nh-tooltip", "nh-action-tooltip"]));
+    expect(tooltip?.[2]).not.toMatch(/\btabindex=/);
+    expect(tooltip?.[3]).toMatch(/<strong>[\s\S]*<\/strong>/);
+    expect(tooltip?.[3]).toMatch(/<kbd>[\s\S]*<\/kbd>/);
+    expect(tooltip?.[3]).not.toMatch(
+      /<(?:a|button|input|select|textarea)\b/,
+    );
+    expect(ACTION_DOCK_SOURCE).toMatch(
+      /action-hover-tooltip[\s\S]*?<strong>\{[^}]*\.name\}<\/strong>[\s\S]*?<kbd>\{[^}]*\.key\}<\/kbd>/,
+    );
+  });
+
   it("[defect-probing] renders seven vertical sections and all 104 catalog actions", () => {
     const presentations = buildActionPresentations(
       actionCatalogFixture(),

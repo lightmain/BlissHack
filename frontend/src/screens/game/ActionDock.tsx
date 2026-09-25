@@ -1,6 +1,7 @@
 import {
   createElement,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -250,11 +251,21 @@ interface ActionDragPreviewState {
   name: string;
 }
 
+interface ActiveActionTooltip {
+  presentation: ActionPresentation;
+  sessionKey?: string;
+  target: HTMLElement;
+}
+
+type ActionTooltipSource = "focus" | "pointer";
+
 interface ActionPointerCapture {
   element: HTMLElement;
   pointerId: number;
   source: ActionBarDragSource;
 }
+
+const ACTION_TOOLTIP_ID = "action-hover-tooltip";
 
 /**
  * Render the combined BlissHack status and action dock.
@@ -277,9 +288,14 @@ export function ActionDock({
   const allActionsTriggerRef = useRef<HTMLButtonElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const [availableWidth, setAvailableWidth] = useState(680);
+  const [focusedActionTooltip, setFocusedActionTooltip] =
+    useState<ActiveActionTooltip | null>(null);
+  const [hoveredActionTooltip, setHoveredActionTooltip] =
+    useState<ActiveActionTooltip | null>(null);
   const [dragPreview, setDragPreview] =
     useState<ActionDragPreviewState | null>(null);
   const activePointerCaptureRef = useRef<ActionPointerCapture | null>(null);
+  const actionTooltipRef = useRef<HTMLDivElement>(null);
   const suppressClickRef = useRef(false);
   const controller = useMemo(
     () => createActionBarLayoutController({
@@ -331,6 +347,17 @@ export function ActionDock({
   const activeGeometry = displayedLayout.activeCategory === "all"
     ? geometry
     : categoryGeometry;
+  const actionTooltip = (
+    hoveredActionTooltip?.sessionKey === sessionKey
+      ? hoveredActionTooltip
+      : null
+  ) ?? (
+    focusedActionTooltip?.sessionKey === sessionKey
+      ? focusedActionTooltip
+      : null
+  );
+  const actionTooltipOwnerId =
+    actionTooltip?.target.dataset.actionTooltipOwner ?? null;
 
   useEffect(() => {
     const viewport = viewportRef.current;
@@ -347,6 +374,26 @@ export function ActionDock({
   useEffect(() => {
     controller.replaceLayout(layout);
   }, [controller, layout]);
+
+  useLayoutEffect(() => {
+    const tooltip = actionTooltipRef.current;
+    if (!actionTooltip || !tooltip) return undefined;
+    const activeTooltip = actionTooltip;
+    const activeTooltipElement = tooltip;
+
+    /** Keep the fixed tooltip aligned while its scroll container moves. */
+    function updatePosition(): void {
+      positionActionTooltip(activeTooltipElement, activeTooltip.target);
+    }
+
+    updatePosition();
+    globalThis.addEventListener("resize", updatePosition);
+    globalThis.addEventListener("scroll", updatePosition, true);
+    return () => {
+      globalThis.removeEventListener("resize", updatePosition);
+      globalThis.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [actionTooltip]);
 
   useEffect(() => {
     const capture = activePointerCaptureRef.current;
@@ -645,6 +692,7 @@ export function ActionDock({
    */
   function closeAllActionsPanel(): void {
     const capture = activePointerCaptureRef.current;
+    dismissActionTooltip();
     if (capture?.source.kind === "all-actions") {
       activePointerCaptureRef.current = null;
       suppressClickRef.current = true;
@@ -672,7 +720,58 @@ export function ActionDock({
     ) {
       return;
     }
+    dismissActionTooltip();
     onActionRequest?.(request);
+  }
+
+  /**
+   * Clear both pointer and keyboard ownership of the shared tooltip.
+   * @returns nothing.
+   */
+  function dismissActionTooltip(): void {
+    setFocusedActionTooltip(null);
+    setHoveredActionTooltip(null);
+  }
+
+  /**
+   * Show the shared tooltip for one hovered or focused action button.
+   * @param target - action button providing the viewport anchor.
+   * @param presentation - action name and shortcut shown in the tooltip.
+   * @param source - pointer hover or keyboard focus ownership.
+   * @returns nothing.
+   */
+  function showActionTooltip(
+    target: HTMLElement,
+    presentation: ActionPresentation,
+    source: ActionTooltipSource,
+  ): void {
+    const tooltip = { presentation, sessionKey, target };
+    if (source === "pointer") {
+      setHoveredActionTooltip(tooltip);
+    } else {
+      setFocusedActionTooltip(tooltip);
+    }
+  }
+
+  /**
+   * Hide the shared tooltip only when its owning action loses interaction.
+   * @param target - action button ending its hover or focus state.
+   * @param source - pointer hover or keyboard focus ownership.
+   * @returns nothing.
+   */
+  function hideActionTooltip(
+    target: HTMLElement,
+    source: ActionTooltipSource,
+  ): void {
+    const clearOwner = (
+      current: ActiveActionTooltip | null,
+    ): ActiveActionTooltip | null =>
+      current?.target === target ? null : current;
+    if (source === "pointer") {
+      setHoveredActionTooltip(clearOwner);
+    } else {
+      setFocusedActionTooltip(clearOwner);
+    }
   }
 
   return (
@@ -694,11 +793,24 @@ export function ActionDock({
           onPointerDown={beginPointerEdit}
           onPointerMove={movePointerEdit}
           onPointerUp={finishPointerEdit}
+          onTooltipHide={hideActionTooltip}
+          onTooltipShow={showActionTooltip}
           renderIcon={(name) => <ActionIcon name={name} />}
           suppressClickRef={suppressClickRef}
+          tooltipOwnerId={actionTooltipOwnerId}
           triggerRef={allActionsTriggerRef}
         />
       )}
+      <div
+        aria-hidden={actionTooltip ? undefined : "true"}
+        className="nh-tooltip nh-action-tooltip"
+        id={ACTION_TOOLTIP_ID}
+        ref={actionTooltipRef}
+        role="tooltip"
+      >
+        <strong>{actionTooltip?.presentation.name}</strong>
+        <kbd>{actionTooltip?.presentation.key}</kbd>
+      </div>
       {dragPreview
         && dragPreviewPresentation
         && editState.status === "dragging"
@@ -783,6 +895,8 @@ export function ActionDock({
                         onPointerUp={finishPointerEdit}
                         onLostPointerCapture={(event) =>
                           cancelPointerEdit(event, "lost-pointer-capture")}
+                        onTooltipHide={hideActionTooltip}
+                        onTooltipShow={showActionTooltip}
                         slotAddress={{
                           area: "all",
                           section: section.category,
@@ -790,6 +904,7 @@ export function ActionDock({
                         }}
                         slotIndex={slotIndex}
                         suppressClickRef={suppressClickRef}
+                        tooltipOwnerId={actionTooltipOwnerId}
                       />
                     ))}
                   </section>,
@@ -872,6 +987,8 @@ export function ActionDock({
                         onPointerUp={finishPointerEdit}
                         onLostPointerCapture={(event) =>
                           cancelPointerEdit(event, "lost-pointer-capture")}
+                        onTooltipHide={hideActionTooltip}
+                        onTooltipShow={showActionTooltip}
                         slotAddress={{
                           area: "category",
                           category: displayedLayout.activeCategory === "all"
@@ -881,6 +998,7 @@ export function ActionDock({
                         }}
                         slotIndex={slotIndex}
                         suppressClickRef={suppressClickRef}
+                        tooltipOwnerId={actionTooltipOwnerId}
                       />
                     ),
                   )}
@@ -997,9 +1115,12 @@ function ActionSlot({
   onPointerDown,
   onPointerMove,
   onPointerUp,
+  onTooltipHide,
+  onTooltipShow,
   slotAddress,
   slotIndex,
   suppressClickRef,
+  tooltipTarget,
 }: {
   active: boolean;
   blocked: boolean;
@@ -1015,10 +1136,18 @@ function ActionSlot({
   onPointerDown(event: ReactPointerEvent<HTMLElement>): void;
   onPointerMove(event: ReactPointerEvent<HTMLElement>): void;
   onPointerUp(event: ReactPointerEvent<HTMLElement>): void;
+  onTooltipHide(target: HTMLElement, source: ActionTooltipSource): void;
+  onTooltipShow(
+    target: HTMLElement,
+    presentation: ActionPresentation,
+    source: ActionTooltipSource,
+  ): void;
   slotAddress: ActionBarSlotAddress;
   slotIndex: number;
   suppressClickRef: { current: boolean };
+  tooltipTarget: HTMLElement | null;
 }) {
+  const buttonRef = useRef<HTMLButtonElement>(null);
   const slotAddressAttributes = actionSlotAddressAttributes(slotAddress);
   const presentation = name === null
     ? null
@@ -1029,6 +1158,11 @@ function ActionSlot({
     : unavailablePresentation(name);
   return (
     <button
+      aria-describedby={
+        presentation && buttonRef.current === tooltipTarget
+          ? ACTION_TOOLTIP_ID
+          : undefined
+      }
       aria-disabled={presentation?.state !== "available"}
       aria-hidden={presentation === null ? "true" : undefined}
       aria-keyshortcuts={presentation
@@ -1069,16 +1203,27 @@ function ActionSlot({
           });
         }
       }}
+      onBlur={(event) => onTooltipHide(event.currentTarget, "focus")}
+      onFocus={(event) => {
+        if (presentation) {
+          onTooltipShow(event.currentTarget, presentation, "focus");
+        }
+      }}
       onKeyDown={presentation ? onKeyDown : undefined}
       onLostPointerCapture={onLostPointerCapture}
       onPointerCancel={onPointerCancel}
       onPointerDown={presentation ? onPointerDown : undefined}
+      onPointerEnter={(event) => {
+        if (presentation) {
+          onTooltipShow(event.currentTarget, presentation, "pointer");
+        }
+      }}
+      onPointerLeave={(event) =>
+        onTooltipHide(event.currentTarget, "pointer")}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
+      ref={buttonRef}
       tabIndex={presentation === null ? -1 : undefined}
-      title={presentation
-        ? `${presentation.name} (${presentation.key})`
-        : undefined}
       type="button"
     >
       {presentation && (
@@ -1089,6 +1234,96 @@ function ActionSlot({
       )}
     </button>
   );
+}
+
+/**
+ * Place the shared action tooltip near its trigger without viewport clipping.
+ * @param tooltip - measured fixed-position tooltip element.
+ * @param target - hovered or focused action button.
+ * @returns nothing.
+ */
+function positionActionTooltip(
+  tooltip: HTMLElement,
+  target: HTMLElement,
+): void {
+  if (!actionTooltipTargetIsVisible(target)) {
+    tooltip.setAttribute("aria-hidden", "true");
+    return;
+  }
+  tooltip.removeAttribute("aria-hidden");
+
+  const margin = 8;
+  const gap = 7;
+  const targetRect = target.getBoundingClientRect();
+  const tooltipRect = tooltip.getBoundingClientRect();
+  const preferredTop = targetRect.top - tooltipRect.height - gap;
+  const panelHeaderBottom = target
+    .closest<HTMLElement>(".nh-all-actions-panel")
+    ?.querySelector<HTMLElement>(".nh-all-actions-header")
+    ?.getBoundingClientRect().bottom;
+  const placeBelow = preferredTop < margin
+    || (
+      panelHeaderBottom !== undefined
+      && preferredTop < panelHeaderBottom + 4
+    );
+  const maximumLeft = Math.max(
+    margin,
+    globalThis.innerWidth - tooltipRect.width - margin,
+  );
+  const maximumTop = Math.max(
+    margin,
+    globalThis.innerHeight - tooltipRect.height - margin,
+  );
+  const left = Math.min(
+    maximumLeft,
+    Math.max(
+      margin,
+      targetRect.left + targetRect.width / 2 - tooltipRect.width / 2,
+    ),
+  );
+  const desiredTop = placeBelow
+    ? targetRect.bottom + gap
+    : preferredTop;
+  const top = Math.min(maximumTop, Math.max(margin, desiredTop));
+
+  tooltip.style.setProperty("--action-tooltip-left", `${Math.round(left)}px`);
+  tooltip.style.setProperty("--action-tooltip-top", `${Math.round(top)}px`);
+}
+
+/**
+ * Check whether an action intersects its viewport and nearest scroll owner.
+ * @param target - hovered or focused action button.
+ * @returns whether a tooltip can remain visually attached to the button.
+ */
+function actionTooltipTargetIsVisible(target: HTMLElement): boolean {
+  if (!target.isConnected) return false;
+  const targetRect = target.getBoundingClientRect();
+  const scrollOwner = target.closest<HTMLElement>(
+    ".nh-all-actions-panel, .nh-action-grid-viewport",
+  );
+  const ownerRect = scrollOwner?.getBoundingClientRect();
+  const panelHeaderBottom = scrollOwner?.matches(".nh-all-actions-panel")
+    ? scrollOwner
+      .querySelector<HTMLElement>(".nh-all-actions-header")
+      ?.getBoundingClientRect().bottom
+    : undefined;
+  const visibleBounds = {
+    bottom: Math.min(globalThis.innerHeight, ownerRect?.bottom ?? Infinity),
+    left: Math.max(0, ownerRect?.left ?? -Infinity),
+    right: Math.min(globalThis.innerWidth, ownerRect?.right ?? Infinity),
+    top: Math.max(
+      0,
+      ownerRect?.top ?? -Infinity,
+      panelHeaderBottom ?? -Infinity,
+    ),
+  };
+
+  return targetRect.width > 0
+    && targetRect.height > 0
+    && targetRect.right > visibleBounds.left
+    && targetRect.left < visibleBounds.right
+    && targetRect.bottom > visibleBounds.top
+    && targetRect.top < visibleBounds.bottom;
 }
 
 /**
