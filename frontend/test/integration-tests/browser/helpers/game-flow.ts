@@ -59,10 +59,12 @@ export async function startNewGameFromHome(
   const tutorial = page.getByRole("dialog", {
     name: "Do you want a tutorial?",
   });
-  const hitPoints = page.getByRole("progressbar", { name: /^Hit points:/ });
+  const characterStatus = page.getByRole("region", {
+    name: "Character status",
+  });
   await expect(tutorial).toBeVisible();
   await page.keyboard.press("n");
-  await expect(hitPoints).toBeVisible();
+  await expect(characterStatus).toBeVisible();
 }
 
 /**
@@ -150,9 +152,9 @@ export async function continueSavedGame(
   await page.getByRole("button", {
     name: new RegExp(`^${name}\\b`),
   }).click();
-  await expect(
-    page.getByRole("progressbar", { name: /^Hit points:/ }),
-  ).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("region", {
+    name: "Character status",
+  })).toBeVisible({ timeout: 15_000 });
 }
 
 /**
