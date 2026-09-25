@@ -8,10 +8,7 @@ import {
 } from "../../game-state";
 import { keyboardEventToNetHackKey } from "../../keyboard";
 import { SecondaryDialog } from "./SecondaryDialog";
-import {
-  directionOptions,
-  isDirectionKey,
-} from "./direction-input";
+import { directionOptions } from "./direction-input";
 import { secondaryYnChoices } from "./secondary-input";
 
 type YnInputRequest = Extract<InputRequest, { kind: "yn" }>;
@@ -57,20 +54,17 @@ export function SecondaryInputDialog({
     const value = keyboardEventToNetHackKey(event.nativeEvent, { numberPad });
     if (value === null) return;
     if (
-      !directionInput
-      && event.target instanceof HTMLButtonElement
+      event.target instanceof HTMLButtonElement
       && (event.key === "Enter" || event.key === " ")
     ) {
-      event.preventDefault();
       event.stopPropagation();
-      onSubmit(value);
       return;
     }
-    const accepted = directionInput
-      ? value === 27 || isDirectionKey(value, numberPad)
-      : value === 27
-        || choices.includes(String.fromCharCode(value).toLowerCase());
     event.stopPropagation();
+    if (event.key === "Tab") return;
+    const accepted = directionInput
+      || value === 27
+      || choices.includes(String.fromCharCode(value).toLowerCase());
     if (!accepted) return;
     event.preventDefault();
     if (value === 27) onCancel();
