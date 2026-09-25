@@ -10,13 +10,24 @@ import { readCursorPosition } from "./helpers/map-viewport-state";
 test.use({ screenshot: "off", trace: "off" });
 
 /** Start a real Archeologist game with the BlissHack action bar enabled. */
-async function startBlissHackGame(page: Page, marker: string): Promise<void> {
+async function startBlissHackGame(
+  page: Page,
+  marker: string,
+  options: { originalEndgame?: boolean } = {},
+): Promise<void> {
   await openHome(page, marker);
   await page.getByRole("button", { name: "Settings" }).click();
   await expect(page.getByRole("group", { name: "Action bar" })
     .getByRole("radio", { name: "BlissHack" }))
     .toBeChecked();
-  await page.getByRole("button", { name: "Back to Home" }).click();
+  if (options.originalEndgame) {
+    await page.getByRole("group", { name: "Endgame style" })
+      .getByRole("radio", { name: "Original" })
+      .check();
+    await page.getByRole("button", { name: "Apply", exact: true }).click();
+  } else {
+    await page.getByRole("button", { name: "Back to Home" }).click();
+  }
   await startNewGameFromHome(page, `${marker}-Arc-Hum-Mal-Law`);
   await expect(page.locator(".nh-shell"))
     .toHaveAttribute("data-command-input", "ready");
@@ -107,7 +118,7 @@ async function openYnqDisclosure(
   page: Page,
   marker: string,
 ): Promise<Locator> {
-  await startBlissHackGame(page, marker);
+  await startBlissHackGame(page, marker, { originalEndgame: true });
   await page.keyboard.press("#");
   const commandDialog = page.getByRole("dialog", { name: "Extended command" });
   await expect(commandDialog).toBeVisible();

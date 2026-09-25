@@ -266,7 +266,7 @@ async function switchMapRenderer(
   await expect(pause).toBeVisible();
   await pause.getByRole("button", { name: "Settings" }).click();
   await page.getByRole("radio", { name: renderer }).check();
-  await page.getByRole("button", { name: "Apply" }).click();
+  await page.getByRole("button", { name: "Apply", exact: true }).click();
   await expect(pause).toBeVisible();
   await expect(page.locator(".nh-shell")).toHaveAttribute(
     "data-settings-status",
@@ -288,7 +288,7 @@ async function disablePlayerFollowing(page: Page): Promise<void> {
   await page.getByRole("checkbox", {
     name: "Follow player on the map",
   }).uncheck();
-  await page.getByRole("button", { name: "Apply" }).click();
+  await page.getByRole("button", { name: "Apply", exact: true }).click();
   await expect(pause).toBeVisible();
   await pause.getByRole("button", { name: "Resume" }).click();
   await expect(pause).toHaveCount(0);

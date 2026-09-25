@@ -246,7 +246,9 @@ test("keeps the original manual character selection sequence", async ({
     name: "Do you want a tutorial?",
   })).toBeVisible();
   await page.keyboard.press("n");
-  await expect(statusField(page, "title")).toHaveText(`${name} the Digger`);
+  await expect(
+    statusField(page, "title").locator(".nh-status-value"),
+  ).toHaveText(`${name} the Digger`);
   expect(errors).toEqual({ console: [], page: [] });
 });
 

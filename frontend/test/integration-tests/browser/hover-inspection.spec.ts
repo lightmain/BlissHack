@@ -86,7 +86,7 @@ async function startConfiguredGame(
   if (settings.showTime) {
     await page.getByRole("checkbox", { name: "Show turn count" }).check();
   }
-  const apply = page.getByRole("button", { name: "Apply" });
+  const apply = page.getByRole("button", { name: "Apply", exact: true });
   if (await apply.isEnabled()) {
     await apply.click();
   } else {
@@ -297,7 +297,7 @@ test("applies status information level immediately without changing other inspec
   await page.getByRole("group", { name: "Information level" })
     .getByRole("radio", { name: "Detailed" })
     .check();
-  await page.getByRole("button", { name: "Apply" }).click();
+  await page.getByRole("button", { name: "Apply", exact: true }).click();
   await expect(pause).toBeVisible();
   expect.soft(await readShellRevision(page)).toBe(revisionBeforeSwitch);
   await page.getByRole("button", { name: "Resume" }).click();

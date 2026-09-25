@@ -126,7 +126,10 @@ test("keeps permanent inventory mouse-only while core inventory accepts accelera
     name: "Enable Permanent Inventory",
     exact: true,
   }).check();
-  await page.getByRole("button", { name: "Apply" }).click();
+  await page.getByRole("group", { name: "Action bar" })
+    .getByRole("radio", { name: "Original" })
+    .check();
+  await page.getByRole("button", { name: "Apply", exact: true }).click();
   await startWithoutTutorial(page, "PermInventoryKeys");
 
   const inventory = page.getByRole("region", { name: "Inventory" });
@@ -193,7 +196,10 @@ test("renders and collapses the core permanent inventory without a modal", async
     name: "Enable Permanent Inventory",
     exact: true,
   }).check();
-  await page.getByRole("button", { name: "Apply" }).click();
+  await page.getByRole("group", { name: "Action bar" })
+    .getByRole("radio", { name: "Original" })
+    .check();
+  await page.getByRole("button", { name: "Apply", exact: true }).click();
 
   await startWithoutTutorial(page, "PermInventory-Wiz");
   const inventory = page.getByRole("region", { name: "Inventory" });

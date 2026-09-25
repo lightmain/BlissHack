@@ -27,6 +27,9 @@ async function startContextGame(
 ): Promise<void> {
   await openHome(page, name);
   await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("group", { name: "Action bar" })
+    .getByRole("radio", { name: "Original" })
+    .check();
   if (options.permanentInventory) {
     await page.getByRole("checkbox", {
       name: "Enable Permanent Inventory",
@@ -36,7 +39,7 @@ async function startContextGame(
   if (options.showTime) {
     await page.getByRole("checkbox", { name: "Show turn count" }).check();
   }
-  await page.getByRole("button", { name: "Apply" }).click();
+  await page.getByRole("button", { name: "Apply", exact: true }).click();
   await startNewGameFromHome(page, name);
   await expect(page.locator(".nh-shell")).toHaveAttribute(
     "data-command-input",

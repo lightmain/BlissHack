@@ -300,7 +300,10 @@ test("persists rankings across a reload and a second completed game", async ({
   await page.getByRole("button", { name: "Settings" }).click();
   await page.getByRole("radio", { name: "ASCII" }).check();
   await page.getByRole("checkbox", { name: "Show experience" }).check();
-  await page.getByRole("button", { name: "Apply" }).click();
+  await page.getByRole("group", { name: "Character setup style" })
+    .getByRole("radio", { name: "Original" })
+    .check();
+  await page.getByRole("button", { name: "Apply", exact: true }).click();
   await startNewGameFromHome(page, `${firstName}-Bar-Hum-Mal-Neu`);
   await earnRankingScore(page);
   await quitAndReturnHome(page);
@@ -328,7 +331,10 @@ test("retains the last permanent inventory through end-game disclosure", async (
     name: "Enable Permanent Inventory",
     exact: true,
   }).check();
-  await page.getByRole("button", { name: "Apply" }).click();
+  await page.getByRole("group", { name: "Endgame style" })
+    .getByRole("radio", { name: "Original" })
+    .check();
+  await page.getByRole("button", { name: "Apply", exact: true }).click();
   await startNewGameFromHome(page, "InventoryGameover");
 
   const inventory = page.getByRole("region", { name: "Inventory" });
@@ -476,9 +482,10 @@ test("collects a real unified-character quit into the BlissHack summary", async 
   await expect(commandDialog).toBeVisible();
   await commandDialog.locator("input").fill("quit");
   await commandDialog.locator("input").press("Enter");
-  await expect(page.locator(".nh-prompt")).toContainText(
-    "Really quit without saving?",
-  );
+  const quitPrompt = page.getByRole("dialog", {
+    name: "Really quit without saving?",
+  });
+  await expect(quitPrompt).toBeVisible();
   await page.keyboard.press("n");
   await expect(
     page.getByRole("region", { name: "Character status" }),
@@ -489,9 +496,7 @@ test("collects a real unified-character quit into the BlissHack summary", async 
   await expect(commandDialog).toBeVisible();
   await commandDialog.locator("input").fill("quit");
   await commandDialog.locator("input").press("Enter");
-  await expect(page.locator(".nh-prompt")).toContainText(
-    "Really quit without saving?",
-  );
+  await expect(quitPrompt).toBeVisible();
   await page.keyboard.press("y");
 
   await page.waitForFunction(() => {
@@ -574,7 +579,16 @@ test("keeps original end-game disclosures serial and returns after summary", asy
 }) => {
   const errors = captureErrors(page);
   const name = "E2EEnd";
-  await startNewGame(page, name);
+  await openHome(page, "original-endgame-disclosures");
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("group", { name: "Endgame style" })
+    .getByRole("radio", { name: "Original" })
+    .check();
+  await page.getByRole("group", { name: "Action bar" })
+    .getByRole("radio", { name: "Original" })
+    .check();
+  await page.getByRole("button", { name: "Apply", exact: true }).click();
+  await startNewGameFromHome(page, name);
 
   await page.keyboard.press("#");
   const commandDialog = page.getByRole("dialog", { name: "Extended command" });

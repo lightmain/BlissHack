@@ -155,14 +155,20 @@ export async function quitAndReturnHome(page: Page): Promise<void> {
   await expect(page.getByText(/Really quit without saving/)).toBeVisible();
   await page.keyboard.press("y");
 
-  for (let attempt = 0; attempt < 12; attempt += 1) {
+  for (let attempt = 0; attempt < 150; attempt += 1) {
     const homeButton = page.getByRole("button", { name: "New Game" });
     if (await homeButton.isVisible()) return;
 
+    const gameOver = page.getByRole("dialog", { name: "Game Over" });
     const disclosure = page.getByText(
       /Do you want (your possessions identified|to see)/,
     ).first();
-    if (await disclosure.isVisible()) {
+    if (await gameOver.isVisible()) {
+      await gameOver.getByRole("button", {
+        name: "Confirm",
+        exact: true,
+      }).click();
+    } else if (await disclosure.isVisible()) {
       await page.keyboard.press("q");
     } else if (await page.locator(".nh-text-dialog").isVisible()) {
       await page.keyboard.press("Enter");

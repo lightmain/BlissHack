@@ -959,7 +959,10 @@ test("HUD visual regression: disabled below inventory reserves no collapsed trac
     name: "Enable Permanent Inventory",
     exact: true,
   }).uncheck();
-  await page.getByRole("button", { name: "Apply" }).click();
+  await page.getByRole("group", { name: "Action bar" })
+    .getByRole("radio", { name: "Original" })
+    .check();
+  await page.getByRole("button", { name: "Apply", exact: true }).click();
   await startNewGameFromHome(page, "HudNoInventory-Arc-Hum-Mal-Law");
 
   const hud = page.locator(".nh-hud-layout");
