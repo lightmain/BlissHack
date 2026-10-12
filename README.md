@@ -22,7 +22,8 @@ frontend. These changes are documented in
 ## Project Status
 
 **Alpha-2.3 implementation, automated gates, independent review, and manual
-acceptance are complete. Alpha-2.4 is now in planning.**
+acceptance are complete. The Alpha-2.4 Examine dialog is planned but not yet
+implemented.**
 
 Alpha-2.3 adds profile v4 and an optional BlissHack action bar backed by the
 core's command catalog. The Original mode now uses a structured two-line TTY
@@ -32,8 +33,12 @@ use compact secondary dialogs when the BlissHack action bar is enabled. The
 deployment branch and GitHub Pages may lag; use the version displayed by the
 site as the authority.
 
-The alpha-2.4 product scope has not been defined. The current milestone only
-establishes its planning entry point without committing to implementation.
+Alpha-2.4 plans to add an `Examine` entry to map and permanent-inventory
+context menus in Detailed mode. It will present NetHack source facts and
+verbatim, fully attributed paragraph excerpts from NetHackWiki without
+exposing hidden game identities. See the
+[Alpha-2.4 Examine dialog plan](doc/BlissHack/plans/alpha-2.4.md); the feature
+is not implemented in the current code.
 
 The current milestone provides:
 
@@ -168,7 +173,7 @@ combinations at 1280x900 and 900x700.
 - [alpha-2.1 focus and Below HUD plan](doc/BlissHack/plans/alpha-2.1.md)
 - [alpha-2.2 information and workflow plan](doc/BlissHack/plans/alpha-2.2.md)
 - [alpha-2.3 action bar plan](doc/BlissHack/plans/alpha-2.3.md)
-- [alpha-2.4 planning entry](doc/BlissHack/plans/alpha-2.4.md)
+- [alpha-2.4 Examine dialog plan](doc/BlissHack/plans/alpha-2.4.md)
 - [alpha-1 rendering architecture](doc/BlissHack/plans/in-alpha-1/rendering-architecture.md)
 - [alpha-1 profile v2](doc/BlissHack/plans/in-alpha-1/profile-v2.md)
 - [alpha-1 release acceptance](doc/BlissHack/plans/in-alpha-1/release-acceptance.md)

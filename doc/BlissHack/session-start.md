@@ -13,9 +13,10 @@
    alpha-2.1 的焦点与 Below HUD 调整、alpha-2.2 的 profile v3、信息量、统一
    角色选择、终局结果页和本地 Ranking 也已完成人工验收。alpha-2.3 的
    profile v4、动作栏、动作次级弹窗和 Original TTY 两行状态已完成实现、
-   自动门禁、独立复审和人工验收。当前 `VERSION` 为 `alpha-2.4`，处于范围
-   尚未确定的规划准备阶段；先阅读
-   `doc/BlissHack/plans/alpha-2.4.md`，不得把候选需求直接当作已确认范围。
+   自动门禁、独立复审和人工验收。当前 `VERSION` 为 `alpha-2.4`，Examine
+   观察窗口的范围与阶段门禁已经写入
+   `doc/BlissHack/plans/alpha-2.4.md`，但尚未开始实现；不得把计划中的目标
+   当作当前已有能力，也不得跳过计划规定的阶段流程。
    alpha-2.3 最终验收记录见
    `doc/BlissHack/plans/in-alpha-2.3/release-acceptance.md`。
    GitHub Pages 可能落后，应以页面版本为准。维护当前架构时阅读
@@ -69,7 +70,8 @@
   保持 ASCII 显示，旧版本的新展示设置均迁移为 `original`。新建 profile
   默认使用 `detailed` 信息量以及 BlissHack 终局、角色创建和动作栏。
 - `interface.informationLevel` 只控制状态栏的解释性 Tooltip；地图、背包和
-  `nethack.showExperience` 不受其影响。
+  `nethack.showExperience` 不受其影响。这是当前已实现行为；alpha-2.4 计划
+  在不提升 profile schema 的前提下扩展 Detailed 的 Examine 入口。
 - `frontend/src/session/session-manager.ts` 是稳定 façade；
   `session-lifecycle.ts` 管理唯一活动 WASM session、module、callback 和清理，
   `home-operations.ts` 管理 Home 数据操作，两者共享一个显式 context。
