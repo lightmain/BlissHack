@@ -354,6 +354,43 @@ test("shows the core permanent-inventory item text without sending game input", 
   expect(errors).toEqual({ console: [], page: [] });
 });
 
+/** Characterize map and inventory hover behavior in both information modes. */
+for (const informationLevel of ["original", "detailed"] as const) {
+  test(
+    `keeps current map and inventory hover inspection in ${informationLevel} mode`,
+    async ({ page }) => {
+    const errors = captureErrors(page);
+    await startConfiguredGame(page, `Hover${informationLevel}`, {
+      informationLevel,
+      permanentInventory: true,
+      showTime: true,
+    });
+    const shell = await expectCommandReady(page);
+    const tooltip = inspectTooltip(page);
+    const turn = statusField(page, "time");
+    const turnBefore = await turn.textContent();
+    const item = page.getByRole("region", { name: "Inventory" }).locator(
+      ".permanent-inventory-item:not(.permanent-inventory-heading)",
+    ).first();
+
+    await item.hover();
+    await expect(tooltip).toBeVisible();
+    await expect(tooltip).toHaveAttribute("id", "inspect-inventory-tooltip");
+    await page.mouse.move(1, 1);
+    await expect(tooltip).toHaveCount(0);
+
+    const cursor = await readCursorPosition(page);
+    await hoverMapCell(page, cursor.x, cursor.y);
+    await expect(tooltip).toBeVisible();
+    await expect(tooltip).toHaveAttribute("id", "map-inspect-tooltip");
+
+    expect(await turn.textContent()).toBe(turnBefore);
+    await expect(shell).toHaveAttribute("data-command-input", "ready");
+    expect(errors).toEqual({ console: [], page: [] });
+    },
+  );
+}
+
 test("inspects the player cell without changing visible messages or turn count", async ({
   page,
 }) => {
