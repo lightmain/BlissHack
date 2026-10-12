@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mediawiki
+  xmlns="http://www.mediawiki.org/xml/export-0.11/"
+  version="0.11"
+  xml:lang="en"
+>
+  <siteinfo>
+    <sitename>NetHackWiki</sitename>
+    <dbname>nethackwiki</dbname>
+    <base>https://nethackwiki.com/wiki/Main_Page</base>
+    <generator>MediaWiki 1.39</generator>
+    <case>first-letter</case>
+  </siteinfo>
+  <page>
+    <title>Newt</title>
+    <ns>0</ns>
+    <id>1001</id>
+    <revision>
+      <id>205109</id>
+      <parentid>205108</parentid>
+      <timestamp>2025-01-01T00:00:00Z</timestamp>
+      <contributor>
+        <username>Fixture contributor</username>
+        <id>7</id>
+      </contributor>
+      <comment>Revision before the reviewed text</comment>
+      <model>wikitext</model>
+      <format>text/x-wiki</format>
+      <text xml:space="preserve">This revision is not approved.</text>
+      <sha1>fixture-before</sha1>
+    </revision>
+    <revision>
+      <id>205110</id>
+      <parentid>205109</parentid>
+      <timestamp>2025-01-02T03:04:05Z</timestamp>
+      <contributor>
+        <username>Fixture contributor</username>
+        <id>7</id>
+      </contributor>
+      <comment>Reviewed Newt fixture</comment>
+      <model>wikitext</model>
+      <format>text/x-wiki</format>
+      <text xml:space="preserve"><![CDATA[==Overview==
+A [[newt]], :, is a type of monster that appears in ''NetHack''. It is an [[amphibious]] lizard that is among one of the first monsters you will encounter in the dungeon.
+
+Eating a newt's [[corpse]] or [[tin]] has a 2/3 chance of raising your current [[power]] by 1d3 points, and will always do so if it is less than or equal to 2/3 of your maximum power - if this increase would raise you above your total maximum power, there is a 1/3 chance of increasing your maximum and current power by 1.
+
+==Strategy==
+Newts are primarily a minor nuisance for a [[starting character]] unless you are especially weak, and become a non-issue once you are decently armed and/or armored. Newt corpses and tins provide a means of boosting your maximum energy early, though care must be taken so that a [[pet]] does not immediately snap up any freshly-made corpses; [[Archeologist]]s in particular may consider using their [[tinning kit]] to obtain more nutrition from the corpses as well.
+
+Non-neutral players that wish to raise their [[alignment record]] early on for the [[protection racket]] (which relies on gaining alignment while avoiding killing co-aligned monsters and keeping experience low) and/or [[conduct]]s that require frequent [[prayer]] (like [[foodless]]) should make sure to kill newts themselves.
+
+==History==
+The newt first appears in ''NetHack 3.0.6''.
+
+==Dudley's dungeon==
+Newts are featured prominently in [[Dudley's dungeon]], where early strips often featured Dudley dying at the hands of these typically-weak monsters, which is typically improbable in normal play (but not impossible by any means). This has become a common enough gag to the point that Dudley is frequently portrayed with a profound fear of them - however, most newer strips whose punchline consists solely of newts killing Dudley are usually rated poorly and referred to as "newt jokes" or YANC ("Yet Another Newt Comic").]]></text>
+      <sha1>fixture-reviewed</sha1>
+    </revision>
+    <revision>
+      <id>205111</id>
+      <parentid>205110</parentid>
+      <timestamp>2025-01-03T00:00:00Z</timestamp>
+      <contributor>
+        <username>Fixture contributor</username>
+        <id>7</id>
+      </contributor>
+      <comment>Revision after the reviewed text</comment>
+      <model>wikitext</model>
+      <format>text/x-wiki</format>
+      <text xml:space="preserve">This later revision must not be selected.</text>
+      <sha1>fixture-after</sha1>
+    </revision>
+  </page>
+  <page>
+    <title>Water newt</title>
+    <ns>0</ns>
+    <id>1002</id>
+    <redirect title="Newt" />
+    <revision>
+      <id>205120</id>
+      <timestamp>2025-01-04T00:00:00Z</timestamp>
+      <contributor>
+        <username>Fixture contributor</username>
+        <id>7</id>
+      </contributor>
+      <model>wikitext</model>
+      <format>text/x-wiki</format>
+      <text xml:space="preserve">#REDIRECT [[Newt]]</text>
+      <sha1>fixture-redirect</sha1>
+    </revision>
+  </page>
+  <page>
+    <title>Newts</title>
+    <ns>0</ns>
+    <id>1003</id>
+    <revision>
+      <id>205130</id>
+      <timestamp>2025-01-05T00:00:00Z</timestamp>
+      <contributor>
+        <username>Fixture contributor</username>
+        <id>7</id>
+      </contributor>
+      <model>wikitext</model>
+      <format>text/x-wiki</format>
+      <text xml:space="preserve">A fuzzy-looking title that is not approved.</text>
+      <sha1>fixture-fuzzy</sha1>
+    </revision>
+  </page>
+</mediawiki>
