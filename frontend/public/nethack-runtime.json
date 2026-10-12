@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "emscriptenVersion": "6.0.9",
   "nodeMajor": 24,
   "luaVersion": "5.4.8",
@@ -18,5 +18,12 @@
       "bytes": 6635329,
       "sha256": "5027e8b8ac26a2ad8ad020a058042251f02ec47f5c45932926e1a2ee952dbcfe"
     }
+  },
+  "encyclopedia": {
+    "manifest": {
+      "bytes": 7495,
+      "sha256": "55a26965a0e876c36ae60e740d6f3c26e5d0cc1d9faa9ebe4a509783eace4f5b"
+    },
+    "sourceFingerprint": "046794a0244664b2ddcbb9b815e7954e28b5ca82431c903d908c24810bfe17b6"
   }
 }

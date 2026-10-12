@@ -1,4 +1,5 @@
 import {
+  mkdir,
   mkdtemp,
   readFile,
   rm,
@@ -36,6 +37,8 @@ const temporaryDirectories = [];
 async function runtimeFixture() {
   const directory = await mkdtemp(join(tmpdir(), "blisshack-runtime-"));
   temporaryDirectories.push(directory);
+  const encyclopediaDirectory = join(directory, "encyclopedia/core");
+  await mkdir(encyclopediaDirectory, { recursive: true });
   await Promise.all([
     writeFile(
       join(directory, "nethack.js"),
@@ -45,6 +48,14 @@ async function runtimeFixture() {
     writeFile(
       join(directory, "nethack.wasm"),
       Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x01]),
+    ),
+    writeFile(
+      join(encyclopediaDirectory, "manifest.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        sourceFingerprint: "a".repeat(64),
+      }),
+      "utf8",
     ),
   ]);
   await writeRuntimeManifest(directory, TOOLCHAIN);

@@ -9,12 +9,14 @@ const [
   hostCompiler,
   luaVersion,
   hintsFile,
+  encyclopediaManifestPath,
 ] = process.argv.slice(2);
 
-if (!hintsFile) {
+if (!encyclopediaManifestPath) {
   throw new Error(
     "Usage: generate-runtime-manifest.mjs <asset-dir> <emscripten> "
-      + "<node> <make> <host-compiler> <lua> <hints>",
+      + "<node> <make> <host-compiler> <lua> <hints> "
+      + "<encyclopedia-manifest>",
   );
 }
 
@@ -26,5 +28,6 @@ await writeRuntimeManifest(resolvedDirectory, {
   hostCompiler,
   luaVersion,
   hintsFile,
+  encyclopediaManifestPath: resolve(encyclopediaManifestPath),
 });
 console.log(`Generated ${resolvedDirectory}/nethack-runtime.json`);

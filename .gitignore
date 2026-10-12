@@ -25,6 +25,8 @@ _$*
 *.elc
 *.ln
 core
+!frontend/public/encyclopedia/core/
+!frontend/public/encyclopedia/core/**
 # CVS default ignores end
 .*.swp
 
