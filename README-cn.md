@@ -18,8 +18,8 @@ BlissHack 对 NetHack C 代码进行了少量有针对性的修改，主要用�
 
 ## 项目状态
 
-**alpha-2.3 已完成实现、自动门禁、独立复审和人工验收；当前进入 alpha-2.4
-规划阶段。**
+**alpha-2.3 已完成实现、自动门禁、独立复审和人工验收；alpha-2.4 Examine
+观察窗口已完成规划，尚未开始实现。**
 
 alpha-2.3 已加入 profile v4 和由核心命令目录驱动的可选 BlissHack 动作栏。
 Original 模式改为结构化的 TTY 两行状态，BlissHack 模式继续使用图形状态。
@@ -27,7 +27,11 @@ Original 模式改为结构化的 TTY 两行状态，BlissHack 模式继续使�
 紧凑的动作次级弹窗。部署分支与 GitHub Pages 可能落后，实际线上版本以页面
 显示为准。
 
-alpha-2.4 的产品范围尚未确定，当前只建立规划入口，不提前承诺或实现具体功能。
+alpha-2.4 计划在 Detailed 信息量下为地图和永久背包右键菜单增加
+`Examine`，并以不泄露隐藏身份的方式展示 NetHack 源码事实和具有独立署名、
+来源及许可信息的 NetHackWiki 完整原文段落节选。具体范围和阶段门禁见
+[alpha-2.4 Examine 观察窗口计划](doc/BlissHack/plans/alpha-2.4.md)；当前代码
+尚未实现该功能。
 
 当前里程碑已经实现：
 
@@ -148,7 +152,7 @@ Tiles/ASCII、Right/Below 在 1280×900 和 900×700 下的 HUD 组合。
 - [alpha-2.1 焦点与 Below HUD 计划](doc/BlissHack/plans/alpha-2.1.md)
 - [alpha-2.2 信息与流程体验计划](doc/BlissHack/plans/alpha-2.2.md)
 - [alpha-2.3 动作栏计划](doc/BlissHack/plans/alpha-2.3.md)
-- [alpha-2.4 规划入口](doc/BlissHack/plans/alpha-2.4.md)
+- [alpha-2.4 Examine 观察窗口计划](doc/BlissHack/plans/alpha-2.4.md)
 - [alpha-1 渲染架构](doc/BlissHack/plans/in-alpha-1/rendering-architecture.md)
 - [alpha-1 profile v2](doc/BlissHack/plans/in-alpha-1/profile-v2.md)
 - [alpha-1 发布验收](doc/BlissHack/plans/in-alpha-1/release-acceptance.md)
