@@ -29,18 +29,27 @@ async function fileMetadata(filePath) {
  *   makeVersion: string,
  *   hostCompiler: string,
  *   luaVersion: string,
- *   hintsFile: string
+ *   hintsFile: string,
+ *   encyclopediaManifestPath?: string
  * }} options - build metadata and staged runtime location.
  * @returns {Promise<object>} serializable runtime manifest.
  */
 export async function createRuntimeManifest(options) {
-  const [loader, wasm] = await Promise.all(
-    RUNTIME_FILENAMES.map((name) =>
+  const encyclopediaManifestPath = resolve(
+    options.encyclopediaManifestPath
+      ?? resolve(
+        options.assetDirectory,
+        "encyclopedia/core/manifest.json",
+      ),
+  );
+  const [loader, wasm, encyclopedia] = await Promise.all([
+    ...RUNTIME_FILENAMES.map((name) =>
       fileMetadata(resolve(options.assetDirectory, name))
     ),
-  );
+    encyclopediaMetadata(encyclopediaManifestPath),
+  ]);
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     emscriptenVersion: options.emscriptenVersion,
     nodeMajor: Number.parseInt(options.nodeVersion.replace(/^v/, ""), 10),
     luaVersion: options.luaVersion,
@@ -54,6 +63,7 @@ export async function createRuntimeManifest(options) {
       "nethack.js": loader,
       "nethack.wasm": wasm,
     },
+    encyclopedia,
   };
 }
 
@@ -82,7 +92,8 @@ export async function writeRuntimeManifest(assetDirectory, options) {
  * @param {{
  *   emscriptenVersion?: string,
  *   nodeMajor?: number,
- *   luaVersion?: string
+ *   luaVersion?: string,
+ *   encyclopediaManifestPath?: string
  * }} [expected] - repository-pinned values to enforce.
  * @returns {Promise<object>} validated manifest.
  */
@@ -97,6 +108,23 @@ export async function verifyRuntimeAssets(assetDirectory, expected = {}) {
   }
   const manifest = parseManifest(manifestSource);
   assertExpectedTools(manifest, expected);
+  const encyclopediaManifestPath = resolve(
+    expected.encyclopediaManifestPath
+      ?? resolve(
+        assetDirectory,
+        "encyclopedia/core/manifest.json",
+      ),
+  );
+  const encyclopedia = await encyclopediaMetadata(encyclopediaManifestPath);
+  if (
+    encyclopedia.manifest.bytes !== manifest.encyclopedia.manifest.bytes
+    || encyclopedia.manifest.sha256
+      !== manifest.encyclopedia.manifest.sha256
+    || encyclopedia.sourceFingerprint
+      !== manifest.encyclopedia.sourceFingerprint
+  ) {
+    throw new Error("Runtime and encyclopedia manifests are not from the same build");
+  }
 
   const loaderPath = resolve(assetDirectory, "nethack.js");
   const wasmPath = resolve(assetDirectory, "nethack.wasm");
@@ -152,8 +180,9 @@ function parseManifest(source) {
     "hintsFile",
     "buildTools",
     "files",
+    "encyclopedia",
   ], "runtime manifest");
-  if (value.schemaVersion !== 1) {
+  if (value.schemaVersion !== 2) {
     throw new Error("Unsupported runtime manifest schemaVersion");
   }
   assertVersion(value.emscriptenVersion, "emscriptenVersion");
@@ -185,7 +214,67 @@ function parseManifest(source) {
       throw new Error(`Invalid runtime manifest files.${name}.sha256`);
     }
   }
+  assertRecord(value.encyclopedia, "encyclopedia");
+  assertExactKeys(
+    value.encyclopedia,
+    ["manifest", "sourceFingerprint"],
+    "encyclopedia",
+  );
+  assertRecord(value.encyclopedia.manifest, "encyclopedia.manifest");
+  assertExactKeys(
+    value.encyclopedia.manifest,
+    ["bytes", "sha256"],
+    "encyclopedia.manifest",
+  );
+  if (
+    !Number.isSafeInteger(value.encyclopedia.manifest.bytes)
+    || value.encyclopedia.manifest.bytes < 1
+  ) {
+    throw new Error("Invalid runtime manifest encyclopedia.manifest.bytes");
+  }
+  for (const [field, digest] of [
+    ["encyclopedia.manifest.sha256", value.encyclopedia.manifest.sha256],
+    ["encyclopedia.sourceFingerprint", value.encyclopedia.sourceFingerprint],
+  ]) {
+    if (typeof digest !== "string" || !/^[a-f0-9]{64}$/.test(digest)) {
+      throw new Error(`Invalid runtime manifest ${field}`);
+    }
+  }
   return value;
+}
+
+/**
+ * Read and validate the core encyclopedia manifest metadata bound to WASM.
+ * @param {string} manifestPath - core encyclopedia manifest path.
+ * @returns {Promise<{
+ *   manifest: {bytes: number, sha256: string},
+ *   sourceFingerprint: string
+ * }>} integrity and source identity.
+ */
+async function encyclopediaMetadata(manifestPath) {
+  await assertRegularFile(manifestPath, "encyclopedia manifest");
+  const bytes = await readFile(manifestPath);
+  let manifest;
+  try {
+    manifest = JSON.parse(bytes.toString("utf8"));
+  } catch {
+    throw new Error("Encyclopedia manifest is not valid JSON");
+  }
+  assertRecord(manifest, "encyclopedia source");
+  if (
+    manifest.schemaVersion !== 1
+    || typeof manifest.sourceFingerprint !== "string"
+    || !/^[a-f0-9]{64}$/.test(manifest.sourceFingerprint)
+  ) {
+    throw new Error("Invalid encyclopedia source fingerprint");
+  }
+  return {
+    manifest: {
+      bytes: bytes.byteLength,
+      sha256: createHash("sha256").update(bytes).digest("hex"),
+    },
+    sourceFingerprint: manifest.sourceFingerprint,
+  };
 }
 
 /**
@@ -214,7 +303,11 @@ async function assertRegularFile(filePath, label = "runtime file") {
  */
 function assertExpectedTools(manifest, expected) {
   for (const [field, expectedValue] of Object.entries(expected)) {
-    if (expectedValue !== undefined && manifest[field] !== expectedValue) {
+    if (
+      field !== "encyclopediaManifestPath"
+      && expectedValue !== undefined
+      && manifest[field] !== expectedValue
+    ) {
       throw new Error(
         `Runtime manifest ${field} mismatch: expected ${expectedValue}, got ${manifest[field]}`,
       );

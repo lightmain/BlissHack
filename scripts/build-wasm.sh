@@ -264,8 +264,11 @@ node frontend/scripts/generate-runtime-manifest.mjs \
     "$MAKE_VERSION" \
     "$HOST_COMPILER" \
     "$LUA_VERSION" \
-    "$HINTS_FILE"
-node frontend/scripts/verify-runtime-assets.mjs "$STAGING_DIR"
+    "$HINTS_FILE" \
+    "$PUBLIC_DIR/encyclopedia/core/manifest.json"
+node frontend/scripts/verify-runtime-assets.mjs \
+    "$STAGING_DIR" \
+    "$PUBLIC_DIR/encyclopedia/core/manifest.json"
 (
     cd frontend
     BLISSHACK_WASM_DIR="$STAGING_DIR" npm run test:integration:wasm
