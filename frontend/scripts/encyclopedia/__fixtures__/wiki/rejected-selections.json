@@ -1,0 +1,127 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "name": "sentence excerpt",
+      "wikitext": "==Overview==\nA complete paragraph with two sentences. The second sentence must remain.",
+      "selection": {
+        "sections": [
+          {
+            "tab": "overview",
+            "sourceHeading": "Overview",
+            "paragraphSlices": [
+              {
+                "paragraphIndex": 0,
+                "start": 0,
+                "end": 40
+              }
+            ]
+          }
+        ]
+      },
+      "expectedCode": "partial-paragraph"
+    },
+    {
+      "name": "cross paragraph splice",
+      "wikitext": "==Overview==\nFirst complete paragraph.\n\nSecond complete paragraph.",
+      "selection": {
+        "sections": [
+          {
+            "tab": "overview",
+            "sourceHeading": "Overview",
+            "paragraphGroups": [
+              [
+                0,
+                1
+              ]
+            ]
+          }
+        ]
+      },
+      "expectedCode": "paragraph-splice"
+    },
+    {
+      "name": "template",
+      "wikitext": "==Overview==\nA paragraph with {{m|newt}} transclusion.",
+      "expectedCode": "template"
+    },
+    {
+      "name": "File link",
+      "wikitext": "==Overview==\nA paragraph with [[File:Newt.png|thumb|a newt]].",
+      "expectedCode": "file"
+    },
+    {
+      "name": "Image link",
+      "wikitext": "==Overview==\nA paragraph with [[Image:Newt.png|a newt]].",
+      "expectedCode": "image"
+    },
+    {
+      "name": "table",
+      "wikitext": "==Overview==\n{| class=\"wikitable\"\n|-\n| unsafe table cell\n|}",
+      "expectedCode": "table"
+    },
+    {
+      "name": "reference tag",
+      "wikitext": "==Overview==\nA paragraph with a citation.<ref>Unreviewed source.</ref>",
+      "expectedCode": "ref"
+    },
+    {
+      "name": "Origin section",
+      "wikitext": "==Origin==\nMaterial copied from a separately attributed source.",
+      "sourceHeading": "Origin",
+      "expectedCode": "origin"
+    },
+    {
+      "name": "Wikipedia-derived section",
+      "wikitext": "==Wikipedia==\nMaterial derived from Wikipedia.",
+      "sourceHeading": "Wikipedia",
+      "expectedCode": "wikipedia-derived"
+    },
+    {
+      "name": "encyclopedia quotation",
+      "wikitext": "==Encyclopedia entry==\n<blockquote>A separately licensed quotation.</blockquote>",
+      "sourceHeading": "Encyclopedia entry",
+      "expectedCode": "encyclopedia-quotation"
+    },
+    {
+      "name": "game messages",
+      "wikitext": "==Messages==\n\"You feel a mild buzz.\"",
+      "sourceHeading": "Messages",
+      "expectedCode": "game-messages"
+    },
+    {
+      "name": "Rodney material",
+      "wikitext": "==Overview==\n{{Rodney|A separately sourced paragraph.}}",
+      "expectedCode": "rodney"
+    },
+    {
+      "name": "Hugo material",
+      "wikitext": "==Overview==\n{{Hugo|A separately sourced paragraph.}}",
+      "expectedCode": "hugo"
+    },
+    {
+      "name": "basedon material",
+      "wikitext": "==Overview==\n{{basedon|A separately sourced paragraph.}}",
+      "expectedCode": "basedon"
+    },
+    {
+      "name": "unknown license node",
+      "wikitext": "==Overview==\n<unknown-license source=\"elsewhere\">Unclassified material.</unknown-license>",
+      "expectedCode": "unknown-license-node"
+    }
+  ],
+  "defaultSelection": {
+    "entityId": "monster:PM_NEWT",
+    "pageTitle": "Rejected fixture",
+    "revisionId": 1,
+    "sections": [
+      {
+        "tab": "overview",
+        "sourceHeading": "Overview",
+        "paragraphIndexes": [
+          0
+        ]
+      }
+    ]
+  }
+}

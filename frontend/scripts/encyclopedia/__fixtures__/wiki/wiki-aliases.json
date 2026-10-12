@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "aliases": [
+    {
+      "entityId": "monster:PM_NEWT",
+      "title": "Newt",
+      "canonicalTitle": "Newt"
+    },
+    {
+      "entityId": "monster:PM_NEWT",
+      "title": "Water newt",
+      "canonicalTitle": "Newt"
+    },
+    {
+      "entityId": "monster:PM_NEWT",
+      "title": "little lizard",
+      "canonicalTitle": "Newt"
+    }
+  ]
+}
