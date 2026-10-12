@@ -250,6 +250,7 @@ const INPUT_STATE_OTHER = 0;
 const INPUT_STATE_COMMAND = 1;
 const INPUT_STATE_GETPOS = 2;
 const INPUT_STATE_GETDIR = 3;
+const BL_TIME = 16;
 const ESCAPE = 27;
 const EXTENDED_COMMAND_KEY = "#".charCodeAt(0);
 
@@ -949,6 +950,9 @@ async function blissCallback(name, ...args) {
     case "shim_status_update":
       statusUpdateEvents.push({
         field: Number(args[0]),
+        value: Number(args[1]) === 0
+          ? null
+          : activeModule.UTF8ToString(Number(args[1])),
         percent: Number(args[3]),
       });
       return undefined;
@@ -2422,6 +2426,98 @@ async function run() {
     )
       && traceHasBoundary(inventoryTrace),
     "inventory exposes a standard PICK_ONE action menu before its boundary",
+  );
+
+  // --- Stage-zero context-menu cancellation characterization ---
+  console.log("\n--- Context-menu cancellation characterization ---");
+  const thereCommand = actionCommandsByName.get("therecmdmenu");
+  if (!thereCommand) throw new Error("therecmdmenu metadata is missing");
+  const movesBeforeThereMenu = Number(
+    statusUpdateEvents.findLast(({ field }) => field === BL_TIME)?.value,
+  );
+  const thereTrace = await runExtendedCommand(thereCommand, {
+    unrestrictedYnResponses: [".".charCodeAt(0)],
+    menuResponses: ["cancel"],
+  });
+  const thereDirectionIndex = thereTrace.findIndex(
+    (event) =>
+      event.name === "shim_yn_function"
+      && event.inputState === INPUT_STATE_GETDIR
+      && event.response === ".".charCodeAt(0),
+  );
+  const thereCancelIndex = thereTrace.findIndex(
+    (event) =>
+      event.name === "shim_select_menu"
+      && event.how === PICK_ONE
+      && event.response === "cancel",
+  );
+  const thereDestroyIndex = thereTrace.findIndex(
+    (event, index) =>
+      index > thereCancelIndex
+      && event.name === "shim_destroy_nhwindow"
+      && event.windowId === thereTrace[thereCancelIndex]?.windowId,
+  );
+  const thereBoundaryIndex = thereTrace.findIndex(
+    (event, index) =>
+      index > thereDestroyIndex
+      && event.boundaryGeneration !== undefined,
+  );
+  const movesAfterThereMenu = Number(
+    statusUpdateEvents.findLast(({ field }) => field === BL_TIME)?.value,
+  );
+  assert(
+    thereDirectionIndex >= 0
+      && thereCancelIndex > thereDirectionIndex
+      && thereDestroyIndex > thereCancelIndex
+      && thereBoundaryIndex > thereDestroyIndex,
+    "therecmdmenu cancellation destroys its window before the next boundary",
+  );
+  assert(
+    Number.isInteger(movesBeforeThereMenu)
+      && movesAfterThereMenu === movesBeforeThereMenu,
+    "cancelling therecmdmenu does not increase moves",
+  );
+
+  const movesBeforeItemActions = movesAfterThereMenu;
+  const itemActionsTrace = await runExtendedCommand(
+    representativeCommands.inventory,
+    { menuResponses: ["first", "cancel"] },
+  );
+  const itemActionsSelections = itemActionsTrace
+    .map((event, index) => ({ event, index }))
+    .filter(({ event }) =>
+      event.name === "shim_select_menu"
+      && event.how === PICK_ONE
+    );
+  const itemActionsCancel = itemActionsSelections.find(
+    ({ event }) => event.response === "cancel",
+  );
+  const itemActionsDestroyIndex = itemActionsTrace.findIndex(
+    (event, index) =>
+      index > (itemActionsCancel?.index ?? -1)
+      && event.name === "shim_destroy_nhwindow"
+      && event.windowId === itemActionsCancel?.event.windowId,
+  );
+  const itemActionsBoundaryIndex = itemActionsTrace.findIndex(
+    (event, index) =>
+      index > itemActionsDestroyIndex
+      && event.boundaryGeneration !== undefined,
+  );
+  const movesAfterItemActions = Number(
+    statusUpdateEvents.findLast(({ field }) => field === BL_TIME)?.value,
+  );
+  assert(
+    itemActionsSelections.length >= 2
+      && itemActionsSelections[0].event.response === "first"
+      && itemActionsCancel?.index > itemActionsSelections[0].index
+      && itemActionsDestroyIndex > itemActionsCancel.index
+      && itemActionsBoundaryIndex > itemActionsDestroyIndex,
+    "inventory selection reaches itemactions cancellation before its boundary",
+  );
+  assert(
+    Number.isInteger(movesBeforeItemActions)
+      && movesAfterItemActions === movesBeforeItemActions,
+    "cancelling itemactions does not increase moves",
   );
 
   const itemCommandCases = [

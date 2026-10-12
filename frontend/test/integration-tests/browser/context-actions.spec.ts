@@ -23,12 +23,19 @@ function contextMenu(page: Page): Locator {
 async function startContextGame(
   page: Page,
   name: string,
-  options: { permanentInventory?: boolean; showTime?: boolean },
+  options: {
+    informationLevel?: "Original" | "Detailed";
+    permanentInventory?: boolean;
+    showTime?: boolean;
+  },
 ): Promise<void> {
   await openHome(page, name);
   await page.getByRole("button", { name: "Settings" }).click();
   await page.getByRole("group", { name: "Action bar" })
     .getByRole("radio", { name: "Original" })
+    .check();
+  await page.getByRole("group", { name: "Information level" })
+    .getByRole("radio", { name: options.informationLevel ?? "Original" })
     .check();
   if (options.permanentInventory) {
     await page.getByRole("checkbox", {
@@ -108,6 +115,57 @@ async function openMapContextMenu(
   const menu = contextMenu(page);
   await expect(menu).toBeVisible();
   return { map, menu };
+}
+
+/** Characterize existing context menus in both information-level modes. */
+for (const informationLevel of ["Original", "Detailed"] as const) {
+  test(
+    `keeps current map and inventory context menus in ${informationLevel} mode`,
+    async ({ page }) => {
+    const errors = captureErrors(page);
+    await startContextGame(page, `Context${informationLevel}`, {
+      informationLevel,
+      permanentInventory: true,
+      showTime: true,
+    });
+    const turn = statusField(page, "time");
+    const turnBefore = await turn.textContent();
+
+    const mapContext = await openMapContextMenu(page);
+    await expectCoreIdentifiers(mapContext.menu);
+    expect(await mapContext.menu.getByRole("menuitem").count())
+      .toBeGreaterThan(0);
+    await expect(
+      mapContext.menu.getByRole("menuitem", { name: /Examine/i }),
+    ).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await expect(mapContext.menu).toHaveCount(0);
+    await expect(
+      page.locator(".nh-shell[data-command-input='ready']"),
+    ).toBeVisible();
+
+    const item = page.getByRole("region", { name: "Inventory" }).locator(
+      ".permanent-inventory-item:not(.permanent-inventory-heading)",
+    ).first();
+    await expect(item).toBeVisible();
+    const inventoryMenu = await openInventoryContextMenu(page, item);
+    await expectCoreIdentifiers(inventoryMenu);
+    expect(await inventoryMenu.getByRole("menuitem").count())
+      .toBeGreaterThan(0);
+    await expect(
+      inventoryMenu.getByRole("menuitem", { name: /Examine/i }),
+    ).toHaveCount(0);
+    await page.keyboard.press("Escape");
+
+    await expect(inventoryMenu).toHaveCount(0);
+    await expect(page.locator(".nh-shell")).toHaveAttribute(
+      "data-command-input",
+      "ready",
+    );
+    expect(await turn.textContent()).toBe(turnBefore);
+    expect(errors).toEqual({ console: [], page: [] });
+    },
+  );
 }
 
 test("opens an anchored core map menu and cancels it without a turn", async ({

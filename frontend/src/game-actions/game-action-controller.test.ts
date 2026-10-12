@@ -501,6 +501,73 @@ describe("GameActionController", () => {
     expect(setActionIntentActive.mock.calls).toEqual([[true], [false]]);
   });
 
+  /** Characterize the stage-zero generation-gate gap for map context menus. */
+  it("records the map-context generation-gate gap after cancellation", () => {
+    const {
+      controller,
+      onComplete,
+      startCommand,
+      submitMenuSelection,
+    } = createHarness();
+    const intent = createMapContextIntent();
+    const unchangedBoundaryGeneration = 41;
+    const menuInput = {
+      kind: "menu" as const,
+      items: [menuItem(17, "o".charCodeAt(0), "o - open")],
+      windowId: 23,
+      how: PICK_ONE,
+    };
+
+    controller.request(intent);
+    controller.observe(createObservation({
+      boundaryGeneration: unchangedBoundaryGeneration,
+      input: null,
+    }));
+    expect(startCommand).not.toHaveBeenCalled();
+
+    controller.observe(createObservation({
+      boundaryGeneration: unchangedBoundaryGeneration,
+      input: { kind: "command" },
+    }));
+    expect(startCommand).toHaveBeenCalledOnce();
+    controller.observe(createObservation({
+      boundaryGeneration: unchangedBoundaryGeneration,
+      input: menuInput,
+    }));
+    expect(controller.getState()).toMatchObject({
+      status: "presenting-context-menu",
+      contextMenu: { windowId: 23 },
+    });
+
+    controller.observe(createObservation({
+      boundaryGeneration: unchangedBoundaryGeneration,
+      input: menuInput,
+    }));
+    submitMenuSelection(null);
+    controller.observe(createObservation({
+      boundaryGeneration: unchangedBoundaryGeneration,
+      input: null,
+    }));
+    expect(controller.getState()).toMatchObject({
+      status: "presenting-context-menu",
+      contextMenu: { windowId: 23 },
+    });
+    expect(onComplete).not.toHaveBeenCalled();
+
+    controller.observe(createObservation({
+      boundaryGeneration: unchangedBoundaryGeneration,
+      input: { kind: "command" },
+    }));
+
+    expect(submitMenuSelection).toHaveBeenCalledOnce();
+    expect(submitMenuSelection).toHaveBeenCalledWith(null);
+    // Stage four will require a strictly newer generation before completion.
+    expect(onComplete).toHaveBeenCalledOnce();
+    expect(onComplete).toHaveBeenCalledWith(intent);
+    expect(submitMenuSelection.mock.invocationCallOrder[0])
+      .toBeLessThan(onComplete.mock.invocationCallOrder[0]);
+  });
+
   it.each(INVALID_MENU_METADATA)(
     "[defect-probing] rejects a map context menu with $label",
     ({ metadata }) => {
@@ -640,6 +707,92 @@ describe("GameActionController", () => {
         origin: intent.origin,
       },
     });
+  });
+
+  /** Characterize the stage-zero generation-gate gap for itemactions menus. */
+  it("records the inventory-context generation-gate gap after cancellation", () => {
+    const {
+      controller,
+      onCancel,
+      onComplete,
+      startCommand,
+      submitMenuSelection,
+    } = createHarness();
+    const intent = createInventoryIntent();
+    const unchangedBoundaryGeneration = 52;
+    const itemActionsInput = {
+      kind: "menu" as const,
+      items: [menuItem(8101, 0, "opaque core action")],
+      windowId: 32,
+      how: PICK_ONE,
+    };
+
+    controller.request(intent);
+    controller.observe(createObservation({
+      boundaryGeneration: unchangedBoundaryGeneration,
+      input: null,
+    }));
+    expect(startCommand).not.toHaveBeenCalled();
+
+    controller.observe(createObservation({
+      boundaryGeneration: unchangedBoundaryGeneration,
+      input: { kind: "command" },
+    }));
+    controller.observe(createObservation({
+      boundaryGeneration: unchangedBoundaryGeneration,
+      inventoryRevision: INVENTORY_REVISION,
+      input: {
+        kind: "menu",
+        items: [
+          menuItem(7002, ITEM_ACCELERATOR, "opaque target row"),
+        ],
+        windowId: 31,
+        how: PICK_ONE,
+      },
+    }));
+    expect(submitMenuSelection).toHaveBeenCalledWith([
+      { itemIndex: 0, count: 1 },
+    ]);
+
+    controller.observe(createObservation({
+      boundaryGeneration: unchangedBoundaryGeneration,
+      inventoryRevision: INVENTORY_REVISION,
+      input: itemActionsInput,
+    }));
+    controller.observe(createObservation({
+      boundaryGeneration: unchangedBoundaryGeneration,
+      inventoryRevision: INVENTORY_REVISION,
+      input: itemActionsInput,
+    }));
+    expect(controller.getState()).toMatchObject({
+      status: "presenting-context-menu",
+      contextMenu: { windowId: 32 },
+    });
+
+    submitMenuSelection(null);
+    controller.observe(createObservation({
+      boundaryGeneration: unchangedBoundaryGeneration,
+      inventoryRevision: INVENTORY_REVISION,
+      input: null,
+    }));
+    expect(onCancel).not.toHaveBeenCalled();
+    expect(onComplete).not.toHaveBeenCalled();
+
+    controller.observe(createObservation({
+      boundaryGeneration: unchangedBoundaryGeneration,
+      inventoryRevision: INVENTORY_REVISION,
+      input: { kind: "command" },
+    }));
+
+    expect(submitMenuSelection.mock.calls).toEqual([
+      [[{ itemIndex: 0, count: 1 }]],
+      [null],
+    ]);
+    expect(onCancel).not.toHaveBeenCalled();
+    // Stage four will require a strictly newer generation before completion.
+    expect(onComplete).toHaveBeenCalledWith(intent);
+    expect(submitMenuSelection.mock.invocationCallOrder[1])
+      .toBeLessThan(onComplete.mock.invocationCallOrder[0]);
   });
 
   it.each(INVALID_MENU_METADATA)(
