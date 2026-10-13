@@ -20,6 +20,10 @@ type FetchAsset = (
   options?: FetchAssetOptions,
 ) => Promise<Uint8Array>;
 
+interface PreloadCapableLoader {
+  preload(options?: FetchAssetOptions): Promise<void>;
+}
+
 /**
  * Create a fetch spy backed by one mutable in-memory asset graph.
  * @param fixture Asset graph.
@@ -71,6 +75,134 @@ function callsForUrl(
   return fetchBytes.mock.calls.filter(([calledUrl]) => calledUrl === url)
     .length;
 }
+
+/**
+ * Require the stage-six manifest preload API without weakening its contract.
+ * @param loader Runtime loader under test.
+ * @returns Bound preload method.
+ */
+function requirePreload(
+  loader: ReturnType<typeof fixtureLoader>,
+): PreloadCapableLoader["preload"] {
+  const preload = (loader as unknown as Partial<PreloadCapableLoader>).preload;
+  expect(
+    preload,
+    "stage six requires EncyclopediaLoader.preload({ signal? })",
+  ).toBeTypeOf("function");
+  return preload!.bind(loader);
+}
+
+describe("encyclopedia manifest preload", () => {
+  it("validates only runtime, core, and optional Wiki manifests", async () => {
+    const fixture = createEncyclopediaAssetFixture();
+    const fetchBytes = fixtureFetcher(fixture);
+    const preload = requirePreload(fixtureLoader(fixture, fetchBytes));
+
+    await expect(preload()).resolves.toBeUndefined();
+
+    for (const url of [
+      fixture.urls.runtimeManifest,
+      fixture.urls.coreManifest,
+      fixture.urls.wikiManifest,
+    ]) {
+      expect(callsForUrl(fetchBytes, url), url).toBe(1);
+    }
+    for (const url of [
+      fixture.urls.glyphChunk,
+      fixture.urls.entityChunk,
+      fixture.urls.wikiChunk,
+    ]) {
+      expect(callsForUrl(fetchBytes, url), url).toBe(0);
+    }
+    expect(fetchBytes).toHaveBeenCalledTimes(3);
+  });
+
+  it.each([
+    {
+      label: "runtime manifest",
+      failedUrl(fixture: EncyclopediaAssetFixture) {
+        return fixture.urls.runtimeManifest;
+      },
+    },
+    {
+      label: "core manifest",
+      failedUrl(fixture: EncyclopediaAssetFixture) {
+        return fixture.urls.coreManifest;
+      },
+    },
+  ])("rejects a $label failure", async ({ failedUrl }) => {
+    const fixture = createEncyclopediaAssetFixture();
+    const rejectedUrl = failedUrl(fixture);
+    const fetchBytes: FetchAsset = async (url, options) => {
+      if (options?.signal?.aborted) {
+        throw new DOMException("The operation was aborted", "AbortError");
+      }
+      if (url === rejectedUrl) throw new Error(`Failed to fetch ${url}`);
+      const bytes = fixture.assets.get(url);
+      if (!bytes) throw new Error(`Asset not found: ${url}`);
+      return bytes.slice();
+    };
+    const preload = requirePreload(fixtureLoader(fixture, fetchBytes));
+
+    await expect(preload()).rejects.toThrow(`Failed to fetch ${rejectedUrl}`);
+  });
+
+  it("degrades a Wiki manifest failure without loading any chunks", async () => {
+    const fixture = createEncyclopediaAssetFixture();
+    const fetchBytes = fixtureFetcher(fixture);
+    fetchBytes.mockImplementation(async (url, options) => {
+      if (options?.signal?.aborted) {
+        throw new DOMException("The operation was aborted", "AbortError");
+      }
+      if (url === fixture.urls.wikiManifest) {
+        throw new Error("Wiki manifest is unavailable");
+      }
+      const bytes = fixture.assets.get(url);
+      if (!bytes) throw new Error(`Asset not found: ${url}`);
+      return bytes.slice();
+    });
+    const preload = requirePreload(fixtureLoader(fixture, fetchBytes));
+
+    await expect(preload()).resolves.toBeUndefined();
+    for (const url of [
+      fixture.urls.glyphChunk,
+      fixture.urls.entityChunk,
+      fixture.urls.wikiChunk,
+    ]) {
+      expect(callsForUrl(fetchBytes, url), url).toBe(0);
+    }
+  });
+
+  it("propagates abort while the optional Wiki manifest is pending", async () => {
+    const fixture = createEncyclopediaAssetFixture();
+    let markWikiRequested: (() => void) | undefined;
+    const wikiRequested = new Promise<void>((resolve) => {
+      markWikiRequested = resolve;
+    });
+    const fetchBytes: FetchAsset = async (url, options) => {
+      if (url !== fixture.urls.wikiManifest) {
+        const bytes = fixture.assets.get(url);
+        if (!bytes) throw new Error(`Asset not found: ${url}`);
+        return bytes.slice();
+      }
+      markWikiRequested?.();
+      return await new Promise<Uint8Array>((_resolve, reject) => {
+        const abort = () =>
+          reject(new DOMException("The operation was aborted", "AbortError"));
+        options?.signal?.addEventListener("abort", abort, { once: true });
+        if (options?.signal?.aborted) abort();
+      });
+    };
+    const controller = new AbortController();
+    const preload = requirePreload(fixtureLoader(fixture, fetchBytes));
+    const pending = preload({ signal: controller.signal });
+
+    await wikiRequested;
+    controller.abort();
+
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+  });
+});
 
 describe("encyclopedia runtime loader", () => {
   it("strictly loads runtime-bound core data and optional Wiki text", async () => {
