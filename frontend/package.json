@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "encyclopedia:generate": "node scripts/encyclopedia/generate-core-assets.mjs",
-    "encyclopedia:verify": "node scripts/encyclopedia/verify-core-assets.mjs",
+    "encyclopedia:refresh-wiki": "node scripts/encyclopedia/import-wiki-dump.mjs",
+    "encyclopedia:verify": "node scripts/encyclopedia/verify-encyclopedia-assets.mjs",
     "generate:tiles": "node scripts/generate-tile-assets.mjs",
     "verify:tiles": "node scripts/verify-tile-assets.mjs",
     "prebuild": "npm run verify:tiles && npm run encyclopedia:verify && node scripts/verify-runtime-assets.mjs",
@@ -39,8 +40,10 @@
     "@vitejs/plugin-react": "^6.1.0",
     "oxlint": "^1.79.0",
     "pngjs": "^7.0.0",
+    "saxes": "6.0.0",
     "typescript": "~6.0.2",
     "vite": "^8.2.2",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.11",
+    "wikiparser-node": "1.48.0"
   }
 }

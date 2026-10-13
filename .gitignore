@@ -27,6 +27,7 @@ _$*
 core
 !frontend/public/encyclopedia/core/
 !frontend/public/encyclopedia/core/**
+frontend/.encyclopedia-wiki-refresh/
 # CVS default ignores end
 .*.swp
 
