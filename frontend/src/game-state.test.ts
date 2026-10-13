@@ -61,6 +61,12 @@ function statusMetadata(): Record<number, ExpectedStatusFieldMetadata> {
   }).statusMetadata;
 }
 
+/** Read row-local visible identity without depending on the pending type edit. */
+function visibleEntityToken(item: unknown): unknown {
+  return (item as { visibleEntityToken?: unknown } | null)
+    ?.visibleEntityToken;
+}
+
 beforeEach(() => {
   resetGameState();
 });
@@ -321,6 +327,7 @@ describe("game state menus and prompts", () => {
       color: 2,
       text: "a - a mace",
       itemFlags: 1,
+      visibleEntityToken: null,
     });
 
     expect(getWindow(menu)?.menuBehavior).toBe(MENU_BEHAVE_PERMINV);
@@ -333,6 +340,7 @@ describe("game state menus and prompts", () => {
       color: 2,
       text: "a - a mace",
       itemFlags: 1,
+      visibleEntityToken: null,
     });
 
     beginMenu(menu, MENU_BEHAVE_STANDARD);
@@ -373,6 +381,7 @@ describe("game state menus and prompts", () => {
       color: 2,
       text: "a - a mace",
       itemFlags: 1,
+      visibleEntityToken: "artifact:ART_EXCALIBUR" as string | null,
     };
 
     beginMenu(inventory, MENU_BEHAVE_PERMINV);
@@ -388,11 +397,24 @@ describe("game state menus and prompts", () => {
       prompt: "Inventory",
       items: [firstItem],
     });
+    firstItem.visibleEntityToken = null;
+    expect(visibleEntityToken(first?.items[0])).toBe(
+      "artifact:ART_EXCALIBUR",
+    );
 
     beginMenu(inventory, MENU_BEHAVE_PERMINV);
-    addMenuItem(inventory, { ...firstItem, identifier: 99, accelerator: 98, text: "b - a wand" });
+    addMenuItem(inventory, {
+      ...firstItem,
+      identifier: 99,
+      accelerator: 98,
+      text: "b - a wand",
+      visibleEntityToken: null,
+    });
     expect(getSnapshot().permanentInventory).toBe(first);
-    expect(first?.items[0]).toEqual(firstItem);
+    expect(first?.items[0]).toEqual({
+      ...firstItem,
+      visibleEntityToken: "artifact:ART_EXCALIBUR",
+    });
 
     endMenu(inventory, "Carrying");
     setInventoryWindow(inventory);
@@ -404,9 +426,21 @@ describe("game state menus and prompts", () => {
     });
   });
 
-  it("keeps the last permanent inventory after destroy and clears it on reset", () => {
+  it("invalidates retained inventory identity after destroy and clears it on reset", () => {
     const inventory = createWindow(NHW_MENU);
     beginMenu(inventory, MENU_BEHAVE_PERMINV);
+    const artifactItem = {
+      glyph: null,
+      identifier: 41,
+      accelerator: "a".charCodeAt(0),
+      groupAccelerator: 0,
+      attribute: 0,
+      color: 7,
+      text: "a - Excalibur",
+      itemFlags: 0,
+      visibleEntityToken: "artifact:ART_EXCALIBUR",
+    };
+    addMenuItem(inventory, artifactItem);
     endMenu(inventory, "Inventory");
     setInventoryWindow(inventory);
     const committed = getSnapshot().permanentInventory;
@@ -419,7 +453,11 @@ describe("game state menus and prompts", () => {
 
     destroyWindow(inventory);
     expect(getSnapshot().inventoryWindowId).toBeNull();
-    expect(getSnapshot().permanentInventory).toBe(committed);
+    const invalidated = getSnapshot().permanentInventory;
+    expect(invalidated).not.toBeNull();
+    expect(invalidated?.revision).toBeGreaterThan(committed?.revision ?? 0);
+    expect(invalidated?.items[0]?.text).toBe("a - Excalibur");
+    expect(visibleEntityToken(invalidated?.items[0])).toBeNull();
 
     beginMenu(ordinary, MENU_BEHAVE_PERMINV);
     endMenu(ordinary, "New session item");
