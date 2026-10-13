@@ -290,7 +290,7 @@ describe("alpha-2.4 stage-zero source baselines", () => {
   });
 
   /** Verify the offline Wiki fixture against the reviewed prototype and notice. */
-  it("keeps six complete Newt revision 205110 paragraphs and attribution", async () => {
+  it("keeps four approved Newt revision 205110 paragraphs and attribution", async () => {
     const [fixtureSource, prototype, notice] = await Promise.all([
       readFile(
         join(fixtureDirectory, "newt-wiki-revision-205110.json"),
@@ -312,7 +312,7 @@ describe("alpha-2.4 stage-zero source baselines", () => {
       ),
     ]);
     const fixture = JSON.parse(fixtureSource);
-    const excerptParagraphs = [
+    const prototypeParagraphs = [
       ...prototype.matchAll(
         /<blockquote\s+class="examine-wiki-excerpt"[\s\S]*?<\/blockquote>/g,
       ),
@@ -320,11 +320,12 @@ describe("alpha-2.4 stage-zero source baselines", () => {
       [...blockquote.matchAll(/<p(?:\s[^>]*)?>([\s\S]*?)<\/p>/g)]
         .map((match) => normalizedText(match[1]))
     );
+    const excerptParagraphs = prototypeParagraphs.slice(2);
     const attributionMatch = prototype.match(
       /<script type="application\/json" id="prototype-content-attribution">\s*([\s\S]*?)\s*<\/script>/,
     );
 
-    expect(excerptParagraphs).toHaveLength(6);
+    expect(excerptParagraphs).toHaveLength(4);
     expect(fixture.paragraphs).toEqual(excerptParagraphs);
     expect(attributionMatch).not.toBeNull();
     const attribution = JSON.parse(attributionMatch[1]).wiki;
@@ -332,6 +333,9 @@ describe("alpha-2.4 stage-zero source baselines", () => {
       title: attribution.title,
       authors: attribution.author,
       revision: attribution.revision,
+      revisionTimestamp: "2026-06-02T18:31:39Z",
+      revisionSha256:
+        "8255e5ed686ea657f3b5cea18449b31e11f5bfe731195797b4f2dc5263522032",
       source: attribution.source,
       history: attribution.history,
       licenseUrl: attribution.licenseUrl,

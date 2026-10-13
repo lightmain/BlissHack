@@ -2,6 +2,8 @@
   "title": "Newt",
   "authors": "NetHackWiki contributors",
   "revision": 205110,
+  "revisionTimestamp": "2026-06-02T18:31:39Z",
+  "revisionSha256": "8255e5ed686ea657f3b5cea18449b31e11f5bfe731195797b4f2dc5263522032",
   "source": "https://nethackwiki.com/index.php?title=Newt&oldid=205110",
   "history": "https://nethackwiki.com/index.php?title=Newt&action=history",
   "license": "Creative Commons Attribution-ShareAlike 3.0 Unported",
@@ -20,8 +22,6 @@
     "other content with separate or uncertain provenance"
   ],
   "paragraphs": [
-    "A newt, :, is a type of monster that appears in NetHack. It is an amphibious lizard that is among one of the first monsters you will encounter in the dungeon.",
-    "Eating a newt's corpse or tin has a 2/3 chance of raising your current power by 1d3 points, and will always do so if it is less than or equal to 2/3 of your maximum power - if this increase would raise you above your total maximum power, there is a 1/3 chance of increasing your maximum and current power by 1.",
     "Newts are primarily a minor nuisance for a starting character unless you are especially weak, and become a non-issue once you are decently armed and/or armored. Newt corpses and tins provide a means of boosting your maximum energy early, though care must be taken so that a pet does not immediately snap up any freshly-made corpses; Archeologists in particular may consider using their tinning kit to obtain more nutrition from the corpses as well.",
     "Non-neutral players that wish to raise their alignment record early on for the protection racket (which relies on gaining alignment while avoiding killing co-aligned monsters and keeping experience low) and/or conducts that require frequent prayer (like foodless) should make sure to kill newts themselves.",
     "The newt first appears in NetHack 3.0.6.",
