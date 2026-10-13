@@ -347,6 +347,59 @@ describe("default Emscripten factory cache", () => {
     expect(factory).toHaveBeenCalledTimes(3);
   });
 
+  it("isolates the same loader digest by importer while reusing each importer", async () => {
+    const wasm = Uint8Array.from([
+      0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x01,
+    ]);
+    const loader = encoder.encode(
+      "export default async function importerScopedFactory() {}",
+    );
+    const firstModules: EmscriptenModule[] = [];
+    const secondModules: EmscriptenModule[] = [];
+    const firstFactory: EmscriptenFactory = vi.fn(async () => {
+      const module = fakeModule();
+      firstModules.push(module);
+      return module;
+    });
+    const secondFactory: EmscriptenFactory = vi.fn(async () => {
+      const module = fakeModule();
+      secondModules.push(module);
+      return module;
+    });
+    const firstImportFactory = vi.fn(async (
+      _bytes: Uint8Array,
+      _sourceUrl: string,
+    ) => firstFactory);
+    const secondImportFactory = vi.fn(async (
+      _bytes: Uint8Array,
+      _sourceUrl: string,
+    ) => secondFactory);
+    const firstOptions: DefaultFactoryCacheOptions = {
+      fetchBytes: runtimeFixtureFetcher(wasm, loader),
+      importFactory: firstImportFactory,
+    };
+    const secondOptions: DefaultFactoryCacheOptions = {
+      fetchBytes: runtimeFixtureFetcher(wasm, loader),
+      importFactory: secondImportFactory,
+    };
+
+    const firstResults = await Promise.all([
+      createGameModule(loaderUrl, firstOptions),
+      createGameModule(loaderUrl, firstOptions),
+    ]);
+    const secondResults = await Promise.all([
+      createGameModule(loaderUrl, secondOptions),
+      createGameModule(loaderUrl, secondOptions),
+    ]);
+
+    expect(firstImportFactory).toHaveBeenCalledOnce();
+    expect(secondImportFactory).toHaveBeenCalledOnce();
+    expect(firstFactory).toHaveBeenCalledTimes(2);
+    expect(secondFactory).toHaveBeenCalledTimes(2);
+    expect(firstResults).toEqual(firstModules);
+    expect(secondResults).toEqual(secondModules);
+  });
+
   it("retries the same loader digest after its first import fails", async () => {
     const wasm = Uint8Array.from([
       0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x01,
