@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   PICK_ANY,
   PICK_ONE,
+  type GlyphInfo,
   type MenuItem,
 } from "../game-state";
 import {
@@ -670,5 +671,796 @@ describe("stage-four cancellation and cleanup", () => {
       intent: null,
       lastCancellationReason: reason,
     });
+  });
+});
+
+type InformationLevel = "original" | "detailed";
+
+interface MapExamineTarget {
+  surface: "map";
+  entityId: string;
+  moduleId: string;
+  sessionId: string;
+  mapRevision: number;
+  mapX: number;
+  mapY: number;
+  source: "map-foreground" | "map-background";
+  glyph: GlyphInfo;
+}
+
+interface InventoryExamineTarget {
+  surface: "inventory";
+  entityId: string;
+  moduleId: string;
+  sessionId: string;
+  inventoryRevision: number;
+  identifier: number;
+  accelerator: number;
+  source: "inventory";
+  glyph: GlyphInfo;
+  visibleEntityToken: string | null;
+}
+
+type ExamineTarget = MapExamineTarget | InventoryExamineTarget;
+
+type ContextMenuRow =
+  | { kind: "core"; itemIndex: number; item: MenuItem }
+  | { kind: "examine"; accelerator: number; target: ExamineTarget };
+
+type ExamineContextIntent =
+  | {
+    kind: "map-context";
+    moduleId: string;
+    sessionId: string;
+    snapshotRevision: number;
+    origin: {
+      kind: "map";
+      clientX: number;
+      clientY: number;
+      mapX: number;
+      mapY: number;
+    };
+  }
+  | {
+    kind: "inventory-context";
+    moduleId: string;
+    sessionId: string;
+    snapshotRevision: number;
+    inventoryRevision: number;
+    identifier: number;
+    accelerator: number;
+    origin: {
+      kind: "inventory";
+      clientX: number;
+      clientY: number;
+      inventoryRevision: number;
+      accelerator: number;
+    };
+  };
+
+interface ExamineContextObservation extends StageFourObservation {
+  informationLevel: InformationLevel;
+  examineTarget: ExamineTarget | null;
+}
+
+interface ExamineContextPresentation {
+  how: number;
+  menuGeneration: number;
+  origin: ExamineContextIntent["origin"];
+  rows: readonly ContextMenuRow[];
+  windowId: number;
+}
+
+interface ExamineControllerState {
+  status: string;
+  intent: ExamineContextIntent | null;
+  contextMenu: ExamineContextPresentation | null;
+  lastCancellationReason: ActionIntentCancellationReason | null;
+}
+
+interface ExamineController extends Omit<
+  GameActionController,
+  "getState" | "observe" | "request"
+> {
+  request(intent: ExamineContextIntent): boolean;
+  observe(observation: ExamineContextObservation): void;
+  chooseContextMenuRow?(
+    menuGeneration: number,
+    row: ContextMenuRow,
+    count: number,
+  ): boolean;
+  cancelContextMenu?(menuGeneration: number): boolean;
+  getState(): ExamineControllerState;
+}
+
+interface ActionCompletion {
+  kind: "open-examine";
+  target: ExamineTarget;
+}
+
+interface ExamineControllerOptions {
+  scope: { moduleId: string; sessionId: string };
+  startCommand(intent: ExamineContextIntent): void;
+  submitMenuSelection(
+    selection: Array<{ itemIndex: number; count: number }> | null,
+  ): void;
+  releaseInputToUi(input: StageFourInput): void;
+  onCancel(reason: ActionIntentCancellationReason): void;
+  onComplete(intent: ExamineContextIntent): void;
+  onActionCompletion(completion: ActionCompletion): void;
+  setActionIntentActive(active: boolean): void;
+}
+
+const CONTEXT_MENU_GENERATION = 41;
+const CONTEXT_WINDOW_ID = 71;
+const MAP_REVISION = 17;
+const INVENTORY_REVISION = 23;
+
+/**
+ * Create one complete final-display glyph for handoff identity checks.
+ * @param glyph Final core-provided glyph index.
+ * @param overrides Presentation fields to replace.
+ * @returns Independent glyph metadata.
+ */
+function glyphInfo(
+  glyph: number,
+  overrides: Partial<GlyphInfo> = {},
+): GlyphInfo {
+  return {
+    glyph,
+    ttyChar: 64,
+    frameColor: -1,
+    glyphFlags: 0,
+    color: 7,
+    symbolIndex: 1,
+    customColor: 0,
+    color256: 0,
+    tileIndex: 300,
+    ...overrides,
+  };
+}
+
+/** Return one supported map target captured entirely by value. */
+function mapExamineTarget(
+  overrides: Partial<MapExamineTarget> = {},
+): MapExamineTarget {
+  return {
+    surface: "map",
+    entityId: "monster:PM_NEWT",
+    moduleId: "module-1",
+    sessionId: "session-1",
+    mapRevision: MAP_REVISION,
+    mapX: 18,
+    mapY: 7,
+    source: "map-foreground",
+    glyph: glyphInfo(301),
+    ...overrides,
+  };
+}
+
+/** Return one supported permanent-inventory target captured by value. */
+function inventoryExamineTarget(
+  overrides: Partial<InventoryExamineTarget> = {},
+): InventoryExamineTarget {
+  return {
+    surface: "inventory",
+    entityId: "object:LONG_SWORD",
+    moduleId: "module-1",
+    sessionId: "session-1",
+    inventoryRevision: INVENTORY_REVISION,
+    identifier: 81,
+    accelerator: "a".charCodeAt(0),
+    source: "inventory",
+    glyph: glyphInfo(401),
+    visibleEntityToken: null,
+    ...overrides,
+  };
+}
+
+/** Return one map context request at the accepted command boundary. */
+function mapContextIntent(): Extract<
+  ExamineContextIntent,
+  { kind: "map-context" }
+> {
+  return {
+    kind: "map-context",
+    moduleId: "module-1",
+    sessionId: "session-1",
+    snapshotRevision: 12,
+    origin: {
+      kind: "map",
+      clientX: 320,
+      clientY: 200,
+      mapX: 18,
+      mapY: 7,
+    },
+  };
+}
+
+/** Return one inventory context request for the captured permanent row. */
+function inventoryContextIntent(): Extract<
+  ExamineContextIntent,
+  { kind: "inventory-context" }
+> {
+  return {
+    kind: "inventory-context",
+    moduleId: "module-1",
+    sessionId: "session-1",
+    snapshotRevision: 12,
+    inventoryRevision: INVENTORY_REVISION,
+    identifier: 81,
+    accelerator: "a".charCodeAt(0),
+    origin: {
+      kind: "inventory",
+      clientX: 240,
+      clientY: 160,
+      inventoryRevision: INVENTORY_REVISION,
+      accelerator: "a".charCodeAt(0),
+    },
+  };
+}
+
+/** Return one authoritative context-menu observation. */
+function examineObservation(
+  overrides: Partial<ExamineContextObservation> = {},
+): ExamineContextObservation {
+  return {
+    moduleId: "module-1",
+    sessionId: "session-1",
+    snapshotRevision: 12,
+    inventoryRevision: INVENTORY_REVISION,
+    boundaryGeneration: ACCEPTED_BOUNDARY,
+    menuGeneration: CONTEXT_MENU_GENERATION,
+    informationLevel: "detailed",
+    examineTarget: mapExamineTarget(),
+    input: null,
+    ...overrides,
+  };
+}
+
+/** Return the final core-generated action menu for a context request. */
+function contextActionMenu(
+  items: readonly MenuItem[] = [item(901, "a"), item(902, "b")],
+  overrides: Partial<Extract<StageFourInput, { kind: "menu" }>> = {},
+): Extract<StageFourInput, { kind: "menu" }> {
+  return {
+    kind: "menu",
+    items,
+    windowId: CONTEXT_WINDOW_ID,
+    how: PICK_ONE,
+    provenance: "none",
+    requestNonce: 0,
+    menuGeneration: CONTEXT_MENU_GENERATION,
+    ...overrides,
+  };
+}
+
+/**
+ * Create a controller harness through the future stage-four contract.
+ * @returns Controller and every externally observable side effect.
+ */
+function createExamineHarness() {
+  const startCommand = vi.fn();
+  const submitMenuSelection = vi.fn();
+  const releaseInputToUi = vi.fn();
+  const onCancel = vi.fn();
+  const onComplete = vi.fn();
+  const completionStatuses: string[] = [];
+  let controller: ExamineController;
+  const onActionCompletion = vi.fn((_completion: ActionCompletion) => {
+    completionStatuses.push(controller.getState().status);
+  });
+  const setActionIntentActive = vi.fn();
+  const options: ExamineControllerOptions = {
+    scope: { moduleId: "module-1", sessionId: "session-1" },
+    startCommand,
+    submitMenuSelection,
+    releaseInputToUi,
+    onCancel,
+    onComplete,
+    onActionCompletion,
+    setActionIntentActive,
+  };
+  const factory = createGameActionController as unknown as (
+    value: ExamineControllerOptions,
+  ) => ExamineController;
+  controller = factory(options);
+  return {
+    completionStatuses,
+    controller,
+    onActionCompletion,
+    onCancel,
+    onComplete,
+    releaseInputToUi,
+    setActionIntentActive,
+    startCommand,
+    submitMenuSelection,
+  };
+}
+
+/**
+ * Advance a map or inventory request to its final visible action menu.
+ * @param controller Active future controller.
+ * @param intent Context request to start.
+ * @param target Supported target, or null when the small index cannot resolve it.
+ * @param informationLevel Current profile mode.
+ * @param menu Core-generated action menu.
+ */
+function presentContextMenu(
+  controller: ExamineController,
+  intent: ExamineContextIntent,
+  target: ExamineTarget | null,
+  informationLevel: InformationLevel = "detailed",
+  menu = contextActionMenu(),
+): void {
+  expect(controller.request(intent)).toBe(true);
+  controller.observe(examineObservation({
+    examineTarget: target,
+    informationLevel,
+    inventoryRevision: intent.kind === "inventory-context"
+      ? intent.inventoryRevision
+      : INVENTORY_REVISION,
+    input: commandInput(),
+  }));
+  if (intent.kind === "inventory-context") {
+    controller.observe(examineObservation({
+      examineTarget: target,
+      informationLevel,
+      input: contextActionMenu([
+        {
+          ...item(intent.identifier, "a"),
+          accelerator: intent.accelerator,
+        },
+      ], {
+        windowId: CONTEXT_WINDOW_ID - 1,
+        menuGeneration: CONTEXT_MENU_GENERATION - 1,
+      }),
+    }));
+  }
+  controller.observe(examineObservation({
+    examineTarget: target,
+    informationLevel,
+    input: menu,
+  }));
+  expect(controller.getState().status).toBe("presenting-context-menu");
+}
+
+/** Return semantic rows from the active context presentation. */
+function contextRows(controller: ExamineController): readonly ContextMenuRow[] {
+  return controller.getState().contextMenu?.rows ?? [];
+}
+
+/** Return the sole synthetic row after asserting its presence. */
+function examineRow(controller: ExamineController): ContextMenuRow {
+  const row = contextRows(controller).find(
+    (candidate) => candidate.kind === "examine",
+  );
+  expect(row).toBeDefined();
+  return row ?? {
+    kind: "examine",
+    accelerator: "e".charCodeAt(0),
+    target: mapExamineTarget(),
+  };
+}
+
+/** Select one semantic row without requiring production types to exist yet. */
+function chooseContextRow(
+  controller: ExamineController,
+  row: ContextMenuRow,
+  menuGeneration = CONTEXT_MENU_GENERATION,
+): boolean {
+  return controller.chooseContextMenuRow?.(menuGeneration, row, -1) ?? false;
+}
+
+/** Cancel one semantic context menu through its generation-bound handler. */
+function cancelContextMenu(
+  controller: ExamineController,
+  menuGeneration = CONTEXT_MENU_GENERATION,
+): boolean {
+  return controller.cancelContextMenu?.(menuGeneration) ?? false;
+}
+
+describe("stage-four Examine context-menu rows", () => {
+  it("keeps Original core-only and adds Examine only for a supported Detailed target", () => {
+    const coreItems = [item(901, "a"), item(902, "b")];
+    const cases = [
+      {
+        label: "Original supported",
+        informationLevel: "original" as const,
+        target: mapExamineTarget(),
+        expectedKinds: ["core", "core"],
+      },
+      {
+        label: "Detailed unsupported",
+        informationLevel: "detailed" as const,
+        target: null,
+        expectedKinds: ["core", "core"],
+      },
+      {
+        label: "Detailed supported",
+        informationLevel: "detailed" as const,
+        target: mapExamineTarget(),
+        expectedKinds: ["core", "core", "examine"],
+      },
+    ];
+
+    for (const scenario of cases) {
+      const { controller } = createExamineHarness();
+      presentContextMenu(
+        controller,
+        mapContextIntent(),
+        scenario.target,
+        scenario.informationLevel,
+        contextActionMenu(coreItems),
+      );
+      const rows = contextRows(controller);
+
+      expect(rows.map((row) => row.kind), scenario.label)
+        .toEqual(scenario.expectedKinds);
+      expect(rows.slice(0, 2), scenario.label).toEqual([
+        { kind: "core", itemIndex: 0, item: coreItems[0] },
+        { kind: "core", itemIndex: 1, item: coreItems[1] },
+      ]);
+    }
+  });
+
+  it("preserves core identity and accelerators while keeping Examine semantic", () => {
+    const occupiedExamine = item(902, "e");
+    const coreItems = [item(901, "a"), occupiedExamine];
+    const target = mapExamineTarget();
+    const { controller } = createExamineHarness();
+
+    presentContextMenu(
+      controller,
+      mapContextIntent(),
+      target,
+      "detailed",
+      contextActionMenu(coreItems),
+    );
+    const rows = contextRows(controller);
+    const synthetic = rows.find((row) => row.kind === "examine");
+    const coreRows = rows.filter(
+      (row): row is Extract<ContextMenuRow, { kind: "core" }> =>
+        row.kind === "core",
+    );
+
+    expect(coreRows.map(({ item: core, itemIndex }) => ({
+      itemIndex,
+      identifier: core.identifier,
+      accelerator: core.accelerator,
+      text: core.text,
+    }))).toEqual([
+      {
+        itemIndex: 0,
+        identifier: 901,
+        accelerator: "a".charCodeAt(0),
+        text: "opaque core candidate",
+      },
+      {
+        itemIndex: 1,
+        identifier: 902,
+        accelerator: "e".charCodeAt(0),
+        text: "opaque core candidate",
+      },
+    ]);
+    expect(synthetic).toMatchObject({
+      kind: "examine",
+      target,
+    });
+    expect(synthetic).not.toHaveProperty("item");
+    expect(synthetic).not.toHaveProperty("itemIndex");
+    expect(synthetic).not.toHaveProperty("identifier");
+    expect(
+      synthetic?.kind === "examine"
+        && (
+          synthetic.accelerator === 0
+          || !coreItems.some(
+            (core) => core.accelerator === synthetic.accelerator,
+          )
+        ),
+    ).toBe(true);
+  });
+
+  it("uses the preferred e accelerator when no core row owns it", () => {
+    const { controller } = createExamineHarness();
+    presentContextMenu(
+      controller,
+      mapContextIntent(),
+      mapExamineTarget(),
+    );
+
+    expect(examineRow(controller)).toMatchObject({
+      kind: "examine",
+      accelerator: "e".charCodeAt(0),
+    });
+  });
+
+  it("submits an unchanged core row without producing an Examine completion", () => {
+    const {
+      controller,
+      onActionCompletion,
+      submitMenuSelection,
+    } = createExamineHarness();
+    presentContextMenu(
+      controller,
+      mapContextIntent(),
+      mapExamineTarget(),
+    );
+    const core = contextRows(controller)[1];
+
+    expect(core).toMatchObject({ kind: "core", itemIndex: 1 });
+    expect(chooseContextRow(controller, core)).toBe(true);
+    expect(submitMenuSelection).toHaveBeenCalledOnce();
+    expect(submitMenuSelection).toHaveBeenCalledWith([
+      { itemIndex: 1, count: -1 },
+    ]);
+    expect(onActionCompletion).not.toHaveBeenCalled();
+  });
+});
+
+describe("stage-four Examine safe handoff", () => {
+  it("submits one null and waits for resolver, window, and boundary gates", () => {
+    const liveTarget = mapExamineTarget();
+    const {
+      completionStatuses,
+      controller,
+      onActionCompletion,
+      submitMenuSelection,
+    } = createExamineHarness();
+    presentContextMenu(controller, mapContextIntent(), liveTarget);
+    const row = examineRow(controller);
+
+    expect(chooseContextRow(controller, row)).toBe(true);
+    expect(chooseContextRow(controller, row)).toBe(false);
+    expect(submitMenuSelection.mock.calls).toEqual([[null]]);
+    expect(onActionCompletion).not.toHaveBeenCalled();
+
+    controller.observe(examineObservation({
+      examineTarget: liveTarget,
+      input: contextActionMenu(),
+    }));
+    expect(onActionCompletion).not.toHaveBeenCalled();
+
+    controller.observe(examineObservation({
+      examineTarget: liveTarget,
+      input: null,
+    }));
+    expect(onActionCompletion).not.toHaveBeenCalled();
+
+    controller.observe(examineObservation({
+      boundaryGeneration: ACCEPTED_BOUNDARY,
+      examineTarget: liveTarget,
+      input: commandInput(),
+    }));
+    expect(onActionCompletion).not.toHaveBeenCalled();
+
+    controller.observe(examineObservation({
+      boundaryGeneration: ACCEPTED_BOUNDARY + 1,
+      examineTarget: liveTarget,
+      input: commandInput(),
+    }));
+
+    expect(completionStatuses).toEqual(["idle"]);
+    expect(onActionCompletion).toHaveBeenCalledOnce();
+    expect(onActionCompletion).toHaveBeenCalledWith({
+      kind: "open-examine",
+      target: liveTarget,
+    });
+    controller.observe(examineObservation({
+      boundaryGeneration: ACCEPTED_BOUNDARY + 2,
+      examineTarget: liveTarget,
+      input: commandInput(),
+    }));
+    expect(onActionCompletion).toHaveBeenCalledOnce();
+  });
+
+  it("publishes a value copy rather than retaining the selected row target", () => {
+    const captured = mapExamineTarget();
+    const liveTarget = mapExamineTarget();
+    const {
+      controller,
+      onActionCompletion,
+    } = createExamineHarness();
+    presentContextMenu(controller, mapContextIntent(), captured);
+    const row = examineRow(controller);
+
+    expect(chooseContextRow(controller, row)).toBe(true);
+    captured.entityId = "monster:PM_ORC";
+    captured.glyph.glyph = 999;
+    controller.observe(examineObservation({
+      examineTarget: liveTarget,
+      input: null,
+    }));
+    controller.observe(examineObservation({
+      boundaryGeneration: ACCEPTED_BOUNDARY + 1,
+      examineTarget: liveTarget,
+      input: commandInput(),
+    }));
+
+    expect(onActionCompletion).toHaveBeenCalledWith({
+      kind: "open-examine",
+      target: liveTarget,
+    });
+  });
+
+  it("treats backdrop and Escape as ordinary cancellation without a payload", () => {
+    for (const source of ["backdrop", "Escape"]) {
+      const target = mapExamineTarget();
+      const {
+        controller,
+        onActionCompletion,
+        submitMenuSelection,
+      } = createExamineHarness();
+      presentContextMenu(controller, mapContextIntent(), target);
+
+      expect(cancelContextMenu(controller), source).toBe(true);
+      expect(submitMenuSelection.mock.calls, source).toEqual([[null]]);
+      controller.observe(examineObservation({
+        examineTarget: target,
+        input: null,
+      }));
+      controller.observe(examineObservation({
+        boundaryGeneration: ACCEPTED_BOUNDARY + 1,
+        examineTarget: target,
+        input: commandInput(),
+      }));
+
+      expect(controller.getState().status, source).toBe("idle");
+      expect(onActionCompletion, source).not.toHaveBeenCalled();
+    }
+  });
+
+  it.each([
+    {
+      label: "map revision",
+      intent: mapContextIntent(),
+      initial: mapExamineTarget(),
+      changed: mapExamineTarget({ mapRevision: MAP_REVISION + 1 }),
+    },
+    {
+      label: "map glyph",
+      intent: mapContextIntent(),
+      initial: mapExamineTarget(),
+      changed: mapExamineTarget({ glyph: glyphInfo(302) }),
+    },
+    {
+      label: "inventory revision",
+      intent: inventoryContextIntent(),
+      initial: inventoryExamineTarget(),
+      changed: inventoryExamineTarget({
+        inventoryRevision: INVENTORY_REVISION + 1,
+      }),
+    },
+    {
+      label: "inventory glyph",
+      intent: inventoryContextIntent(),
+      initial: inventoryExamineTarget(),
+      changed: inventoryExamineTarget({ glyph: glyphInfo(402) }),
+    },
+  ])("clears a selected request after the $label changes", ({
+    changed,
+    initial,
+    intent,
+  }) => {
+    const {
+      controller,
+      onActionCompletion,
+      submitMenuSelection,
+    } = createExamineHarness();
+    presentContextMenu(controller, intent, initial);
+    expect(chooseContextRow(controller, examineRow(controller))).toBe(true);
+
+    controller.observe(examineObservation({
+      examineTarget: changed,
+      inventoryRevision: changed.surface === "inventory"
+        ? changed.inventoryRevision
+        : INVENTORY_REVISION,
+      input: null,
+    }));
+    controller.observe(examineObservation({
+      boundaryGeneration: ACCEPTED_BOUNDARY + 1,
+      examineTarget: changed,
+      inventoryRevision: changed.surface === "inventory"
+        ? changed.inventoryRevision
+        : INVENTORY_REVISION,
+      input: commandInput(),
+    }));
+
+    expect(submitMenuSelection.mock.calls).toEqual([[null]]);
+    expect(onActionCompletion).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      label: "session reset",
+      terminate(controller: ExamineController, target: ExamineTarget) {
+        controller.observe(examineObservation({
+          sessionId: "session-2",
+          examineTarget: target,
+          input: null,
+        }));
+      },
+    },
+    {
+      label: "fatal error",
+      terminate(controller: ExamineController, target: ExamineTarget) {
+        controller.observe(examineObservation({
+          fatal: true,
+          examineTarget: target,
+          input: null,
+        }));
+      },
+    },
+    {
+      label: "unmount",
+      terminate(controller: ExamineController) {
+        controller.dispose();
+      },
+    },
+    {
+      label: "Original mode",
+      terminate(controller: ExamineController, target: ExamineTarget) {
+        controller.observe(examineObservation({
+          examineTarget: target,
+          informationLevel: "original",
+          input: null,
+        }));
+      },
+    },
+  ])("clears a selected request on $label", ({ terminate }) => {
+    const target = mapExamineTarget();
+    const {
+      controller,
+      onActionCompletion,
+      submitMenuSelection,
+    } = createExamineHarness();
+    presentContextMenu(controller, mapContextIntent(), target);
+    expect(chooseContextRow(controller, examineRow(controller))).toBe(true);
+
+    terminate(controller, target);
+    controller.observe(examineObservation({
+      boundaryGeneration: ACCEPTED_BOUNDARY + 1,
+      examineTarget: target,
+      input: commandInput(),
+    }));
+
+    expect(submitMenuSelection.mock.calls).toEqual([[null]]);
+    expect(onActionCompletion).not.toHaveBeenCalled();
+  });
+
+  it("deduplicates repeated right-clicks, double activation, and stale handlers", () => {
+    const target = mapExamineTarget();
+    const {
+      controller,
+      onActionCompletion,
+      submitMenuSelection,
+    } = createExamineHarness();
+    presentContextMenu(controller, mapContextIntent(), target);
+    const staleRow = examineRow(controller);
+
+    expect(controller.request(mapContextIntent())).toBe(false);
+    expect(chooseContextRow(controller, staleRow)).toBe(true);
+    expect(chooseContextRow(controller, staleRow)).toBe(false);
+    expect(submitMenuSelection.mock.calls).toEqual([[null]]);
+
+    controller.observe(examineObservation({
+      examineTarget: target,
+      input: null,
+    }));
+    controller.observe(examineObservation({
+      boundaryGeneration: ACCEPTED_BOUNDARY + 1,
+      examineTarget: target,
+      input: commandInput(),
+    }));
+    expect(onActionCompletion).toHaveBeenCalledOnce();
+
+    expect(chooseContextRow(controller, staleRow)).toBe(false);
+    controller.observe(examineObservation({
+      boundaryGeneration: ACCEPTED_BOUNDARY + 2,
+      examineTarget: target,
+      input: commandInput(),
+    }));
+    expect(submitMenuSelection.mock.calls).toEqual([[null]]);
+    expect(onActionCompletion).toHaveBeenCalledOnce();
   });
 });
