@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import {
   type Locator,
   type Page,
@@ -13,6 +15,97 @@ import { readCursorPosition } from "./helpers/map-viewport-state";
 
 const COLNO = 80;
 const ROWNO = 21;
+const PUBLIC_ROOT = new URL("../../../public/", import.meta.url);
+const NEWT_ACCEPTANCE = JSON.parse(readFileSync(
+  new URL("../fixtures/newt-wiki-revision-205110.json", import.meta.url),
+  "utf8",
+)) as { paragraphs: string[]; revision: number };
+
+interface AssetChunk {
+  bytes: number;
+  file: string;
+  sha256: string;
+}
+
+/** Encode one routed JSON asset exactly like the checked-in compact assets. */
+function assetBytes(value: unknown): Buffer {
+  return Buffer.from(`${JSON.stringify(value)}\n`, "utf8");
+}
+
+/** Return a lowercase SHA-256 digest for routed asset bytes. */
+function sha256(bytes: Uint8Array): string {
+  return createHash("sha256").update(bytes).digest("hex");
+}
+
+/**
+ * Route a self-consistent local asset graph which maps displayed monsters to
+ * Newt while retaining production runtime validation and component loading.
+ */
+async function installNewtAssetRoute(page: Page): Promise<void> {
+  const coreManifest = JSON.parse(readFileSync(
+    new URL("encyclopedia/core/manifest.json", PUBLIC_ROOT),
+    "utf8",
+  )) as {
+    glyphBindings: { chunks: AssetChunk[] };
+  };
+  const routedGlyphChunks = new Map<string, Buffer>();
+  for (const metadata of coreManifest.glyphBindings.chunks) {
+    const chunk = JSON.parse(readFileSync(
+      new URL(`encyclopedia/core/${metadata.file}`, PUBLIC_ROOT),
+      "utf8",
+    )) as {
+      bindings: Array<{
+        status: string;
+        binding?: { kind?: string; monsterId?: string };
+      }>;
+    };
+    for (const result of chunk.bindings) {
+      if (
+        result.status === "supported"
+        && result.binding?.kind === "monster"
+      ) {
+        result.binding.monsterId = "monster:PM_NEWT";
+      }
+    }
+    const bytes = assetBytes(chunk);
+    metadata.bytes = bytes.byteLength;
+    metadata.sha256 = sha256(bytes);
+    routedGlyphChunks.set(metadata.file, bytes);
+  }
+
+  const coreManifestBytes = assetBytes(coreManifest);
+  const runtime = JSON.parse(readFileSync(
+    new URL("nethack-runtime.json", PUBLIC_ROOT),
+    "utf8",
+  )) as {
+    encyclopedia: {
+      core: { manifest: { bytes: number; sha256: string } };
+    };
+  };
+  runtime.encyclopedia.core.manifest = {
+    bytes: coreManifestBytes.byteLength,
+    sha256: sha256(coreManifestBytes),
+  };
+  const runtimeBytes = assetBytes(runtime);
+
+  await page.route("**/nethack-runtime.json", async (route) => {
+    await route.fulfill({
+      body: runtimeBytes,
+      contentType: "application/json",
+    });
+  });
+  await page.route("**/encyclopedia/core/manifest.json", async (route) => {
+    await route.fulfill({
+      body: coreManifestBytes,
+      contentType: "application/json",
+    });
+  });
+  for (const [file, bytes] of routedGlyphChunks) {
+    await page.route(`**/encyclopedia/core/${file}`, async (route) => {
+      await route.fulfill({ body: bytes, contentType: "application/json" });
+    });
+  }
+}
 
 /** Return the anchored menu reserved for a UI-owned core action intent. */
 function contextMenu(page: Page): Locator {
@@ -25,6 +118,8 @@ async function startContextGame(
   name: string,
   options: {
     informationLevel?: "Original" | "Detailed";
+    inventoryPosition?: "Right" | "Below";
+    mapRenderer?: "Tiles" | "ASCII";
     permanentInventory?: boolean;
     showTime?: boolean;
   },
@@ -37,11 +132,21 @@ async function startContextGame(
   await page.getByRole("group", { name: "Information level" })
     .getByRole("radio", { name: options.informationLevel ?? "Original" })
     .check();
+  if (options.mapRenderer) {
+    await page.getByRole("radio", { name: options.mapRenderer }).check();
+  }
   if (options.permanentInventory) {
     await page.getByRole("checkbox", {
       name: "Enable Permanent Inventory",
       exact: true,
     }).check();
+    if (options.inventoryPosition) {
+      await page.getByRole("radio", {
+        name: options.inventoryPosition === "Right"
+          ? /^Right(?: \(Long\))?$/
+          : "Below",
+      }).check();
+    }
   }
   if (options.showTime) {
     await page.getByRole("checkbox", { name: "Show turn count" }).check();
@@ -441,3 +546,389 @@ test("[defect-probing] prevents the native menu on right click outside and resto
   );
   expect(errors).toEqual({ console: [], page: [] });
 });
+
+test("Examine browser lifecycle: contains keys and restores an inventory trigger", async ({
+  page,
+}) => {
+  const localRequests: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes("/encyclopedia/")) {
+      localRequests.push(new URL(request.url()).pathname);
+    }
+  });
+  await startContextGame(page, "ExamineLifecycle-Arc-Hum-Mal-Law", {
+    informationLevel: "Detailed",
+    permanentInventory: true,
+    showTime: true,
+  });
+  const turn = statusField(page, "time");
+  const turnBefore = await turn.textContent();
+  const item = page.getByRole("region", { name: "Inventory" }).locator(
+    ".permanent-inventory-item:not(.permanent-inventory-heading)",
+  ).first();
+  const inventoryMenu = await openInventoryContextMenu(page, item);
+
+  await page.evaluate(() => {
+    const events: string[] = [];
+    document.documentElement.dataset.examineHandoffEvents = "[]";
+    const observer = new MutationObserver((records) => {
+      for (const record of records) {
+        for (const node of record.removedNodes) {
+          if (
+            node instanceof Element
+            && (
+              node.matches(".nh-context-menu")
+              || node.querySelector(".nh-context-menu")
+            )
+          ) {
+            events.push("core-menu-removed");
+          }
+        }
+        for (const node of record.addedNodes) {
+          if (
+            node instanceof Element
+            && (
+              node.matches(".examine-dialog")
+              || node.querySelector(".examine-dialog")
+            )
+          ) {
+            events.push("dialog-added");
+          }
+        }
+      }
+      document.documentElement.dataset.examineHandoffEvents =
+        JSON.stringify(events);
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+  });
+
+  await inventoryMenu.getByRole("menuitem", { name: "Examine" }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+  await expect(inventoryMenu).toHaveCount(0);
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-examine-handoff-events",
+    '["core-menu-removed","dialog-added"]',
+  );
+  await expect(dialog).toHaveAttribute("aria-modal", "true");
+  await expect(dialog).toHaveAttribute("data-browser-keyboard", "true");
+  await expect(page.locator(".nh-terminal")).toHaveAttribute("inert", "");
+  await expect(dialog.locator(".examine-facts")).toBeVisible();
+
+  const close = dialog.getByRole("button", { name: "Close examine window" });
+  await close.focus();
+  await page.keyboard.press("Shift+Tab");
+  await expect(dialog.getByRole("link", { name: /NGPL/ })).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(close).toBeFocused();
+
+  const revisionBeforeLink = await page.locator(".nh-shell")
+    .getAttribute("data-snapshot-revision");
+  await dialog.getByRole("link").first().evaluate((link) => {
+    document.addEventListener("click", (event) => event.preventDefault(), {
+      capture: true,
+      once: true,
+    });
+    (link as HTMLElement).click();
+  });
+  await expect(page.locator(".nh-shell")).toHaveAttribute(
+    "data-snapshot-revision",
+    revisionBeforeLink ?? "",
+  );
+  await expect(page.locator(".nh-shell")).toHaveAttribute(
+    "data-command-input",
+    "ready",
+  );
+  expect(await turn.textContent()).toBe(turnBefore);
+
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(item).toBeFocused();
+
+  const reopened = await openInventoryContextMenu(page, item);
+  await reopened.getByRole("menuitem", { name: "Examine" }).click();
+  const inventoryDialog = page.getByRole("dialog");
+  await expect(inventoryDialog).toBeVisible();
+  await inventoryDialog.getByRole("button", {
+    name: "Close examine window",
+  }).click();
+  await expect(inventoryDialog).toHaveCount(0);
+  await expect(item).toBeFocused();
+
+  const backdropMenu = await openInventoryContextMenu(page, item);
+  await backdropMenu.getByRole("menuitem", { name: "Examine" }).click();
+  await expect(dialog).toBeVisible();
+  await page.locator(".examine-backdrop").click({ position: { x: 2, y: 2 } });
+  await expect(dialog).toHaveCount(0);
+  await expect(item).toBeFocused();
+  expect(await turn.textContent()).toBe(turnBefore);
+  expect(localRequests.filter((url) => /\/object-\d+\.json$/.test(url)))
+    .toHaveLength(1);
+  expect(localRequests.filter((url) => url.endsWith("/wiki-001.json")))
+    .toHaveLength(0);
+  expect(localRequests.some((url) => url.includes("nethackwiki.com")))
+    .toBe(false);
+});
+
+test("Examine map handoff: opens the supported player target after the core menu", async ({
+  page,
+}) => {
+  await startContextGame(page, "ExamineMap-Arc-Hum-Mal-Law", {
+    informationLevel: "Detailed",
+    showTime: true,
+  });
+  const turn = statusField(page, "time");
+  const turnBefore = await turn.textContent();
+  const opened = await openMapContextMenu(page);
+  await opened.menu.getByRole("menuitem", { name: "Examine" }).click();
+  await expect(opened.menu).toHaveCount(0);
+  await expect(page.getByRole("dialog")).toBeVisible();
+  expect(await turn.textContent()).toBe(turnBefore);
+});
+
+test("Examine Newt content: validates revision 205110 tabs in a real browser", async ({
+  page,
+}) => {
+  await installNewtAssetRoute(page);
+  await startContextGame(page, "ExamineNewtContent-Arc-Hum-Mal-Law", {
+    informationLevel: "Detailed",
+    showTime: true,
+  });
+  const turn = statusField(page, "time");
+  const turnBefore = await turn.textContent();
+  const opened = await openMapContextMenu(page);
+  await opened.menu.getByRole("menuitem", { name: "Examine" }).click();
+  const dialog = page.getByRole("dialog", { name: "Newt" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator(".examine-article")).toHaveAttribute(
+    "data-source-revision",
+    String(NEWT_ACCEPTANCE.revision),
+  );
+  await expect(dialog.getByRole("tab", { name: "Overview" })).toHaveCount(0);
+
+  const strategy = dialog.getByRole("tab", { name: "Strategy" });
+  const history = dialog.getByRole("tab", { name: "History" });
+  await expect(dialog.locator(
+    '[role="tabpanel"]:not([hidden]) .examine-wiki-excerpt p',
+  )).toHaveText(NEWT_ACCEPTANCE.paragraphs.slice(0, 2));
+  await strategy.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(history).toBeFocused();
+  await expect(dialog.locator(
+    '[role="tabpanel"]:not([hidden]) .examine-wiki-excerpt p',
+  )).toHaveText(NEWT_ACCEPTANCE.paragraphs.slice(2));
+  await page.keyboard.press("Home");
+  await expect(strategy).toBeFocused();
+  await page.keyboard.press("End");
+  await expect(history).toBeFocused();
+  expect(await turn.textContent()).toBe(turnBefore);
+});
+
+test("Examine browser fallback: a real entity without Wiki stays facts-only", async ({
+  page,
+}) => {
+  await startContextGame(page, "ExamineFactsOnly-Arc-Hum-Mal-Law", {
+    informationLevel: "Detailed",
+    permanentInventory: true,
+    showTime: true,
+  });
+  const turn = statusField(page, "time");
+  const turnBefore = await turn.textContent();
+  const item = page.getByRole("region", { name: "Inventory" }).locator(
+    ".permanent-inventory-item:not(.permanent-inventory-heading)",
+  ).first();
+  const opened = await openInventoryContextMenu(page, item);
+  await opened.getByRole("menuitem", { name: "Examine" }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator(".examine-facts")).toBeVisible();
+  await expect(dialog.getByRole("tablist")).toHaveCount(0);
+  expect(await turn.textContent()).toBe(turnBefore);
+  await page.keyboard.press("Escape");
+});
+
+test("Examine browser loading: a closed slow request cannot reopen after resolve", async ({
+  page,
+}) => {
+  let releaseChunk: (() => void) | undefined;
+  let markRequested: (() => void) | undefined;
+  const chunkRequested = new Promise<void>((resolve) => {
+    markRequested = resolve;
+  });
+  const releaseGate = new Promise<void>((resolve) => {
+    releaseChunk = resolve;
+  });
+  await page.route(
+    "**/encyclopedia/core/object-*.json",
+    async (route) => {
+      markRequested?.();
+      await releaseGate;
+      await route.fallback();
+    },
+  );
+  await startContextGame(page, "ExamineSlow-Arc-Hum-Mal-Law", {
+    informationLevel: "Detailed",
+    permanentInventory: true,
+    showTime: true,
+  });
+  const turn = statusField(page, "time");
+  const turnBefore = await turn.textContent();
+  const item = page.getByRole("region", { name: "Inventory" }).locator(
+    ".permanent-inventory-item:not(.permanent-inventory-heading)",
+  ).first();
+  const opened = await openInventoryContextMenu(page, item);
+  await opened.getByRole("menuitem", { name: "Examine" }).click();
+  await chunkRequested;
+  const loading = page.getByRole("dialog", { name: "Loading" });
+  await expect(loading).toBeVisible();
+
+  await page.keyboard.press("Escape");
+  await expect(loading).toHaveCount(0);
+  await expect(item).toBeFocused();
+  releaseChunk?.();
+  await page.waitForTimeout(250);
+
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.locator(".nh-shell")).toHaveAttribute(
+    "data-command-input",
+    "ready",
+  );
+  expect(await turn.textContent()).toBe(turnBefore);
+});
+
+test("Examine browser fallback: invalid core data closes the loading request", async ({
+  page,
+}) => {
+  await installNewtAssetRoute(page);
+  await page.route("**/encyclopedia/core/monster-003.json", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    await route.abort("failed");
+  });
+  await startContextGame(page, "ExamineCoreFailure-Arc-Hum-Mal-Law", {
+    informationLevel: "Detailed",
+    showTime: true,
+  });
+  const turn = statusField(page, "time");
+  const turnBefore = await turn.textContent();
+  const opened = await openMapContextMenu(page);
+  await opened.menu.getByRole("menuitem", { name: "Examine" }).click();
+  const loading = page.getByRole("dialog", { name: "Loading" });
+  await expect(loading).toBeVisible();
+  await expect(loading).toHaveCount(0);
+  await expect(opened.map).toBeFocused();
+  expect(await turn.textContent()).toBe(turnBefore);
+});
+
+const EXAMINE_LAYOUTS = [
+  {
+    height: 900,
+    overflowOwners: 1,
+    position: "Right" as const,
+    renderer: "Tiles" as const,
+    width: 1280,
+  },
+  {
+    height: 700,
+    overflowOwners: 1,
+    position: "Below" as const,
+    renderer: "ASCII" as const,
+    width: 900,
+  },
+  {
+    height: 800,
+    overflowOwners: 1,
+    position: "Below" as const,
+    renderer: "Tiles" as const,
+    width: 700,
+  },
+  {
+    height: 600,
+    overflowOwners: 1,
+    position: "Right" as const,
+    renderer: "ASCII" as const,
+    width: 900,
+  },
+] as const;
+
+for (const variant of EXAMINE_LAYOUTS) {
+  test(
+    `Examine responsive layout: ${variant.width}x${variant.height} `
+      + `${variant.renderer}/${variant.position}`,
+    async ({ page }) => {
+      await page.setViewportSize({
+        width: variant.width,
+        height: variant.height,
+      });
+      await startContextGame(
+        page,
+        `Examine${variant.width}x${variant.height}-Arc-Hum-Mal-Law`,
+        {
+          informationLevel: "Detailed",
+          inventoryPosition: variant.position,
+          mapRenderer: variant.renderer,
+          permanentInventory: true,
+        },
+      );
+      const item = page.getByRole("region", { name: "Inventory" }).locator(
+        ".permanent-inventory-item:not(.permanent-inventory-heading)",
+      ).first();
+      const opened = await openInventoryContextMenu(page, item);
+      await opened.getByRole("menuitem", { name: "Examine" }).click();
+      const dialog = page.getByRole("dialog");
+      await expect(dialog).toBeVisible();
+      await expect(dialog.locator(".examine-portrait")).toHaveAttribute(
+        "data-examine-renderer",
+        variant.renderer.toLowerCase(),
+      );
+      await expect(page.getByRole("region", { name: "Inventory" }))
+        .toHaveAttribute("data-position", variant.position.toLowerCase());
+
+      const geometry = await dialog.evaluate((element) => {
+        const bounds = element.getBoundingClientRect();
+        const layout = element.querySelector(".examine-layout");
+        const article = element.querySelector(".examine-article");
+        const facts = element.querySelector(".examine-facts");
+        const candidates = [
+          layout,
+          element.querySelector('[role="tabpanel"]:not([hidden])'),
+          facts,
+        ].filter((candidate): candidate is Element => candidate !== null);
+        const overflowOwners = candidates.filter((candidate) => {
+          const overflow = getComputedStyle(candidate).overflowY;
+          return overflow === "auto" || overflow === "scroll";
+        }).length;
+        const articleBounds = article?.getBoundingClientRect() ?? null;
+        const factsBounds = facts?.getBoundingClientRect() ?? null;
+        const overlap = articleBounds && factsBounds
+          ? !(
+            articleBounds.right <= factsBounds.left
+            || factsBounds.right <= articleBounds.left
+            || articleBounds.bottom <= factsBounds.top
+            || factsBounds.bottom <= articleBounds.top
+          )
+          : false;
+        return {
+          bounds: {
+            bottom: bounds.bottom,
+            left: bounds.left,
+            right: bounds.right,
+            top: bounds.top,
+          },
+          documentOverflow:
+            document.documentElement.scrollHeight > innerHeight
+            || document.documentElement.scrollWidth > innerWidth,
+          overlap,
+          overflowOwners,
+        };
+      });
+
+      expect(geometry.bounds.left).toBeGreaterThanOrEqual(0);
+      expect(geometry.bounds.top).toBeGreaterThanOrEqual(0);
+      expect(geometry.bounds.right).toBeLessThanOrEqual(variant.width);
+      expect(geometry.bounds.bottom).toBeLessThanOrEqual(variant.height);
+      expect(geometry.documentOverflow).toBe(false);
+      expect(geometry.overlap).toBe(false);
+      expect(geometry.overflowOwners).toBe(variant.overflowOwners);
+    },
+  );
+}
