@@ -1,13 +1,25 @@
 import { createHash } from "node:crypto";
 import {
-  mkdir,
+  lstat,
+  mkdtemp,
   readFile,
   readdir,
+  realpath,
+  rename,
   rm,
-  stat,
+  rmdir,
+  unlink,
   writeFile,
 } from "node:fs/promises";
-import { join } from "node:path";
+import {
+  basename,
+  dirname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+  sep,
+} from "node:path";
 import Parser from "wikiparser-node";
 import { SaxesParser } from "saxes";
 
@@ -28,6 +40,18 @@ const WIKI_MODIFICATIONS = Object.freeze([
   "Wiki markup omitted",
   "wording unchanged",
 ]);
+const WIKI_TABS = new Set(["overview", "strategy", "history"]);
+const WIKI_MAX_CHUNK_BYTES = 256 * 1024;
+const WIKI_MAX_MANIFEST_BYTES = 256 * 1024;
+const WIKI_MAX_NOTICE_BYTES = 256 * 1024;
+const WIKI_MAX_RECORD_BYTES = 64 * 1024;
+const WIKI_MAX_TOTAL_BYTES = 4 * 1024 * 1024;
+const CANDIDATE_FILES = Object.freeze([
+  "candidate.json",
+  "coverage.json",
+  "diff.json",
+]);
+const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 const PROHIBITED_HEADINGS = new Map([
   ["origin", "origin"],
   ["wikipedia", "wikipedia-derived"],
@@ -122,6 +146,8 @@ export async function* streamWikiPages(chunks) {
   let currentRevision = null;
   let parserFailure = null;
   const parser = new SaxesParser({ xmlns: true });
+  const decoder = new TextDecoder("utf-8", { fatal: true });
+  let decodingBytes = false;
 
   parser.on("error", (error) => {
     parserFailure = error;
@@ -210,15 +236,25 @@ export async function* streamWikiPages(chunks) {
   });
 
   for await (const chunk of chunks) {
-    parser.write(
-      typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8"),
-    );
+    if (typeof chunk === "string") {
+      if (decodingBytes) {
+        parser.write(decoder.decode());
+        decodingBytes = false;
+      }
+      parser.write(chunk);
+    } else {
+      parser.write(decoder.decode(chunk, { stream: true }));
+      decodingBytes = true;
+    }
     if (parserFailure) {
       throw parserFailure;
     }
     while (completedPages.length > 0) {
       yield completedPages.shift();
     }
+  }
+  if (decodingBytes) {
+    parser.write(decoder.decode());
   }
   parser.close();
   if (parserFailure) {
@@ -406,27 +442,54 @@ function renderSafeNode(node) {
 }
 
 /**
- * Split rendered section text at MediaWiki blank-line paragraph boundaries.
- * @param {string} text Safely rendered section body.
- * @returns {string[]} Complete paragraphs in source order.
+ * Remove only blank boundary lines from one source paragraph.
+ * @param {string} source Exact paragraph source range.
+ * @returns {string} Source without surrounding blank lines.
  */
-function splitParagraphs(text) {
-  const paragraphs = [];
-  let currentLines = [];
-  const flush = () => {
-    if (currentLines.length > 0) {
-      paragraphs.push(currentLines.join("\n"));
-      currentLines = [];
+function trimParagraphBoundaryLines(source) {
+  const lines = source.split("\n");
+  while (lines.length > 0 && lines[0].trim().length === 0) {
+    lines.shift();
+  }
+  while (lines.length > 0 && lines.at(-1).trim().length === 0) {
+    lines.pop();
+  }
+  return lines.join("\n");
+}
+
+/**
+ * Split only on blank lines represented by root-level AST text nodes.
+ * @param {object} root Parsed complete section AST.
+ * @param {string} sourceText Original complete section wikitext.
+ * @returns {string[]} Complete top-level paragraph source ranges.
+ */
+function topLevelParagraphSources(root, sourceText) {
+  const separators = [];
+  for (const node of root.childNodes ?? []) {
+    if (node.type !== "text") {
+      continue;
     }
-  };
-  for (const line of text.split("\n")) {
-    if (line.trim().length === 0) {
-      flush();
-    } else {
-      currentLines.push(line);
+    const nodeText = String(node);
+    for (const match of nodeText.matchAll(/\n[ \t]*\n(?:[ \t]*\n)*/g)) {
+      const start = node.getAbsoluteIndex() + match.index;
+      separators.push({ start, end: start + match[0].length });
     }
   }
-  flush();
+  const paragraphs = [];
+  let start = 0;
+  for (const separator of separators) {
+    const paragraph = trimParagraphBoundaryLines(
+      sourceText.slice(start, separator.start),
+    );
+    if (paragraph.length > 0) {
+      paragraphs.push(paragraph);
+    }
+    start = separator.end;
+  }
+  const paragraph = trimParagraphBoundaryLines(sourceText.slice(start));
+  if (paragraph.length > 0) {
+    paragraphs.push(paragraph);
+  }
   return paragraphs;
 }
 
@@ -435,13 +498,23 @@ function splitParagraphs(text) {
  * @param {object} root Parsed page AST.
  * @param {string} sourceText Original revision wikitext.
  * @param {string} sourceHeading Exact heading text.
- * @returns {string} Original section body wikitext.
+ * @returns {{body: string, ancestorHeadings: string[]}} Original section
+ * body and the headings whose provenance it inherits.
  */
 function sectionSource(root, sourceText, sourceHeading) {
   const headings = root.querySelectorAll("heading");
   const matches = headings.filter((heading) =>
     heading.innerText === sourceHeading
   );
+  if (matches.length === 0 && sourceHeading === "Overview") {
+    return {
+      body: sourceText.slice(
+        0,
+        headings[0]?.getAbsoluteIndex() ?? sourceText.length,
+      ),
+      ancestorHeadings: [],
+    };
+  }
   if (matches.length !== 1) {
     throw new WikiImportError(
       "section-missing",
@@ -449,15 +522,37 @@ function sectionSource(root, sourceText, sourceHeading) {
     );
   }
   const heading = matches[0];
+  const ancestors = [];
+  for (const candidate of headings) {
+    if (candidate.getAbsoluteIndex() >= heading.getAbsoluteIndex()) {
+      break;
+    }
+    while (
+      ancestors.length > 0
+      && ancestors.at(-1).level >= candidate.level
+    ) {
+      ancestors.pop();
+    }
+    ancestors.push(candidate);
+  }
+  while (
+    ancestors.length > 0
+    && ancestors.at(-1).level >= heading.level
+  ) {
+    ancestors.pop();
+  }
   const start = heading.getAbsoluteIndex() + String(heading).length;
   const next = headings.find((candidate) =>
     candidate.getAbsoluteIndex() > heading.getAbsoluteIndex()
     && candidate.level <= heading.level
   );
-  return sourceText.slice(
-    start,
-    next ? next.getAbsoluteIndex() : sourceText.length,
-  );
+  return {
+    body: sourceText.slice(
+      start,
+      next ? next.getAbsoluteIndex() : sourceText.length,
+    ),
+    ancestorHeadings: ancestors.map((ancestor) => ancestor.innerText),
+  };
 }
 
 /**
@@ -539,17 +634,26 @@ export async function extractWikiSelection({ revision, selection }) {
   const root = Parser.parse(revision.text, selection.pageTitle);
   const sections = [];
   for (const section of selection.sections) {
-    const headingCode = prohibitedHeadingCode(section.sourceHeading);
-    if (headingCode) {
-      throw new WikiImportError(
-        headingCode,
-        `Section ${section.sourceHeading} has excluded provenance`,
-      );
+    const source = sectionSource(
+      root,
+      revision.text,
+      section.sourceHeading,
+    );
+    for (const heading of [
+      section.sourceHeading,
+      ...source.ancestorHeadings,
+    ]) {
+      const headingCode = prohibitedHeadingCode(heading);
+      if (headingCode) {
+        throw new WikiImportError(
+          headingCode,
+          `Section ${section.sourceHeading} inherits excluded provenance `
+            + `from ${heading}`,
+        );
+      }
     }
-    const body = sectionSource(root, revision.text, section.sourceHeading);
-    const bodyRoot = Parser.parse(body, selection.pageTitle);
-    validateSafeNode(bodyRoot);
-    const paragraphs = splitParagraphs(renderSafeNode(bodyRoot));
+    const bodyRoot = Parser.parse(source.body, selection.pageTitle);
+    const paragraphs = topLevelParagraphSources(bodyRoot, source.body);
     const selectedParagraphs = section.paragraphIndexes.map((index) => {
       if (index < 0 || index >= paragraphs.length) {
         throw new WikiImportError(
@@ -557,7 +661,12 @@ export async function extractWikiSelection({ revision, selection }) {
           `Paragraph ${index} is missing from ${section.sourceHeading}`,
         );
       }
-      return paragraphs[index];
+      const paragraphRoot = Parser.parse(
+        paragraphs[index],
+        selection.pageTitle,
+      );
+      validateSafeNode(paragraphRoot);
+      return renderSafeNode(paragraphRoot);
     });
     const paragraphHashes = selectedParagraphs.map(sha256);
     if (
@@ -665,6 +774,71 @@ function recordAttribution(record) {
 }
 
 /**
+ * Validate identity-bearing alias and selection catalog relationships.
+ * @param {object} aliasCatalog Checked exact-title alias catalog.
+ * @param {object} selectionCatalog Checked fixed-revision selections.
+ * @returns {void}
+ */
+function validateCatalogIdentity(aliasCatalog, selectionCatalog) {
+  if (
+    aliasCatalog?.schemaVersion !== 1
+    || selectionCatalog?.schemaVersion !== 1
+    || !Array.isArray(aliasCatalog.aliases)
+    || !Array.isArray(selectionCatalog.selections)
+  ) {
+    throw new WikiImportError(
+      "invalid-catalog",
+      "Alias and selection catalogs are required",
+    );
+  }
+  const aliasesByTitle = new Map();
+  const entitiesByCanonicalTitle = new Map();
+  for (const alias of aliasCatalog.aliases) {
+    if (
+      !alias
+      || typeof alias.entityId !== "string"
+      || alias.entityId.length === 0
+      || typeof alias.title !== "string"
+      || alias.title.length === 0
+      || typeof alias.canonicalTitle !== "string"
+      || alias.canonicalTitle.length === 0
+      || aliasesByTitle.has(alias.title)
+      || (
+        entitiesByCanonicalTitle.has(alias.canonicalTitle)
+        && entitiesByCanonicalTitle.get(alias.canonicalTitle)
+          !== alias.entityId
+      )
+    ) {
+      throw new WikiImportError(
+        "invalid-catalog",
+        "Alias titles and canonical identities must be consistent",
+      );
+    }
+    aliasesByTitle.set(alias.title, alias);
+    entitiesByCanonicalTitle.set(alias.canonicalTitle, alias.entityId);
+  }
+  const selectedEntityIds = new Set();
+  for (const selection of selectionCatalog.selections) {
+    const alias = aliasesByTitle.get(selection?.pageTitle);
+    if (
+      typeof selection?.entityId !== "string"
+      || selectedEntityIds.has(selection.entityId)
+      || !alias
+      || alias.entityId !== selection.entityId
+      || entitiesByCanonicalTitle.get(alias.canonicalTitle)
+        !== selection.entityId
+    ) {
+      throw new WikiImportError(
+        "catalog-entity-conflict",
+        `Selection ${selection?.pageTitle ?? "(untitled)"} does not match `
+          + "its alias entity",
+      );
+    }
+    selectedEntityIds.add(selection.entityId);
+  }
+}
+
+/**
  * Import selected fixed revisions from an explicit local XML stream.
  * @param {object} options Import options.
  * @returns {Promise<object>} Candidate records, manifests, and coverage.
@@ -681,10 +855,9 @@ export async function importWikiDump({
       "An explicit local XML dump is required",
     );
   }
+  validateCatalogIdentity(aliasCatalog, selectionCatalog);
   if (
-    aliasCatalog?.schemaVersion !== 1
-    || selectionCatalog?.schemaVersion !== 1
-    || !Array.isArray(coreEntityIds)
+    !Array.isArray(coreEntityIds)
   ) {
     throw new WikiImportError(
       "invalid-catalog",
@@ -714,6 +887,7 @@ export async function importWikiDump({
   const records = [];
   const coverage = [];
   const publishedEntityIds = new Set();
+  const redirects = [];
   for (const selection of selectionCatalog.selections) {
     if (!coreIds.has(selection.entityId)) {
       coverage.push({
@@ -753,6 +927,13 @@ export async function importWikiDump({
         extracted.sections,
       );
       records.push(record);
+      if (resolution.redirect) {
+        redirects.push({
+          entityId: selection.entityId,
+          title: resolution.redirect.title,
+          target: resolution.redirect.target,
+        });
+      }
       if (selection.reviewStatus === "published") {
         publishedEntityIds.add(selection.entityId);
       }
@@ -776,6 +957,9 @@ export async function importWikiDump({
     }
   }
   records.sort((left, right) => left.entityId.localeCompare(right.entityId));
+  redirects.sort((left, right) =>
+    left.entityId.localeCompare(right.entityId)
+  );
 
   const bytes = wikiChunkBytes(records);
   const chunks = records.length === 0
@@ -795,6 +979,7 @@ export async function importWikiDump({
     recordCount: records.length,
     chunks,
     revisions: records.map((record) => ({
+      entityId: record.entityId,
       title: record.page.title,
       revisionId: record.page.revisionId,
       sha256: selectionCatalog.selections.find((selection) =>
@@ -802,6 +987,7 @@ export async function importWikiDump({
         && selection.revisionId === record.page.revisionId
       ).revisionHash,
     })),
+    ...(redirects.length > 0 ? { redirects } : {}),
   };
   const attributionManifest = {
     schemaVersion: WIKI_SCHEMA_VERSION,
@@ -888,10 +1074,21 @@ async function directoryBytes(root, current = root) {
  * Compare candidate publication bytes with an existing reviewed directory.
  * @param {string} reviewedDirectory Existing reviewed asset directory.
  * @param {Record<string, Buffer>} candidate Candidate publication bytes.
+ * @param {string} [reviewedNoticePath] NOTICE stored beside the Wiki directory.
  * @returns {Promise<object[]>} Stable file-level change descriptions.
  */
-async function reviewedDiff(reviewedDirectory, candidate) {
-  const reviewed = await directoryBytes(reviewedDirectory);
+async function reviewedDiff(
+  reviewedDirectory,
+  candidate,
+  reviewedNoticePath,
+) {
+  const reviewed = Object.fromEntries(
+    Object.entries(await directoryBytes(reviewedDirectory))
+      .map(([path, bytes]) => [`wiki/${path}`, bytes]),
+  );
+  if (reviewedNoticePath) {
+    reviewed["NOTICE.md"] = await readFile(reviewedNoticePath);
+  }
   const paths = [...new Set([
     ...Object.keys(reviewed),
     ...Object.keys(candidate),
@@ -912,6 +1109,182 @@ async function reviewedDiff(reviewedDirectory, candidate) {
 }
 
 /**
+ * Return whether one normalized path contains another normalized path.
+ * @param {string} ancestor Candidate ancestor path.
+ * @param {string} descendant Candidate descendant path.
+ * @returns {boolean} True when both paths overlap in that direction.
+ */
+function pathContains(ancestor, descendant) {
+  const relationship = relative(ancestor, descendant);
+  return relationship === ""
+    || (
+      relationship !== ".."
+      && !relationship.startsWith(`..${sep}`)
+      && !isAbsolute(relationship)
+    );
+}
+
+/**
+ * Resolve an existing path or an absent child of an existing real directory.
+ * @param {string} path Path whose symlink-aware location is required.
+ * @returns {Promise<string>} Canonical absolute path.
+ */
+async function canonicalPath(path) {
+  const absolute = resolve(path);
+  try {
+    return await realpath(absolute);
+  } catch (error) {
+    if (error?.code !== "ENOENT") {
+      throw error;
+    }
+    return join(await realpath(dirname(absolute)), basename(absolute));
+  }
+}
+
+/**
+ * Validate a prior candidate directory before it can be replaced.
+ * @param {string} outputDirectory Existing candidate output path.
+ * @returns {Promise<boolean>} Whether a valid replaceable directory exists.
+ */
+async function validateExistingCandidateDirectory(outputDirectory) {
+  let metadata;
+  try {
+    metadata = await lstat(outputDirectory);
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return false;
+    }
+    throw error;
+  }
+  if (!metadata.isDirectory() || metadata.isSymbolicLink()) {
+    throw new WikiImportError(
+      "unsafe-output",
+      "Candidate output must be a real directory",
+    );
+  }
+  const entries = await readdir(outputDirectory, { withFileTypes: true });
+  const names = entries.map((entry) => entry.name).sort();
+  if (
+    JSON.stringify(names) !== JSON.stringify(CANDIDATE_FILES)
+    || entries.some((entry) => !entry.isFile() || entry.isSymbolicLink())
+  ) {
+    throw new WikiImportError(
+      "unsafe-output",
+      "Existing output is not a recognized Wiki candidate directory",
+    );
+  }
+  let candidate;
+  try {
+    candidate = JSON.parse(
+      await readFile(join(outputDirectory, "candidate.json"), "utf8"),
+    );
+  } catch {
+    throw new WikiImportError(
+      "unsafe-output",
+      "Existing output has no valid Wiki candidate sentinel",
+    );
+  }
+  if (
+    candidate?.schemaVersion !== WIKI_SCHEMA_VERSION
+    || !Array.isArray(candidate.records)
+    || typeof candidate.manifest !== "object"
+    || typeof candidate.attributionManifest !== "object"
+  ) {
+    throw new WikiImportError(
+      "unsafe-output",
+      "Existing output has no valid Wiki candidate sentinel",
+    );
+  }
+  return true;
+}
+
+/**
+ * Reject candidate output paths that overlap reviewed assets.
+ * @param {string} reviewedDirectory Existing reviewed asset directory.
+ * @param {string} outputDirectory Requested candidate output directory.
+ * @returns {Promise<{outputPath: string, replaceExisting: boolean}>}
+ * Canonical safe replacement state.
+ */
+async function validateCandidateOutputPath(
+  reviewedDirectory,
+  outputDirectory,
+) {
+  try {
+    if ((await lstat(resolve(outputDirectory))).isSymbolicLink()) {
+      throw new WikiImportError(
+        "unsafe-output",
+        "Candidate output must not be a symbolic link",
+      );
+    }
+  } catch (error) {
+    if (error?.code !== "ENOENT") {
+      throw error;
+    }
+  }
+  const [reviewedPath, outputPath] = await Promise.all([
+    canonicalPath(reviewedDirectory),
+    canonicalPath(outputDirectory),
+  ]);
+  if (
+    pathContains(reviewedPath, outputPath)
+    || pathContains(outputPath, reviewedPath)
+  ) {
+    throw new WikiImportError(
+      "unsafe-output",
+      "Candidate output must not overlap reviewed assets",
+    );
+  }
+  const replaceExisting = await validateExistingCandidateDirectory(
+    outputPath,
+  );
+  return { outputPath, replaceExisting };
+}
+
+/**
+ * Remove a previously validated three-file candidate directory.
+ * @param {string} directory Replaceable candidate directory.
+ * @returns {Promise<void>}
+ */
+async function removeCandidateDirectory(directory) {
+  await Promise.all(
+    CANDIDATE_FILES.map((file) => unlink(join(directory, file))),
+  );
+  await rmdir(directory);
+}
+
+/**
+ * Atomically replace candidate output while retaining rollback capability.
+ * @param {string} stagingDirectory Newly written candidate directory.
+ * @param {string} outputDirectory Final candidate directory.
+ * @param {boolean} replaceExisting Whether a validated prior output exists.
+ * @returns {Promise<void>}
+ */
+async function replaceCandidateDirectory(
+  stagingDirectory,
+  outputDirectory,
+  replaceExisting,
+) {
+  const previousDirectory = `${stagingDirectory}.previous`;
+  let previousMoved = false;
+  try {
+    if (replaceExisting) {
+      await rename(outputDirectory, previousDirectory);
+      previousMoved = true;
+    }
+    await rename(stagingDirectory, outputDirectory);
+  } catch (error) {
+    if (previousMoved) {
+      await rename(previousDirectory, outputDirectory);
+    }
+    await rm(stagingDirectory, { recursive: true, force: true });
+    throw error;
+  }
+  if (previousMoved) {
+    await removeCandidateDirectory(previousDirectory);
+  }
+}
+
+/**
  * Produce review-only candidate, coverage, and diff artifacts.
  * @param {object} options Refresh options including explicit dump and paths.
  * @returns {Promise<object>} Candidate import result.
@@ -922,8 +1295,14 @@ export async function refreshWikiCandidates({
   selectionCatalog,
   coreEntityIds,
   reviewedDirectory,
+  reviewedNoticePath,
   outputDirectory,
 }) {
+  const { outputPath, replaceExisting } =
+    await validateCandidateOutputPath(
+      reviewedDirectory,
+      outputDirectory,
+    );
   const imported = await importWikiDump({
     dump,
     aliasCatalog,
@@ -931,7 +1310,7 @@ export async function refreshWikiCandidates({
     coreEntityIds,
   });
   const candidatePublication = {
-    "manifest.json": Buffer.from(
+    "wiki/manifest.json": Buffer.from(
       `${JSON.stringify(imported.manifest)}\n`,
       "utf8",
     ),
@@ -941,72 +1320,393 @@ export async function refreshWikiCandidates({
     ),
   };
   if (imported.records.length > 0) {
-    candidatePublication["wiki-001.json"] = wikiChunkBytes(imported.records);
+    candidatePublication["wiki/wiki-001.json"] = wikiChunkBytes(
+      imported.records,
+    );
   }
   const changes = await reviewedDiff(
     reviewedDirectory,
     candidatePublication,
+    reviewedNoticePath,
   );
 
-  await rm(outputDirectory, { recursive: true, force: true });
-  await mkdir(outputDirectory, { recursive: true });
-  await Promise.all([
-    writeFile(
-      join(outputDirectory, "candidate.json"),
-      `${JSON.stringify({
-        schemaVersion: WIKI_SCHEMA_VERSION,
-        records: imported.records,
-        manifest: imported.manifest,
-        attributionManifest: imported.attributionManifest,
-      }, null, 2)}\n`,
-    ),
-    writeFile(
-      join(outputDirectory, "coverage.json"),
-      `${JSON.stringify(imported.coverage, null, 2)}\n`,
-    ),
-    writeFile(
-      join(outputDirectory, "diff.json"),
-      `${JSON.stringify({
-        schemaVersion: WIKI_SCHEMA_VERSION,
-        reviewedDirectory,
-        changes,
-      }, null, 2)}\n`,
-    ),
-  ]);
+  const stagingDirectory = await mkdtemp(
+    join(dirname(outputPath), `.${basename(outputPath)}.tmp-`),
+  );
+  try {
+    await Promise.all([
+      writeFile(
+        join(stagingDirectory, "candidate.json"),
+        `${JSON.stringify({
+          schemaVersion: WIKI_SCHEMA_VERSION,
+          records: imported.records,
+          manifest: imported.manifest,
+          attributionManifest: imported.attributionManifest,
+        }, null, 2)}\n`,
+      ),
+      writeFile(
+        join(stagingDirectory, "coverage.json"),
+        `${JSON.stringify(imported.coverage, null, 2)}\n`,
+      ),
+      writeFile(
+        join(stagingDirectory, "diff.json"),
+        `${JSON.stringify({
+          schemaVersion: WIKI_SCHEMA_VERSION,
+          reviewedRoot: reviewedNoticePath
+            ? dirname(reviewedNoticePath)
+            : dirname(reviewedDirectory),
+          changes,
+        }, null, 2)}\n`,
+      ),
+    ]);
+    await replaceCandidateDirectory(
+      stagingDirectory,
+      outputPath,
+      replaceExisting,
+    );
+  } catch (error) {
+    await rm(stagingDirectory, { recursive: true, force: true });
+    throw error;
+  }
   return imported;
 }
 
 /**
+ * Require one plain object to have exactly the listed own keys.
+ * @param {unknown} value Candidate object.
+ * @param {string[]} keys Exact allowed keys.
+ * @param {string} label Diagnostic label.
+ * @returns {asserts value is Record<string, unknown>}
+ */
+function assertExactObject(value, keys, label) {
+  if (
+    !value
+    || typeof value !== "object"
+    || Array.isArray(value)
+    || JSON.stringify(Object.keys(value).sort())
+      !== JSON.stringify([...keys].sort())
+  ) {
+    throw new WikiImportError(
+      "invalid-schema",
+      `${label} has an invalid schema`,
+    );
+  }
+}
+
+/**
+ * Require a lowercase SHA-256 digest.
+ * @param {unknown} value Candidate digest.
+ * @param {string} label Diagnostic label.
+ * @returns {void}
+ */
+function assertSha256(value, label) {
+  if (typeof value !== "string" || !SHA256_PATTERN.test(value)) {
+    throw new WikiImportError(
+      "invalid-schema",
+      `${label} is not a SHA-256 digest`,
+    );
+  }
+}
+
+/**
+ * Validate one checked Wiki record recursively.
+ * @param {unknown} value Candidate record.
+ * @returns {asserts value is Record<string, unknown>}
+ */
+function validateWikiRecord(value) {
+  assertExactObject(
+    value,
+    ["schemaVersion", "entityId", "page", "license", "modifications", "sections"],
+    "Wiki record",
+  );
+  if (
+    value.schemaVersion !== WIKI_SCHEMA_VERSION
+    || typeof value.entityId !== "string"
+    || value.entityId.length === 0
+    || value.entityId.length > 128
+    || Buffer.byteLength(JSON.stringify(value), "utf8")
+      > WIKI_MAX_RECORD_BYTES
+  ) {
+    throw new WikiImportError("invalid-record", "Invalid Wiki record");
+  }
+  assertExactObject(
+    value.page,
+    [
+      "title",
+      "revisionId",
+      "revisionTimestamp",
+      "sourceUrl",
+      "historyUrl",
+      "authorLabel",
+    ],
+    "Wiki page",
+  );
+  const page = value.page;
+  if (
+    typeof page.title !== "string"
+    || page.title.length === 0
+    || !Number.isSafeInteger(page.revisionId)
+    || page.revisionId < 0
+    || typeof page.revisionTimestamp !== "string"
+    || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/
+      .test(page.revisionTimestamp)
+    || Number.isNaN(Date.parse(page.revisionTimestamp))
+    || page.sourceUrl !== sourceUrl(page.title, page.revisionId)
+    || page.historyUrl !== historyUrl(page.title)
+    || page.authorLabel !== "NetHackWiki contributors"
+  ) {
+    throw new WikiImportError("invalid-record", "Invalid Wiki page metadata");
+  }
+  assertExactObject(
+    value.license,
+    ["spdxLikeId", "name", "url"],
+    "Wiki license",
+  );
+  if (JSON.stringify(value.license) !== JSON.stringify(WIKI_LICENSE)) {
+    throw new WikiImportError(
+      "invalid-record",
+      "Invalid Wiki license metadata",
+    );
+  }
+  if (
+    !Array.isArray(value.modifications)
+    || JSON.stringify(value.modifications)
+      !== JSON.stringify(WIKI_MODIFICATIONS)
+    || !Array.isArray(value.sections)
+    || value.sections.length === 0
+  ) {
+    throw new WikiImportError(
+      "invalid-record",
+      "Invalid Wiki record metadata",
+    );
+  }
+  for (const section of value.sections) {
+    assertExactObject(
+      section,
+      ["tab", "sourceHeading", "paragraphs", "paragraphHashes"],
+      "Wiki section",
+    );
+    if (
+      !WIKI_TABS.has(section.tab)
+      || typeof section.sourceHeading !== "string"
+      || section.sourceHeading.length === 0
+      || prohibitedHeadingCode(section.sourceHeading)
+      || !Array.isArray(section.paragraphs)
+      || section.paragraphs.length === 0
+      || !Array.isArray(section.paragraphHashes)
+      || section.paragraphHashes.length !== section.paragraphs.length
+    ) {
+      throw new WikiImportError("invalid-record", "Invalid Wiki section");
+    }
+    section.paragraphs.forEach((paragraph, index) => {
+      if (typeof paragraph !== "string" || paragraph.length === 0) {
+        throw new WikiImportError(
+          "invalid-record",
+          "Wiki paragraphs must be non-empty strings",
+        );
+      }
+      assertSha256(section.paragraphHashes[index], "Paragraph hash");
+      if (sha256(paragraph) !== section.paragraphHashes[index]) {
+        throw new WikiImportError(
+          "paragraph-hash-mismatch",
+          `Stale paragraph hash in ${value.entityId}`,
+        );
+      }
+    });
+  }
+}
+
+/**
+ * Bind checked records and redirects to the reviewed selection catalogs.
+ * @param {object} manifest Structurally validated Wiki manifest.
+ * @param {object[]} records Structurally validated Wiki records.
+ * @param {object} aliasCatalog Checked title alias catalog.
+ * @param {object} selectionCatalog Checked publication selection catalog.
+ * @returns {void}
+ */
+function validatePublishedCatalogBinding(
+  manifest,
+  records,
+  aliasCatalog,
+  selectionCatalog,
+) {
+  validateCatalogIdentity(aliasCatalog, selectionCatalog);
+  const aliasesByTitle = new Map(
+    aliasCatalog.aliases.map((alias) => [alias.title, alias]),
+  );
+  const selections = selectionCatalog.selections
+    .filter((selection) => selection.reviewStatus === "published")
+    .sort((left, right) => left.entityId.localeCompare(right.entityId));
+  const expectedRevisions = selections.map((selection) => ({
+    entityId: selection.entityId,
+    title: aliasesByTitle.get(selection.pageTitle).canonicalTitle,
+    revisionId: selection.revisionId,
+    sha256: selection.revisionHash,
+  }));
+  if (
+    JSON.stringify(manifest.revisions)
+      !== JSON.stringify(expectedRevisions)
+    || JSON.stringify(records.map((record) => record.entityId))
+      !== JSON.stringify(selections.map((selection) => selection.entityId))
+  ) {
+    throw new WikiImportError(
+      "catalog-binding-mismatch",
+      "Checked Wiki records do not match published selections",
+    );
+  }
+  const selectionsByEntityId = new Map(
+    selections.map((selection) => [selection.entityId, selection]),
+  );
+  for (const redirect of manifest.redirects ?? []) {
+    const selection = selectionsByEntityId.get(redirect.entityId);
+    const alias = aliasesByTitle.get(selection?.pageTitle);
+    if (
+      !selection
+      || !alias
+      || redirect.title !== selection.pageTitle
+      || redirect.target !== alias.canonicalTitle
+    ) {
+      throw new WikiImportError(
+        "catalog-binding-mismatch",
+        "Checked Wiki redirect does not match its selected alias",
+      );
+    }
+  }
+}
+
+/**
  * Validate checked Wiki chunks and return their records and attribution.
- * @param {{assetDirectory: string, noticePath?: string}} options Asset paths.
+ * @param {object} options Asset paths and optional publication catalogs.
  * @returns {Promise<object>} Validated manifest, records, and attribution.
  */
 export async function validateWikiAssetDirectory({
   assetDirectory,
   noticePath,
+  aliasCatalog,
+  selectionCatalog,
 }) {
+  const manifestPath = join(assetDirectory, "manifest.json");
+  const manifestMetadata = await lstat(manifestPath);
+  if (!manifestMetadata.isFile() || manifestMetadata.isSymbolicLink()) {
+    throw new WikiImportError(
+      "invalid-manifest",
+      "Wiki manifest must be a regular file",
+    );
+  }
+  if (manifestMetadata.size > WIKI_MAX_MANIFEST_BYTES) {
+    throw new WikiImportError(
+      "wiki-size-limit",
+      "Wiki manifest exceeds 256 KiB",
+    );
+  }
   const manifest = JSON.parse(
-    await readFile(join(assetDirectory, "manifest.json"), "utf8"),
+    await readFile(manifestPath, "utf8"),
+  );
+  assertExactObject(
+    manifest,
+    [
+      "schemaVersion",
+      "generatorVersion",
+      "parser",
+      "recordCount",
+      "chunks",
+      "revisions",
+      ...("redirects" in manifest ? ["redirects"] : []),
+    ],
+    "Wiki manifest",
+  );
+  assertExactObject(
+    manifest.parser,
+    ["packageName", "version"],
+    "Wiki parser metadata",
   );
   if (
     manifest.schemaVersion !== WIKI_SCHEMA_VERSION
     || manifest.generatorVersion !== WIKI_GENERATOR_VERSION
     || JSON.stringify(manifest.parser) !== JSON.stringify(WIKITEXT_AST_PARSER)
     || !Array.isArray(manifest.chunks)
+    || !Number.isSafeInteger(manifest.recordCount)
+    || manifest.recordCount < 0
+    || !Array.isArray(manifest.revisions)
+    || (
+      "redirects" in manifest
+      && !Array.isArray(manifest.redirects)
+    )
   ) {
     throw new WikiImportError("invalid-manifest", "Invalid Wiki manifest");
   }
+  const chunkFiles = manifest.chunks.map((chunk) => chunk?.file);
+  if (
+    JSON.stringify(chunkFiles)
+      !== JSON.stringify([...chunkFiles].sort())
+  ) {
+    throw new WikiImportError(
+      "invalid-manifest",
+      "Wiki chunks are not in filename order",
+    );
+  }
+  const directoryEntries = await readdir(assetDirectory, {
+    withFileTypes: true,
+  });
+  const expectedFiles = ["manifest.json", ...chunkFiles].sort();
+  const actualFiles = directoryEntries.map((entry) => entry.name).sort();
+  if (
+    JSON.stringify(actualFiles) !== JSON.stringify(expectedFiles)
+    || directoryEntries.some((entry) =>
+      !entry.isFile() || entry.isSymbolicLink()
+    )
+  ) {
+    throw new WikiImportError(
+      "invalid-file-set",
+      "Wiki asset directory contains unlisted or unsafe files",
+    );
+  }
   const records = [];
+  let totalBytes = manifestMetadata.size;
   for (const chunk of manifest.chunks) {
+    assertExactObject(
+      chunk,
+      [
+        "file",
+        "bytes",
+        "sha256",
+        "count",
+        "firstEntityId",
+        "lastEntityId",
+      ],
+      "Wiki chunk metadata",
+    );
     if (
       typeof chunk.file !== "string"
       || chunk.file.includes("/")
       || chunk.file.includes("\\")
-      || chunk.bytes > 256 * 1024
+      || !/^wiki-\d{3}\.json$/.test(chunk.file)
+      || !Number.isSafeInteger(chunk.bytes)
+      || chunk.bytes <= 0
+      || chunk.bytes > WIKI_MAX_CHUNK_BYTES
+      || !Number.isSafeInteger(chunk.count)
+      || chunk.count <= 0
+      || typeof chunk.firstEntityId !== "string"
+      || typeof chunk.lastEntityId !== "string"
     ) {
       throw new WikiImportError("invalid-chunk", "Unsafe Wiki chunk metadata");
     }
+    assertSha256(chunk.sha256, "Chunk hash");
     const path = join(assetDirectory, chunk.file);
+    const metadata = await lstat(path);
+    if (!metadata.isFile() || metadata.isSymbolicLink()) {
+      throw new WikiImportError(
+        "invalid-chunk",
+        `${chunk.file} must be a regular file`,
+      );
+    }
+    totalBytes += metadata.size;
+    if (totalBytes > WIKI_MAX_TOTAL_BYTES) {
+      throw new WikiImportError(
+        "wiki-size-limit",
+        "Checked Wiki assets exceed four MiB",
+      );
+    }
     const bytes = await readFile(path);
     if (
       bytes.byteLength !== chunk.bytes
@@ -1015,6 +1715,11 @@ export async function validateWikiAssetDirectory({
       throw new WikiImportError("chunk-hash-mismatch", chunk.file);
     }
     const parsed = JSON.parse(bytes);
+    assertExactObject(
+      parsed,
+      ["schemaVersion", "records"],
+      "Wiki chunk",
+    );
     if (
       parsed.schemaVersion !== WIKI_SCHEMA_VERSION
       || !Array.isArray(parsed.records)
@@ -1022,16 +1727,120 @@ export async function validateWikiAssetDirectory({
     ) {
       throw new WikiImportError("invalid-chunk", chunk.file);
     }
+    parsed.records.forEach(validateWikiRecord);
+    if (
+      parsed.records[0].entityId !== chunk.firstEntityId
+      || parsed.records.at(-1).entityId !== chunk.lastEntityId
+    ) {
+      throw new WikiImportError(
+        "invalid-chunk",
+        `${chunk.file} entity bounds changed`,
+      );
+    }
     records.push(...parsed.records);
   }
   if (records.length !== manifest.recordCount) {
     throw new WikiImportError("record-count-mismatch", "Wiki record count");
+  }
+  const entityIds = records.map((record) => record.entityId);
+  if (
+    new Set(entityIds).size !== entityIds.length
+    || JSON.stringify(entityIds)
+      !== JSON.stringify([...entityIds].sort((left, right) =>
+        left.localeCompare(right)
+      ))
+  ) {
+    throw new WikiImportError(
+      "invalid-record-order",
+      "Wiki records must have unique ordered entity IDs",
+    );
+  }
+  if (manifest.revisions.length !== records.length) {
+    throw new WikiImportError(
+      "invalid-manifest",
+      "Wiki revision count does not match records",
+    );
+  }
+  manifest.revisions.forEach((revision, index) => {
+    assertExactObject(
+      revision,
+      ["entityId", "title", "revisionId", "sha256"],
+      "Wiki revision",
+    );
+    assertSha256(revision.sha256, "Revision hash");
+    if (
+      revision.entityId !== records[index].entityId
+      || revision.title !== records[index].page.title
+      || revision.revisionId !== records[index].page.revisionId
+    ) {
+      throw new WikiImportError(
+        "invalid-manifest",
+        "Wiki revision metadata does not match records",
+      );
+    }
+  });
+  const recordsByEntityId = new Map(
+    records.map((record) => [record.entityId, record]),
+  );
+  const redirectEntityIds = new Set();
+  for (const redirect of manifest.redirects ?? []) {
+    assertExactObject(
+      redirect,
+      ["entityId", "title", "target"],
+      "Wiki redirect",
+    );
+    const record = recordsByEntityId.get(redirect.entityId);
+    if (
+      !record
+      || redirectEntityIds.has(redirect.entityId)
+      || typeof redirect.title !== "string"
+      || redirect.title.length === 0
+      || redirect.target !== record.page.title
+    ) {
+      throw new WikiImportError(
+        "invalid-manifest",
+        "Invalid Wiki redirect metadata",
+      );
+    }
+    redirectEntityIds.add(redirect.entityId);
+  }
+  if (aliasCatalog || selectionCatalog) {
+    if (!aliasCatalog || !selectionCatalog) {
+      throw new WikiImportError(
+        "invalid-catalog",
+        "Both Wiki publication catalogs are required",
+      );
+    }
+    validatePublishedCatalogBinding(
+      manifest,
+      records,
+      aliasCatalog,
+      selectionCatalog,
+    );
   }
   const attributionManifest = {
     schemaVersion: WIKI_SCHEMA_VERSION,
     pages: records.map(recordAttribution),
   };
   if (noticePath) {
+    const noticeMetadata = await lstat(noticePath);
+    if (
+      !noticeMetadata.isFile()
+      || noticeMetadata.isSymbolicLink()
+      || noticeMetadata.size > WIKI_MAX_NOTICE_BYTES
+    ) {
+      throw new WikiImportError(
+        "invalid-notice",
+        "Wiki NOTICE must be a bounded regular file",
+      );
+    }
+    totalBytes += noticeMetadata.size;
+    if (totalBytes > WIKI_MAX_TOTAL_BYTES) {
+      throw new WikiImportError(
+        "wiki-size-limit",
+        "Checked Wiki assets exceed four MiB",
+      );
+    }
     const expectedNotice = generateWikiNotice(attributionManifest);
     if (await readFile(noticePath, "utf8") !== expectedNotice) {
       throw new WikiImportError("notice-mismatch", "Wiki NOTICE changed");
@@ -1046,5 +1855,5 @@ export async function validateWikiAssetDirectory({
  * @returns {Promise<number>} File size in bytes.
  */
 export async function fileSize(path) {
-  return (await stat(path)).size;
+  return (await lstat(path)).size;
 }

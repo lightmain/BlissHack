@@ -676,20 +676,11 @@
           <nav class="examine-tabs" role="tablist" aria-label="Newt information">
             <button
               class="examine-tab"
-              id="examine-tab-overview"
-              type="button"
-              role="tab"
-              aria-controls="examine-panel-overview"
-              aria-selected="true"
-              data-examine-tab="overview"
-            >Overview</button>
-            <button
-              class="examine-tab"
               id="examine-tab-strategy"
               type="button"
               role="tab"
               aria-controls="examine-panel-strategy"
-              aria-selected="false"
+              aria-selected="true"
               data-examine-tab="strategy"
             >Strategy</button>
             <button
@@ -705,40 +696,10 @@
 
           <section
             class="examine-tab-panel"
-            id="examine-panel-overview"
-            role="tabpanel"
-            aria-labelledby="examine-tab-overview"
-            data-examine-panel="overview"
-          >
-            <h2>Overview</h2>
-            <p class="examine-excerpt-label">Verbatim Wiki excerpt</p>
-            <blockquote
-              class="examine-wiki-excerpt"
-              cite="https://nethackwiki.com/index.php?title=Newt&amp;oldid=205110"
-            >
-              <p>
-                A newt, :, is a type of monster that appears in NetHack. It is
-                an amphibious lizard that is among one of the first monsters
-                you will encounter in the dungeon.
-              </p>
-              <p class="examine-callout">
-                Eating a newt's corpse or tin has a 2/3 chance of raising your
-                current power by 1d3 points, and will always do so if it is
-                less than or equal to 2/3 of your maximum power - if this
-                increase would raise you above your total maximum power, there
-                is a 1/3 chance of increasing your maximum and current power
-                by 1.
-              </p>
-            </blockquote>
-          </section>
-
-          <section
-            class="examine-tab-panel"
             id="examine-panel-strategy"
             role="tabpanel"
             aria-labelledby="examine-tab-strategy"
             data-examine-panel="strategy"
-            hidden
           >
             <h2>Strategy</h2>
             <p class="examine-excerpt-label">Verbatim Wiki excerpt</p>
@@ -1065,7 +1026,7 @@
       }
 
       drawDungeon();
-      selectTab("overview");
+      selectTab("strategy");
     })();
   </script>
 </body></html>

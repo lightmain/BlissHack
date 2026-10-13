@@ -753,7 +753,8 @@ type ActionCompletion =
    对象、corpse、statue、piletop、terrain、trap 和 unsupported effect。
 5. Newt、普通等级怪物、golem、Rider、成年龙和 home elemental 的 HP 规则
    源码基线。
-6. Newt 固定 revision 205110 的六个完整段落、attribution 和排除项 fixture。
+6. Newt 固定 revision 205110 的四个完整段落、attribution 和排除项 fixture；
+   两个含模板的 lead 段落不发布，Overview 只显示核心源码事实。
 
 主 Agent 完成源码审计：
 
@@ -1039,7 +1040,9 @@ docs: complete alpha-2.4 examine acceptance
 
 1. 核对 Newt 基础等级、2 至 4 HP 规则、1d2 bite、traits、corpse 数据和能量
    效果的源码引用。
-2. 逐段核对 Newt revision 205110，确认六个段落完整、顺序正确、文字未改。
+2. 逐段核对 Newt revision 205110，确认 Strategy 两段、History 一段和
+   Dudley's dungeon 一段完整、顺序正确、文字未改；Overview 没有 Wiki
+   节选，只显示核心源码事实。
 3. 确认页面 title、contributors、revision、history、CC BY-SA 3.0 和修改
    说明可见且链接正确。
 4. 确认 NetHack facts 单独显示版本、源码路径和 NGPL。

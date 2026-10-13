@@ -298,6 +298,7 @@ async function writeCheckedWikiFixture(root, recordChunks) {
     recordCount: records.length,
     chunks,
     revisions: records.map((record) => ({
+      entityId: record.entityId,
       title: record.page.title,
       revisionId: record.page.revisionId,
       sha256: record.entityId === "monster:PM_NEWT"
@@ -651,6 +652,9 @@ describe("alpha-2.4 stage-two verbatim Wiki excerpts", () => {
       if (fixture.sourceHeading) {
         selection.sections[0].sourceHeading = fixture.sourceHeading;
       }
+      if (fixture.paragraphIndexes) {
+        selection.sections[0].paragraphIndexes = fixture.paragraphIndexes;
+      }
       const extraction = Promise.resolve().then(() =>
         extractWikiSelection({
           revision: {
@@ -684,6 +688,7 @@ describe("alpha-2.4 stage-two verbatim Wiki excerpts", () => {
     const record = singleChunk.records[0];
     expect(singleChunk.manifest.revisions).toEqual([
       {
+        entityId: "monster:PM_NEWT",
         title: "Newt",
         revisionId: 205110,
         sha256: selection.revisionHash,
@@ -817,9 +822,11 @@ describe("alpha-2.4 stage-two verbatim Wiki excerpts", () => {
   it("refreshes only candidate, diff, and coverage artifacts", async () => {
     const root = await mkdtemp(join(tmpdir(), "blisshack-wiki-refresh-"));
     temporaryDirectories.push(root);
-    const reviewedDirectory = join(root, "reviewed");
+    const reviewedRoot = join(root, "reviewed");
+    const reviewedDirectory = join(reviewedRoot, "wiki");
+    const reviewedNoticePath = join(reviewedRoot, "NOTICE.md");
     const outputDirectory = join(root, "refresh");
-    await mkdir(reviewedDirectory);
+    await mkdir(reviewedDirectory, { recursive: true });
     const imported = await importFixture(53);
     if (imported.records.length > 0) {
       await writeFile(
@@ -832,10 +839,10 @@ describe("alpha-2.4 stage-two verbatim Wiki excerpts", () => {
       `${JSON.stringify(imported.manifest)}\n`,
     );
     await writeFile(
-      join(reviewedDirectory, "NOTICE.md"),
+      reviewedNoticePath,
       generateWikiNotice(imported.attributionManifest),
     );
-    const before = await directorySnapshot(reviewedDirectory);
+    const before = await directorySnapshot(reviewedRoot);
 
     await refreshWikiCandidates({
       dump: chunkedText(dumpXml, 29),
@@ -843,6 +850,7 @@ describe("alpha-2.4 stage-two verbatim Wiki excerpts", () => {
       selectionCatalog,
       coreEntityIds,
       reviewedDirectory,
+      reviewedNoticePath,
       outputDirectory,
     });
 
@@ -858,12 +866,12 @@ describe("alpha-2.4 stage-two verbatim Wiki excerpts", () => {
       });
     expect(await readJson(join(outputDirectory, "coverage.json")))
       .toEqual(imported.coverage);
-    expect(await readJson(join(outputDirectory, "diff.json")))
-      .toMatchObject({
-        reviewedDirectory,
-        changes: expect.any(Array),
-      });
-    expect(await directorySnapshot(reviewedDirectory)).toEqual(before);
+    expect(await readJson(join(outputDirectory, "diff.json"))).toEqual({
+      schemaVersion: 1,
+      reviewedRoot,
+      changes: [],
+    });
+    expect(await directorySnapshot(reviewedRoot)).toEqual(before);
   });
 
   /** Reject output paths that can erase reviewed or repository content. */
@@ -980,6 +988,30 @@ describe("alpha-2.4 stage-two verbatim Wiki excerpts", () => {
     expect(await readFile(protectedPath)).toEqual(protectedBytes);
   });
 
+  /** Reject a candidate output path that aliases another directory. */
+  it("rejects a symlinked refresh output directory", async () => {
+    const root = await mkdtemp(join(tmpdir(), "blisshack-wiki-symlink-"));
+    temporaryDirectories.push(root);
+    const reviewedDirectory = join(root, "reviewed");
+    const targetDirectory = join(root, "target");
+    const outputDirectory = join(root, "refresh");
+    await Promise.all([
+      mkdir(reviewedDirectory),
+      mkdir(targetDirectory),
+    ]);
+    await symlink(targetDirectory, outputDirectory);
+
+    await expect(refreshWikiCandidates({
+      dump: chunkedText(dumpXml, 43),
+      aliasCatalog,
+      selectionCatalog,
+      coreEntityIds,
+      reviewedDirectory,
+      outputDirectory,
+    })).rejects.toMatchObject({ code: "unsafe-output" });
+    expect(await readdir(targetDirectory)).toEqual([]);
+  });
+
   /** Accept one fully self-consistent checked Wiki asset directory. */
   it("validates a complete checked Wiki asset directory", async () => {
     const root = await mkdtemp(join(tmpdir(), "blisshack-wiki-assets-"));
@@ -991,6 +1023,71 @@ describe("alpha-2.4 stage-two verbatim Wiki excerpts", () => {
 
     const validated = await validateWikiAssetDirectory({ assetDirectory });
     expect(validated.records).toEqual([approvedWikiRecord()]);
+  });
+
+  /** Bind checked records to the reviewed entity and revision catalogs. */
+  it("rejects a checked record rebound to another core entity", async () => {
+    const root = await mkdtemp(join(tmpdir(), "blisshack-wiki-binding-"));
+    temporaryDirectories.push(root);
+    const written = await writeCheckedWikiFixture(
+      root,
+      [[approvedWikiRecord()]],
+    );
+    const chunkPath = join(written.assetDirectory, "wiki-001.json");
+    const parsed = await readJson(chunkPath);
+    parsed.records[0].entityId = "monster:PM_GECKO";
+    const bytes = wikiChunkBytes(parsed.records);
+    await writeFile(chunkPath, bytes);
+    written.manifest.chunks[0] = {
+      ...written.manifest.chunks[0],
+      bytes: bytes.byteLength,
+      sha256: sha256(bytes),
+      firstEntityId: "monster:PM_GECKO",
+      lastEntityId: "monster:PM_GECKO",
+    };
+    written.manifest.revisions[0].entityId = "monster:PM_GECKO";
+    await writeFile(
+      join(written.assetDirectory, "manifest.json"),
+      `${JSON.stringify(written.manifest)}\n`,
+    );
+
+    await expect(validateWikiAssetDirectory({
+      assetDirectory: written.assetDirectory,
+      aliasCatalog,
+      selectionCatalog,
+    })).rejects.toMatchObject({ code: "catalog-binding-mismatch" });
+  });
+
+  /** Refuse an attributed NOTICE reached through a symbolic link. */
+  it("rejects a symlinked checked Wiki NOTICE", async () => {
+    const root = await mkdtemp(join(tmpdir(), "blisshack-wiki-notice-"));
+    temporaryDirectories.push(root);
+    const written = await writeCheckedWikiFixture(
+      root,
+      [[approvedWikiRecord()]],
+    );
+    const targetPath = join(root, "outside-notice.md");
+    const noticePath = join(root, "NOTICE.md");
+    const attributionManifest = {
+      schemaVersion: 1,
+      pages: [{
+        entityId: "monster:PM_NEWT",
+        title: "Newt",
+        revisionId: 205110,
+        revisionTimestamp: approvedFixture.revisionTimestamp,
+        sourceUrl: approvedFixture.source,
+        historyUrl: approvedFixture.history,
+        authorLabel: approvedFixture.authors,
+        license: approvedWikiRecord().license,
+      }],
+    };
+    await writeFile(targetPath, generateWikiNotice(attributionManifest));
+    await symlink(targetPath, noticePath);
+
+    await expect(validateWikiAssetDirectory({
+      assetDirectory: written.assetDirectory,
+      noticePath,
+    })).rejects.toMatchObject({ code: "invalid-notice" });
   });
 
   const invalidCheckedAssetCases = [

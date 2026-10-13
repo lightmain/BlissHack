@@ -22,7 +22,11 @@ async function readJson(path) {
 
 try {
   const encyclopediaRoot = join(frontendRoot, "public/encyclopedia");
-  const [coreManifest, wiki, selections] = await Promise.all([
+  const [aliasCatalog, selectionCatalog] = await Promise.all([
+    readJson(join(frontendRoot, "scripts/encyclopedia/wiki-aliases.json")),
+    readJson(join(frontendRoot, "scripts/encyclopedia/wiki-selections.json")),
+  ]);
+  const [coreManifest, wiki] = await Promise.all([
     verifyCoreEncyclopedia({
       repositoryRoot,
       assetDirectory: join(encyclopediaRoot, "core"),
@@ -31,22 +35,10 @@ try {
     validateWikiAssetDirectory({
       assetDirectory: join(encyclopediaRoot, "wiki"),
       noticePath: join(encyclopediaRoot, "NOTICE.md"),
+      aliasCatalog,
+      selectionCatalog,
     }),
-    readJson(join(frontendRoot, "scripts/encyclopedia/wiki-selections.json")),
   ]);
-  const expectedRevisions = selections.selections
-    .filter((selection) => selection.reviewStatus === "published")
-    .map((selection) => ({
-      title: selection.pageTitle,
-      revisionId: selection.revisionId,
-      sha256: selection.revisionHash,
-    }));
-  if (
-    JSON.stringify(wiki.manifest.revisions)
-    !== JSON.stringify(expectedRevisions)
-  ) {
-    throw new Error("Wiki manifest does not match published selections");
-  }
   console.log(
     `Verified ${coreManifest.glyphBindings.maxGlyph} glyph classifications `
       + `and ${wiki.records.length} reviewed Wiki excerpt record(s).`,

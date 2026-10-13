@@ -5,22 +5,10 @@
       "entityId": "monster:PM_NEWT",
       "pageTitle": "Newt",
       "revisionId": 205110,
-      "revisionTimestamp": "2025-01-02T03:04:05Z",
-      "revisionHash": "304004f2cce93b29f2158ff1525559cd1f90aa1777a803cba010bb9c97eafa9d",
+      "revisionTimestamp": "2026-06-02T18:31:39Z",
+      "revisionHash": "8255e5ed686ea657f3b5cea18449b31e11f5bfe731195797b4f2dc5263522032",
       "reviewStatus": "published",
       "sections": [
-        {
-          "tab": "overview",
-          "sourceHeading": "Overview",
-          "paragraphIndexes": [
-            0,
-            1
-          ],
-          "paragraphHashes": [
-            "50b468debde13c0b5f15f8cd730f53dc9b8a854c4c36660323299cf645ce194b",
-            "bbb316028fd3f2609e87461b12dfe7530ecc19a30c200ab85622814b105ae216"
-          ]
-        },
         {
           "tab": "strategy",
           "sourceHeading": "Strategy",
