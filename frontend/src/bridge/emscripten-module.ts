@@ -93,9 +93,9 @@ export interface GameModuleOptions {
   wasmBinaryUrl?: string;
 }
 
-const emscriptenFactoryCache = new Map<
-  string,
-  Promise<EmscriptenFactory>
+const emscriptenFactoryCaches = new WeakMap<
+  EmscriptenFactoryImporter,
+  Map<string, Promise<EmscriptenFactory>>
 >();
 
 /**
@@ -211,14 +211,19 @@ function loadCachedEmscriptenFactory(
   sourceUrl: string,
   importFactory: EmscriptenFactoryImporter,
 ): Promise<EmscriptenFactory> {
-  const cached = emscriptenFactoryCache.get(digest);
+  let importerCache = emscriptenFactoryCaches.get(importFactory);
+  if (!importerCache) {
+    importerCache = new Map();
+    emscriptenFactoryCaches.set(importFactory, importerCache);
+  }
+  const cached = importerCache.get(digest);
   if (cached) return cached;
 
   const operation = importFactory(bytes, sourceUrl);
-  emscriptenFactoryCache.set(digest, operation);
+  importerCache.set(digest, operation);
   void operation.catch(() => {
-    if (emscriptenFactoryCache.get(digest) === operation) {
-      emscriptenFactoryCache.delete(digest);
+    if (importerCache.get(digest) === operation) {
+      importerCache.delete(digest);
     }
   });
   return operation;
