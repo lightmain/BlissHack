@@ -4,6 +4,7 @@ import {
   createGameModule,
   type EmscriptenFactory,
   type EmscriptenModule,
+  type GameModuleOptions,
 } from "./emscripten-module";
 
 const encoder = new TextEncoder();
@@ -13,6 +14,15 @@ const wasmUrl = "https://example.test/runtime/nethack.wasm";
 const loaderBytes = encoder.encode(
   "export default async function createNethackModule() {}",
 );
+
+type EmscriptenFactoryImporter = (
+  bytes: Uint8Array,
+  sourceUrl: string,
+) => Promise<EmscriptenFactory>;
+
+interface DefaultFactoryCacheOptions extends GameModuleOptions {
+  importFactory: EmscriptenFactoryImporter;
+}
 
 /**
  * Calculate a lowercase SHA-256 fixture digest.
@@ -31,7 +41,7 @@ function sha256(bytes: Uint8Array): string {
  */
 function runtimeManifest(
   wasm: Uint8Array,
-  loader = loaderBytes,
+  loader: Uint8Array = loaderBytes,
 ): Uint8Array {
   return encoder.encode(JSON.stringify({
     schemaVersion: 3,
@@ -94,6 +104,24 @@ function fakeModule(): EmscriptenModule {
       syncfs: vi.fn(),
     },
   };
+}
+
+/**
+ * Fetch one internally consistent runtime triplet for cache tests.
+ * @param wasm Verified WASM fixture bytes.
+ * @param loader Verified JavaScript loader fixture bytes.
+ * @returns Runtime asset fetch mock.
+ */
+function runtimeFixtureFetcher(
+  wasm: Uint8Array,
+  loader: Uint8Array,
+) {
+  return vi.fn(async (url: string) => {
+    if (url === manifestUrl) return runtimeManifest(wasm, loader);
+    if (url === wasmUrl) return wasm.slice();
+    if (url === loaderUrl) return loader.slice();
+    throw new Error(`Unexpected URL ${url}`);
+  });
 }
 
 describe("Emscripten module runtime binding", () => {
@@ -283,4 +311,109 @@ describe("Emscripten module runtime binding", () => {
       expect(loadFactory).not.toHaveBeenCalled();
     },
   );
+});
+
+describe("default Emscripten factory cache", () => {
+  it("imports one factory for repeated modules with the same loader digest", async () => {
+    const wasm = Uint8Array.from([
+      0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x01,
+    ]);
+    const loader = encoder.encode(
+      "export default async function sameDigestFactory() {}",
+    );
+    const modules = [fakeModule(), fakeModule(), fakeModule()];
+    let factoryCall = 0;
+    const factory: EmscriptenFactory = vi.fn(async () =>
+      modules[factoryCall++]!
+    );
+    const importFactory = vi.fn(async (
+      _bytes: Uint8Array,
+      _sourceUrl: string,
+    ) => factory);
+    const options: DefaultFactoryCacheOptions = {
+      fetchBytes: runtimeFixtureFetcher(wasm, loader),
+      importFactory,
+    };
+
+    const firstModules = await Promise.all([
+      createGameModule(loaderUrl, options),
+      createGameModule(loaderUrl, options),
+    ]);
+    const thirdModule = await createGameModule(loaderUrl, options);
+
+    expect([...firstModules, thirdModule]).toEqual(modules);
+    expect(importFactory).toHaveBeenCalledOnce();
+    expect(importFactory).toHaveBeenCalledWith(loader, loaderUrl);
+    expect(factory).toHaveBeenCalledTimes(3);
+  });
+
+  it("retries the same loader digest after its first import fails", async () => {
+    const wasm = Uint8Array.from([
+      0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x01,
+    ]);
+    const loader = encoder.encode(
+      "export default async function retryFactory() {}",
+    );
+    const module = fakeModule();
+    const factory: EmscriptenFactory = vi.fn(async () => module);
+    const importError = new Error("loader import failed");
+    let importAttempt = 0;
+    const importFactory = vi.fn(async (
+      _bytes: Uint8Array,
+      _sourceUrl: string,
+    ) => {
+      importAttempt += 1;
+      if (importAttempt === 1) throw importError;
+      return factory;
+    });
+    const options: DefaultFactoryCacheOptions = {
+      fetchBytes: runtimeFixtureFetcher(wasm, loader),
+      importFactory,
+    };
+
+    await expect(createGameModule(loaderUrl, options)).rejects.toBe(importError);
+    await expect(createGameModule(loaderUrl, options)).resolves.toBe(module);
+
+    expect(importFactory).toHaveBeenCalledTimes(2);
+    expect(factory).toHaveBeenCalledOnce();
+  });
+
+  it("keeps factories separate for different loader digests", async () => {
+    const wasm = Uint8Array.from([
+      0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x01,
+    ]);
+    const firstLoader = encoder.encode(
+      "export default async function firstDigestFactory() {}",
+    );
+    const secondLoader = encoder.encode(
+      "export default async function secondDigestFactory() {}",
+    );
+    const firstModule = fakeModule();
+    const secondModule = fakeModule();
+    const firstFactory: EmscriptenFactory = vi.fn(async () => firstModule);
+    const secondFactory: EmscriptenFactory = vi.fn(async () => secondModule);
+    const factories = [firstFactory, secondFactory];
+    let importCall = 0;
+    const importFactory = vi.fn(async (
+      _bytes: Uint8Array,
+      _sourceUrl: string,
+    ) => factories[importCall++]!);
+
+    await expect(createGameModule(loaderUrl, {
+      fetchBytes: runtimeFixtureFetcher(wasm, firstLoader),
+      importFactory,
+    } as DefaultFactoryCacheOptions)).resolves.toBe(firstModule);
+    await expect(createGameModule(loaderUrl, {
+      fetchBytes: runtimeFixtureFetcher(wasm, secondLoader),
+      importFactory,
+    } as DefaultFactoryCacheOptions)).resolves.toBe(secondModule);
+
+    expect(importFactory).toHaveBeenCalledTimes(2);
+    expect(importFactory.mock.calls.map(([bytes]) => sha256(bytes))).toEqual([
+      sha256(firstLoader),
+      sha256(secondLoader),
+    ]);
+    expect(firstFactory).toHaveBeenCalledOnce();
+    expect(secondFactory).toHaveBeenCalledOnce();
+  });
 });
