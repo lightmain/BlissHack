@@ -4,6 +4,7 @@ export interface RuntimeFileMetadata {
 }
 
 export interface RuntimeAssetIdentity {
+  loader: RuntimeFileMetadata;
   wasm: RuntimeFileMetadata;
   encyclopedia: RuntimeManifest["encyclopedia"];
 }
@@ -153,6 +154,7 @@ export function runtimeIdentityFromManifest(
   manifest: RuntimeManifest,
 ): RuntimeAssetIdentity {
   return Object.freeze({
+    loader: Object.freeze({ ...manifest.files["nethack.js"] }),
     wasm: Object.freeze({ ...manifest.files["nethack.wasm"] }),
     encyclopedia: Object.freeze({
       core: Object.freeze({
@@ -179,11 +181,14 @@ export function assertRuntimeIdentityMatches(
   identity: RuntimeAssetIdentity,
   manifest: RuntimeManifest,
 ): void {
+  const expectedLoader = manifest.files["nethack.js"];
   const expectedWasm = manifest.files["nethack.wasm"];
   const expectedCore = manifest.encyclopedia.core;
   const expectedWiki = manifest.encyclopedia.wiki;
   if (
-    identity?.wasm?.bytes !== expectedWasm.bytes
+    identity?.loader?.bytes !== expectedLoader.bytes
+    || identity?.loader?.sha256 !== expectedLoader.sha256
+    || identity?.wasm?.bytes !== expectedWasm.bytes
     || identity?.wasm?.sha256 !== expectedWasm.sha256
     || identity?.encyclopedia?.core?.manifest?.bytes
       !== expectedCore.manifest.bytes

@@ -382,6 +382,26 @@ export function GameScreen({
   );
 
   useEffect(() => {
+    if (
+      readOnly
+      || settings.informationLevel !== "detailed"
+      || !encyclopediaLoader
+    ) {
+      return undefined;
+    }
+    const controller = new AbortController();
+    void encyclopediaLoader.preload({ signal: controller.signal })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [
+    encyclopediaLoader,
+    moduleId,
+    readOnly,
+    sessionId,
+    settings.informationLevel,
+  ]);
+
+  useEffect(() => {
     const capture = contextIntent?.examineCapture;
     if (
       readOnly
