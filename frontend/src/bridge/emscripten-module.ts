@@ -75,10 +75,16 @@ export type EmscriptenFactory = (
   options: Record<string, unknown>,
 ) => Promise<EmscriptenModule>;
 
+type EmscriptenFactoryImporter = (
+  bytes: Uint8Array,
+  sourceUrl: string,
+) => Promise<EmscriptenFactory>;
+
 /** Session guard used while a module factory is still loading asynchronously. */
 export interface GameModuleOptions {
   isCurrent?: () => boolean;
   fetchBytes?: (url: string) => Promise<Uint8Array>;
+  importFactory?: EmscriptenFactoryImporter;
   loadFactory?: (
     bytes: Uint8Array,
     sourceUrl: string,
@@ -86,6 +92,11 @@ export interface GameModuleOptions {
   runtimeManifestUrl?: string;
   wasmBinaryUrl?: string;
 }
+
+const emscriptenFactoryCache = new Map<
+  string,
+  Promise<EmscriptenFactory>
+>();
 
 /**
  * Remove Emscripten's synthetic login name before NetHack calls whoami().
@@ -114,7 +125,6 @@ export async function createGameModule(
     loaderUrl,
   ).href;
   const fetchBytes = options.fetchBytes ?? fetchRuntimeBytes;
-  const loadFactory = options.loadFactory ?? importEmscriptenFactory;
   const runtimeBytes = await fetchBytes(runtimeManifestUrl);
   const runtime = decodeRuntimeManifest(runtimeBytes);
   const wasmBinary = await fetchBytes(wasmBinaryUrl);
@@ -130,7 +140,14 @@ export async function createGameModule(
     runtime.files["nethack.js"],
     loaderUrl,
   );
-  const factory = await loadFactory(loaderBytes, loaderUrl);
+  const factory = options.loadFactory
+    ? await options.loadFactory(loaderBytes, loaderUrl)
+    : await loadCachedEmscriptenFactory(
+      runtime.files["nethack.js"].sha256,
+      loaderBytes,
+      loaderUrl,
+      options.importFactory ?? importEmscriptenFactory,
+    );
   const module = await factory({
     noInitialRun: true,
     wasmBinary,
@@ -178,6 +195,33 @@ async function fetchRuntimeBytes(url: string): Promise<Uint8Array> {
     throw new Error(`Failed to fetch ${url}: ${response.status}`);
   }
   return new Uint8Array(await response.arrayBuffer());
+}
+
+/**
+ * Reuse one verified Emscripten factory for every loader content digest.
+ * @param digest Verified loader SHA-256 from the runtime manifest.
+ * @param bytes Verified loader module bytes.
+ * @param sourceUrl Original asset URL used for diagnostics.
+ * @param importFactory Importer for the verified loader bytes.
+ * @returns Shared in-flight or resolved factory import.
+ */
+function loadCachedEmscriptenFactory(
+  digest: string,
+  bytes: Uint8Array,
+  sourceUrl: string,
+  importFactory: EmscriptenFactoryImporter,
+): Promise<EmscriptenFactory> {
+  const cached = emscriptenFactoryCache.get(digest);
+  if (cached) return cached;
+
+  const operation = importFactory(bytes, sourceUrl);
+  emscriptenFactoryCache.set(digest, operation);
+  void operation.catch(() => {
+    if (emscriptenFactoryCache.get(digest) === operation) {
+      emscriptenFactoryCache.delete(digest);
+    }
+  });
+  return operation;
 }
 
 /**
