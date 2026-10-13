@@ -18,20 +18,19 @@ BlissHack 对 NetHack C 代码进行了少量有针对性的修改，主要用�
 
 ## 项目状态
 
-**alpha-2.3 已完成实现、自动门禁、独立复审和人工验收；alpha-2.4 Examine
-观察窗口已完成规划，尚未开始实现。**
+**alpha-2.4 已完成实现、自动门禁和独立复审；人工验收仍待用户确认。**
 
-alpha-2.3 已加入 profile v4 和由核心命令目录驱动的可选 BlissHack 动作栏。
-Original 模式改为结构化的 TTY 两行状态，BlissHack 模式继续使用图形状态。
-启用 BlissHack 动作栏时，核心实际请求的物品、方向、确认和普通单选输入使用
-紧凑的动作次级弹窗。部署分支与 GitHub Pages 可能落后，实际线上版本以页面
-显示为准。
+alpha-2.4 在 Detailed 信息量下为受支持的地图和永久背包目标增加
+`Examine`，同时保持 Original 和核心原有动作不变。它会等待核心菜单 resolver
+结束并进入新的 command boundary 后才打开，因此查看资料不消耗回合。观察窗口
+展示由当前 NetHack 源码确定性生成的事实，以及单独标注来源和许可的
+NetHackWiki 节选，不读取隐藏游戏身份。
 
-alpha-2.4 计划在 Detailed 信息量下为地图和永久背包右键菜单增加
-`Examine`，并以不泄露隐藏身份的方式展示 NetHack 源码事实和具有独立署名、
-来源及许可信息的 NetHackWiki 完整原文段落节选。具体范围和阶段门禁见
-[alpha-2.4 Examine 观察窗口计划](doc/BlissHack/plans/alpha-2.4.md)；当前代码
-尚未实现该功能。
+当前获准发布的 Wiki 内容只包含 `Newt` revision 205110 的 4 个完整原文段落；
+两段不安全的 Overview 内容未发布。具体契约见
+[alpha-2.4 Examine 观察窗口计划](doc/BlissHack/plans/alpha-2.4.md)，自动门禁
+结果见[alpha-2.4 自动验收记录](doc/BlissHack/plans/in-alpha-2.4/release-acceptance.md)。
+部署分支与 GitHub Pages 可能落后，实际线上版本以页面显示为准。
 
 当前里程碑已经实现：
 
@@ -45,7 +44,11 @@ alpha-2.4 计划在 Detailed 信息量下为地图和永久背包右键菜单增
   使用快捷键开始方向操作，也会高亮角色周围八格并允许点击选择。
 - Detailed 信息量下，状态、背包和地图共用延迟 Tooltip；Original 只关闭状态
   说明，地图与背包不受影响。
-- 地图和背包右键菜单完全由核心生成，鼠标动作由高层动作控制器安全编排。
+- Detailed 为受支持的地图和永久背包目标提供 `Examine`；窗口显示源码生成的
+  核心事实和可选的已审核 Wiki 原文段落，并使用严格的可见身份解析、键盘操作
+  和响应式布局。
+- 地图和背包的核心动作保持原顺序与原身份；独立分型的 Detailed `Examine` 行
+  和全部鼠标动作均由高层动作控制器安全编排。
 - 永久背包使用 Pointer Events 拖到玩家当前格，通过核心原生 drop 流程执行，
   并以背包 revision 防止过期操作。
 - 地图隐藏原生 scrollbar 但保留滚动能力；右键拖动平移，普通右键打开核心
@@ -100,7 +103,8 @@ Node.js 主版本。
 
 仓库中的 `frontend/public/nethack.js`、`nethack.wasm` 和
 `nethack-runtime.json` 是前端使用的 Emscripten 运行时三件套。官方 tiles
-生成产物位于 `frontend/public/tiles/`。
+生成产物位于 `frontend/public/tiles/`；由源码生成的核心资料和已审核 Wiki
+资料位于 `frontend/public/encyclopedia/`。
 
 ```sh
 cd frontend
@@ -120,7 +124,11 @@ npm run preview
 [WASM 构建流程](doc/BlissHack/build-process.md)操作，并始终一起提交运行时
 三件套。`npm run check:toolchain` 可以在不清理或编译的情况下检查固定工具链。
 Tiles 资源使用 `npm run generate:tiles` 显式生成，并由 `npm run verify:tiles`
-校验。
+校验。`npm run encyclopedia:verify` 会重新生成并比较 checked-in 资料，不会
+下载 Wiki 内容。
+
+浏览器会先校验两个运行时文件，再从临时 Blob URL 导入 Emscripten loader。
+启用 Content Security Policy 的部署因此必须在 `script-src` 中允许 `blob:`。
 
 ## 测试
 
@@ -161,6 +169,7 @@ Tiles/ASCII、Right/Below 在 1280×900 和 900×700 下的 HUD 组合。
 - [alpha-2.1 发布验收](doc/BlissHack/plans/in-alpha-2.1/release-acceptance.md)
 - [alpha-2.2 发布验收](doc/BlissHack/plans/in-alpha-2.2/release-acceptance.md)
 - [alpha-2.3 发布验收](doc/BlissHack/plans/in-alpha-2.3/release-acceptance.md)
+- [alpha-2.4 自动验收](doc/BlissHack/plans/in-alpha-2.4/release-acceptance.md)
 - [prealpha-3 发布验收](doc/BlissHack/plans/in-prealpha-3/release-acceptance.md)
 - [上游修改清单](doc/BlissHack/upstream-modifications.md)
 - [存档存储与读取方案评审](doc/BlissHack/plans/in-prealpha-2/save-format-review.md)

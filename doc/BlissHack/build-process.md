@@ -251,9 +251,12 @@ frontend/dist/
   `frontend/public/nethack-runtime.json` 必须提交到仓库。GitHub Pages
   工作流不安装 Emscripten，而是先校验再发布这三个文件。重新编译 WASM 后，
   必须同时更新并提交完整三件套。
-- React 代码先读取并严格校验 `nethack-runtime.json`，再读取、校验并向
-  `nethack.js` factory 注入 `nethack.wasm` bytes；不会让 loader 另行获取
-  一份未经当前 manifest 验证的 WASM
+- React 代码先读取并严格校验 `nethack-runtime.json`，再读取并校验
+  `nethack.wasm` 和 `nethack.js`。已校验的 loader bytes 通过临时 Blob URL
+  导入；已校验的 WASM bytes 通过 `wasmBinary` 注入 factory，不会让 loader
+  另行获取未经当前 manifest 验证的运行时文件
+- 同一 importer 下相同 loader digest 的 factory import 会合并和缓存；失败的
+  import 会从 cache 移除，Blob URL 在 import 完成后立即 revoke
 - 最终部署只需要把 `dist/` 目录整个放到任意静态文件服务器上
 
 ### 加载流程
@@ -263,12 +266,22 @@ frontend/dist/
   → 加载 React 应用 (assets/index-[hash].js)
     → bridge/emscripten-module.ts 读取并严格校验 nethack-runtime.json
       → 读取 nethack.wasm，校验 byte length、SHA-256 和 WASM header
-        → 动态 import('nethack.js')，向 factory 注入已校验的 wasmBinary
-          → WASM 模块初始化并记录不可变 runtime identity
-            → 挂载 globalThis.nethackGlobal 并注册 shim 回调
-              → 调用 Module._main() 启动游戏
-                → NetHack 游戏循环开始运行
+        → 读取 nethack.js，校验 byte length 和 SHA-256
+          → 从已校验 bytes 创建临时 JavaScript Blob URL
+            → 动态 import(Blob URL)，随后 revoke URL
+              → 向 factory 注入已校验的 wasmBinary
+                → WASM 模块初始化并记录不可变 runtime identity
+                  → 挂载 globalThis.nethackGlobal 并注册 shim 回调
+                    → 调用 Module._main() 启动游戏
+                      → NetHack 游戏循环开始运行
 ```
+
+### Content Security Policy
+
+通过 Blob URL 导入已校验 loader 可以保证执行内容与 runtime manifest 绑定，
+但会受页面 Content Security Policy 约束。部署若发送 CSP，必须在
+`script-src` 中允许 `blob:`，同时保留应用自身需要的同源脚本来源；缺少该项
+时浏览器会拒绝动态 import，游戏 module 无法启动。
 
 ## 切换构建模式的注意事项
 
@@ -308,6 +321,8 @@ make CROSS_TO_WASM=1     # WASM
 - `nethack.wasm` 没有合法的八字节 WASM 头。
 - 文件长度或 SHA-256 与 manifest 不一致。
 - manifest 的 Emscripten、Node.js 主版本或 Lua 版本与仓库固定值不一致。
+- core/Wiki encyclopedia manifest 的长度、SHA-256 或 core source
+  fingerprint 与 runtime manifest 不一致。
 
 ## 手动 GitHub Actions
 

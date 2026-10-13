@@ -13,12 +13,14 @@
    alpha-2.1 的焦点与 Below HUD 调整、alpha-2.2 的 profile v3、信息量、统一
    角色选择、终局结果页和本地 Ranking 也已完成人工验收。alpha-2.3 的
    profile v4、动作栏、动作次级弹窗和 Original TTY 两行状态已完成实现、
-   自动门禁、独立复审和人工验收。当前 `VERSION` 为 `alpha-2.4`，Examine
-   观察窗口的范围与阶段门禁已经写入
-   `doc/BlissHack/plans/alpha-2.4.md`，但尚未开始实现；不得把计划中的目标
-   当作当前已有能力，也不得跳过计划规定的阶段流程。
+   自动门禁、独立复审和人工验收。当前 `VERSION` 为 `alpha-2.4`；Examine
+   观察窗口已完成实现、自动门禁和独立复审，人工验收仍待用户确认。不得在
+   用户确认前把 alpha-2.4 标记为完成。
    alpha-2.3 最终验收记录见
    `doc/BlissHack/plans/in-alpha-2.3/release-acceptance.md`。
+   alpha-2.4 当前自动验收记录与人工清单见
+   `doc/BlissHack/plans/in-alpha-2.4/release-acceptance.md`，范围与阶段门禁见
+   `doc/BlissHack/plans/alpha-2.4.md`。
    GitHub Pages 可能落后，应以页面版本为准。维护当前架构时阅读
    `doc/BlissHack/plans/prealpha-4.md`；进行 tileset、Canvas 地图、
    `TILES_IN_GLYPHMAP` 或 profile v2 工作时完整阅读
@@ -69,9 +71,16 @@
   `blisshack.profile.v4`；仅在没有 v4 时依次读取 v3、v2、v1，v1 迁移后
   保持 ASCII 显示，旧版本的新展示设置均迁移为 `original`。新建 profile
   默认使用 `detailed` 信息量以及 BlissHack 终局、角色创建和动作栏。
-- `interface.informationLevel` 只控制状态栏的解释性 Tooltip；地图、背包和
-  `nethack.showExperience` 不受其影响。这是当前已实现行为；alpha-2.4 计划
-  在不提升 profile schema 的前提下扩展 Detailed 的 Examine 入口。
+- `interface.informationLevel` 控制状态栏解释性 Tooltip 和右键菜单中的
+  synthetic `Examine` 入口；地图、背包 hover 和 `nethack.showExperience`
+  在两种模式下均可用。此扩展不提升 profile schema。
+- `frontend/src/encyclopedia/` 只根据核心最终 glyph 或已公开的有界神器 token
+  解析可见身份，严格校验 runtime-bound manifest 和 chunk，并按实体 lazy-load
+  core facts 与可选 Wiki 节选。核心与 Wiki 资料保持目录、类型、来源和许可
+  分离。
+- `Examine` 是前端合成的判别联合菜单行，不会伪造核心 item index。控制器先
+  向核心菜单提交一次 `null`，等待 resolver 消费、新 command boundary 和
+  intent 回到 idle 后才发布本地窗口请求；打开、切 Tab 和关闭均不消耗回合。
 - `frontend/src/session/session-manager.ts` 是稳定 façade；
   `session-lifecycle.ts` 管理唯一活动 WASM session、module、callback 和清理，
   `home-operations.ts` 管理 Home 数据操作，两者共享一个显式 context。
@@ -88,6 +97,8 @@
   猜测未公开的 WASM 地址或结构布局。
 - `frontend/public/nethack.js`、`frontend/public/nethack.wasm` 和
   `frontend/public/nethack-runtime.json` 是必须一起更新的运行时三件套。
+  前端校验 loader 和 WASM bytes 后，通过临时 Blob URL 导入 loader 并注入
+  已校验 WASM；部署 CSP 必须在 `script-src` 中允许 `blob:`。
 
 ## 3. 按任务读取
 

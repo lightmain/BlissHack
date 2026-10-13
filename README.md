@@ -21,24 +21,23 @@ frontend. These changes are documented in
 
 ## Project Status
 
-**Alpha-2.3 implementation, automated gates, independent review, and manual
-acceptance are complete. The Alpha-2.4 Examine dialog is planned but not yet
-implemented.**
+**Alpha-2.4 implementation, automated gates, and independent review are
+complete. Manual acceptance is pending.**
 
-Alpha-2.3 adds profile v4 and an optional BlissHack action bar backed by the
-core's command catalog. The Original mode now uses a structured two-line TTY
-status display, while BlissHack keeps the graphical status presentation.
-Core-authored item, direction, confirmation, and ordinary single-choice inputs
-use compact secondary dialogs when the BlissHack action bar is enabled. The
-deployment branch and GitHub Pages may lag; use the version displayed by the
-site as the authority.
+Alpha-2.4 adds `Examine` to supported map and permanent-inventory context
+menus in Detailed mode while leaving Original mode and the core's existing
+actions unchanged. It waits for the core menu resolver and a new command
+boundary before opening, so inspecting facts does not consume a turn. The
+dialog presents deterministic NetHack source facts and separately attributed
+NetHackWiki excerpts without reading hidden game identities.
 
-Alpha-2.4 plans to add an `Examine` entry to map and permanent-inventory
-context menus in Detailed mode. It will present NetHack source facts and
-verbatim, fully attributed paragraph excerpts from NetHackWiki without
-exposing hidden game identities. See the
-[Alpha-2.4 Examine dialog plan](doc/BlissHack/plans/alpha-2.4.md); the feature
-is not implemented in the current code.
+The reviewed Wiki release currently contains only four complete, verbatim
+paragraphs from `Newt` revision 205110; the two unsafe Overview paragraphs are
+not published. See the
+[Alpha-2.4 Examine dialog plan](doc/BlissHack/plans/alpha-2.4.md) and
+[automated acceptance record](doc/BlissHack/plans/in-alpha-2.4/release-acceptance.md).
+The deployment branch and GitHub Pages may lag; use the version displayed by
+the site as the authority.
 
 The current milestone provides:
 
@@ -58,8 +57,13 @@ The current milestone provides:
   command was started with a keyboard shortcut.
 - Shared delayed tooltips for status, inventory, and authoritative core map
   inspection without adding inspection text to message history.
-- Core-generated map and inventory context menus, with mouse actions routed
-  through a fail-closed high-level action controller.
+- A Detailed-mode `Examine` action for supported map and permanent-inventory
+  targets, with source-generated facts, optional reviewed Wiki paragraphs,
+  strict visible-identity resolution, and a keyboard-accessible responsive
+  dialog.
+- Core-generated map and inventory actions retain their order and identity;
+  the separately typed Detailed-mode `Examine` row and all mouse actions are
+  routed through a fail-closed high-level action controller.
 - Pointer Events inventory drag and drop to the player's current cell, using
   the native core drop flow and permanent-inventory revisions.
 - Hidden native map scrollbars without removing scrolling; right-drag pans the
@@ -119,6 +123,8 @@ development and CI use the Node.js major version selected by the root
 The checked-in `frontend/public/nethack.js`, `nethack.wasm`, and
 `nethack-runtime.json` files are the Emscripten runtime triplet used by the
 frontend. Generated official tile assets live under `frontend/public/tiles/`.
+Generated core and reviewed Wiki encyclopedia assets live under
+`frontend/public/encyclopedia/`.
 
 ```sh
 cd frontend
@@ -139,7 +145,12 @@ Follow the [WASM build process](doc/BlissHack/build-process.md) and always
 commit the complete runtime triplet together. `npm run check:toolchain`
 validates the pinned environment without cleaning or compiling. Regenerate
 tiles explicitly with `npm run generate:tiles`; `npm run verify:tiles` checks
-the committed assets.
+the committed assets. `npm run encyclopedia:verify` regenerates and compares
+the checked-in encyclopedia without downloading Wiki content.
+
+The browser verifies both runtime files before importing the Emscripten loader
+from a temporary Blob URL. Deployments that enforce Content Security Policy
+must therefore allow `blob:` in `script-src`.
 
 ## Tests
 
@@ -182,6 +193,7 @@ combinations at 1280x900 and 900x700.
 - [alpha-2.1 release acceptance](doc/BlissHack/plans/in-alpha-2.1/release-acceptance.md)
 - [alpha-2.2 release acceptance](doc/BlissHack/plans/in-alpha-2.2/release-acceptance.md)
 - [alpha-2.3 release acceptance](doc/BlissHack/plans/in-alpha-2.3/release-acceptance.md)
+- [alpha-2.4 automated acceptance](doc/BlissHack/plans/in-alpha-2.4/release-acceptance.md)
 - [Upstream modification inventory](doc/BlissHack/upstream-modifications.md)
 - [Fatal errors and diagnostic log design](doc/BlissHack/plans/in-prealpha-2/fatal-errors-and-diagnostics.md)
 - [Browser end-to-end test design](doc/BlissHack/plans/in-prealpha-2/browser-end-to-end-tests.md)
