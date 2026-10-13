@@ -93,6 +93,7 @@ function endgameSummaryFixture(): EndgameSummary {
               color: 7,
               text: "Weapons",
               itemFlags: 0,
+              visibleEntityToken: null,
             },
             {
               glyph: {
@@ -113,6 +114,7 @@ function endgameSummaryFixture(): EndgameSummary {
               color: 7,
               text: "a - a blessed +1 long sword",
               itemFlags: 1,
+              visibleEntityToken: null,
             },
           ],
         }],

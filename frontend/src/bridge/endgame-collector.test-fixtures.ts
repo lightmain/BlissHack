@@ -157,5 +157,6 @@ export function endgameMenuItemFixture(text: string): MenuItem {
     color: 7,
     text,
     itemFlags: 0,
+    visibleEntityToken: null,
   };
 }

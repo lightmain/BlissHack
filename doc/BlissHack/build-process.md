@@ -125,9 +125,11 @@ frontend/public/
   nethack-runtime.json
 ```
 
-`nethack-runtime.json` 记录 Emscripten、Node.js、Lua、hints、宿主编译器、
-Make，以及两个运行时文件的字节长度和 SHA-256。摘要只用于检查产物配对和
-意外改写，不表示存档兼容性。
+`nethack-runtime.json` schema v3 记录 Emscripten、Node.js、Lua、hints、
+宿主编译器、Make，以及两个运行时文件的字节长度和 SHA-256。它还绑定 core
+与 Wiki encyclopedia manifest 的字节长度和 SHA-256，并记录 core
+`sourceFingerprint`，使当前 WASM、核心资料和已审核 Wiki 节选必须来自同一组
+发布资产。摘要用于检查产物配对和意外改写，不表示存档兼容性。
 
 **关键理解：** `nethack.js` + `nethack.wasm` 是一体的。JS 文件是 WASM 的加载器和运行时，
 不能分开使用。`wasm-data/` 中的文件在编译时被 `--embed-file` 嵌入到 .wasm 二进制中，
@@ -148,6 +150,7 @@ Make，以及两个运行时文件的字节长度和 SHA-256。摘要只用于�
 | `-s MODULARIZE -s EXPORT_ES6=1` | 输出 ES6 模块格式 |
 | `-s EXPORTED_FUNCTIONS` | 导出 `_main`, `_shim_graphics_set_callback` 等函数 |
 | `-s EXPORTED_RUNTIME_METHODS` | 导出 `cwrap`, `ccall`, `FS`, `IDBFS` 等运行时方法 |
+| `-s INCOMING_MODULE_JS_API=...wasmBinary` | 允许前端向 Emscripten factory 注入已经校验的 WASM bytes |
 | `--embed-file wasm-data@/` | 将游戏数据嵌入 WASM 虚拟文件系统根目录 |
 
 WASM 构建还会使用 host `tilemap` 生成 `src/tile.c`，再以 Emscripten
@@ -248,7 +251,9 @@ frontend/dist/
   `frontend/public/nethack-runtime.json` 必须提交到仓库。GitHub Pages
   工作流不安装 Emscripten，而是先校验再发布这三个文件。重新编译 WASM 后，
   必须同时更新并提交完整三件套。
-- React 代码在运行时通过 `import()` 动态加载 `nethack.js`，后者自动加载同目录下的 `nethack.wasm`
+- React 代码先读取并严格校验 `nethack-runtime.json`，再读取、校验并向
+  `nethack.js` factory 注入 `nethack.wasm` bytes；不会让 loader 另行获取
+  一份未经当前 manifest 验证的 WASM
 - 最终部署只需要把 `dist/` 目录整个放到任意静态文件服务器上
 
 ### 加载流程
@@ -256,12 +261,13 @@ frontend/dist/
 ```
 浏览器加载 index.html
   → 加载 React 应用 (assets/index-[hash].js)
-    → bridge/emscripten-module.ts 动态 import('nethack.js')
-      → nethack.js 自动 fetch('nethack.wasm') 并实例化
-        → WASM 模块初始化，挂载 globalThis.nethackGlobal
-          → 我们的 JS 回调被注册到 shim
-            → 调用 Module._main() 启动游戏
-              → NetHack 游戏循环开始运行
+    → bridge/emscripten-module.ts 读取并严格校验 nethack-runtime.json
+      → 读取 nethack.wasm，校验 byte length、SHA-256 和 WASM header
+        → 动态 import('nethack.js')，向 factory 注入已校验的 wasmBinary
+          → WASM 模块初始化并记录不可变 runtime identity
+            → 挂载 globalThis.nethackGlobal 并注册 shim 回调
+              → 调用 Module._main() 启动游戏
+                → NetHack 游戏循环开始运行
 ```
 
 ## 切换构建模式的注意事项

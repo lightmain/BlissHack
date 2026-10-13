@@ -378,6 +378,9 @@ describe("WASM tile mapping build wiring", () => {
     expect(wasmSection).toMatch(
       /^override GENTILEOFILE = \$\(TARGETPFX\)tile\.o$/m,
     );
+    expect(wasmSection).toMatch(
+      /^EMCC_LFLAGS \+= -s INCOMING_MODULE_JS_API=.*"wasmBinary"/m,
+    );
   });
 
   it("compiles the generated tile source with the target compiler", async () => {

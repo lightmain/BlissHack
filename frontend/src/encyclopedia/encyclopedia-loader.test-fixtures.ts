@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { RuntimeAssetIdentity } from "../bridge/runtime-manifest";
 
 export const TEST_ASSET_URLS = Object.freeze({
   runtimeManifest: "/nethack-runtime.json",
@@ -105,13 +106,37 @@ export function bindRuntimeToCore(
   const runtime = readJsonAsset(fixture, fixture.urls.runtimeManifest);
   const core = readJsonAsset(fixture, fixture.urls.coreManifest);
   const coreBytes = fixture.assets.get(fixture.urls.coreManifest);
+  const wikiBytes = fixture.assets.get(fixture.urls.wikiManifest);
   if (!coreBytes) {
     throw new Error("Missing core manifest fixture");
   }
-  runtime.encyclopedia.manifest.bytes = coreBytes.byteLength;
-  runtime.encyclopedia.manifest.sha256 = sha256(coreBytes);
-  runtime.encyclopedia.sourceFingerprint = core.sourceFingerprint;
+  if (!wikiBytes) {
+    throw new Error("Missing Wiki manifest fixture");
+  }
+  runtime.encyclopedia.core.manifest.bytes = coreBytes.byteLength;
+  runtime.encyclopedia.core.manifest.sha256 = sha256(coreBytes);
+  runtime.encyclopedia.core.sourceFingerprint = core.sourceFingerprint;
+  runtime.encyclopedia.wiki.manifest.bytes = wikiBytes.byteLength;
+  runtime.encyclopedia.wiki.manifest.sha256 = sha256(wikiBytes);
   writeJsonAsset(fixture, fixture.urls.runtimeManifest, runtime);
+}
+
+/**
+ * Read the immutable WASM identity expected by the fixture runtime manifest.
+ * @param fixture Fixture containing the runtime manifest.
+ * @returns Runtime identity supplied by an initialized module.
+ */
+export function runtimeIdentityForFixture(
+  fixture: EncyclopediaAssetFixture,
+): RuntimeAssetIdentity {
+  const runtime = readJsonAsset(fixture, fixture.urls.runtimeManifest);
+  return {
+    wasm: {
+      bytes: runtime.files["nethack.wasm"].bytes,
+      sha256: runtime.files["nethack.wasm"].sha256,
+    },
+    encyclopedia: structuredClone(runtime.encyclopedia),
+  };
 }
 
 /**
@@ -199,6 +224,7 @@ export function createEncyclopediaAssetFixture(): EncyclopediaAssetFixture {
     sourceInputs: [],
     sourceFingerprint,
     entityCounts: {
+      appearance: 0,
       artifact: 0,
       monster: 0,
       object: 0,
@@ -250,7 +276,7 @@ export function createEncyclopediaAssetFixture(): EncyclopediaAssetFixture {
   };
   const coreManifestBytes = encodeJson(coreManifest);
   const runtimeManifest = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     emscriptenVersion: "6.0.9",
     nodeMajor: 24,
     luaVersion: "5.4.8",
@@ -271,11 +297,19 @@ export function createEncyclopediaAssetFixture(): EncyclopediaAssetFixture {
       },
     },
     encyclopedia: {
-      manifest: {
-        bytes: coreManifestBytes.byteLength,
-        sha256: sha256(coreManifestBytes),
+      core: {
+        manifest: {
+          bytes: coreManifestBytes.byteLength,
+          sha256: sha256(coreManifestBytes),
+        },
+        sourceFingerprint,
       },
-      sourceFingerprint,
+      wiki: {
+        manifest: {
+          bytes: encodeJson(wikiManifest).byteLength,
+          sha256: sha256(encodeJson(wikiManifest)),
+        },
+      },
     },
   };
   return {

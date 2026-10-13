@@ -15,7 +15,7 @@ import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
-const GENERATOR_VERSION = "1.0.0";
+const GENERATOR_VERSION = "1.1.0";
 const SCHEMA_VERSION = 1;
 const NETHACK_VERSION = "5.0.0";
 const MAX_CHUNK_BYTES = 256 * 1024;
@@ -23,6 +23,7 @@ const TARGET_CHUNK_BYTES = 96 * 1024;
 const MAX_RECORD_BYTES = 64 * 1024;
 const MAX_TOTAL_BYTES = 2 * 1024 * 1024;
 const EXPECTED_COUNTS = {
+  appearance: 17,
   monster: 383,
   object: 463,
   artifact: 33,
@@ -75,7 +76,14 @@ const SOURCE_INPUT_PATHS = [
   "src/monst.c",
   "src/objects.c",
 ].sort();
-const ENTITY_KINDS = ["artifact", "monster", "object", "terrain", "trap"];
+const ENTITY_KINDS = [
+  "appearance",
+  "artifact",
+  "monster",
+  "object",
+  "terrain",
+  "trap",
+];
 const ATTACK_TYPES = new Set([
   "AT_NONE",
   "AT_CLAW",
@@ -382,7 +390,7 @@ function assertHash(value, label) {
 function assertEntityId(value, label) {
   assertString(value, label, 160);
   if (
-    !/^(monster:PM_|object:|artifact:ART_|terrain:S_|trap:)[A-Z0-9_]+$/
+    !/^(appearance:[A-Z0-9_]+:GENERIC|monster:PM_[A-Z0-9_]+|object:[A-Z0-9_]+|artifact:ART_[A-Z0-9_]+|terrain:S_[A-Z0-9_]+|trap:[A-Z0-9_]+)$/
       .test(value)
   ) {
     throw new Error(`${label} is not a stable entity ID`);
@@ -778,6 +786,20 @@ function validateObjectFacts(value, label) {
 }
 
 /**
+ * Validate generic appearance facts without accepting concrete object data.
+ * @param {unknown} value Candidate facts.
+ * @param {string} label Diagnostic label.
+ */
+function validateAppearanceFacts(value, label) {
+  assertObject(value, label);
+  assertKeys(value, ["objectClass"], [], label);
+  assertString(value.objectClass, `${label}.objectClass`, 64);
+  if (!/^[A-Z0-9_]+_CLASS$/.test(value.objectClass)) {
+    throw new Error(`${label}.objectClass is invalid`);
+  }
+}
+
+/**
  * Validate artifact facts and all nested symbolic attacks.
  * @param {unknown} value Candidate facts.
  * @param {string} label Diagnostic label.
@@ -891,7 +913,12 @@ function validateEntityRecord(value, label) {
   if (value.color !== null) {
     assertInteger(value.color, `${label}.color`, 0, 255);
   }
-  if (value.kind === "monster") {
+  if (value.kind === "appearance") {
+    validateAppearanceFacts(value.facts, `${label}.facts`);
+    if (value.id !== `appearance:${value.facts.objectClass}:GENERIC`) {
+      throw new Error(`${label} appearance ID and object class disagree`);
+    }
+  } else if (value.kind === "monster") {
     validateMonsterFacts(value.facts, `${label}.facts`);
   } else if (value.kind === "object") {
     validateObjectFacts(value.facts, `${label}.facts`);
@@ -943,10 +970,15 @@ function validateSupportedBinding(value, label, references) {
     }
   }
   if ("appearanceId" in value) {
-    assertString(value.appearanceId, `${label}.appearanceId`, 160);
+    assertEntityId(value.appearanceId, `${label}.appearanceId`);
     if (!/^appearance:[A-Z0-9_]+:GENERIC$/.test(value.appearanceId)) {
       throw new Error(`${label}.appearanceId is invalid`);
     }
+    assertString(value.objectClass, `${label}.objectClass`, 64);
+    if (value.appearanceId !== `appearance:${value.objectClass}:GENERIC`) {
+      throw new Error(`${label} appearance ID and object class disagree`);
+    }
+    references.add(value.appearanceId);
   }
   if ("pileTop" in value && typeof value.pileTop !== "boolean") {
     throw new Error(`${label}.pileTop must be boolean`);

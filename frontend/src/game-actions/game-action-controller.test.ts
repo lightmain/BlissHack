@@ -123,6 +123,7 @@ function menuItem(
     color: 0,
     text,
     itemFlags: 0,
+    visibleEntityToken: null,
   };
 }
 

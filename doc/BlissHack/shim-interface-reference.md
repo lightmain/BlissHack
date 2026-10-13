@@ -37,6 +37,9 @@
 > 12. 当前 WASM 构建启用 `TILES_IN_GLYPHMAP` 并链接生成的 `tile.o`。
 >     `glyph_info.gm.tileidx`（偏移 `+30` 的 16-bit 字段）因此包含与
 >     `frontend/public/tiles/nethack-classic.png` 一致的官方 tile index。
+> 13. Emscripten 的 `shim_add_menu` callback 在原有 9 个参数后追加一个
+>     `visibleEntityToken` 字符串；当前只允许 `artifact:ART_*`。原生
+>     `libnethack.a` 和 `struct window_procs` ABI 仍保持 9 参数不变。
 >
 > 以上结论由当前源码和 Emscripten WASM32 record layout 验证；实现应优先遵循
 > `winshim.c` 的实际格式串，而不是仅依据 C 函数原型。
@@ -790,17 +793,16 @@ VDECLCB(shim_start_menu, (winid window, unsigned long mbehavior), "vii", A2P win
 
 #### shim_add_menu
 
+Emscripten 构建使用专用 wrapper：
+
 ```c
-VDECLCB(shim_add_menu,
-    (winid window, const glyph_info *glyphinfo, const ANY_P *identifier,
-     char ch, char gch, int attr, int clr, const char *str, unsigned int itemflags),
-    "vipi00iisi",
-    A2P window, P2V glyphinfo, P2V identifier, A2P ch, A2P gch, A2P attr, A2P clr, P2V str, A2P itemflags)
+local_callback(shim_callback_name, "shim_add_menu",
+               (void *) 0, "vipi00iisis", args);
 ```
 
 | 项目 | 说明 |
 |------|------|
-| **fmt** | `"vipi00iisi"` — 返回 void，9 个参数 |
+| **fmt** | Emscripten 为 `"vipi00iisis"` — 返回 void，10 个参数；原生 callback 仍为 `"vipi00iisi"` |
 | **参数** | |
 | | `window` (int): 菜单窗口 ID |
 | | `glyphinfo` (pointer): 物品的 `glyph_info` 指针（用于显示图标）；没有图标时其 `glyph` 字段为 `NO_GLYPH` |
@@ -811,6 +813,16 @@ VDECLCB(shim_add_menu,
 | | `clr` (int): 颜色索引 |
 | | `str` (string): 菜单项文本 |
 | | `itemflags` (int): 菜单项标志位 |
+| | `visibleEntityToken` (string, Emscripten only): 已公开神器身份的规范 token；普通行为空字符串 |
+
+`visibleEntityToken` 不是菜单文本解析结果。核心只在构造永久背包行时，并且
+`doname()` / `doname_with_cgender()` 已经公开对象名称、对象为神器且
+`dknown` 为真时，才通过 `DUMP_ARTI_ENUM` 发布 `artifact:ART_*`。shim 在进入
+可能触发 Asyncify 的 `local_callback()` 前，把同步槽复制到当前
+`shim_add_menu()` 调用栈并立即消费；callback 返回后再次清理。callback
+注册、command reset、菜单 start/end/select、窗口销毁和退出也会 fail closed
+清理未消费 token。因此 token 只属于紧邻的一行，不能跨行、跨菜单或跨
+session 复用，也不暴露对象指针、编号或自由文本。
 
 菜单项标志常量（`itemflags`）：
 - `MENU_ITEMFLAGS_NONE = 0x0` — 无特殊标志
@@ -1229,7 +1241,7 @@ Asyncify。
 | `shim_putstr` | `viis` | VDECLCB | 文本输出 |
 | `shim_display_file` | `vsb` | VDECLCB | 文本输出 |
 | `shim_start_menu` | `vii` | VDECLCB | 菜单系统 |
-| `shim_add_menu` | `vipi00iisi` | VDECLCB | 菜单系统 |
+| `shim_add_menu` | 原生 `vipi00iisi`；WASM `vipi00iisis` | 特殊实现 | 菜单系统 |
 | `shim_end_menu` | `vis` | VDECLCB | 菜单系统 |
 | `shim_select_menu` | `iiip` | DECLCB | 菜单系统 |
 | `shim_message_menu` | `ciis` | DECLCB | 菜单系统 |

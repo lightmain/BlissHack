@@ -211,6 +211,12 @@ let activeCommandResponses = null;
 let activeModule = null;
 let commandBoundaryGeneration = 0;
 let selectedCharacterFixture = null;
+let characterFixtureCodes = {
+  role: "Tou",
+  race: "Hum",
+  gender: "Mal",
+  alignment: "Neu",
+};
 
 const RUNTIME_SETTINGS_VERSION = 2 << 28;
 const RUNTIME_SETTINGS_PENDING = 1 << 0;
@@ -239,6 +245,7 @@ const EXTCMD_FLAGS_OFFSET = 16;
 const MENU_ITEM_SIZE = 16;
 const MENU_ITEM_COUNT_OFFSET = 8;
 const MENU_ITEM_FLAGS_OFFSET = 12;
+const C_BUFFER_SIZE = 256;
 const WIZMODECMD = 0x0004;
 const CMD_NOT_AVAILABLE = 0x0010;
 const INTERNALCMD = 0x0040;
@@ -568,6 +575,7 @@ function selectMenuItem(menu, menuListPtr, targetGlyph) {
  * unrestrictedYnResponses?: number[],
  * menuResponses?: Array<"cancel"|"first">,
  * menuItemGlyphs?: number[],
+ * lineResponses?: string[],
  * }} [responses] - structured callback responses for this command only.
  * @returns {{startIndex: number, boundaryGeneration: number}}
  * trace markers captured before command input.
@@ -588,6 +596,7 @@ function startExtendedCommand(command, responses = {}) {
     ],
     menuResponses: [...(responses.menuResponses ?? [])],
     menuItemGlyphs: [...(responses.menuItemGlyphs ?? [])],
+    lineResponses: [...(responses.lineResponses ?? [])],
   };
   resolvePendingInput(EXTENDED_COMMAND_KEY);
   return marker;
@@ -629,6 +638,7 @@ async function finishExtendedCommand(marker) {
  * unrestrictedYnResponses?: number[],
  * menuResponses?: Array<"cancel"|"first">,
  * menuItemGlyphs?: number[],
+ * lineResponses?: string[],
  * }} [responses] - structured callback responses for this command only.
  * @returns {Promise<object[]>} structured callback trace.
  */
@@ -708,6 +718,7 @@ function startCoreCommand(payload, responses = {}) {
     ],
     menuResponses: [...(responses.menuResponses ?? [])],
     menuItemGlyphs: [...(responses.menuItemGlyphs ?? [])],
+    lineResponses: [...(responses.lineResponses ?? [])],
   };
   resolvePendingInput(ESCAPE);
   return marker;
@@ -827,13 +838,17 @@ async function blissCallback(name, ...args) {
       if (globalThis.nethackGlobal?.globals?.flags) {
         const f = globalThis.nethackGlobal.globals.flags;
         const catalog = globalThis.nethackGlobal.characterCatalog;
-        const role = catalog?.roles.find(({ fileCode }) => fileCode === "Tou");
-        const race = catalog?.races.find(({ fileCode }) => fileCode === "Hum");
+        const role = catalog?.roles.find(
+          ({ fileCode }) => fileCode === characterFixtureCodes.role,
+        );
+        const race = catalog?.races.find(
+          ({ fileCode }) => fileCode === characterFixtureCodes.race,
+        );
         const gender = catalog?.genders.find(
-          ({ fileCode }) => fileCode === "Mal",
+          ({ fileCode }) => fileCode === characterFixtureCodes.gender,
         );
         const alignment = catalog?.alignments.find(
-          ({ fileCode }) => fileCode === "Neu",
+          ({ fileCode }) => fileCode === characterFixtureCodes.alignment,
         );
         selectedCharacterFixture = { role, race, gender, alignment };
         f.initrole = role?.index ?? -1;
@@ -977,16 +992,20 @@ async function blissCallback(name, ...args) {
     case "shim_add_menu": {
       const windowId = Number(args[0]);
       const identifier = Number(args[2]);
+      const visibleEntityToken = typeof args[9] === "string" ? args[9] : null;
       const menu = activeMenus.get(windowId);
       callbackEvent.windowId = windowId;
       callbackEvent.identifier = identifier;
       callbackEvent.accelerator = Number(args[3]) & 0xff;
+      callbackEvent.argumentCount = args.length;
+      callbackEvent.visibleEntityToken = visibleEntityToken;
       if (menu) {
         menu.itemCount += 1;
         menu.items.push({
           identifier,
           accelerator: Number(args[3]) & 0xff,
           glyph: readGlyphInfo(Number(args[1]))?.glyph ?? null,
+          visibleEntityToken,
         });
         if (identifier !== 0) menu.selectableItemCount += 1;
       }
@@ -997,6 +1016,8 @@ async function blissCallback(name, ...args) {
           kind: "item",
           windowId,
           text: String(args[7] ?? ""),
+          argumentCount: args.length,
+          visibleEntityToken,
         });
       }
       return undefined;
@@ -1075,13 +1096,24 @@ async function blissCallback(name, ...args) {
       return selection ?? -1;
     }
 
-    case "shim_getlin":
+    case "shim_getlin": {
       if (activeCommandResponses && activeModule && Number(args[1]) !== 0) {
-        activeModule.setValue(Number(args[1]), ESCAPE, "i8");
-        activeModule.setValue(Number(args[1]) + 1, 0, "i8");
-        callbackEvent.cancelled = true;
+        const response = activeCommandResponses.lineResponses?.shift();
+        if (response !== undefined) {
+          activeModule.stringToUTF8(
+            response,
+            Number(args[1]),
+            C_BUFFER_SIZE,
+          );
+          callbackEvent.response = response;
+        } else {
+          activeModule.setValue(Number(args[1]), ESCAPE, "i8");
+          activeModule.setValue(Number(args[1]) + 1, 0, "i8");
+          callbackEvent.cancelled = true;
+        }
       }
       return undefined;
+    }
 
     case "shim_getmsghistory":
     case "shim_get_color_string":
@@ -1093,6 +1125,40 @@ async function blissCallback(name, ...args) {
 }
 
 globalThis.blissCallback = blissCallback;
+
+/**
+ * Start NetHack with an explicit argv vector kept alive for the whole session.
+ * @param {object} module - initialized Emscripten module.
+ * @param {string[]} arguments_ - complete argv including argv[0].
+ * @returns {{promise: Promise<unknown>, release: () => void}} session handle.
+ */
+function startMainWithArguments(module, arguments_) {
+  const allocations = arguments_.map((argument) => {
+    const size = new TextEncoder().encode(argument).byteLength + 1;
+    const pointer = module._malloc(size);
+    module.stringToUTF8(argument, pointer, size);
+    return pointer;
+  });
+  const argv = module._malloc((allocations.length + 1) * 4);
+  allocations.forEach((pointer, index) => {
+    module.setValue(argv + index * 4, pointer, "*");
+  });
+  module.setValue(argv + allocations.length * 4, 0, "*");
+  const promise = module.ccall(
+    "main",
+    "number",
+    ["number", "number"],
+    [allocations.length, argv],
+    { async: true },
+  );
+  return {
+    promise,
+    release() {
+      allocations.forEach((pointer) => module._free(pointer));
+      module._free(argv);
+    },
+  };
+}
 
 /* ------------------------------------------------------------------ */
 /*  Main test sequence                                                 */
@@ -1566,9 +1632,15 @@ async function run() {
   console.log("\n--- Module loading ---");
   const factory = (await import(WASM_JS)).default;
   assert(typeof factory === "function", "WASM factory is a function");
+  const wasmBinary = readFileSync(WASM_BIN);
 
   const module = await factory({
     noInitialRun: true,
+    wasmBinary,
+    locateFile: (path) =>
+      path.endsWith(".wasm")
+        ? join(WASM_DIR, "missing-runtime.wasm")
+        : join(WASM_DIR, path),
     preRun: (runtimeModule) => {
       runtimeModule.ENV.USER = "";
       runtimeModule.ENV.LOGNAME = "";
@@ -1778,6 +1850,14 @@ async function run() {
       && permanentInventoryUpdates.some((event) => event.kind === "item")
       && permanentInventoryUpdates.some((event) => event.kind === "commit"),
     "perm_invent creates, populates, and commits a persistent inventory menu",
+  );
+  assert(
+    permanentInventoryUpdates
+      .filter((event) => event.kind === "item")
+      .every((event) =>
+        event.argumentCount === 10 && event.visibleEntityToken === ""
+      ),
+    "ordinary permanent inventory rows receive an empty visible identity token",
   );
   assert(
     selectedCharacterFixture?.role?.fileCode === "Tou"
@@ -2894,6 +2974,213 @@ async function run() {
   assert(
     module.FS.analyzePath("/save/0TestPlayer").exists,
     "save writes the deterministic character to the formal save directory",
+  );
+
+  // --- Visible artifact identity through the real WASM path ---
+  console.log("\n--- Visible artifact identity ---");
+  const artifactModule = await factory({
+    noInitialRun: true,
+    wasmBinary,
+    locateFile: (path) =>
+      path.endsWith(".wasm")
+        ? join(WASM_DIR, "missing-runtime.wasm")
+        : join(WASM_DIR, path),
+    preRun: (runtimeModule) => {
+      runtimeModule.ENV.USER = "root";
+      runtimeModule.ENV.LOGNAME = "root";
+      runtimeModule.ENV.WIZKIT = "/home/web_user/artifact-wizkit";
+    },
+    print: () => {},
+    printErr: () => {},
+  });
+  activeModule = artifactModule;
+  if (!artifactModule.FS.analyzePath("/save").exists) {
+    artifactModule.FS.mkdir("/save");
+  }
+  artifactModule.FS.writeFile(
+    "/sysconf",
+    new TextEncoder().encode(
+      artifactModule.FS.readFile("/sysconf", { encoding: "utf8" })
+        .replace(/^WIZARDS=.*$/m, "WIZARDS=*"),
+    ),
+  );
+  artifactModule.FS.writeFile(
+    "/home/web_user/.nethackrc",
+    new TextEncoder().encode([
+      "OPTIONS=!autopickup",
+      "OPTIONS=perminv_mode:all",
+      "OPTIONS=perm_invent",
+      "OPTIONS=!tutorial",
+      "",
+    ].join("\n")),
+  );
+  artifactModule.FS.writeFile(
+    "/home/web_user/artifact-wizkit",
+    new TextEncoder().encode([
+      "long sword named Excalibur",
+      "apple",
+      "",
+    ].join("\n")),
+  );
+  artifactModule.ccall(
+    "shim_graphics_set_callback",
+    null,
+    ["string"],
+    ["blissCallback"],
+  );
+
+  pendingInput = null;
+  pendingInputWaiters.clear();
+  receivedEventNames.clear();
+  receivedEvents.length = 0;
+  callbackEvents.length = 0;
+  eventCount = 0;
+  eventsWithoutInput = 0;
+  ynCount = 0;
+  rawMessages.length = 0;
+  windowMessages.length = 0;
+  runtimeSettingsSnapshots.length = 0;
+  runtimeSettingsResults.length = 0;
+  permanentInventoryUpdates.length = 0;
+  coreCommandResults.length = 0;
+  publishedBoundaryGenerations.length = 0;
+  menuSelections.length = 0;
+  activeMenus.clear();
+  activeWindows.clear();
+  queuedRuntimeSettings = 0;
+  queuedCoreCommand = null;
+  queuedExtendedCommand = null;
+  activeCommandResponses = null;
+  commandBoundaryGeneration = 0;
+  selectedCharacterFixture = null;
+  characterFixtureCodes = {
+    role: "Kni",
+    race: "Hum",
+    gender: "Mal",
+    alignment: "Law",
+  };
+
+  const artifactSession = startMainWithArguments(
+    artifactModule,
+    ["nethack", "-D"],
+  );
+  artifactSession.promise.catch(() => {});
+  await waitForPendingInput(TIMEOUT_MS);
+
+  const latestPermanentInventoryItems = () => {
+    const commitIndex = permanentInventoryUpdates.findLastIndex(
+      (event) => event.kind === "commit",
+    );
+    const startIndex = permanentInventoryUpdates.findLastIndex(
+      (event, index) => event.kind === "start" && index < commitIndex,
+    );
+    return permanentInventoryUpdates.slice(startIndex + 1, commitIndex)
+      .filter((event) => event.kind === "item");
+  };
+  const initialArtifactItems = latestPermanentInventoryItems();
+  const initialTokens = initialArtifactItems
+    .map((event) => event.visibleEntityToken)
+    .filter(Boolean);
+  assert(
+    initialTokens.length === 1
+      && initialTokens[0] === "artifact:ART_EXCALIBUR"
+      && initialArtifactItems
+        .filter((event) => event.visibleEntityToken === "")
+        .length === initialArtifactItems.length - 1,
+    "real permanent inventory publishes one disclosed Excalibur token without"
+      + " leaking it to ordinary rows",
+  );
+
+  const artifactCommands = readAllWasmCommands(artifactModule);
+  const wizardWish = artifactCommands.find(
+    ({ name }) => name === "wizwish",
+  );
+  const artifactQuaff = artifactCommands.find(
+    ({ name }) => name === "quaff",
+  );
+  assert(
+    wizardWish !== undefined && artifactQuaff !== undefined,
+    "wizard artifact fixture exposes wish and quaff commands",
+  );
+  if (!wizardWish || !artifactQuaff) {
+    throw new Error("Missing wizard artifact fixture commands");
+  }
+  const hallucinationWishTrace = await runExtendedCommand(wizardWish, {
+    lineResponses: ["potion of hallucination"],
+  });
+  const hallucinationTrace = await runCoreCommand(
+    catalogCommandPayload(artifactQuaff.sourceIndex, 201, true),
+    { menuResponses: ["first"] },
+  );
+  assert(
+    hallucinationWishTrace.some(
+      (event) =>
+        event.name === "shim_getlin"
+        && event.response === "potion of hallucination",
+    )
+      && hallucinationTrace.some(
+        (event) =>
+          event.name === "shim_select_menu"
+          && event.response === "first",
+      ),
+    "artifact fixture wishes for and quaffs hallucination before creating an"
+      + " undisclosed artifact",
+  );
+
+  const cleaverStart = permanentInventoryUpdates.length;
+  const cleaverTrace = await runExtendedCommand(wizardWish, {
+    lineResponses: ["battle-axe named Cleaver"],
+  });
+  const undisclosedArtifactItems = latestPermanentInventoryItems();
+  assert(
+    cleaverTrace.some(
+      (event) =>
+        event.name === "shim_getlin"
+        && event.response === "battle-axe named Cleaver",
+    )
+      && undisclosedArtifactItems.some(
+        (event) => /double-headed axe/i.test(event.text),
+      )
+      && !permanentInventoryUpdates.slice(cleaverStart).some(
+        (event) => event.visibleEntityToken === "artifact:ART_CLEAVER",
+      ),
+    "real permanent inventory withholds the hallucination-hidden Cleaver"
+      + " identity",
+  );
+
+  const currentArtifactSettings = runtimeSettingsSnapshots.at(-1);
+  const refreshedArtifactSettings = (
+    (
+      currentArtifactSettings & ~RUNTIME_SETTINGS_PERMINV_MODE_MASK
+    )
+    | RUNTIME_SETTINGS_PERMINV_FULL
+  ) >>> 0;
+  const refreshResultsBefore = runtimeSettingsResults.length;
+  const refreshCommitsBefore = permanentInventoryUpdates.filter(
+    (event) => event.kind === "commit",
+  ).length;
+  queuedRuntimeSettings = (
+    refreshedArtifactSettings | RUNTIME_SETTINGS_PENDING
+  ) >>> 0;
+  await sendKeyAndWait(32);
+  const refreshedArtifactItems = latestPermanentInventoryItems();
+  assert(
+    runtimeSettingsResults.length > refreshResultsBefore
+      && runtimeSettingsResults.at(-1)?.success === 1
+      && runtimeSettingsResults.at(-1)?.snapshot === refreshedArtifactSettings
+      && permanentInventoryUpdates.filter(
+        (event) => event.kind === "commit",
+      ).length > refreshCommitsBefore
+      && !refreshedArtifactItems.some(
+      (event) => event.visibleEntityToken === "artifact:ART_CLEAVER",
+      )
+      && refreshedArtifactItems.every(
+        (event) =>
+          event.visibleEntityToken === ""
+          || event.visibleEntityToken === "artifact:ART_EXCALIBUR",
+      ),
+    "later inventory refreshes do not leak an undisclosed or stale artifact"
+      + " token",
   );
 
   // --- Summary ---

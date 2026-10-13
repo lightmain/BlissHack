@@ -37,6 +37,7 @@ const summary: EndgameSummary = {
           color: 7,
           text: `${index + 1} - identified fixture item`,
           itemFlags: 0,
+          visibleEntityToken: null,
         })),
       }],
     },

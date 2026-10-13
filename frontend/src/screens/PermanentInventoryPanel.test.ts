@@ -18,6 +18,7 @@ const inventory: PermanentInventoryState = {
       color: 7,
       text: "Weapons",
       itemFlags: 0,
+      visibleEntityToken: null,
     },
     {
       glyph: {
@@ -38,6 +39,7 @@ const inventory: PermanentInventoryState = {
       color: 2,
       text: "a blessed long sword (weapon in hand)",
       itemFlags: 1,
+      visibleEntityToken: null,
     },
   ],
 };

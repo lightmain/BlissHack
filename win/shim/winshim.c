@@ -2,7 +2,7 @@
 /* Copyright (c) Adam Powers, 2020                                */
 /* NetHack may be freely redistributed.  See license for details. */
 /* Modified for BlissHack by lightmain, 2026-09-02, 2026-09-06, 2026-09-07,
- * 2026-09-14, 2026-09-15, 2026-09-18, and 2026-09-23:
+ * 2026-09-14, 2026-09-15, 2026-09-18, 2026-09-23, and 2026-10-13:
  * preserve character selection quit semantics, expose narrow browser save
  * helpers, and synchronize a fixed set of in-game options at command
  * boundaries, including the permanent inventory capability and settings;
@@ -11,7 +11,8 @@
  * consume nonce-bound catalog commands at the main command boundary and
  * publish its generation; scope action-owned getobj menus with provenance,
  * request identity, and menu generations; expose the restore-only guard as
- * a typed WASM global for pending askname flows. */
+ * a typed WASM global for pending askname flows; attach one-shot,
+ * already-visible artifact identity to permanent inventory rows. */
 
 /* not an actual windowing port, but a fake win port for libnethack */
 
@@ -58,8 +59,52 @@ void shim_graphics_set_restore_required(int required);
 int shim_graphics_get_save_fingerprint(uchar *outbuf, int outbufsz);
 static void shim_command_reset(void);
 
+#define SHIM_VISIBLE_ARTIFACT_TOKEN_SIZE 160
+static char
+    shim_pending_visible_artifact[SHIM_VISIBLE_ARTIFACT_TOKEN_SIZE];
+
+/* Drop any row identity which has not been consumed synchronously. */
+static void
+shim_visible_artifact_clear(void)
+{
+    (void) memset(shim_pending_visible_artifact, 0,
+                  sizeof shim_pending_visible_artifact);
+}
+
+/* Accept one bounded canonical token from the permanent inventory producer. */
+void
+shim_visible_artifact_publish(const char *token)
+{
+    size_t i, length;
+
+    shim_visible_artifact_clear();
+    if (!token || strncmp(token, "artifact:ART_", 13) != 0)
+        return;
+    length = strlen(token);
+    if (length < 14 || length >= sizeof shim_pending_visible_artifact)
+        return;
+    for (i = 13; i < length; ++i)
+        if (!((token[i] >= 'A' && token[i] <= 'Z')
+              || (token[i] >= '0' && token[i] <= '9')
+              || token[i] == '_'))
+            return;
+    (void) memcpy(shim_pending_visible_artifact, token, length + 1);
+}
+
+/* Copy a pending token into callback-owned stack memory, then consume it. */
+static void
+shim_visible_artifact_copy_and_clear(char *destination, size_t size)
+{
+    if (destination && size > 0) {
+        (void) strncpy(destination, shim_pending_visible_artifact, size - 1);
+        destination[size - 1] = '\0';
+    }
+    shim_visible_artifact_clear();
+}
+
 void shim_graphics_set_callback(char *cbName) {
     if (shim_callback_name != NULL) free(shim_callback_name);
+    shim_visible_artifact_clear();
     shim_command_reset();
     if(cbName && strlen(cbName) > 0) {
         debugf("setting shim_callback_name: %s\n", cbName);
@@ -446,6 +491,7 @@ shim_settings_result(int success, int snapshot)
 static void
 shim_command_reset(void)
 {
+    shim_visible_artifact_clear();
     command_boundary_generation = 0U;
     last_command_request_nonce = 0U;
     shim_action_getobj_request_nonce = 0U;
@@ -612,22 +658,95 @@ shim_get_nh_event(void)
 #else
 VDECLCB(shim_get_nh_event,(void), "v")
 #endif
+#ifdef __EMSCRIPTEN__
+void
+shim_exit_nhwindows(const char *str)
+{
+    void *args[] = { P2V str };
+
+    shim_visible_artifact_clear();
+    if (shim_callback_name)
+        local_callback(shim_callback_name, "shim_exit_nhwindows",
+                       (void *) 0, "vs", args);
+}
+#else
 VDECLCB(shim_exit_nhwindows,(const char *str), "vs", P2V str)
+#endif
 VDECLCB(shim_suspend_nhwindows,(const char *str), "vs", P2V str)
 VDECLCB(shim_resume_nhwindows,(void), "v")
 DECLCB(winid, shim_create_nhwindow, (int type), "ii", A2P type)
 VDECLCB(shim_clear_nhwindow,(winid window), "vi", A2P window)
 VDECLCB(shim_display_nhwindow,(winid window, boolean blocking), "vib", A2P window, A2P blocking)
+#ifdef __EMSCRIPTEN__
+void
+shim_destroy_nhwindow(winid window)
+{
+    void *args[] = { &window };
+
+    shim_visible_artifact_clear();
+    if (shim_callback_name)
+        local_callback(shim_callback_name, "shim_destroy_nhwindow",
+                       (void *) 0, "vi", args);
+}
+#else
 VDECLCB(shim_destroy_nhwindow,(winid window), "vi", A2P window)
+#endif
 VDECLCB(shim_curs,(winid a, int x, int y), "viii", A2P a, A2P x, A2P y)
 VDECLCB(shim_putstr,(winid w, int attr, const char *str), "viis", A2P w, A2P attr, P2V str)
 VDECLCB(shim_display_file,(const char *name, boolean complain), "vsb", P2V name, A2P complain)
+#ifdef __EMSCRIPTEN__
+void
+shim_start_menu(winid window, unsigned long mbehavior)
+{
+    void *args[] = { &window, &mbehavior };
+
+    shim_visible_artifact_clear();
+    if (shim_callback_name)
+        local_callback(shim_callback_name, "shim_start_menu",
+                       (void *) 0, "vii", args);
+}
+#else
 VDECLCB(shim_start_menu,(winid window, unsigned long mbehavior), "vii", A2P window, A2P mbehavior)
+#endif
+#ifdef __EMSCRIPTEN__
+void
+shim_add_menu(winid window, const glyph_info *glyphinfo,
+              const ANY_P *identifier, char ch, char gch, int attr, int clr,
+              const char *str, unsigned int itemflags)
+{
+    char visible_artifact_token[SHIM_VISIBLE_ARTIFACT_TOKEN_SIZE];
+    void *args[] = {
+        &window, P2V glyphinfo, P2V identifier, &ch, &gch, &attr, &clr,
+        P2V str, &itemflags, P2V visible_artifact_token
+    };
+
+    shim_visible_artifact_copy_and_clear(
+        visible_artifact_token, sizeof visible_artifact_token);
+    if (shim_callback_name)
+        local_callback(shim_callback_name, "shim_add_menu",
+                       (void *) 0, "vipi00iisis", args);
+    shim_visible_artifact_clear();
+}
+#else
 VDECLCB(shim_add_menu,
     (winid window, const glyph_info *glyphinfo, const ANY_P *identifier, char ch, char gch, int attr, int clr, const char *str, unsigned int itemflags),
     "vipi00iisi",
     A2P window, P2V glyphinfo, P2V identifier, A2P ch, A2P gch, A2P attr, A2P clr, P2V str, A2P itemflags)
+#endif
+#ifdef __EMSCRIPTEN__
+void
+shim_end_menu(winid window, const char *prompt)
+{
+    void *args[] = { &window, P2V prompt };
+
+    shim_visible_artifact_clear();
+    if (shim_callback_name)
+        local_callback(shim_callback_name, "shim_end_menu",
+                       (void *) 0, "vis", args);
+}
+#else
 VDECLCB(shim_end_menu,(winid window, const char *prompt), "vis", A2P window, P2V prompt)
+#endif
 /* XXX: shim_select_menu menu_list is an output */
 #ifdef __EMSCRIPTEN__
 /* Copy action-menu identity without changing the native window-port ABI. */
@@ -643,12 +762,14 @@ shim_select_menu(winid window, int how, MENU_ITEM_P **menu_list)
         &menu_generation
     };
 
+    shim_visible_artifact_clear();
     if (shim_menu_generation == UINT_MAX)
         panic("BlissHack menu generation exhausted");
     menu_generation = ++shim_menu_generation;
     if (shim_callback_name)
         local_callback(shim_callback_name, "shim_select_menu",
                        (void *) &result, "iiipiii", args);
+    shim_visible_artifact_clear();
     return result;
 }
 #else

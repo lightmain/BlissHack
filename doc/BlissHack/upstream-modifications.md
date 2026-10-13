@@ -343,6 +343,55 @@ M win/shim/winshim.c
   - 当前 callback 没有远程/近程、射程或阻挡元数据，因此前端不绘制推测射线。
   - 此阶段没有继续修改上游 C 或 WASM；已验证的运行时三件套保持不变。
 
+### 2.15 永久背包已公开神器身份
+
+- **文件**：
+  - `src/invent.c`
+  - `win/shim/winshim.c`
+- **引入提交**：alpha-2.4 阶段三提交
+  `feat: resolve visible NetHack encyclopedia entities`
+- **目的**：
+  - 只在永久背包已经通过 `doname()` / `doname_with_cgender()` 公开神器名称，
+    且对象具有 `oartifact`、`has_oname()` 和 `dknown` 时，发布由
+    `DUMP_ARTI_ENUM` 生成的 `artifact:ART_*`。
+  - 通过一个有界同步槽把 token 交给紧邻的 `shim_add_menu()`；在进入
+    Asyncify callback 前复制到栈并消费，callback 返回后再次清理。
+  - 在 callback 注册、command reset、菜单 start/end/select、窗口销毁和退出
+    边界 fail closed 清理，防止身份跨行、跨菜单或跨 session 泄漏。
+- **ABI 范围**：只为 Emscripten `shim_add_menu` callback 增加第十个 string
+  参数；不改变 `struct window_procs`、原生 `libnethack.a` 的九参数 callback
+  ABI、对象结构或 save 格式，也不暴露对象指针、编号、显示名或菜单自由文本。
+- **行为依据**：
+  `doc/BlissHack/shim-interface-reference.md` 第 2.9 节。
+- **回归测试**：
+  - `frontend/scripts/alpha-2.4-stage-zero.test.mjs`
+  - `frontend/src/nethack-bridge.test.ts`
+  - `frontend/src/game-state.test.ts`
+  - `frontend/src/encyclopedia/visible-entity-token.test.ts`
+  - `frontend/test/integration-tests/wasm-test.mjs`
+
+### 2.16 已校验 WASM bytes 的 loader 注入
+
+- **文件**：`sys/unix/hints/include/cross-pre2.500`
+- **引入提交**：alpha-2.4 阶段三提交
+  `feat: resolve visible NetHack encyclopedia entities`
+- **目的**：
+  - 在 `INCOMING_MODULE_JS_API` 中显式保留 `wasmBinary`，使 Emscripten 生成的
+    factory 能消费前端已按 runtime manifest 校验的 WASM bytes。
+  - 避免浏览器 loader 忽略注入值后另行获取同名文件，从而绕过
+    `nethack-runtime.json` schema v3 的 byte length、SHA-256 和 active module
+    identity 绑定。
+- **ABI 范围**：不改变 C 导出、shim callback、`struct window_procs`、
+  `libnethack.a` 或存档格式；只扩展 Emscripten factory 接受的 JavaScript
+  module 配置。
+- **行为依据**：
+  `doc/BlissHack/build-process.md` 的“编译标志说明”和“加载流程”。
+- **回归测试**：
+  - `frontend/scripts/build-wasm-toolchain.test.mjs`
+  - `frontend/scripts/runtime-assets.test.mjs`
+  - `frontend/src/bridge/emscripten-module.test.ts`
+  - `frontend/test/integration-tests/wasm-test.mjs`
+
 ## 3. 上游合并检查
 
 每次从 `upstream/NetHack-5.0` 合并后必须：

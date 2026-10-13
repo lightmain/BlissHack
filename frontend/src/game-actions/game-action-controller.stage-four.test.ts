@@ -150,6 +150,7 @@ function item(
     color: 0,
     text: "opaque core candidate",
     itemFlags: 0,
+    visibleEntityToken: null,
   };
 }
 

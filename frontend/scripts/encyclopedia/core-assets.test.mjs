@@ -29,6 +29,7 @@ const checkedInCoreDirectory = join(
   "frontend/public/encyclopedia/core",
 );
 const expectedEntityCounts = {
+  appearance: 17,
   monster: 383,
   object: 463,
   artifact: 33,
@@ -311,11 +312,12 @@ describe("alpha-2.4 stage-one core encyclopedia assets", () => {
     expect(new Set(ids).size).toBe(ids.length);
     expect(ids).toEqual([...ids].sort());
     expect(ids.every((id) =>
-      /^(monster:PM_|object:|artifact:ART_|terrain:S_|trap:)[A-Z0-9_]+$/
+      /^(appearance:[A-Z0-9_]+:GENERIC|monster:PM_[A-Z0-9_]+|object:[A-Z0-9_]+|artifact:ART_[A-Z0-9_]+|terrain:S_[A-Z0-9_]+|trap:[A-Z0-9_]+)$/
         .test(id)
     )).toBe(true);
 
     expect(ids).toEqual(expect.arrayContaining([
+      "appearance:POTION_CLASS:GENERIC",
       "monster:PM_GIANT_ANT",
       "monster:PM_APPRENTICE",
       "object:ARROW",
@@ -455,6 +457,29 @@ describe("alpha-2.4 stage-one core encyclopedia assets", () => {
     expect(JSON.stringify(genericPotion)).not.toMatch(
       /POT_HEALING|POT_GAIN_LEVEL|effect|identity/i,
     );
+    expect(entity("appearance:POTION_CLASS:GENERIC")).toEqual({
+      schemaVersion: 1,
+      id: "appearance:POTION_CLASS:GENERIC",
+      kind: "appearance",
+      names: { primary: "potion" },
+      symbol: expect.any(Number),
+      color: expect.any(Number),
+      facts: { objectClass: "POTION_CLASS" },
+      sourceRefs: [{
+        path: "include/objects.h",
+        symbol: "GENERIC_POTION",
+      }],
+    });
+    const appearanceIds = records
+      .filter((record) => record.kind === "appearance")
+      .map((record) => record.id)
+      .sort();
+    const genericReferences = [...new Set(bindings
+      .filter((result) => result.binding?.kind === "generic-object")
+      .map((result) => result.binding.appearanceId))]
+      .sort();
+    expect(appearanceIds).toHaveLength(17);
+    expect(genericReferences).toEqual(appearanceIds);
   });
 
   /** Lock structural HP branches and representative inclusive boundaries. */
@@ -655,6 +680,32 @@ describe("alpha-2.4 stage-one core encyclopedia assets", () => {
     await expect(validateCoreAssetDirectory(dangling)).rejects.toThrow(
       /dangling|reference|PM_DOES_NOT_EXIST/i,
     );
+
+    const danglingAppearance = await cloneGeneratedCatalog(
+      "dangling-appearance",
+    );
+    const genericGlyph = bindings.find(
+      (result) => result.binding?.kind === "generic-object",
+    ).glyph;
+    const genericGlyphChunk = manifest.glyphBindings.chunks.find((chunk) =>
+      genericGlyph >= chunk.firstGlyph
+      && genericGlyph < chunk.firstGlyph + chunk.count
+    );
+    expect(genericGlyphChunk).toBeDefined();
+    await rewriteCatalogFile(
+      danglingAppearance,
+      genericGlyphChunk.file,
+      (catalog) => {
+        const generic = catalog.bindings.find(
+          (result) => result.glyph === genericGlyph,
+        );
+        generic.binding.appearanceId =
+          "appearance:FUTURE_CLASS:GENERIC";
+        generic.binding.objectClass = "FUTURE_CLASS";
+      },
+    );
+    await expect(validateCoreAssetDirectory(danglingAppearance))
+      .rejects.toThrow(/dangling|appearance|FUTURE_CLASS/i);
 
     const incomplete = await cloneGeneratedCatalog("glyph-gap");
     const missingGlyph = bindings[Math.floor(bindings.length / 2)].glyph;

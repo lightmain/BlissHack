@@ -11,6 +11,9 @@ const assetDirectory = process.argv[2]
 const encyclopediaManifestPath = process.argv[3]
   ? resolve(process.argv[3])
   : resolve(frontendRoot, "public/encyclopedia/core/manifest.json");
+const wikiManifestPath = process.argv[4]
+  ? resolve(process.argv[4])
+  : resolve(frontendRoot, "public/encyclopedia/wiki/manifest.json");
 const [emscriptenVersion, nodeVersion] = await Promise.all([
   readFile(resolve(repositoryRoot, ".emscripten-version"), "utf8"),
   readFile(resolve(repositoryRoot, ".nvmrc"), "utf8"),
@@ -21,5 +24,6 @@ await verifyRuntimeAssets(assetDirectory, {
   nodeMajor: Number.parseInt(nodeVersion.trim(), 10),
   luaVersion: "5.4.8",
   encyclopediaManifestPath,
+  wikiManifestPath,
 });
 console.log("Verified nethack.js, nethack.wasm, and runtime manifest.");

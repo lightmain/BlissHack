@@ -74,6 +74,7 @@ export interface MenuItem {
   color: number;
   text: string;
   itemFlags: number;
+  visibleEntityToken: string | null;
 }
 
 /** One complete permanent-inventory update committed by NetHack. */
@@ -374,11 +375,15 @@ export function destroyWindow(winid: number): void {
   const inventoryWindowId = snapshot.inventoryWindowId === winid
     ? null
     : snapshot.inventoryWindowId;
+  const permanentInventory = snapshot.inventoryWindowId === winid
+    ? invalidatedPermanentInventory()
+    : snapshot.permanentInventory;
   if (
     modal !== snapshot.modal
     || inventoryWindowId !== snapshot.inventoryWindowId
+    || permanentInventory !== snapshot.permanentInventory
   ) {
-    publish({ modal, inventoryWindowId });
+    publish({ modal, inventoryWindowId, permanentInventory });
   }
 }
 
@@ -812,6 +817,40 @@ export function setInventoryWindow(winid: number): void {
       })),
     },
   });
+}
+
+/**
+ * Invalidate row-local visible identities while retaining the last inventory.
+ */
+export function invalidatePermanentInventoryIdentity(): void {
+  const permanentInventory = invalidatedPermanentInventory();
+  if (permanentInventory !== snapshot.permanentInventory) {
+    publish({ permanentInventory });
+  }
+}
+
+/**
+ * Build a retained inventory snapshot with a new revision and cleared tokens.
+ * @returns Invalidated snapshot, or the unchanged null value.
+ */
+function invalidatedPermanentInventory(): PermanentInventoryState | null {
+  const inventory = snapshot.permanentInventory;
+  if (
+    inventory === null
+    || inventory.items.every((item) => item.visibleEntityToken === null)
+  ) {
+    return inventory;
+  }
+  permanentInventoryRevision += 1;
+  return {
+    ...inventory,
+    revision: permanentInventoryRevision,
+    items: inventory.items.map((item) => ({
+      ...item,
+      glyph: item.glyph ? { ...item.glyph } : null,
+      visibleEntityToken: null,
+    })),
+  };
 }
 
 /**

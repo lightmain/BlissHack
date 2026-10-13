@@ -14,6 +14,7 @@ import {
   endMenu,
   flushDisplay,
   getWindow,
+  invalidatePermanentInventoryIdentity,
   putMessageHistory,
   resetGameState,
   resetStatus,
@@ -221,7 +222,11 @@ export function resetBridgeState(
 ): void {
   resetEndgameCollection("bridge-reset");
   resetInputController();
-  if (!options.preserveGameState) resetGameState();
+  if (options.preserveGameState) {
+    invalidatePermanentInventoryIdentity();
+  } else {
+    resetGameState();
+  }
 }
 
 /**
@@ -297,6 +302,7 @@ async function dispatchShimCallback(
       );
       return undefined;
     case "shim_exit_nhwindows":
+      invalidatePermanentInventoryIdentity();
       setExitReason(asString(args[0]));
       return undefined;
     case "shim_create_nhwindow": {

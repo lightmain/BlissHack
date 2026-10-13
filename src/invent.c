@@ -2,9 +2,10 @@
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /*-Copyright (c) Derek S. Ray, 2015. */
 /* NetHack may be freely redistributed.  See license for details. */
-/* Modified for BlissHack by lightmain, 2026-09-23:
+/* Modified for BlissHack by lightmain, 2026-09-23 and 2026-10-13:
  * force action-owned getobj selection through the real candidate menu and
- * scope WASM provenance to that menu callback. */
+ * scope WASM provenance to that menu callback; publish a bounded artifact
+ * identity only when permanent inventory has already disclosed its name. */
 
 #include "hack.h"
 
@@ -12,6 +13,18 @@
 extern boolean shim_action_getobj_requested(void);
 extern void shim_action_getobj_begin(void);
 extern void shim_action_getobj_end(void);
+extern void shim_visible_artifact_publish(const char *);
+
+struct bliss_artifact_symbol {
+    int value;
+    const char *symbol;
+};
+
+#define DUMP_ARTI_ENUM
+static const struct bliss_artifact_symbol bliss_artifact_symbols[] = {
+#include "artilist.h"
+};
+#undef DUMP_ARTI_ENUM
 #endif
 
 staticfn void inuse_classify(Loot *, struct obj *);
@@ -53,6 +66,20 @@ staticfn int dispinv_with_action(char *, boolean, const char *);
 static win_request_info wri_info;
 static int perminv_flags = InvOptNone;
 static boolean in_perm_invent_toggled;
+
+#ifdef __EMSCRIPTEN__
+/* Return the stable source symbol for one artifact enumeration value. */
+staticfn const char *
+visible_artifact_symbol(int artifact)
+{
+    int i;
+
+    for (i = 0; i < SIZE(bliss_artifact_symbols); ++i)
+        if (bliss_artifact_symbols[i].value == artifact)
+            return bliss_artifact_symbols[i].symbol;
+    return (const char *) 0;
+}
+#endif
 
 /* wizards can wish for venom, which will become an invisible inventory
  * item without this.  putting it in inv_order would mean venom would
@@ -3389,6 +3416,22 @@ display_pickinv(
                 formattedobj = !puzzling_count
                                    ? doname(otmp)
                                    : doname_with_cgender(otmp);
+#ifdef __EMSCRIPTEN__
+                if (doing_perm_invent
+                    && otmp->oartifact > ART_NONARTIFACT
+                    && has_oname(otmp) && otmp->dknown) {
+                    const char *artifact_symbol =
+                        visible_artifact_symbol((int) otmp->oartifact);
+                    char visible_artifact_token[BUFSZ];
+
+                    if (artifact_symbol) {
+                        Sprintf(visible_artifact_token, "artifact:%s",
+                                artifact_symbol);
+                        shim_visible_artifact_publish(
+                            visible_artifact_token);
+                    }
+                }
+#endif
                 add_menu(win, &tmpglyphinfo, &any, ilet,
                          wizid ? def_oc_syms[(int) otmp->oclass].sym : 0,
                          ATR_NONE, clr, formattedobj, MENU_ITEMFLAGS_NONE);
