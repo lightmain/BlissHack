@@ -40,6 +40,44 @@ function cBlockAfter(source, marker) {
 }
 
 /**
+ * Return one named C function body across the repository's split-line style.
+ * @param {string} source - complete C source.
+ * @param {string} name - exact C function name.
+ * @returns {string} complete function body.
+ */
+function cFunctionBlock(source, name) {
+  const scrubbed = source.replace(
+    /\/\*[\s\S]*?\*\/|\/\/[^\n]*/g,
+    (comment) => " ".repeat(comment.length),
+  );
+  const marker = new RegExp(`\\b${name}\\s*\\(`, "g");
+  let match;
+  while ((match = marker.exec(scrubbed)) !== null) {
+    const open = scrubbed.indexOf("(", match.index);
+    let depth = 0;
+    let close = -1;
+    for (let index = open; index < scrubbed.length; index += 1) {
+      if (scrubbed[index] === "(") depth += 1;
+      if (scrubbed[index] === ")") depth -= 1;
+      if (depth === 0) {
+        close = index;
+        break;
+      }
+    }
+    let start = close + 1;
+    while (/\s/.test(scrubbed[start] ?? "")) start += 1;
+    if (scrubbed[start] !== "{") continue;
+    depth = 0;
+    for (let index = start; index < source.length; index += 1) {
+      if (source[index] === "{") depth += 1;
+      if (source[index] === "}") depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  expect.fail(`Missing C function body for ${name}`);
+}
+
+/**
  * Return the source slice containing one monster table entry.
  * @param {string} source - complete monsters.h source.
  * @param {string} name - exact neutral monster name.
@@ -195,6 +233,79 @@ describe("alpha-2.4 stage-zero source baselines", () => {
       ({ glyph, classified, identity }) =>
         Number.isInteger(glyph) && classified === 1 && identity === 1,
     )).toBe(true);
+  });
+
+  it("publishes artifact identity only after a visible permanent inventory name", async () => {
+    const [inventSource, winshimSource] = await Promise.all([
+      readFile(join(repositoryRoot, "src/invent.c"), "utf8"),
+      readFile(join(repositoryRoot, "win/shim/winshim.c"), "utf8"),
+    ]);
+    const displayPickinv = cFunctionBlock(inventSource, "display_pickinv");
+    const namingStart = displayPickinv.indexOf(
+      "formattedobj = !puzzling_count",
+    );
+    const addMenuStart = displayPickinv.indexOf(
+      "add_menu(win, &tmpglyphinfo",
+      namingStart,
+    );
+
+    expect(namingStart).toBeGreaterThanOrEqual(0);
+    expect(addMenuStart).toBeGreaterThan(namingStart);
+    const visibleRowProducer = displayPickinv.slice(
+      namingStart,
+      addMenuStart,
+    );
+    const publisher = visibleRowProducer.match(
+      /\bshim_[a-z0-9_]*(?:visible|artifact)[a-z0-9_]*\s*\([^;]*\)\s*;/i,
+    );
+    expect(publisher).not.toBeNull();
+    expect(visibleRowProducer).toMatch(/\bdoing_perm_invent\b/);
+    expect(visibleRowProducer).toMatch(
+      /\botmp->oartifact\s*>\s*ART_NONARTIFACT\b/,
+    );
+    expect(visibleRowProducer).toMatch(/\bhas_oname\s*\(\s*otmp\s*\)/);
+    expect(visibleRowProducer).toMatch(/\botmp->dknown\b/);
+    expect(publisher.index).toBeGreaterThan(
+      visibleRowProducer.indexOf("doname_with_cgender(otmp)"),
+    );
+
+    const tokenSource = `${inventSource}\n${winshimSource}`;
+    expect(tokenSource).toMatch(/"artifact:(?:ART_|%s)"/);
+  });
+
+  it("value-copies and fail-closed clears the shim menu identity token", async () => {
+    const winshimSource = await readFile(
+      join(repositoryRoot, "win/shim/winshim.c"),
+      "utf8",
+    );
+    const addMenu = cFunctionBlock(winshimSource, "shim_add_menu");
+    const consumeIndex = addMenu.search(
+      /\bshim_(?=[a-z0-9_]*(?:visible|artifact))(?=[a-z0-9_]*(?:consume|take|copy_and_clear))[a-z0-9_]+\s*\(/i,
+    );
+    const callbackIndex = addMenu.indexOf("local_callback");
+
+    expect(addMenu).toMatch(
+      /\bchar\s+[a-z0-9_]*(?:visible|artifact|token)[a-z0-9_]*\s*\[[^\]]+\]/i,
+    );
+    expect(addMenu).toContain('"vipi00iisis"');
+    expect(consumeIndex).toBeGreaterThanOrEqual(0);
+    expect(callbackIndex).toBeGreaterThan(consumeIndex);
+
+    const cleanupCall =
+      /\bshim_(?=[a-z0-9_]*(?:visible|artifact))(?=[a-z0-9_]*(?:clear|reset|discard))[a-z0-9_]+\s*\(/i;
+    for (const functionName of [
+      "shim_graphics_set_callback",
+      "shim_start_menu",
+      "shim_end_menu",
+      "shim_select_menu",
+      "shim_destroy_nhwindow",
+      "shim_exit_nhwindows",
+    ]) {
+      expect(
+        cFunctionBlock(winshimSource, functionName),
+        `${functionName} must clear pending visible identity`,
+      ).toMatch(cleanupCall);
+    }
   });
 
   /** Lock adj_lev/newmonhp formulas and context-specific representative bounds. */

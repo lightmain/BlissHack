@@ -306,6 +306,58 @@ function shimCallback(
   return shimCallbackForModule(harness.module, name, ...args);
 }
 
+/** Read row-local visible identity without depending on the pending type edit. */
+function visibleEntityToken(item: unknown): unknown {
+  return (item as { visibleEntityToken?: unknown } | null)
+    ?.visibleEntityToken;
+}
+
+/** Build and commit one permanent inventory row carrying a visible token. */
+async function commitArtifactInventory(): Promise<{
+  windowId: number;
+  revision: number;
+}> {
+  const windowId = await shimCallback(
+    "shim_create_nhwindow",
+    NHW_MENU,
+  ) as number;
+  await shimCallback(
+    "shim_start_menu",
+    windowId,
+    MENU_BEHAVE_PERMINV,
+  );
+  await shimCallback(
+    "shim_add_menu",
+    windowId,
+    0,
+    41,
+    "a".charCodeAt(0),
+    0,
+    0,
+    2,
+    "a - Excalibur",
+    0,
+    "artifact:ART_EXCALIBUR",
+  );
+  await shimCallback("shim_end_menu", windowId, "Inventory");
+  await shimCallback("shim_select_menu", windowId, PICK_NONE, 0);
+  const revision = getSnapshot().permanentInventory?.revision;
+  if (revision === undefined) {
+    throw new Error("Permanent inventory was not committed");
+  }
+  return { windowId, revision };
+}
+
+/** Require every retained row token to be invalidated with a new identity. */
+function expectArtifactInventoryInvalidated(previousRevision: number): void {
+  const current = getSnapshot().permanentInventory;
+  if (current === null) return;
+  expect(current.revision).toBeGreaterThan(previousRevision);
+  expect(
+    current.items.every((item) => visibleEntityToken(item) === null),
+  ).toBe(true);
+}
+
 /** Install the session identity used to authorize catalog commands. */
 function setCurrentCommandOwner(
   owner: CoreCommandOwner = CURRENT_COMMAND_OWNER,
@@ -1910,6 +1962,54 @@ describe("menus", () => {
     expect(getWindow(menu)?.menuItems[1]?.identifier).toBe(7);
   });
 
+  it("copies the tenth add_menu argument without leaking it to the next row", async () => {
+    const menu = await shimCallback("shim_create_nhwindow", NHW_MENU) as number;
+
+    await shimCallback("shim_start_menu", menu, MENU_BEHAVE_PERMINV);
+    await shimCallback(
+      "shim_add_menu",
+      menu,
+      0,
+      41,
+      "a".charCodeAt(0),
+      0,
+      0,
+      2,
+      "a - Excalibur",
+      0,
+      "artifact:ART_EXCALIBUR",
+    );
+    await shimCallback(
+      "shim_add_menu",
+      menu,
+      0,
+      42,
+      "b".charCodeAt(0),
+      0,
+      0,
+      2,
+      "b - a long sword",
+      0,
+      "",
+    );
+    await shimCallback("shim_end_menu", menu, "Inventory");
+
+    expect(
+      getWindow(menu)?.menuItems.map(visibleEntityToken),
+    ).toEqual([
+      "artifact:ART_EXCALIBUR",
+      null,
+    ]);
+
+    await shimCallback("shim_select_menu", menu, PICK_NONE, 0);
+    expect(
+      getSnapshot().permanentInventory?.items.map(visibleEntityToken),
+    ).toEqual([
+      "artifact:ART_EXCALIBUR",
+      null,
+    ]);
+  });
+
   it("writes a 16-byte menu_item array and output pointer for selections", async () => {
     const menu = await shimCallback("shim_create_nhwindow", NHW_MENU) as number;
     await shimCallback("shim_start_menu", menu, 0);
@@ -2062,6 +2162,22 @@ describe("menus", () => {
 
     resetBridgeState();
     expect(getSnapshot().permanentInventory).toBeNull();
+  });
+
+  it("invalidates visible tokens on destroy, exit, and preserved bridge reset", async () => {
+    let committed = await commitArtifactInventory();
+    await shimCallback("shim_destroy_nhwindow", committed.windowId);
+    expectArtifactInventoryInvalidated(committed.revision);
+
+    resetBridgeState();
+    committed = await commitArtifactInventory();
+    await shimCallback("shim_exit_nhwindows", "goodbye");
+    expectArtifactInventoryInvalidated(committed.revision);
+
+    resetBridgeState();
+    committed = await commitArtifactInventory();
+    resetBridgeState({ preserveGameState: true });
+    expectArtifactInventoryInvalidated(committed.revision);
   });
 
   it("implements message_menu PICK_NONE and PICK_ONE return contracts", async () => {
