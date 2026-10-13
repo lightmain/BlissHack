@@ -93,8 +93,9 @@ glyph。
 ## 5. Wiki 固定 revision 与许可
 
 alpha-2.4 首个审核样本固定为 NetHackWiki `Newt` revision `205110`。批准原型
-及其 NOTICE 保存六个完整段落，分属 Overview、Strategy、History 和
-Dudley's dungeon。导入只允许移除 Wiki markup 和内部链接目的地，不改变
+中的两个 lead 段落含模板，不进入发布资产。最终批准的 Wiki 节选保存四个
+完整段落，分属 Strategy、History 和 Dudley's dungeon；Overview 只显示
+NetHack 核心源码事实。导入只允许移除 Wiki markup 和内部链接目的地，不改变
 显示文字、标点、顺序或段落边界。
 
 导入器必须使用流式 XML parser 和固定版本的 MediaWiki AST parser。以下节点

@@ -78,6 +78,7 @@ const imported = await refreshWikiCandidates({
   selectionCatalog,
   coreEntityIds,
   reviewedDirectory: join(frontendRoot, "public/encyclopedia/wiki"),
+  reviewedNoticePath: join(frontendRoot, "public/encyclopedia/NOTICE.md"),
   outputDirectory,
 });
 

@@ -320,13 +320,18 @@ describe("alpha-2.4 stage-zero source baselines", () => {
       [...blockquote.matchAll(/<p(?:\s[^>]*)?>([\s\S]*?)<\/p>/g)]
         .map((match) => normalizedText(match[1]))
     );
-    const excerptParagraphs = prototypeParagraphs.slice(2);
+    const excerptParagraphs = prototypeParagraphs;
     const attributionMatch = prototype.match(
       /<script type="application\/json" id="prototype-content-attribution">\s*([\s\S]*?)\s*<\/script>/,
     );
 
     expect(excerptParagraphs).toHaveLength(4);
     expect(fixture.paragraphs).toEqual(excerptParagraphs);
+    expect(prototype).not.toMatch(
+      /A newt, :, is a type of monster|Eating a newt's corpse or tin/,
+    );
+    expect(prototype).toContain('selectTab("strategy")');
+    expect(prototype).not.toContain('selectTab("overview")');
     expect(attributionMatch).not.toBeNull();
     const attribution = JSON.parse(attributionMatch[1]).wiki;
     expect(fixture).toMatchObject({

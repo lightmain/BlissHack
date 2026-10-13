@@ -46,6 +46,14 @@
       "expectedCode": "template"
     },
     {
+      "name": "blank line inside multiline template",
+      "wikitext": "==Overview==\n{{unsafe|first\n\nsafe-looking text}}",
+      "paragraphIndexes": [
+        1
+      ],
+      "expectedCode": "paragraph-missing"
+    },
+    {
       "name": "File link",
       "wikitext": "==Overview==\nA paragraph with [[File:Newt.png|thumb|a newt]].",
       "expectedCode": "file"
@@ -61,9 +69,25 @@
       "expectedCode": "table"
     },
     {
+      "name": "blank line inside table",
+      "wikitext": "==Overview==\n{| class=\"wikitable\"\n|-\n| first cell\n\n| second cell\n|}",
+      "paragraphIndexes": [
+        1
+      ],
+      "expectedCode": "paragraph-missing"
+    },
+    {
       "name": "reference tag",
       "wikitext": "==Overview==\nA paragraph with a citation.<ref>Unreviewed source.</ref>",
       "expectedCode": "ref"
+    },
+    {
+      "name": "blank line inside reference",
+      "wikitext": "==Overview==\nBefore.<ref>first\n\nsecond</ref>After.",
+      "paragraphIndexes": [
+        1
+      ],
+      "expectedCode": "paragraph-missing"
     },
     {
       "name": "Origin section",
