@@ -1,5 +1,8 @@
 import { createHash } from "node:crypto";
-import type { RuntimeAssetIdentity } from "../bridge/runtime-manifest";
+import type {
+  RuntimeAssetIdentity,
+  RuntimeFileMetadata,
+} from "../bridge/runtime-manifest";
 
 export const TEST_ASSET_URLS = Object.freeze({
   runtimeManifest: "/nethack-runtime.json",
@@ -128,9 +131,13 @@ export function bindRuntimeToCore(
  */
 export function runtimeIdentityForFixture(
   fixture: EncyclopediaAssetFixture,
-): RuntimeAssetIdentity {
+): RuntimeAssetIdentity & { loader: RuntimeFileMetadata } {
   const runtime = readJsonAsset(fixture, fixture.urls.runtimeManifest);
   return {
+    loader: {
+      bytes: runtime.files["nethack.js"].bytes,
+      sha256: runtime.files["nethack.js"].sha256,
+    },
     wasm: {
       bytes: runtime.files["nethack.wasm"].bytes,
       sha256: runtime.files["nethack.wasm"].sha256,

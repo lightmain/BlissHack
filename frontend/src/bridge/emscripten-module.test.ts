@@ -10,6 +10,9 @@ const encoder = new TextEncoder();
 const loaderUrl = "https://example.test/runtime/nethack.js";
 const manifestUrl = "https://example.test/runtime/nethack-runtime.json";
 const wasmUrl = "https://example.test/runtime/nethack.wasm";
+const loaderBytes = encoder.encode(
+  "export default async function createNethackModule() {}",
+);
 
 /**
  * Calculate a lowercase SHA-256 fixture digest.
@@ -21,11 +24,15 @@ function sha256(bytes: Uint8Array): string {
 }
 
 /**
- * Build a valid schema-v3 runtime manifest around one WASM fixture.
+ * Build a valid schema-v3 runtime manifest around loader and WASM fixtures.
  * @param wasm Verified WASM fixture bytes.
+ * @param loader Verified JavaScript loader fixture bytes.
  * @returns Encoded runtime manifest bytes.
  */
-function runtimeManifest(wasm: Uint8Array): Uint8Array {
+function runtimeManifest(
+  wasm: Uint8Array,
+  loader = loaderBytes,
+): Uint8Array {
   return encoder.encode(JSON.stringify({
     schemaVersion: 3,
     emscriptenVersion: "6.0.9",
@@ -39,8 +46,8 @@ function runtimeManifest(wasm: Uint8Array): Uint8Array {
     },
     files: {
       "nethack.js": {
-        bytes: 1,
-        sha256: "a".repeat(64),
+        bytes: loader.byteLength,
+        sha256: sha256(loader),
       },
       "nethack.wasm": {
         bytes: wasm.byteLength,
@@ -90,11 +97,12 @@ function fakeModule(): EmscriptenModule {
 }
 
 describe("Emscripten module runtime binding", () => {
-  it("passes verified WASM bytes to the factory and freezes their identity", async () => {
+  it("loads the factory from verified loader bytes and freezes its identity", async () => {
     const wasm = Uint8Array.from([
       0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x01,
     ]);
     const module = fakeModule();
+    let fetchedLoader: Uint8Array | undefined;
     let factoryOptions: Record<string, unknown> | undefined;
     const factory: EmscriptenFactory = vi.fn(async (options) => {
       factoryOptions = options;
@@ -103,9 +111,13 @@ describe("Emscripten module runtime binding", () => {
     const fetchBytes = vi.fn(async (url: string) => {
       if (url === manifestUrl) return runtimeManifest(wasm);
       if (url === wasmUrl) return wasm.slice();
+      if (url === loaderUrl) {
+        fetchedLoader = loaderBytes.slice();
+        return fetchedLoader;
+      }
       throw new Error(`Unexpected URL ${url}`);
     });
-    const loadFactory = vi.fn(async () => factory);
+    const loadFactory = vi.fn(async (..._args: unknown[]) => factory);
 
     await expect(createGameModule(loaderUrl, {
       fetchBytes,
@@ -115,10 +127,19 @@ describe("Emscripten module runtime binding", () => {
     expect(fetchBytes.mock.calls.map(([url]) => url)).toEqual([
       manifestUrl,
       wasmUrl,
+      loaderUrl,
     ]);
-    expect(loadFactory).toHaveBeenCalledWith(loaderUrl);
+    expect(fetchedLoader).toBeDefined();
+    expect(loadFactory).toHaveBeenCalledOnce();
+    expect(loadFactory.mock.calls[0]).toEqual(
+      expect.arrayContaining([fetchedLoader]),
+    );
     expect(factoryOptions?.wasmBinary).toEqual(wasm);
     expect(module.blisshackRuntimeIdentity).toEqual({
+      loader: {
+        bytes: loaderBytes.byteLength,
+        sha256: sha256(loaderBytes),
+      },
       wasm: {
         bytes: wasm.byteLength,
         sha256: sha256(wasm),
@@ -139,7 +160,12 @@ describe("Emscripten module runtime binding", () => {
         },
       },
     });
+    const loaderIdentity = (
+      module.blisshackRuntimeIdentity as unknown as { loader?: object }
+    )?.loader;
     expect(Object.isFrozen(module.blisshackRuntimeIdentity)).toBe(true);
+    expect(loaderIdentity).toBeDefined();
+    expect(Object.isFrozen(loaderIdentity)).toBe(true);
     expect(Object.isFrozen(module.blisshackRuntimeIdentity?.wasm)).toBe(true);
     expect(
       Object.isFrozen(module.blisshackRuntimeIdentity?.encyclopedia),
@@ -212,4 +238,49 @@ describe("Emscripten module runtime binding", () => {
     })).rejects.toThrow();
     expect(loadFactory).not.toHaveBeenCalled();
   });
+
+  it.each([
+    {
+      label: "byte length",
+      manifest(wasm: Uint8Array) {
+        const value = JSON.parse(
+          new TextDecoder().decode(runtimeManifest(wasm)),
+        );
+        value.files["nethack.js"].bytes += 1;
+        return encoder.encode(JSON.stringify(value));
+      },
+    },
+    {
+      label: "digest",
+      manifest(wasm: Uint8Array) {
+        const value = JSON.parse(
+          new TextDecoder().decode(runtimeManifest(wasm)),
+        );
+        value.files["nethack.js"].sha256 = "0".repeat(64);
+        return encoder.encode(JSON.stringify(value));
+      },
+    },
+  ])(
+    "rejects an invalid loader $label before loading the factory",
+    async (testCase) => {
+      const wasm = Uint8Array.from([
+        0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x01,
+      ]);
+      const fetchBytes = vi.fn(async (url: string) => {
+        if (url === manifestUrl) return testCase.manifest(wasm);
+        if (url === wasmUrl) return wasm.slice();
+        if (url === loaderUrl) return loaderBytes.slice();
+        throw new Error(`Unexpected URL ${url}`);
+      });
+      const loadFactory = vi.fn(async () =>
+        vi.fn(async () => fakeModule()) as EmscriptenFactory
+      );
+
+      await expect(createGameModule(loaderUrl, {
+        fetchBytes,
+        loadFactory,
+      })).rejects.toThrow(/nethack\.js.*mismatch/);
+      expect(loadFactory).not.toHaveBeenCalled();
+    },
+  );
 });
