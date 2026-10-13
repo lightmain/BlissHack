@@ -1,4 +1,5 @@
 export type CoreEntityKind =
+  | "appearance"
   | "artifact"
   | "monster"
   | "object"
@@ -107,6 +108,7 @@ export interface GlyphBindingChunk {
 }
 
 const ENTITY_KINDS = new Set<CoreEntityKind>([
+  "appearance",
   "artifact",
   "monster",
   "object",
@@ -285,7 +287,7 @@ function hashValue(value: unknown, label: string): string {
 function entityId(value: unknown, label: string): string {
   const id = stringValue(value, label, 160);
   if (
-    !/^(monster:PM_|object:|artifact:ART_|terrain:S_|trap:)[A-Z0-9_]+$/
+    !/^(appearance:[A-Z0-9_]+:GENERIC|monster:PM_[A-Z0-9_]+|object:[A-Z0-9_]+|artifact:ART_[A-Z0-9_]+|terrain:S_[A-Z0-9_]+|trap:[A-Z0-9_]+)$/
       .test(id)
   ) {
     throw new Error(`${label} is not a stable entity ID`);
@@ -634,6 +636,24 @@ function validateObjectFacts(value: unknown, label: string): void {
 }
 
 /**
+ * Validate generic appearance facts without concrete object identity.
+ * @param value Candidate facts.
+ * @param label Diagnostic label.
+ */
+function validateAppearanceFacts(value: unknown, label: string): void {
+  const facts = objectValue(value, label);
+  exactKeys(facts, ["objectClass"], [], label);
+  const objectClass = stringValue(
+    facts.objectClass,
+    `${label}.objectClass`,
+    64,
+  );
+  if (!/^[A-Z0-9_]+_CLASS$/.test(objectClass)) {
+    throw new Error(`${label}.objectClass is invalid`);
+  }
+}
+
+/**
  * Validate exact artifact facts.
  * @param value Candidate facts.
  * @param label Diagnostic label.
@@ -801,7 +821,12 @@ export function validateCoreEntityRecord(
   }
   const facts = objectValue(record.facts, `${label}.facts`);
   validateFactsTree(facts, `${label}.facts`);
-  if (kind === "monster") {
+  if (kind === "appearance") {
+    validateAppearanceFacts(facts, `${label}.facts`);
+    if (id !== `appearance:${String(facts.objectClass)}:GENERIC`) {
+      throw new Error(`${label} appearance ID and object class disagree`);
+    }
+  } else if (kind === "monster") {
     validateMonsterFacts(facts, `${label}.facts`);
   } else if (kind === "object") {
     validateObjectFacts(facts, `${label}.facts`);
@@ -1061,13 +1086,17 @@ function validateGlyphBinding(value: unknown, label: string): void {
     }
   }
   if ("appearanceId" in binding) {
-    const appearanceId = stringValue(
+    const appearanceId = entityId(
       binding.appearanceId,
       `${label}.appearanceId`,
-      160,
     );
-    if (!/^appearance:[A-Z0-9_]+:GENERIC$/.test(appearanceId)) {
-      throw new Error(`${label}.appearanceId is invalid`);
+    const objectClass = stringValue(
+      binding.objectClass,
+      `${label}.objectClass`,
+      64,
+    );
+    if (appearanceId !== `appearance:${objectClass}:GENERIC`) {
+      throw new Error(`${label} appearance ID and object class disagree`);
     }
   }
   if ("pileTop" in binding && typeof binding.pileTop !== "boolean") {

@@ -1,4 +1,10 @@
 import { ATR_BOLD, appendWindowText } from "../game-state";
+import {
+  decodeRuntimeManifest,
+  runtimeIdentityFromManifest,
+  verifyRuntimeAssetBytes,
+  type RuntimeAssetIdentity,
+} from "./runtime-manifest";
 
 /** Emscripten filesystem surface used by DLB access and save persistence. */
 export interface EmscriptenFileSystem {
@@ -33,6 +39,7 @@ export interface EmscriptenModule {
   ENV?: Record<string, string>;
   FS: EmscriptenFileSystem;
   IDBFS?: unknown;
+  readonly blisshackRuntimeIdentity?: RuntimeAssetIdentity;
 }
 
 interface NethackGlobals {
@@ -71,6 +78,10 @@ export type EmscriptenFactory = (
 /** Session guard used while a module factory is still loading asynchronously. */
 export interface GameModuleOptions {
   isCurrent?: () => boolean;
+  fetchBytes?: (url: string) => Promise<Uint8Array>;
+  loadFactory?: (url: string) => Promise<EmscriptenFactory>;
+  runtimeManifestUrl?: string;
+  wasmBinaryUrl?: string;
 }
 
 /**
@@ -89,12 +100,31 @@ export async function createGameModule(
   options: GameModuleOptions = {},
 ): Promise<EmscriptenModule> {
   const isCurrent = options.isCurrent ?? (() => true);
-  const loaderUrl = new URL(wasmUrl, globalThis.location.href).href;
-  const imported = await import(/* @vite-ignore */ loaderUrl) as {
-    default: EmscriptenFactory;
-  };
-  return imported.default({
+  const baseUrl = globalThis.location?.href ?? "http://localhost/";
+  const loaderUrl = new URL(wasmUrl, baseUrl).href;
+  const runtimeManifestUrl = new URL(
+    options.runtimeManifestUrl ?? "nethack-runtime.json",
+    loaderUrl,
+  ).href;
+  const wasmBinaryUrl = new URL(
+    options.wasmBinaryUrl ?? "nethack.wasm",
+    loaderUrl,
+  ).href;
+  const fetchBytes = options.fetchBytes ?? fetchRuntimeBytes;
+  const loadFactory = options.loadFactory ?? importEmscriptenFactory;
+  const runtimeBytes = await fetchBytes(runtimeManifestUrl);
+  const runtime = decodeRuntimeManifest(runtimeBytes);
+  const wasmBinary = await fetchBytes(wasmBinaryUrl);
+  await verifyRuntimeAssetBytes(
+    wasmBinary,
+    runtime.files["nethack.wasm"],
+    wasmBinaryUrl,
+  );
+  assertWasmHeader(wasmBinary);
+  const factory = await loadFactory(loaderUrl);
+  const module = await factory({
     noInitialRun: true,
+    wasmBinary,
     locateFile: (path: string) => new URL(path, loaderUrl).href,
     preRun: (runtimeModule: EmscriptenModule) =>
       preparePlayerNamePrompt(runtimeModule),
@@ -105,4 +135,52 @@ export async function createGameModule(
       if (isCurrent()) appendWindowText(-1, ATR_BOLD, text);
     },
   });
+  Object.defineProperty(module, "blisshackRuntimeIdentity", {
+    value: runtimeIdentityFromManifest(runtime),
+    configurable: false,
+    enumerable: true,
+    writable: false,
+  });
+  return module;
+}
+
+/**
+ * Require the standard WebAssembly magic and version-one header.
+ * @param bytes Verified runtime bytes.
+ */
+function assertWasmHeader(bytes: Uint8Array): void {
+  const expected = [0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00];
+  if (
+    bytes.byteLength < expected.length
+    || expected.some((byte, index) => bytes[index] !== byte)
+  ) {
+    throw new Error("NetHack runtime does not have a valid WebAssembly header");
+  }
+}
+
+/**
+ * Fetch one same-origin runtime asset as independent bytes.
+ * @param url Absolute runtime asset URL.
+ * @returns Response bytes.
+ */
+async function fetchRuntimeBytes(url: string): Promise<Uint8Array> {
+  const response = await fetch(url, { credentials: "same-origin" });
+  if (!response.ok) {
+    throw new Error(`Failed to fetch ${url}: ${response.status}`);
+  }
+  return new Uint8Array(await response.arrayBuffer());
+}
+
+/**
+ * Import the Emscripten ES module factory from one runtime URL.
+ * @param url Absolute loader module URL.
+ * @returns Emscripten module factory.
+ */
+async function importEmscriptenFactory(
+  url: string,
+): Promise<EmscriptenFactory> {
+  const imported = await import(/* @vite-ignore */ url) as {
+    default: EmscriptenFactory;
+  };
+  return imported.default;
 }

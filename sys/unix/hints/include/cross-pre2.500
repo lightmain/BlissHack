@@ -3,8 +3,8 @@
 #
 # Cross-compiling -PRE section 2
 #
-# Modified for BlissHack by lightmain, 2026-09-12:
-# enable authoritative glyph-to-tile mapping in the WebAssembly build.
+# Modified for BlissHack by lightmain, 2026-09-12 and 2026-10-13:
+# enable authoritative glyph-to-tile mapping and verified wasmBinary startup.
 
 ifdef BUILD_TARGET_LUA
 #===============-=================================================
@@ -324,6 +324,7 @@ EMCC_LFLAGS += -s ALLOW_TABLE_GROWTH
 EMCC_LFLAGS += -s ASYNCIFY -s ASYNCIFY_IMPORTS='["local_callback"]'
 EMCC_LFLAGS += -O3
 EMCC_LFLAGS += -s MODULARIZE
+EMCC_LFLAGS += -s INCOMING_MODULE_JS_API='["locateFile","noInitialRun","preRun","print","printErr","wasmBinary"]'
 EMCC_LFLAGS += -s EXPORTED_FUNCTIONS='["_main", "_shim_graphics_set_callback", "_shim_graphics_set_player_name", "_shim_graphics_set_restore_required", "_shim_graphics_get_save_fingerprint", "_repopulate_perminvent", "_malloc", "_free"]'
 EMCC_LFLAGS += -s EXPORTED_RUNTIME_METHODS='["cwrap", "ccall", "addFunction", \
 			"removeFunction", "UTF8ToString", "stringToUTF8", "getValue", \

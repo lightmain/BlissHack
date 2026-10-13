@@ -56,6 +56,7 @@ function inventoryItem(glyph: number): MenuItem {
     color: 7,
     text: "visible inventory text must not be parsed",
     itemFlags: 0,
+    visibleEntityToken: null,
   };
 }
 

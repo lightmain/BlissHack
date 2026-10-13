@@ -6,8 +6,10 @@ import {
   createEncyclopediaAssetFixture,
   type EncyclopediaAssetFixture,
   readJsonAsset,
+  runtimeIdentityForFixture,
   writeJsonAsset,
 } from "./encyclopedia-loader.test-fixtures";
+import type { RuntimeAssetIdentity } from "../bridge/runtime-manifest";
 
 interface FetchAssetOptions {
   signal?: AbortSignal;
@@ -45,9 +47,11 @@ function fixtureFetcher(fixture: EncyclopediaAssetFixture) {
 function fixtureLoader(
   fixture: EncyclopediaAssetFixture,
   fetchBytes: FetchAsset = fixtureFetcher(fixture),
+  runtimeIdentity: RuntimeAssetIdentity = runtimeIdentityForFixture(fixture),
 ) {
   return createEncyclopediaLoader({
     fetchBytes,
+    runtimeIdentity,
     runtimeManifestUrl: fixture.urls.runtimeManifest,
     coreBaseUrl: "/encyclopedia/core/",
     wikiBaseUrl: "/encyclopedia/wiki/",
@@ -104,19 +108,19 @@ describe("encyclopedia runtime loader", () => {
     {
       label: "core manifest byte length",
       mutate(runtime: Record<string, any>) {
-        runtime.encyclopedia.manifest.bytes += 1;
+        runtime.encyclopedia.core.manifest.bytes += 1;
       },
     },
     {
       label: "core manifest digest",
       mutate(runtime: Record<string, any>) {
-        runtime.encyclopedia.manifest.sha256 = "0".repeat(64);
+        runtime.encyclopedia.core.manifest.sha256 = "0".repeat(64);
       },
     },
     {
       label: "source fingerprint",
       mutate(runtime: Record<string, any>) {
-        runtime.encyclopedia.sourceFingerprint = "1".repeat(64);
+        runtime.encyclopedia.core.sourceFingerprint = "1".repeat(64);
       },
     },
   ])("fails closed on a mismatched runtime $label", async ({ mutate }) => {
@@ -128,6 +132,49 @@ describe("encyclopedia runtime loader", () => {
     await expect(fixtureLoader(fixture).loadGlyphBinding(0)).rejects
       .toThrow();
   });
+
+  it("fails closed when the active module WASM identity differs", async () => {
+    const fixture = createEncyclopediaAssetFixture();
+    const identity = runtimeIdentityForFixture(fixture);
+    identity.wasm.sha256 = "0".repeat(64);
+
+    await expect(
+      fixtureLoader(fixture, fixtureFetcher(fixture), identity)
+        .loadGlyphBinding(0),
+    ).rejects.toThrow(/runtime identity/);
+  });
+
+  it.each([
+    {
+      label: "core encyclopedia root",
+      mutate(fixture: EncyclopediaAssetFixture) {
+        const manifest = readJsonAsset(fixture, fixture.urls.coreManifest);
+        manifest.generatorVersion = "1.0.1";
+        writeJsonAsset(fixture, fixture.urls.coreManifest, manifest);
+      },
+    },
+    {
+      label: "Wiki encyclopedia root",
+      mutate(fixture: EncyclopediaAssetFixture) {
+        const manifest = readJsonAsset(fixture, fixture.urls.wikiManifest);
+        manifest.generatorVersion = "1.0.1";
+        writeJsonAsset(fixture, fixture.urls.wikiManifest, manifest);
+      },
+    },
+  ])(
+    "rejects a replacement $label for the same active WASM",
+    async ({ mutate }) => {
+      const fixture = createEncyclopediaAssetFixture();
+      const identity = runtimeIdentityForFixture(fixture);
+      mutate(fixture);
+      bindRuntimeToCore(fixture);
+
+      await expect(
+        fixtureLoader(fixture, fixtureFetcher(fixture), identity)
+          .loadEntity("terrain:S_FOUNTAIN"),
+      ).rejects.toThrow(/runtime identity/);
+    },
+  );
 
   it("rejects a core manifest schema error even when runtime metadata matches", async () => {
     const fixture = createEncyclopediaAssetFixture();
@@ -254,7 +301,76 @@ describe("encyclopedia runtime loader", () => {
     }
   });
 
-  it("forwards AbortSignal and rejects a pending request after abort", async () => {
+  it("deduplicates signaled requests while aborting callers independently", async () => {
+    const fixture = createEncyclopediaAssetFixture();
+    let requestedSignal: AbortSignal | undefined;
+    let markEntityRequested: (() => void) | undefined;
+    let releaseEntity: (() => void) | undefined;
+    const entityRequested = new Promise<void>((resolve) => {
+      markEntityRequested = resolve;
+    });
+    const entityReleased = new Promise<void>((resolve) => {
+      releaseEntity = resolve;
+    });
+    const fetchSpy = vi.fn<FetchAsset>(async (url, options) => {
+      const bytes = fixture.assets.get(url);
+      if (!bytes) throw new Error(`Asset not found: ${url}`);
+      if (url !== fixture.urls.entityChunk) return bytes.slice();
+      requestedSignal = options?.signal;
+      markEntityRequested?.();
+      await entityReleased;
+      if (options?.signal?.aborted) {
+        throw new DOMException("The operation was aborted", "AbortError");
+      }
+      return bytes.slice();
+    });
+    const firstController = new AbortController();
+    const secondController = new AbortController();
+    const loader = fixtureLoader(fixture, fetchSpy);
+    const first = loader.loadEntity("terrain:S_FOUNTAIN", {
+      signal: firstController.signal,
+    });
+    const firstOutcome = first.then(
+      () => ({ status: "fulfilled" as const }),
+      (error: unknown) => ({ status: "rejected" as const, error }),
+    );
+    const second = loader.loadEntity("terrain:S_FOUNTAIN", {
+      signal: secondController.signal,
+    });
+
+    await entityRequested;
+    expect(requestedSignal).toBeDefined();
+    expect(requestedSignal).not.toBe(firstController.signal);
+    expect(requestedSignal).not.toBe(secondController.signal);
+    expect(callsForUrl(fetchSpy, fixture.urls.entityChunk)).toBe(1);
+    firstController.abort();
+    await expect(firstOutcome).resolves.toMatchObject({
+      status: "rejected",
+      error: { name: "AbortError" },
+    });
+    releaseEntity?.();
+
+    await expect(second).resolves.toMatchObject({
+      core: { id: "terrain:S_FOUNTAIN" },
+    });
+  });
+
+  it("rejects an aborted caller even when every required asset is cached", async () => {
+    const fixture = createEncyclopediaAssetFixture();
+    const fetchBytes = fixtureFetcher(fixture);
+    const loader = fixtureLoader(fixture, fetchBytes);
+    await loader.loadEntity("terrain:S_FOUNTAIN");
+    const callsBeforeAbort = fetchBytes.mock.calls.length;
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      loader.loadEntity("terrain:S_FOUNTAIN", { signal: controller.signal }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(fetchBytes.mock.calls).toHaveLength(callsBeforeAbort);
+  });
+
+  it("aborts the shared fetch after its only caller is cancelled", async () => {
     const fixture = createEncyclopediaAssetFixture();
     let requestedSignal: AbortSignal | undefined;
     let markEntityRequested: (() => void) | undefined;
@@ -284,19 +400,30 @@ describe("encyclopedia runtime loader", () => {
     );
 
     await entityRequested;
-    expect(requestedSignal).toBe(controller.signal);
+    expect(requestedSignal).toBeDefined();
+    expect(requestedSignal).not.toBe(controller.signal);
     controller.abort();
 
     await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    expect(requestedSignal?.aborted).toBe(true);
   });
 
   it.each([
+    {
+      label: "Wiki manifest runtime digest",
+      mutate(fixture: EncyclopediaAssetFixture) {
+        const manifest = readJsonAsset(fixture, fixture.urls.wikiManifest);
+        manifest.generatorVersion = "1.0.1";
+        writeJsonAsset(fixture, fixture.urls.wikiManifest, manifest);
+      },
+    },
     {
       label: "Wiki manifest schema",
       mutate(fixture: EncyclopediaAssetFixture) {
         const manifest = readJsonAsset(fixture, fixture.urls.wikiManifest);
         manifest.schemaVersion = 2;
         writeJsonAsset(fixture, fixture.urls.wikiManifest, manifest);
+        bindRuntimeToCore(fixture);
       },
     },
     {
@@ -305,6 +432,7 @@ describe("encyclopedia runtime loader", () => {
         const manifest = readJsonAsset(fixture, fixture.urls.wikiManifest);
         manifest.unexpected = true;
         writeJsonAsset(fixture, fixture.urls.wikiManifest, manifest);
+        bindRuntimeToCore(fixture);
       },
     },
     {
@@ -313,6 +441,7 @@ describe("encyclopedia runtime loader", () => {
         const manifest = readJsonAsset(fixture, fixture.urls.wikiManifest);
         manifest.chunks[0].file = "../wiki-001.json";
         writeJsonAsset(fixture, fixture.urls.wikiManifest, manifest);
+        bindRuntimeToCore(fixture);
       },
     },
     {
@@ -331,6 +460,7 @@ describe("encyclopedia runtime loader", () => {
         const manifest = readJsonAsset(fixture, fixture.urls.wikiManifest);
         manifest.chunks[0].bytes += 1;
         writeJsonAsset(fixture, fixture.urls.wikiManifest, manifest);
+        bindRuntimeToCore(fixture);
       },
     },
     {
@@ -344,6 +474,82 @@ describe("encyclopedia runtime loader", () => {
           fixture.urls.wikiManifest,
           fixture.urls.wikiChunk,
         );
+        bindRuntimeToCore(fixture);
+      },
+    },
+    {
+      label: "Wiki attribution",
+      mutate(fixture: EncyclopediaAssetFixture) {
+        const chunk = readJsonAsset(fixture, fixture.urls.wikiChunk);
+        chunk.records[0].page.authorLabel = "Someone else";
+        writeJsonAsset(fixture, fixture.urls.wikiChunk, chunk);
+        bindChunkMetadata(
+          fixture,
+          fixture.urls.wikiManifest,
+          fixture.urls.wikiChunk,
+        );
+        bindRuntimeToCore(fixture);
+      },
+    },
+    {
+      label: "Wiki source URL",
+      mutate(fixture: EncyclopediaAssetFixture) {
+        const chunk = readJsonAsset(fixture, fixture.urls.wikiChunk);
+        chunk.records[0].page.sourceUrl =
+          "https://nethackwiki.com/wiki/Fountain";
+        writeJsonAsset(fixture, fixture.urls.wikiChunk, chunk);
+        bindChunkMetadata(
+          fixture,
+          fixture.urls.wikiManifest,
+          fixture.urls.wikiChunk,
+        );
+        bindRuntimeToCore(fixture);
+      },
+    },
+    {
+      label: "Wiki modifications",
+      mutate(fixture: EncyclopediaAssetFixture) {
+        const chunk = readJsonAsset(fixture, fixture.urls.wikiChunk);
+        chunk.records[0].modifications = ["wording unchanged"];
+        writeJsonAsset(fixture, fixture.urls.wikiChunk, chunk);
+        bindChunkMetadata(
+          fixture,
+          fixture.urls.wikiManifest,
+          fixture.urls.wikiChunk,
+        );
+        bindRuntimeToCore(fixture);
+      },
+    },
+    {
+      label: "Wiki paragraph digest",
+      mutate(fixture: EncyclopediaAssetFixture) {
+        const chunk = readJsonAsset(fixture, fixture.urls.wikiChunk);
+        chunk.records[0].sections[0].paragraphHashes[0] = "0".repeat(64);
+        writeJsonAsset(fixture, fixture.urls.wikiChunk, chunk);
+        bindChunkMetadata(
+          fixture,
+          fixture.urls.wikiManifest,
+          fixture.urls.wikiChunk,
+        );
+        bindRuntimeToCore(fixture);
+      },
+    },
+    {
+      label: "Wiki manifest aggregate",
+      mutate(fixture: EncyclopediaAssetFixture) {
+        const manifest = readJsonAsset(fixture, fixture.urls.wikiManifest);
+        manifest.recordCount = 2;
+        writeJsonAsset(fixture, fixture.urls.wikiManifest, manifest);
+        bindRuntimeToCore(fixture);
+      },
+    },
+    {
+      label: "Wiki revision cross-reference",
+      mutate(fixture: EncyclopediaAssetFixture) {
+        const manifest = readJsonAsset(fixture, fixture.urls.wikiManifest);
+        manifest.revisions[0].revisionId += 1;
+        writeJsonAsset(fixture, fixture.urls.wikiManifest, manifest);
+        bindRuntimeToCore(fixture);
       },
     },
   ])("degrades a $label failure to core facts only", async ({ mutate }) => {

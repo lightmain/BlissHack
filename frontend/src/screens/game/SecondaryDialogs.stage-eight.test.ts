@@ -61,6 +61,7 @@ function menuItem(identifier: number, accelerator: string): MenuItem {
     identifier,
     itemFlags: 0,
     text: `opaque option ${identifier}`,
+    visibleEntityToken: null,
   };
 }
 

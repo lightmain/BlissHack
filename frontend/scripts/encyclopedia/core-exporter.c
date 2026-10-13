@@ -740,6 +740,34 @@ object_class_symbol(int value)
 }
 
 /**
+ * Write one generic object-class appearance without a concrete object effect.
+ * @param index objects[] generic index below FIRST_OBJECT.
+ */
+static void
+json_appearance(int index)
+{
+    const struct objclass *object = &objects[index];
+    const char *class_symbol = object_class_symbol(object->oc_class);
+    char appearance_id[160];
+
+    if (snprintf(appearance_id, sizeof appearance_id, "appearance:%s:GENERIC",
+                 class_symbol)
+        >= (int) sizeof appearance_id)
+        fail("appearance ID exceeds exporter bound");
+    fputs("{\"schemaVersion\":1,\"id\":", stdout);
+    json_string(appearance_id);
+    fputs(",\"kind\":\"appearance\",\"names\":{\"primary\":", stdout);
+    json_string(obj_descr[index].oc_descr);
+    fprintf(stdout, "},\"symbol\":%d,\"color\":%u,\"facts\":{\"objectClass\":",
+            (int) object->oc_class, (unsigned) object->oc_color);
+    json_string(class_symbol);
+    fputs("},\"sourceRefs\":[{\"path\":\"include/objects.h\",\"symbol\":",
+          stdout);
+    json_string(object_symbol(index));
+    fputs("}]}", stdout);
+}
+
+/**
  * Resolve an object material symbol.
  * @param value oc_material value.
  * @return Material enum symbol.
@@ -1389,14 +1417,18 @@ main(void)
     objects_globals_init();
 
     fprintf(stdout, "{\"schemaVersion\":1,\"maxGlyph\":%d,\"counts\":{"
-                    "\"monster\":%d,\"object\":%d,\"artifact\":%d,"
+                    "\"appearance\":%d,\"monster\":%d,\"object\":%d,\"artifact\":%d,"
                     "\"terrain\":%d,\"trap\":%d},\"records\":[",
-            MAX_GLYPH, NUMMONS, NUM_OBJECTS - FIRST_OBJECT,
+            MAX_GLYPH, FIRST_OBJECT - 1, NUMMONS, NUM_OBJECTS - FIRST_OBJECT,
             NROFARTIFACTS, S_water - S_stone + 1, TRAPNUM - 1);
 
-    for (index = 1; index <= NROFARTIFACTS; ++index) {
+    for (index = 1; index < FIRST_OBJECT; ++index) {
         if (index > 1)
             fputc(',', stdout);
+        json_appearance(index);
+    }
+    for (index = 1; index <= NROFARTIFACTS; ++index) {
+        fputc(',', stdout);
         json_artifact(index);
     }
     for (index = 0; index < NUMMONS; ++index) {

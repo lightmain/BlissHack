@@ -38,11 +38,16 @@ async function runtimeFixture() {
   const directory = await mkdtemp(join(tmpdir(), "blisshack-runtime-"));
   temporaryDirectories.push(directory);
   const encyclopediaDirectory = join(directory, "encyclopedia/core");
-  await mkdir(encyclopediaDirectory, { recursive: true });
+  const wikiDirectory = join(directory, "encyclopedia/wiki");
+  await Promise.all([
+    mkdir(encyclopediaDirectory, { recursive: true }),
+    mkdir(wikiDirectory, { recursive: true }),
+  ]);
   await Promise.all([
     writeFile(
       join(directory, "nethack.js"),
-      "const runtime = {};\nexport default runtime;\n",
+      "const runtime = {}; runtime.wasm = Module[\"wasmBinary\"];\n"
+        + "export default runtime;\n",
       "utf8",
     ),
     writeFile(
@@ -54,6 +59,14 @@ async function runtimeFixture() {
       JSON.stringify({
         schemaVersion: 1,
         sourceFingerprint: "a".repeat(64),
+      }),
+      "utf8",
+    ),
+    writeFile(
+      join(wikiDirectory, "manifest.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        recordCount: 0,
       }),
       "utf8",
     ),
@@ -113,6 +126,28 @@ describe("runtime asset manifest", () => {
     );
   });
 
+  it("rejects a loader which cannot consume verified WASM bytes", async () => {
+    const directory = await runtimeFixture();
+    await writeFile(
+      join(directory, "nethack.js"),
+      "const runtime = {};\nexport default runtime;\n",
+      "utf8",
+    );
+    const manifest = await createRuntimeManifest({
+      ...TOOLCHAIN,
+      assetDirectory: directory,
+    });
+    await writeFile(
+      join(directory, "nethack-runtime.json"),
+      `${JSON.stringify(manifest, null, 2)}\n`,
+      "utf8",
+    );
+
+    await expect(verifyRuntimeAssets(directory)).rejects.toThrow(
+      /verified wasmBinary bytes/,
+    );
+  });
+
   it("rejects symbolic links in the runtime triplet", async () => {
     const directory = await runtimeFixture();
     const wasmPath = join(directory, "nethack.wasm");
@@ -133,7 +168,8 @@ describe("runtime asset manifest", () => {
     const lengthDirectory = await runtimeFixture();
     await writeFile(
       join(lengthDirectory, "nethack.js"),
-      "const runtime = {};\nexport default runtime;\nextra",
+      "const runtime = {}; runtime.wasm = Module[\"wasmBinary\"];\n"
+        + "export default runtime;\nextra",
       "utf8",
     );
     await expect(verifyRuntimeAssets(lengthDirectory)).rejects.toThrow(
