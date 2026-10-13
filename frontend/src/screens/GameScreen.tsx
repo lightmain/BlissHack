@@ -96,6 +96,10 @@ import { ActionItemChooser } from "./game/ActionItemChooser";
 import { PauseOverlay } from "./game/PauseOverlay";
 import { SecondaryInputDialog } from "./game/SecondaryInputDialog";
 import {
+  ExamineDialog,
+  type ExamineDialogState,
+} from "./game/ExamineDialog";
+import {
   directionKeyFromMapTarget,
   isDirectionKey,
 } from "./game/direction-input";
@@ -171,6 +175,8 @@ export function GameScreen({
   } | null>(null);
   const [examineViewTarget, setExamineViewTarget] =
     useState<ExamineTarget | null>(null);
+  const [examineDialogState, setExamineDialogState] =
+    useState<ExamineDialogState>({ status: "loading" });
   const previousRuntimeSettings = useRef<string | null>(null);
   const settings = profile.interface;
   const encyclopediaLoader = useMemo(
@@ -299,6 +305,7 @@ export function GameScreen({
         inspectRuntime.complete();
       },
       onActionCompletion: (completion) => {
+        setExamineDialogState({ status: "loading" });
         setExamineViewTarget(completion.target);
       },
       setActionIntentActive,
@@ -320,6 +327,9 @@ export function GameScreen({
       : null;
   const visibleExamineViewTarget =
     settings.informationLevel === "detailed"
+      && snapshot.phase !== "error"
+      && examineViewTarget?.moduleId === moduleId
+      && examineViewTarget.sessionId === sessionId
       ? examineViewTarget
       : null;
   const liveExamineTarget = currentExamineTarget(
@@ -410,13 +420,60 @@ export function GameScreen({
   ]);
 
   useEffect(() => {
-    if (settings.informationLevel !== "original") return undefined;
+    if (settings.informationLevel !== "detailed") {
+      const timeout = globalThis.setTimeout(
+        () => setExamineViewTarget(null),
+        0,
+      );
+      return () => globalThis.clearTimeout(timeout);
+    }
+    return undefined;
+  }, [settings.informationLevel]);
+
+  useEffect(() => {
+    if (snapshot.phase === "error") {
+      const timeout = globalThis.setTimeout(
+        () => setExamineViewTarget(null),
+        0,
+      );
+      return () => globalThis.clearTimeout(timeout);
+    }
+    return undefined;
+  }, [snapshot.phase]);
+
+  useEffect(() => {
     const timeout = globalThis.setTimeout(
       () => setExamineViewTarget(null),
       0,
     );
     return () => globalThis.clearTimeout(timeout);
-  }, [settings.informationLevel]);
+  }, [moduleId, sessionId]);
+
+  useEffect(() => {
+    const target = visibleExamineViewTarget;
+    if (!target || !encyclopediaLoader) return undefined;
+    const controller = new AbortController();
+    void encyclopediaLoader.loadEntity(
+      target.entityId,
+      { signal: controller.signal },
+    ).then((entity) => {
+      if (controller.signal.aborted) return;
+      if (!entity) {
+        setExamineDialogState({ status: "core-failure" });
+        setExamineViewTarget(null);
+        return;
+      }
+      setExamineDialogState({ status: "ready", entity });
+    }).catch(() => {
+      if (controller.signal.aborted) return;
+      setExamineDialogState({ status: "core-failure" });
+      setExamineViewTarget(null);
+    });
+    return () => {
+      controller.abort();
+      setExamineViewTarget(null);
+    };
+  }, [encyclopediaLoader, visibleExamineViewTarget]);
 
   useEffect(() => {
     snapshotRef.current = snapshot;
@@ -1095,6 +1152,16 @@ export function GameScreen({
     hoverController.leave(key);
   }, [hoverController]);
 
+  /** Close the local encyclopedia surface without sending a core input. */
+  const closeExamine = useCallback((): void => {
+    setExamineViewTarget(null);
+  }, []);
+
+  /** Restore focus from the copied origin after the dialog has unmounted. */
+  const restoreExamineFocus = useCallback((): void => {
+    restoreExamineTargetFocus(visibleExamineViewTarget);
+  }, [visibleExamineViewTarget]);
+
   /**
    * Keep the hover owner synchronized with the map's pointer-capture state.
    * @param dragging - whether a secondary gesture has crossed the pan threshold.
@@ -1137,6 +1204,7 @@ export function GameScreen({
       data-settings-status={snapshot.runtimeSettingsStatus}
       aria-label="BlissHack"
       onMouseDownCapture={handleGameMouseDown}
+      tabIndex={-1}
     >
       {snapshot.phase === "error" ? (
         <section className="nh-fatal" role="alert">
@@ -1169,6 +1237,7 @@ export function GameScreen({
             || !snapshot.commandInput
             || snapshot.modal !== null
             || pauseView !== null
+            || visibleExamineViewTarget !== null
             || actionState.intent !== null
             || inventoryDragState.status !== "idle"
           }
@@ -1180,7 +1249,12 @@ export function GameScreen({
           followPlayer={settings.followPlayer}
           historyLines={settings.messageHistoryLines}
           informationLevel={settings.informationLevel}
-          inert={readOnly || snapshot.modal !== null || pauseView !== null}
+          inert={
+            readOnly
+            || snapshot.modal !== null
+            || pauseView !== null
+            || visibleExamineViewTarget !== null
+          }
           inputRequest={secondaryInputRequest ? null : snapshot.inputRequest}
           inventoryDragController={inventoryDragController}
           inventoryDragState={inventoryDragState}
@@ -1287,6 +1361,20 @@ export function GameScreen({
           />
         )}
       </OverlayRoot>
+      {!readOnly && visibleExamineViewTarget && (
+        <ExamineDialog
+          mapRenderer={settings.mapRenderer}
+          nethackVersion={
+            examineDialogState.status === "ready"
+              ? examineDialogState.entity.nethackVersion ?? "5.0.0"
+              : "5.0.0"
+          }
+          onClose={closeExamine}
+          onRestoreFocus={restoreExamineFocus}
+          state={examineDialogState}
+          target={visibleExamineViewTarget}
+        />
+      )}
       {!readOnly
         && snapshot.modal
         && !(
@@ -1451,6 +1539,38 @@ function createInventoryDropRuntime(
       snapshot = nextSnapshot;
     },
   };
+}
+
+/**
+ * Restore focus from a serialized Examine origin after inertness is removed.
+ * @param target - copied map or inventory target which opened the dialog.
+ */
+function restoreExamineTargetFocus(target: ExamineTarget | null): void {
+  if (typeof document === "undefined") return;
+  globalThis.setTimeout(() => {
+    /** Focus the best connected fallback after React commits dialog removal. */
+    const focus = (): void => {
+      let destination: HTMLElement | null = null;
+      if (target?.surface === "inventory") {
+        destination = document.querySelector<HTMLElement>(
+          `[data-inspect-target="inventory:${target.inventoryRevision}:${target.accelerator}"]`,
+        ) ?? document.querySelector<HTMLElement>(".permanent-inventory");
+      } else if (target?.surface === "map") {
+        destination = document.querySelector<HTMLElement>(
+          '[data-context-menu-trigger="map"]',
+        );
+      }
+      destination ??= document.querySelector<HTMLElement>(".nh-shell");
+      if (destination?.isConnected && !destination.closest("[inert]")) {
+        destination.focus({ preventScroll: true });
+      }
+    };
+    if (typeof globalThis.requestAnimationFrame === "function") {
+      globalThis.requestAnimationFrame(focus);
+    } else {
+      focus();
+    }
+  }, 0);
 }
 
 /**

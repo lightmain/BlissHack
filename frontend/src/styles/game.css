@@ -302,6 +302,536 @@
   background: #321d1d;
 }
 
+.examine-backdrop {
+  position: fixed;
+  z-index: 30;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 28px;
+  background: rgb(0 0 0 / 74%);
+  backdrop-filter: blur(2px);
+  pointer-events: auto;
+}
+
+.examine-dialog {
+  width: min(1040px, calc(100vw - 56px));
+  height: min(720px, calc(100dvh - 56px));
+  min-height: 520px;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid #626d70;
+  border-radius: 6px;
+  background: #0f1314;
+  box-shadow: 0 28px 70px rgb(0 0 0 / 72%);
+  color: #d6dbd8;
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
+  letter-spacing: 0;
+}
+
+.examine-header {
+  min-width: 0;
+  min-height: 84px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  border-bottom: 1px solid #30383a;
+  background: #171c1e;
+}
+
+.examine-portrait {
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid #817547;
+  border-radius: 5px;
+  background: #24231b;
+  color: #e5ca70;
+  font: 700 31px/1 "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
+}
+
+.examine-portrait-tile {
+  width: 48px;
+  height: 48px;
+  image-rendering: pixelated;
+}
+
+.examine-heading {
+  min-width: 0;
+}
+
+.examine-heading h1 {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: #f4f6f3;
+  font-size: 25px;
+  font-weight: 650;
+  line-height: 1.15;
+}
+
+.examine-heading p {
+  margin: 5px 0 0;
+  color: #97a1a2;
+  font-size: 12px;
+}
+
+.examine-badges,
+.examine-traits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.examine-badges {
+  margin-top: 8px;
+}
+
+.examine-badge,
+.examine-trait {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  border: 1px solid #465052;
+  border-radius: 3px;
+  color: #b9c2c2;
+}
+
+.examine-badge {
+  padding: 3px 7px;
+  font: 600 10px/1.2 "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
+}
+
+.examine-close {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: #a5adaf;
+  cursor: pointer;
+}
+
+.examine-close:hover,
+.examine-close:focus-visible {
+  border-color: #707b7e;
+  color: #fff;
+  outline: 2px solid #7ab7c9;
+  outline-offset: 1px;
+}
+
+.examine-source-strip {
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  padding: 7px 18px;
+  border-bottom: 1px solid #30383a;
+  background: #121718;
+  color: #9ba5a6;
+  font-size: 11px;
+  white-space: normal;
+}
+
+.examine-source-strip a,
+.examine-license-note a {
+  color: #78bac8;
+  text-decoration: none;
+}
+
+.examine-source-strip a:hover,
+.examine-source-strip a:focus-visible,
+.examine-license-note a:hover,
+.examine-license-note a:focus-visible {
+  color: #a7d8e2;
+  text-decoration: underline;
+  outline: none;
+}
+
+.examine-source-divider {
+  color: #626d70;
+}
+
+.examine-source-note {
+  flex-basis: 100%;
+  color: #818b8c;
+  font-size: 10px;
+}
+
+.examine-layout {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 330px;
+}
+
+.examine-layout[data-facts-only="true"] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.examine-article {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  border-right: 1px solid #30383a;
+}
+
+.examine-tabs {
+  min-height: 43px;
+  display: flex;
+  gap: 2px;
+  padding: 6px 14px 0;
+  border-bottom: 1px solid #30383a;
+  background: #111617;
+}
+
+.examine-tab {
+  position: relative;
+  min-width: 92px;
+  padding: 8px 10px 10px;
+  border: 0;
+  background: transparent;
+  color: #9ba5a6;
+  cursor: pointer;
+  font: 600 12px/1.2 inherit;
+  letter-spacing: 0;
+}
+
+.examine-tab:hover,
+.examine-tab:focus-visible {
+  color: #fff;
+  outline: none;
+}
+
+.examine-tab[aria-selected="true"] {
+  color: #e5ca70;
+}
+
+.examine-tab[aria-selected="true"]::after {
+  position: absolute;
+  right: 8px;
+  bottom: -1px;
+  left: 8px;
+  height: 2px;
+  background: #e5ca70;
+  content: "";
+}
+
+.examine-tab-panel {
+  min-height: 0;
+  padding: 22px 24px 34px;
+  overflow-y: auto;
+  scrollbar-color: #596365 #101415;
+  scrollbar-width: thin;
+}
+
+.examine-wiki-section + .examine-wiki-section {
+  margin-top: 26px;
+}
+
+.examine-tab-panel h2 {
+  margin: 0 0 10px;
+  color: #f4f6f3;
+  font-size: 17px;
+  font-weight: 650;
+}
+
+.examine-tab-panel p {
+  max-width: 70ch;
+  margin: 0 0 14px;
+  overflow-wrap: anywhere;
+  color: #c8cdca;
+  font-size: 14px;
+  line-height: 1.62;
+}
+
+.examine-excerpt-label {
+  margin-bottom: 9px !important;
+  color: #929c9d !important;
+  font: 700 10px/1.3 "SFMono-Regular", Menlo, Monaco, Consolas, monospace !important;
+  text-transform: uppercase;
+}
+
+.examine-wiki-excerpt {
+  max-width: 70ch;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.examine-facts {
+  min-width: 0;
+  min-height: 0;
+  padding: 18px;
+  overflow-y: auto;
+  background: #0c1011;
+  scrollbar-color: #596365 #0c1011;
+  scrollbar-width: thin;
+}
+
+.examine-layout[data-facts-only="true"] .examine-facts {
+  width: min(100%, 48rem);
+  justify-self: center;
+}
+
+.examine-facts section {
+  padding: 0 0 17px;
+  border-bottom: 1px solid #2c3335;
+}
+
+.examine-facts section + section {
+  padding-top: 17px;
+}
+
+.examine-facts section:last-child {
+  border-bottom: 0;
+}
+
+.examine-facts h2 {
+  margin: 0 0 11px;
+  color: #9ba5a6;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.examine-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 14px;
+  margin: 12px 0 0;
+}
+
+.examine-stat-grid dt,
+.examine-detail-row dt {
+  color: #929c9d;
+  font-size: 10px;
+}
+
+.examine-stat-grid dd {
+  margin: 2px 0 0;
+  color: #f0f2ef;
+  font: 650 15px/1.2 "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
+}
+
+.examine-attacks,
+.examine-detail-list,
+.examine-fact-sequence {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+}
+
+.examine-attack {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 25px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+}
+
+.examine-attack-index {
+  width: 25px;
+  height: 25px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #75504c;
+  border-radius: 3px;
+  color: #e29289;
+  font: 700 11px/1 "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
+}
+
+.examine-attack strong,
+.examine-attack span {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.examine-attack strong {
+  color: #f0f2ef;
+  font-size: 12px;
+}
+
+.examine-attack span {
+  margin-top: 2px;
+  color: #929c9d;
+  font-size: 10px;
+}
+
+.examine-attack > code {
+  color: #e5ca70;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.examine-trait {
+  padding: 4px 7px;
+  background: #11191a;
+  color: #a2cbd0;
+  font-size: 10px;
+}
+
+.examine-detail-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(6rem, auto) minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.examine-detail-row dt,
+.examine-detail-row dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.examine-detail-row dd {
+  color: #d6dbd8;
+  font-size: 11px;
+  text-align: right;
+}
+
+.examine-detail-row dd > .examine-detail-list,
+.examine-detail-row dd > .examine-fact-sequence {
+  text-align: left;
+}
+
+.examine-fact-sequence {
+  padding-left: 18px;
+}
+
+.examine-empty-value,
+.examine-license-note,
+.examine-provenance p {
+  color: #929c9d;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.examine-source-list {
+  display: grid;
+  gap: 7px;
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+}
+
+.examine-source-list li {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.examine-source-list code,
+.examine-source-list span {
+  overflow-wrap: anywhere;
+}
+
+.examine-source-list code {
+  color: #d6dbd8;
+  font-size: 10px;
+}
+
+.examine-source-list span {
+  color: #818b8c;
+  font-size: 9px;
+}
+
+.examine-loading {
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  padding: 24px;
+  color: #b9c2c2;
+  font-size: 13px;
+}
+
+@media (max-height: 640px) {
+  .examine-backdrop {
+    padding: 8px;
+  }
+
+  .examine-dialog {
+    height: calc(100dvh - 16px);
+    min-height: 0;
+  }
+
+  .examine-layout {
+    display: block;
+    overflow-y: auto;
+  }
+
+  .examine-article {
+    display: block;
+    border-right: 0;
+  }
+
+  .examine-tabs {
+    position: sticky;
+    z-index: 2;
+    top: 0;
+  }
+
+  .examine-tab-panel,
+  .examine-facts {
+    overflow: visible;
+  }
+
+  .examine-facts {
+    border-top: 1px solid #30383a;
+  }
+}
+
+@media (max-width: 820px) {
+  .examine-backdrop {
+    padding: 10px;
+  }
+
+  .examine-dialog {
+    width: calc(100vw - 20px);
+    height: calc(100dvh - 20px);
+    min-height: 0;
+  }
+
+  .examine-layout {
+    display: block;
+    overflow-y: auto;
+  }
+
+  .examine-article {
+    display: block;
+    border-right: 0;
+  }
+
+  .examine-tabs {
+    position: sticky;
+    z-index: 2;
+    top: 0;
+  }
+
+  .examine-tab-panel,
+  .examine-facts {
+    overflow: visible;
+  }
+
+  .examine-facts {
+    width: auto;
+    border-top: 1px solid #30383a;
+  }
+}
+
 @media (max-height: 700px) and (min-width: 901px) {
   .character-setup {
     grid-template-rows: auto auto auto;
