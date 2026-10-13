@@ -68,6 +68,7 @@ const basicFlowNames = [
   "Action bar integration:",
   "Action bar layout transfer:",
   "HUD visual regression:",
+  "Examine",
 ].join("|");
 
 export default defineConfig({

@@ -79,7 +79,10 @@ export type EmscriptenFactory = (
 export interface GameModuleOptions {
   isCurrent?: () => boolean;
   fetchBytes?: (url: string) => Promise<Uint8Array>;
-  loadFactory?: (url: string) => Promise<EmscriptenFactory>;
+  loadFactory?: (
+    bytes: Uint8Array,
+    sourceUrl: string,
+  ) => Promise<EmscriptenFactory>;
   runtimeManifestUrl?: string;
   wasmBinaryUrl?: string;
 }
@@ -121,7 +124,13 @@ export async function createGameModule(
     wasmBinaryUrl,
   );
   assertWasmHeader(wasmBinary);
-  const factory = await loadFactory(loaderUrl);
+  const loaderBytes = await fetchBytes(loaderUrl);
+  await verifyRuntimeAssetBytes(
+    loaderBytes,
+    runtime.files["nethack.js"],
+    loaderUrl,
+  );
+  const factory = await loadFactory(loaderBytes, loaderUrl);
   const module = await factory({
     noInitialRun: true,
     wasmBinary,
@@ -172,15 +181,28 @@ async function fetchRuntimeBytes(url: string): Promise<Uint8Array> {
 }
 
 /**
- * Import the Emscripten ES module factory from one runtime URL.
- * @param url Absolute loader module URL.
+ * Import the Emscripten factory from already verified JavaScript bytes.
+ * @param bytes Verified loader module bytes.
+ * @param sourceUrl Original asset URL used for diagnostics.
  * @returns Emscripten module factory.
  */
 async function importEmscriptenFactory(
-  url: string,
+  bytes: Uint8Array,
+  sourceUrl: string,
 ): Promise<EmscriptenFactory> {
-  const imported = await import(/* @vite-ignore */ url) as {
-    default: EmscriptenFactory;
-  };
-  return imported.default;
+  const moduleUrl = URL.createObjectURL(new Blob(
+    [bytes.slice().buffer],
+    { type: "text/javascript" },
+  ));
+  try {
+    const imported = await import(/* @vite-ignore */ moduleUrl) as {
+      default?: EmscriptenFactory;
+    };
+    if (typeof imported.default !== "function") {
+      throw new Error(`${sourceUrl} does not export an Emscripten factory`);
+    }
+    return imported.default;
+  } finally {
+    URL.revokeObjectURL(moduleUrl);
+  }
 }

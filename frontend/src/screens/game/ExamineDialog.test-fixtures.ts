@@ -140,4 +140,3 @@ export const ARTIFACT_CORE: CoreEntityRecord = {
   },
   sourceRefs: [{ path: "include/artilist.h", symbol: "ART_TEST" }],
 };
-

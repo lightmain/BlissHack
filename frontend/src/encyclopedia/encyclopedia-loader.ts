@@ -43,6 +43,7 @@ export interface LoadedEncyclopediaEntity {
 }
 
 export interface EncyclopediaLoader {
+  preload(options?: LoadOptions): Promise<void>;
   loadGlyphBinding(
     glyph: number,
     options?: LoadOptions,
@@ -211,6 +212,23 @@ export function createEncyclopediaLoader(options: {
   }
 
   /**
+   * Preload and validate the build-bound manifests without fetching chunks.
+   * @param loadOptions Optional caller-owned abort signal.
+   */
+  async function preload(loadOptions: LoadOptions = {}): Promise<void> {
+    await loadCoreContext(loadOptions.signal);
+    try {
+      await loadWikiManifest(loadOptions.signal);
+    } catch (error) {
+      if (loadOptions.signal?.aborted) {
+        throw abortReason(loadOptions.signal);
+      }
+      if (isAbortError(error)) throw error;
+    }
+    throwIfAborted(loadOptions.signal);
+  }
+
+  /**
    * Load and validate one core entity chunk.
    * @param metadata Trusted core chunk metadata.
    * @param signal Optional caller-owned abort signal.
@@ -274,6 +292,8 @@ export function createEncyclopediaLoader(options: {
   }
 
   return {
+    preload,
+
     async loadGlyphBinding(glyph, loadOptions = {}) {
       throwIfAborted(loadOptions.signal);
       if (!Number.isSafeInteger(glyph) || glyph < 0) return null;

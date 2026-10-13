@@ -85,4 +85,3 @@ describe("stage-five Examine responsive scroll ownership", () => {
       .toHaveLength(1);
   });
 });
-
