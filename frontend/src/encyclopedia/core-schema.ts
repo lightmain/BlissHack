@@ -767,7 +767,6 @@ function validateFactsTree(
   if (
     "attackType" in object
     || "damageType" in object
-    || ("dice" in object && Object.keys(object).length === 3)
   ) {
     validateAttack(object, label);
     return;
