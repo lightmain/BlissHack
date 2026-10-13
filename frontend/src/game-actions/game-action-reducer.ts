@@ -3,6 +3,7 @@ import type {
   ActionIntent,
   ActionIntentCancellationReason,
 } from "./action-intents";
+import type { ExamineTarget } from "../encyclopedia/examine-target";
 import type { InteractionOrigin } from "./interaction-origin";
 
 /** Core input currently visible to the UI action coordinator. */
@@ -35,9 +36,15 @@ export type ActionControllerInput =
     menuGeneration?: number;
   };
 
+export type ContextMenuRow =
+  | { kind: "core"; itemIndex: number; item: MenuItem }
+  | { kind: "examine"; accelerator: number; target: ExamineTarget };
+
 export interface ContextMenuPresentation {
   how: number;
+  menuGeneration: number;
   origin: Exclude<InteractionOrigin, { kind: "action-dock" }>;
+  rows: readonly ContextMenuRow[];
   windowId: number;
 }
 
@@ -54,6 +61,8 @@ export type GameActionStatus =
   | "waiting-expected-input"
   | "waiting-prefix-continuation"
   | "presenting-context-menu"
+  | "resolving-context-menu-for-examine"
+  | "waiting-context-command-boundary"
   | "presenting-item-menu"
   | "targeting-direction"
   | "targeting-position"

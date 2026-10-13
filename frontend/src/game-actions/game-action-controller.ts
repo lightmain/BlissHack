@@ -4,6 +4,12 @@ import {
   PICK_ONE,
   type MenuItem,
 } from "../game-state";
+import {
+  cloneExamineTarget,
+  examineTargetsEqual,
+  type ExamineTarget,
+} from "../encyclopedia/examine-target";
+import type { InformationLevel } from "../settings/profile";
 import type {
   ActionIntent,
   ActionIntentCancellationReason,
@@ -12,8 +18,13 @@ import {
   INITIAL_GAME_ACTION_STATE,
   reduceGameAction,
   type ActionControllerInput,
+  type ContextMenuPresentation,
+  type ContextMenuRow,
   type GameActionState,
 } from "./game-action-reducer";
+
+const CONTEXT_AUTO_ACCELERATORS =
+  "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
 export type {
   ActionIntent,
@@ -23,6 +34,7 @@ export type {
   ActionItemMenuPresentation,
   ActionControllerInput,
   ContextMenuPresentation,
+  ContextMenuRow,
   GameActionState,
 } from "./game-action-reducer";
 
@@ -39,8 +51,15 @@ export interface ActionControllerObservation {
   mapRevision?: number;
   boundaryGeneration?: number;
   menuGeneration?: number;
+  informationLevel?: InformationLevel;
+  examineTarget?: ExamineTarget | null;
   input: ActionControllerInput | null;
   fatal?: boolean;
+}
+
+export interface ActionCompletion {
+  kind: "open-examine";
+  target: ExamineTarget;
 }
 
 interface GameActionControllerOptions {
@@ -55,6 +74,7 @@ interface GameActionControllerOptions {
   releaseInputToUi(input: ActionControllerInput): void;
   onCancel?(reason: ActionIntentCancellationReason): void;
   onComplete?(intent: ActionIntent): void;
+  onActionCompletion?(completion: ActionCompletion): void;
   setActionIntentActive?(active: boolean): void;
 }
 
@@ -62,6 +82,12 @@ export interface GameActionController {
   request(intent: ActionIntent): boolean;
   observe(observation: ActionControllerObservation): void;
   cancel(reason: ActionIntentCancellationReason): void;
+  chooseContextMenuRow(
+    menuGeneration: number,
+    row: ContextMenuRow,
+    count: number,
+  ): boolean;
+  cancelContextMenu(menuGeneration: number): boolean;
   chooseItem(menuGeneration: number, itemIndex: number): boolean;
   chooseDirection(key: number): boolean;
   choosePosition(x: number, y: number, modifier: 1 | 2): boolean;
@@ -82,6 +108,8 @@ export function createGameActionController(
   let state = INITIAL_GAME_ACTION_STATE;
   let disposed = false;
   let commandReceipt: CoreCommandReceipt | null = null;
+  let contextMenuHandled = false;
+  let pendingExamineTarget: ExamineTarget | null = null;
   const listeners = new Set<() => void>();
 
   /** Publish a reducer event and notify state subscribers. */
@@ -97,6 +125,8 @@ export function createGameActionController(
     if (state.intent === null) return;
     transition({ type: "cancelled", reason });
     commandReceipt = null;
+    contextMenuHandled = false;
+    pendingExamineTarget = null;
     options.setActionIntentActive?.(false);
     options.onCancel?.(reason);
   }
@@ -104,6 +134,14 @@ export function createGameActionController(
   /** Cancel through the active core resolver when a catalog action owns it. */
   function cancel(reason: ActionIntentCancellationReason): void {
     if (state.intent === null) return;
+    if (
+      reason === "user-cancelled"
+      && state.status === "presenting-context-menu"
+      && state.contextMenu
+    ) {
+      cancelContextMenu(state.contextMenu.menuGeneration);
+      return;
+    }
     if (
       reason === "user-cancelled"
       && state.intent.kind === "catalog-action"
@@ -122,13 +160,24 @@ export function createGameActionController(
   }
 
   /** Complete the active intent and release its input barrier. */
-  function complete(): void {
+  function complete(actionCompletion?: ActionCompletion): void {
     const intent = state.intent;
     if (intent === null) return;
+    const copiedCompletion = actionCompletion
+      ? {
+        kind: "open-examine" as const,
+        target: cloneExamineTarget(actionCompletion.target),
+      }
+      : null;
     transition({ type: "completed" });
     commandReceipt = null;
+    contextMenuHandled = false;
+    pendingExamineTarget = null;
     options.setActionIntentActive?.(false);
     options.onComplete?.(intent);
+    if (copiedCompletion) {
+      options.onActionCompletion?.(copiedCompletion);
+    }
   }
 
   /** Validate session and inventory ownership before any automated step. */
@@ -172,6 +221,23 @@ export function createGameActionController(
       finishCancellation("fatal");
       return false;
     }
+    if (
+      (
+        state.status === "resolving-context-menu-for-examine"
+        || state.status === "waiting-context-command-boundary"
+      )
+      && pendingExamineTarget !== null
+      && (
+        observation.informationLevel === "original"
+        || !examineTargetsEqual(
+          pendingExamineTarget,
+          observation.examineTarget ?? null,
+        )
+      )
+    ) {
+      finishCancellation("target-stale");
+      return false;
+    }
     return true;
   }
 
@@ -193,8 +259,65 @@ export function createGameActionController(
     });
   }
 
+  /**
+   * Build semantic context rows without manufacturing a core MenuItem.
+   * @param observation Current profile mode and resolved visible identity.
+   * @param input Authoritative core menu.
+   * @returns Serializable context-menu presentation.
+   */
+  function contextMenuPresentation(
+    observation: ActionControllerObservation,
+    input: Extract<
+      ActionControllerInput,
+      { kind: "menu" }
+    > & { how: typeof PICK_ONE; windowId: number },
+  ): ContextMenuPresentation {
+    const intent = state.intent;
+    if (
+      !intent
+      || intent.kind === "catalog-action"
+      || intent.kind === "map-inspect"
+      || intent.kind === "drop-item"
+    ) {
+      throw new Error("Context presentation requires a context intent");
+    }
+    const rows: ContextMenuRow[] = input.items.map((item, itemIndex) => ({
+      kind: "core",
+      itemIndex,
+      item,
+    }));
+    const target = supportedTargetForIntent(
+      intent,
+      observation.informationLevel,
+      observation.examineTarget ?? null,
+    );
+    if (target) {
+      const preferred = "e".charCodeAt(0);
+      const accelerator = coreMenuOwnsAccelerator(input.items, preferred)
+        ? 0
+        : preferred;
+      rows.push({
+        kind: "examine",
+        accelerator,
+        target: cloneExamineTarget(target),
+      });
+    }
+    return {
+      how: input.how,
+      menuGeneration:
+        input.menuGeneration
+        ?? observation.menuGeneration
+        ?? state.contextMenu?.menuGeneration
+        ?? 0,
+      origin: intent.origin,
+      rows,
+      windowId: input.windowId,
+    };
+  }
+
   /** Present or automate the expected menu for the active intent. */
   function handleMenu(
+    observation: ActionControllerObservation,
     input: Extract<ActionControllerInput, { kind: "menu" }>,
   ): void {
     const intent = state.intent;
@@ -227,13 +350,10 @@ export function createGameActionController(
       }]);
       return;
     }
+    if (intent.kind === "drop-item") return;
     transition({
       type: "presenting",
-      presentation: {
-        how: input.how,
-        origin: intent.origin,
-        windowId: input.windowId,
-      },
+      presentation: contextMenuPresentation(observation, input),
     });
   }
 
@@ -383,6 +503,55 @@ export function createGameActionController(
     }
   }
 
+  /**
+   * Wait for resolver consumption, window removal, and a later command boundary.
+   * @param observation Current authoritative core and target state.
+   */
+  function observeContextMenuHandoff(
+    observation: ActionControllerObservation,
+  ): void {
+    const input = observation.input;
+    if (
+      input?.kind === "menu"
+      && input.windowId === state.contextMenu?.windowId
+    ) {
+      return;
+    }
+    if (input === null) {
+      if (state.status === "resolving-context-menu-for-examine") {
+        transition({
+          type: "progress",
+          status: "waiting-context-command-boundary",
+          activeInput: null,
+        });
+      }
+      return;
+    }
+    const acceptedGeneration = state.acceptedBoundaryGeneration;
+    if (
+      input.kind === "command"
+      && acceptedGeneration !== null
+      && (observation.boundaryGeneration ?? 0) > acceptedGeneration
+    ) {
+      const target = pendingExamineTarget === null
+        ? null
+        : observation.examineTarget ?? null;
+      complete(target
+        ? { kind: "open-examine", target }
+        : undefined);
+      return;
+    }
+    if (input.kind === "command") {
+      transition({
+        type: "progress",
+        status: "waiting-context-command-boundary",
+        activeInput: input,
+      });
+      return;
+    }
+    releaseUnexpectedInput(input);
+  }
+
   /** Observe the latest authoritative core/session state. */
   function observe(observation: ActionControllerObservation): void {
     if (disposed || state.intent === null) return;
@@ -420,21 +589,47 @@ export function createGameActionController(
         finishCancellation("busy");
         return;
       }
-      transition({ type: "waiting" });
+      if (
+        intent.kind === "map-context"
+        || intent.kind === "inventory-context"
+      ) {
+        transition({
+          type: "progress",
+          status: "waiting-expected-input",
+          acceptedBoundaryGeneration:
+            observation.boundaryGeneration ?? null,
+        });
+      } else {
+        transition({ type: "waiting" });
+      }
       return;
     }
     if (state.intent.kind === "catalog-action") {
       observeCatalogAction(observation);
       return;
     }
+    if (
+      state.status === "resolving-context-menu-for-examine"
+      || state.status === "waiting-context-command-boundary"
+    ) {
+      observeContextMenuHandoff(observation);
+      return;
+    }
     if (state.status === "presenting-context-menu") {
       const input = observation.input;
       if (
+        input?.kind === "menu"
+        && input.windowId === state.contextMenu?.windowId
+        && isPickOneMenu(input)
+      ) {
+        transition({
+          type: "presenting",
+          presentation: contextMenuPresentation(observation, input),
+        });
+        return;
+      }
+      if (
         input === null
-        || (
-          input.kind === "menu"
-          && input.windowId === state.contextMenu?.windowId
-        )
       ) {
         return;
       }
@@ -457,10 +652,80 @@ export function createGameActionController(
       return;
     }
     if (input.kind === "menu") {
-      handleMenu(input);
+      handleMenu(observation, input);
       return;
     }
     releaseUnexpectedInput(input);
+  }
+
+  /**
+   * Submit one semantic context row through its generation-bound owner.
+   * @param menuGeneration Rendered context-menu generation.
+   * @param row Core or synthetic row from the current presentation.
+   * @param count NetHack count used only for a real core row.
+   * @returns Whether this live presentation accepted the activation.
+   */
+  function chooseContextMenuRow(
+    menuGeneration: number,
+    row: ContextMenuRow,
+    count: number,
+  ): boolean {
+    const presentation = state.contextMenu;
+    if (
+      state.status !== "presenting-context-menu"
+      || !presentation
+      || presentation.menuGeneration !== menuGeneration
+      || contextMenuHandled
+      || !presentation.rows.includes(row)
+    ) {
+      return false;
+    }
+    contextMenuHandled = true;
+    if (row.kind === "core") {
+      if (row.item.identifier === null) {
+        contextMenuHandled = false;
+        return false;
+      }
+      options.submitMenuSelection([{
+        itemIndex: row.itemIndex,
+        count,
+      }]);
+      return true;
+    }
+    pendingExamineTarget = cloneExamineTarget(row.target);
+    options.submitMenuSelection(null);
+    transition({
+      type: "progress",
+      status: "resolving-context-menu-for-examine",
+      activeInput: null,
+    });
+    return true;
+  }
+
+  /**
+   * Cancel one context menu without creating an Examine completion payload.
+   * @param menuGeneration Rendered context-menu generation.
+   * @returns Whether this live presentation accepted the cancellation.
+   */
+  function cancelContextMenu(menuGeneration: number): boolean {
+    const presentation = state.contextMenu;
+    if (
+      state.status !== "presenting-context-menu"
+      || !presentation
+      || presentation.menuGeneration !== menuGeneration
+      || contextMenuHandled
+    ) {
+      return false;
+    }
+    contextMenuHandled = true;
+    pendingExamineTarget = null;
+    options.submitMenuSelection(null);
+    transition({
+      type: "progress",
+      status: "waiting-context-command-boundary",
+      activeInput: null,
+    });
+    return true;
   }
 
   return {
@@ -486,6 +751,8 @@ export function createGameActionController(
     },
     observe,
     cancel,
+    chooseContextMenuRow,
+    cancelContextMenu,
     /**
      * Submit one row from the currently matched action-owned item menu.
      * @param menuGeneration - identity of the rendered chooser contents.
@@ -614,4 +881,85 @@ function isPickOneMenu(
   return input.how === PICK_ONE
     && Number.isSafeInteger(input.windowId)
     && (input.windowId ?? -1) > 0;
+}
+
+/**
+ * Account for the same automatic accelerators rendered for zero-valued rows.
+ * @param items Core menu rows in source order.
+ * @param accelerator Candidate synthetic accelerator.
+ * @returns Whether any selectable core row owns the displayed accelerator.
+ */
+function coreMenuOwnsAccelerator(
+  items: readonly MenuItem[],
+  accelerator: number,
+): boolean {
+  let automaticIndex = 0;
+  return items.some((item) => {
+    let current = item.accelerator;
+    if (item.identifier !== null && current === 0) {
+      current = CONTEXT_AUTO_ACCELERATORS.charCodeAt(automaticIndex) || 0;
+      automaticIndex += 1;
+    }
+    return item.identifier !== null && current === accelerator;
+  });
+}
+
+/**
+ * Bind a resolved visible target to the context intent which produced it.
+ * @param intent Active map or inventory context request.
+ * @param informationLevel Current profile presentation level.
+ * @param target Runtime-bound visible target.
+ * @returns The target only when every available owner field agrees.
+ */
+function supportedTargetForIntent(
+  intent: Extract<
+    ActionIntent,
+    { kind: "map-context" | "inventory-context" }
+  >,
+  informationLevel: InformationLevel | undefined,
+  target: ExamineTarget | null,
+): ExamineTarget | null {
+  if (
+    informationLevel !== "detailed"
+    || target === null
+    || target.moduleId !== intent.moduleId
+    || target.sessionId !== intent.sessionId
+  ) {
+    return null;
+  }
+  if (intent.kind === "map-context" && target.surface === "map") {
+    if (
+      target.mapX !== intent.origin.mapX
+      || target.mapY !== intent.origin.mapY
+    ) {
+      return null;
+    }
+    return intent.examineCapture
+      && (
+        target.mapRevision !== intent.examineCapture.mapRevision
+        || !examineTargetsEqual(
+          target,
+          { ...target, ...intent.examineCapture },
+        )
+      )
+      ? null
+      : target;
+  }
+  if (intent.kind === "inventory-context" && target.surface === "inventory") {
+    if (
+      target.inventoryRevision !== intent.inventoryRevision
+      || target.identifier !== intent.identifier
+      || target.accelerator !== intent.accelerator
+    ) {
+      return null;
+    }
+    return intent.examineCapture
+      && !examineTargetsEqual(
+        target,
+        { ...target, ...intent.examineCapture },
+      )
+      ? null
+      : target;
+  }
+  return null;
 }

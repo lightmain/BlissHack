@@ -21,8 +21,21 @@ import {
 import {
   createGameActionController,
   type ActionControllerInput,
+  type ActionIntent,
   type GameActionController,
 } from "../game-actions/game-action-controller";
+import type { RuntimeAssetIdentity } from "../bridge/runtime-manifest";
+import { createEncyclopediaLoader } from "../encyclopedia/encyclopedia-loader";
+import {
+  resolveExamineCapture,
+  type ExamineTarget,
+} from "../encyclopedia/examine-target";
+import {
+  captureInventoryExamineTarget,
+  captureMapExamineTarget,
+  isInventoryExamineTargetCurrent,
+  isMapExamineTargetCurrent,
+} from "../encyclopedia/entity-resolution";
 import {
   decodeActionCatalog,
   resolveActionCatalogName,
@@ -97,6 +110,7 @@ interface GameScreenProps {
   onApplyProfile(profile: BlissHackProfile): Promise<BlissHackProfile>;
   profile: BlissHackProfile;
   readOnly?: boolean;
+  runtimeIdentity?: RuntimeAssetIdentity;
 }
 
 interface ActiveInspectTooltip {
@@ -136,6 +150,7 @@ export function GameScreen({
   onApplyProfile,
   profile,
   readOnly = false,
+  runtimeIdentity,
 }: GameScreenProps) {
   const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
   const snapshotRef = useRef(snapshot);
@@ -147,8 +162,28 @@ export function GameScreen({
     useState<ActiveInspectTooltip | null>(null);
   const [allActionsOpen, setAllActionsOpen] = useState(false);
   const [pauseView, setPauseView] = useState<"pause" | "settings" | null>(null);
+  const [examineResolution, setExamineResolution] = useState<{
+    intent: Extract<
+      ActionIntent,
+      { kind: "map-context" | "inventory-context" }
+    >;
+    target: ExamineTarget | null;
+  } | null>(null);
+  const [examineViewTarget, setExamineViewTarget] =
+    useState<ExamineTarget | null>(null);
   const previousRuntimeSettings = useRef<string | null>(null);
   const settings = profile.interface;
+  const encyclopediaLoader = useMemo(
+    () => runtimeIdentity
+      ? createEncyclopediaLoader({
+        runtimeIdentity,
+        runtimeManifestUrl: `${import.meta.env.BASE_URL}nethack-runtime.json`,
+        coreBaseUrl: `${import.meta.env.BASE_URL}encyclopedia/core`,
+        wikiBaseUrl: `${import.meta.env.BASE_URL}encyclopedia/wiki`,
+      })
+      : null,
+    [runtimeIdentity],
+  );
   const characterSetupContext = getCharacterSetupContext();
   const ownsCharacterSetup =
     characterSetupContext.style === "blisshack"
@@ -263,6 +298,9 @@ export function GameScreen({
         if (intent.kind !== "map-inspect") return;
         inspectRuntime.complete();
       },
+      onActionCompletion: (completion) => {
+        setExamineViewTarget(completion.target);
+      },
       setActionIntentActive,
     }),
     [inspectRuntime, moduleId, sessionId],
@@ -271,6 +309,25 @@ export function GameScreen({
     actionController.subscribe,
     actionController.getState,
     actionController.getState,
+  );
+  const contextIntent = actionState.intent?.kind === "map-context"
+    || actionState.intent?.kind === "inventory-context"
+    ? actionState.intent
+    : null;
+  const resolvedExamineTarget =
+    examineResolution?.intent === contextIntent
+      ? examineResolution.target
+      : null;
+  const visibleExamineViewTarget =
+    settings.informationLevel === "detailed"
+      ? examineViewTarget
+      : null;
+  const liveExamineTarget = currentExamineTarget(
+    resolvedExamineTarget,
+    contextIntent,
+    snapshot,
+    moduleId,
+    sessionId,
   );
   const secondaryInputRequest =
     settings.actionBarStyle === "blisshack"
@@ -315,6 +372,53 @@ export function GameScreen({
   );
 
   useEffect(() => {
+    const capture = contextIntent?.examineCapture;
+    if (
+      readOnly
+      || settings.informationLevel !== "detailed"
+      || !encyclopediaLoader
+      || !contextIntent
+      || !capture
+    ) {
+      return undefined;
+    }
+    const intent = contextIntent;
+    const controller = new AbortController();
+    void resolveExamineCapture(
+      encyclopediaLoader,
+      capture,
+      controller.signal,
+    ).then((target) => {
+      if (
+        !controller.signal.aborted
+        && actionController.getState().intent === intent
+      ) {
+        setExamineResolution({ intent, target });
+      }
+    }).catch(() => {
+      if (!controller.signal.aborted) {
+        setExamineResolution({ intent, target: null });
+      }
+    });
+    return () => controller.abort();
+  }, [
+    actionController,
+    contextIntent,
+    encyclopediaLoader,
+    readOnly,
+    settings.informationLevel,
+  ]);
+
+  useEffect(() => {
+    if (settings.informationLevel !== "original") return undefined;
+    const timeout = globalThis.setTimeout(
+      () => setExamineViewTarget(null),
+      0,
+    );
+    return () => globalThis.clearTimeout(timeout);
+  }, [settings.informationLevel]);
+
+  useEffect(() => {
     snapshotRef.current = snapshot;
     inspectRuntime.updateSnapshot(snapshot);
     inventoryDropRuntime.updateSnapshot(snapshot);
@@ -336,10 +440,20 @@ export function GameScreen({
       mapRevision: snapshot.mapRevision,
       boundaryGeneration: snapshot.commandBoundaryGeneration,
       menuGeneration: snapshot.menuGeneration,
+      informationLevel: settings.informationLevel,
+      examineTarget: liveExamineTarget,
       input: actionInputFromSnapshot(snapshot),
       fatal: snapshot.phase === "error",
     });
-  }, [actionController, moduleId, readOnly, sessionId, snapshot]);
+  }, [
+    actionController,
+    liveExamineTarget,
+    moduleId,
+    readOnly,
+    sessionId,
+    settings.informationLevel,
+    snapshot,
+  ]);
 
   useEffect(() => {
     if (readOnly) return;
@@ -857,13 +971,33 @@ export function GameScreen({
       sendPosition(resolution.x, resolution.y, resolution.modifier);
       return true;
     }
-    if (!actionController.request(resolution.intent)) return false;
+    const cell = current.map[origin.mapY]?.[origin.mapX];
+    const examineCapture = cell
+      ? captureMapExamineTarget({
+        moduleId,
+        sessionId,
+        mapRevision: current.mapRevision,
+        mapX: origin.mapX,
+        mapY: origin.mapY,
+        cell,
+      })
+      : null;
+    if (!actionController.request({
+      ...resolution.intent,
+      examineCapture,
+    })) {
+      return false;
+    }
     actionController.observe({
       moduleId,
       sessionId,
       snapshotRevision: current.revision,
       inventoryRevision: current.permanentInventory?.revision ?? null,
       mapRevision: current.mapRevision,
+      boundaryGeneration: current.commandBoundaryGeneration,
+      menuGeneration: current.menuGeneration,
+      informationLevel: settings.informationLevel,
+      examineTarget: null,
       input: { kind: "command" },
     });
     return true;
@@ -873,6 +1007,7 @@ export function GameScreen({
     moduleId,
     sessionId,
     settings.actionBarStyle,
+    settings.informationLevel,
   ]);
 
   /**
@@ -907,6 +1042,13 @@ export function GameScreen({
       inventoryRevision: inventory.revision,
       identifier: request.identifier,
       accelerator: request.origin.accelerator,
+      examineCapture: captureInventoryExamineTarget({
+        moduleId,
+        sessionId,
+        inventoryRevision: inventory.revision,
+        item: target,
+        visibleEntityToken: target.visibleEntityToken,
+      }),
       origin: request.origin,
     })) {
       return;
@@ -917,9 +1059,19 @@ export function GameScreen({
       snapshotRevision: current.revision,
       inventoryRevision: inventory.revision,
       mapRevision: current.mapRevision,
+      boundaryGeneration: current.commandBoundaryGeneration,
+      menuGeneration: current.menuGeneration,
+      informationLevel: settings.informationLevel,
+      examineTarget: null,
       input: { kind: "command" },
     });
-  }, [actionController, hoverController, moduleId, sessionId]);
+  }, [
+    actionController,
+    hoverController,
+    moduleId,
+    sessionId,
+    settings.informationLevel,
+  ]);
 
   /**
    * Debounce one map cell before requesting its core-authoritative description.
@@ -978,6 +1130,7 @@ export function GameScreen({
     <main
       className={`nh-shell nh-font-${settings.terminalFontSize}`}
       data-command-input={snapshot.commandInput ? "ready" : "busy"}
+      data-examine-target={visibleExamineViewTarget?.entityId}
       data-number-pad={snapshot.numberPad ? "on" : "off"}
       data-read-only={readOnly ? "true" : "false"}
       data-snapshot-revision={snapshot.revision}
@@ -1081,6 +1234,14 @@ export function GameScreen({
               actionBarStyle={settings.actionBarStyle}
               contextMenu={actionState.contextMenu}
               modal={snapshot.modal}
+              onCancelContextMenu={(menuGeneration) =>
+                actionController.cancelContextMenu?.(menuGeneration) ?? false}
+              onChooseContextMenuRow={(menuGeneration, row, count) =>
+                actionController.chooseContextMenuRow?.(
+                  menuGeneration,
+                  row,
+                  count,
+                ) ?? false}
             />
           )}
         {!readOnly
@@ -1290,6 +1451,64 @@ function createInventoryDropRuntime(
       snapshot = nextSnapshot;
     },
   };
+}
+
+/**
+ * Revalidate an asynchronously resolved target against the latest snapshot.
+ * @param target Runtime-bound entity resolved from the original capture.
+ * @param intent Active context intent which owns the capture.
+ * @param snapshot Latest committed game state.
+ * @param moduleId Active module generation.
+ * @param sessionId Active session generation.
+ * @returns The still-current target, or null after any visible identity change.
+ */
+function currentExamineTarget(
+  target: ExamineTarget | null,
+  intent: Extract<
+    ActionIntent,
+    { kind: "map-context" | "inventory-context" }
+  > | null,
+  snapshot: GameSnapshot,
+  moduleId: string,
+  sessionId: string,
+): ExamineTarget | null {
+  if (!target || !intent?.examineCapture) return null;
+  if (intent.kind === "map-context" && target.surface === "map") {
+    const cell = snapshot.map[target.mapY]?.[target.mapX];
+    return cell
+      && isMapExamineTargetCurrent(target, {
+        moduleId,
+        sessionId,
+        mapRevision: snapshot.mapRevision,
+        mapX: target.mapX,
+        mapY: target.mapY,
+        cell,
+      })
+      ? target
+      : null;
+  }
+  if (
+    intent.kind === "inventory-context"
+    && target.surface === "inventory"
+  ) {
+    const inventory = snapshot.permanentInventory;
+    const item = inventory?.items.find((candidate) =>
+      candidate.identifier === target.identifier
+      && candidate.accelerator === target.accelerator
+    );
+    return inventory
+      && item
+      && isInventoryExamineTargetCurrent(target, {
+        moduleId,
+        sessionId,
+        inventoryRevision: inventory.revision,
+        item,
+        visibleEntityToken: item.visibleEntityToken,
+      })
+      ? target
+      : null;
+  }
+  return null;
 }
 
 /**
