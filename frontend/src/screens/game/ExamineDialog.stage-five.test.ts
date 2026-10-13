@@ -75,6 +75,12 @@ describe("stage-five Examine presentation", () => {
     expect(html).toContain("include/monsters.h");
     expect(html).toContain("src/makemon.c");
     expect(html).toContain("dat/license");
+    expect(html).toContain(
+      "04834a93165482a28257bac282543e3583658622/dat/license",
+    );
+    expect(html).toMatch(
+      /rel="(?=[^"]*license)(?=[^"]*noopener)(?=[^"]*noreferrer)[^"]+" target="_blank"/,
+    );
   });
 
   it("renders only the four approved revision 205110 paragraphs", () => {
@@ -273,6 +279,7 @@ describe("stage-five GameScreen ownership", () => {
     expect(GAME_SCREEN_SOURCE).toContain("encyclopediaLoader.loadEntity");
     expect(GAME_SCREEN_SOURCE).toContain("new AbortController()");
     expect(GAME_SCREEN_SOURCE).toContain("controller.abort()");
+    expect(GAME_SCREEN_SOURCE).toContain("tabIndex={-1}");
   });
 
   it("clears loader and view state for Original, fatal, session change, and unmount", () => {

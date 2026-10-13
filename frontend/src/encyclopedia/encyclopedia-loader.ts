@@ -38,6 +38,7 @@ type FetchBytes = (
 
 export interface LoadedEncyclopediaEntity {
   core: CoreEntityRecord;
+  nethackVersion?: string;
   wiki: WikiRecord | null;
 }
 
@@ -311,7 +312,11 @@ export function createEncyclopediaLoader(options: {
         if (isAbortError(error)) throw error;
       }
       throwIfAborted(loadOptions.signal);
-      return { core, wiki };
+      return {
+        core,
+        nethackVersion: manifest.nethackVersion,
+        wiki,
+      };
     },
 
     async loadArtifactBaseObjects(loadOptions = {}) {

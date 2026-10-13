@@ -117,10 +117,10 @@ async function openMapContextMenu(
   return { map, menu };
 }
 
-/** Characterize existing context menus in both information-level modes. */
+/** Keep core rows unchanged while Detailed adds one semantic Examine row. */
 for (const informationLevel of ["Original", "Detailed"] as const) {
   test(
-    `keeps current map and inventory context menus in ${informationLevel} mode`,
+    `keeps current map and inventory context contracts in ${informationLevel} mode`,
     async ({ page }) => {
     const errors = captureErrors(page);
     await startContextGame(page, `Context${informationLevel}`, {
@@ -137,7 +137,7 @@ for (const informationLevel of ["Original", "Detailed"] as const) {
       .toBeGreaterThan(0);
     await expect(
       mapContext.menu.getByRole("menuitem", { name: /Examine/i }),
-    ).toHaveCount(0);
+    ).toHaveCount(informationLevel === "Detailed" ? 1 : 0);
     await page.keyboard.press("Escape");
     await expect(mapContext.menu).toHaveCount(0);
     await expect(
@@ -154,7 +154,7 @@ for (const informationLevel of ["Original", "Detailed"] as const) {
       .toBeGreaterThan(0);
     await expect(
       inventoryMenu.getByRole("menuitem", { name: /Examine/i }),
-    ).toHaveCount(0);
+    ).toHaveCount(informationLevel === "Detailed" ? 1 : 0);
     await page.keyboard.press("Escape");
 
     await expect(inventoryMenu).toHaveCount(0);
