@@ -72,9 +72,21 @@
       "expectedCode": "origin"
     },
     {
+      "name": "safe-looking heading nested under Origin",
+      "wikitext": "==Origin==\nSeparately attributed material.\n\n===Strategy===\nA safe-looking paragraph that inherits Origin provenance.",
+      "sourceHeading": "Strategy",
+      "expectedCode": "origin"
+    },
+    {
       "name": "Wikipedia-derived section",
       "wikitext": "==Wikipedia==\nMaterial derived from Wikipedia.",
       "sourceHeading": "Wikipedia",
+      "expectedCode": "wikipedia-derived"
+    },
+    {
+      "name": "safe-looking heading nested under Wikipedia",
+      "wikitext": "==Wikipedia==\nMaterial derived from Wikipedia.\n\n===History===\nA safe-looking paragraph that inherits Wikipedia provenance.",
+      "sourceHeading": "History",
       "expectedCode": "wikipedia-derived"
     },
     {

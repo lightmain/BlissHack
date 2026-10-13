@@ -14,7 +14,7 @@
   <page>
     <title>Newt</title>
     <ns>0</ns>
-    <id>1001</id>
+    <id>1797</id>
     <revision>
       <id>205109</id>
       <parentid>205108</parentid>
@@ -31,31 +31,89 @@
     </revision>
     <revision>
       <id>205110</id>
-      <parentid>205109</parentid>
-      <timestamp>2025-01-02T03:04:05Z</timestamp>
+      <parentid>152296</parentid>
+      <timestamp>2026-06-02T18:31:39Z</timestamp>
       <contributor>
-        <username>Fixture contributor</username>
-        <id>7</id>
+        <username>Watchdog</username>
       </contributor>
-      <comment>Reviewed Newt fixture</comment>
+      <comment>fix source code reference</comment>
       <model>wikitext</model>
       <format>text/x-wiki</format>
-      <text xml:space="preserve"><![CDATA[==Overview==
-A [[newt]], :, is a type of monster that appears in ''NetHack''. It is an [[amphibious]] lizard that is among one of the first monsters you will encounter in the dungeon.
+      <text xml:space="preserve"><![CDATA[{{monster
+ |difficulty=1
+ |level=0
+ |experience=1
+ |speed=6
+ |AC=8
+ |MR=0
+ |align=0
+ |frequency=5
+ |genocidable=Yes
+ |attacks=Bite 1d2
+ |weight=10
+ |nutr=20
+ |size=Tiny
+ |resistances=None
+ |resistances conveyed=None
+ |attributes={{attributes|A newt|=
+ |swim=1|amphibious=1|animal=1|nohands=1|carnivore=1}}
+ |reference=[[monst.c#line2657]]
+}}
 
-Eating a newt's [[corpse]] or [[tin]] has a 2/3 chance of raising your current [[power]] by 1d3 points, and will always do so if it is less than or equal to 2/3 of your maximum power - if this increase would raise you above your total maximum power, there is a 1/3 chance of increasing your maximum and current power by 1.
+A '''newt''', {{monsym|newt}}, is a type of [[monster]] that appears in ''[[NetHack]]''. It is an [[amphibious]] [[Lizard (monster class)|lizard]] that is among one of the first monsters [[you]] will encounter in the dungeon.
+
+Eating a newt's [[corpse]] or [[tin]] has a {{frac|2|3}} chance of raising your current [[power]] by [[d notation|1d3]] points, and will always do so if it is less than or equal to {{frac|2|3}} of your maximum power - if this increase would raise you above your total maximum power, there is a {{frac|3}} chance of increasing your maximum and current power by 1.{{refsrc|src/eat.c|958|version=NetHack 3.6.7}}
 
 ==Strategy==
-Newts are primarily a minor nuisance for a [[starting character]] unless you are especially weak, and become a non-issue once you are decently armed and/or armored. Newt corpses and tins provide a means of boosting your maximum energy early, though care must be taken so that a [[pet]] does not immediately snap up any freshly-made corpses; [[Archeologist]]s in particular may consider using their [[tinning kit]] to obtain more nutrition from the corpses as well.
+Newts are primarily a minor nuisance for a starting character unless you are especially weak, and become a non-issue once you are decently armed and/or armored. Newt corpses and tins provide a means of boosting your maximum energy early, though care must be taken so that a [[pet]] does not immediately snap up any freshly-made corpses; [[Archeologist]]s in particular may consider using their [[tinning kit]] to obtain more nutrition from the corpses as well.
 
-Non-neutral players that wish to raise their [[alignment record]] early on for the [[protection racket]] (which relies on gaining alignment while avoiding killing co-aligned monsters and keeping experience low) and/or [[conduct]]s that require frequent [[prayer]] (like [[foodless]]) should make sure to kill newts themselves.
+Non-[[neutral]] players that wish to raise their [[alignment record]] early on for the [[protection racket]] (which relies on gaining alignment while avoiding killing co-aligned monsters and keeping experience low) and/or conducts that require frequent prayer (like [[foodless]]) should make sure to kill newts themselves.
 
 ==History==
-The newt first appears in ''NetHack 3.0.6''.
+The newt first appears in [[NetHack 3.0.6]].
+
+==Origin==
+{{wikipedia|Newt}}
+{{wikipedia|Macbeth}}
+The newt is a type of salamander, with over 100 species in the subfamily Pleurodelinae. Newts are lizard-like amphibians like other salamanders, but unlike most of them they also alternate between aquatic and terrestrial habitats - not all aquatic salamanders are considered newts. More than 100 known species of newts are found in North America, Europe, North Africa, and Asia.
+
+Newts metamorphose through three distinct developmental life stages: aquatic larva, terrestrial juvenile (eft), and adult. They return to the water every year to breed, otherwise living in humid, cover-rich land habitats. Adult newts have bodies that are similar to other salamanders but lack the typical grooved sides. Their skin secretions contain toxins employed as a defense mechanism against predators - the toxins are only dangerous if they are ingested or absorbed through mucous membranes or breaks in the skin. Newts can safely live alongside frogs and other amphibians, and may even be kept as pets.
+
+Newts have an association with witchcraft, due partly to their nature as salamanders; it is also commonly thought to be a cryptic name given to the mustard plant seed in order to obscure their uses in herbology. In the [[Wikipedia:William Shakespeare|Shakespeare]] tragedy ''[[wikipedia:Macbeth|Macbeth]]'', where "eye of newt" is named as a spell component in the incantation of the three witches, as quoted by the [[#Encyclopedia entry|encyclopedia entry]].
+
+==Messages==
+{{message|You feel a mild buzz.|You gained energy from eating newt meat.}}
 
 ==Dudley's dungeon==
-Newts are featured prominently in [[Dudley's dungeon]], where early strips often featured Dudley dying at the hands of these typically-weak monsters, which is typically improbable in normal play (but not impossible by any means). This has become a common enough gag to the point that Dudley is frequently portrayed with a profound fear of them - however, most newer strips whose punchline consists solely of newts killing Dudley are usually rated poorly and referred to as "newt jokes" or YANC ("Yet Another Newt Comic").]]></text>
-      <sha1>fixture-reviewed</sha1>
+Newts are featured prominently in [[Dudley's dungeon]], where early strips often featured Dudley dying at the hands of these typically-weak monsters, which is typically improbable in normal play ([[Floating eye|but not impossible by any means]]). This has become a common enough gag to the point that Dudley is frequently portrayed with a profound fear of them - however, most newer strips whose punchline consists solely of newts killing Dudley are usually rated poorly and referred to as "newt jokes" or [[YANC]] ("Yet Another Newt Comic").
+
+One of the highest scores on [[NAO]] (eighth as of August 19, 2022) belongs to Adeon, who [https://s3.amazonaws.com/altorg/dumplog/Adeon/1234260131.nh343.txt intentionally died to a newt] for comedic value similar to the Dudley's dungeon joke.
+
+==Variants==
+===SlashTHEM===
+[[SlashTHEM]] adds stronger versions of the newt in the [[deminewt]] and [[master newt]].
+
+==Encyclopedia entry==
+{{encyclopedia|<poem>
+(kinds of) small animal, like a lizard, which spends most of
+its time in the water.
+{{right-align|[ Oxford's Student's Dictionary of Current English ]}}
+]]>&#32;<![CDATA[
+"Fillet of a fenny snake,
+In the cauldron boil and bake;
+Eye of newt and toe of frog,
+Wool of bat and tongue of dog,
+Adder's fork and blind-worm's sting,
+Lizard's leg and howlet's wing,
+For a charm of powerful trouble,
+Like a hell-broth boil and bubble."
+{{right-align|[ Macbeth, by William Shakespeare ]}}
+</poem>}}
+==References==
+<references/>
+{{nethack-367}}
+[[Category:Monsters]]]]></text>
+      <sha1>c1fa420c492d146329a46799844bc77d5fa81450</sha1>
     </revision>
     <revision>
       <id>205111</id>
