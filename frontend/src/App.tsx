@@ -456,6 +456,9 @@ function App({
           onApplyProfile={applyProfile}
           profile={profile}
           readOnly
+          runtimeIdentity={
+            sessionManager.getActiveSession()?.module.blisshackRuntimeIdentity
+          }
           sessionId={state.summary.owner.sessionId}
         />
         <EndgameSummaryScreen
@@ -488,6 +491,9 @@ function App({
         onMapRendererFallback={recordMapRendererFallback}
         onApplyProfile={applyProfile}
         profile={profile}
+        runtimeIdentity={
+          sessionManager.getActiveSession()?.module.blisshackRuntimeIdentity
+        }
     />,
   );
 }

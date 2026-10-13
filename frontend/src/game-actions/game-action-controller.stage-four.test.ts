@@ -760,7 +760,11 @@ interface ExamineControllerState {
 
 interface ExamineController extends Omit<
   GameActionController,
-  "getState" | "observe" | "request"
+  | "cancelContextMenu"
+  | "chooseContextMenuRow"
+  | "getState"
+  | "observe"
+  | "request"
 > {
   request(intent: ExamineContextIntent): boolean;
   observe(observation: ExamineContextObservation): void;
@@ -1366,7 +1370,14 @@ describe("stage-four Examine safe handoff", () => {
       input: commandInput(),
     }));
 
-    expect(submitMenuSelection.mock.calls).toEqual([[null]]);
+    expect(submitMenuSelection.mock.calls).toEqual(
+      intent.kind === "inventory-context"
+        ? [
+          [[{ itemIndex: 0, count: 1 }]],
+          [null],
+        ]
+        : [[null]],
+    );
     expect(onActionCompletion).not.toHaveBeenCalled();
   });
 

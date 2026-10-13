@@ -3,6 +3,12 @@ import type {
   GlyphBinding,
   GlyphBindingResult,
 } from "./core-schema";
+import {
+  entityIdForBinding,
+  glyphsEqual,
+  type InventoryExamineCapture,
+  type MapExamineCapture,
+} from "./examine-target";
 import { validateVisibleArtifactToken } from "./visible-entity-token";
 
 export interface ResolvedVisibleEntity {
@@ -29,30 +35,11 @@ interface MapTargetState {
   cell: MapCell;
 }
 
-export interface MapExamineTarget {
-  moduleId: string;
-  sessionId: string;
-  mapRevision: number;
-  mapX: number;
-  mapY: number;
-  glyph: GlyphInfo;
-}
-
 interface InventoryTargetState {
   moduleId: string;
   sessionId: string;
   inventoryRevision: number;
   item: MenuItem;
-  visibleEntityToken: string | null;
-}
-
-export interface InventoryExamineTarget {
-  moduleId: string;
-  sessionId: string;
-  inventoryRevision: number;
-  identifier: number | null;
-  accelerator: number;
-  glyph: GlyphInfo;
   visibleEntityToken: string | null;
 }
 
@@ -130,15 +117,19 @@ export function createEntityResolver(options: {
  */
 export function captureMapExamineTarget(
   state: MapTargetState,
-): MapExamineTarget | null {
+): MapExamineCapture | null {
   const glyph = state.cell.foreground ?? state.cell.background;
   if (!glyph) return null;
   return {
+    surface: "map",
     moduleId: state.moduleId,
     sessionId: state.sessionId,
     mapRevision: state.mapRevision,
     mapX: state.mapX,
     mapY: state.mapY,
+    source: state.cell.foreground
+      ? "map-foreground"
+      : "map-background",
     glyph: { ...glyph },
   };
 }
@@ -150,15 +141,19 @@ export function captureMapExamineTarget(
  * @returns True only while every bound identity field remains unchanged.
  */
 export function isMapExamineTargetCurrent(
-  target: MapExamineTarget,
+  target: MapExamineCapture,
   state: MapTargetState,
 ): boolean {
   const glyph = state.cell.foreground ?? state.cell.background;
+  const source = state.cell.foreground
+    ? "map-foreground"
+    : "map-background";
   return target.moduleId === state.moduleId
     && target.sessionId === state.sessionId
     && target.mapRevision === state.mapRevision
     && target.mapX === state.mapX
     && target.mapY === state.mapY
+    && target.source === source
     && glyphsEqual(target.glyph, glyph);
 }
 
@@ -169,14 +164,16 @@ export function isMapExamineTargetCurrent(
  */
 export function captureInventoryExamineTarget(
   state: InventoryTargetState,
-): InventoryExamineTarget | null {
-  if (!state.item.glyph) return null;
+): InventoryExamineCapture | null {
+  if (!state.item.glyph || state.item.identifier === null) return null;
   return {
+    surface: "inventory",
     moduleId: state.moduleId,
     sessionId: state.sessionId,
     inventoryRevision: state.inventoryRevision,
     identifier: state.item.identifier,
     accelerator: state.item.accelerator,
+    source: "inventory",
     glyph: { ...state.item.glyph },
     visibleEntityToken: state.visibleEntityToken,
   };
@@ -189,7 +186,7 @@ export function captureInventoryExamineTarget(
  * @returns True only while every bound identity field remains unchanged.
  */
 export function isInventoryExamineTargetCurrent(
-  target: InventoryExamineTarget,
+  target: InventoryExamineCapture,
   state: InventoryTargetState,
 ): boolean {
   return target.moduleId === state.moduleId
@@ -199,50 +196,4 @@ export function isInventoryExamineTargetCurrent(
     && target.accelerator === state.item.accelerator
     && target.visibleEntityToken === state.visibleEntityToken
     && glyphsEqual(target.glyph, state.item.glyph);
-}
-
-/**
- * Select the public entity represented by one validated glyph binding.
- * @param binding Binding produced by the generated core catalog.
- * @returns Stable entity ID to load.
- */
-function entityIdForBinding(binding: GlyphBinding): string {
-  switch (binding.kind) {
-    case "monster":
-      return binding.monsterId;
-    case "corpse":
-    case "statue":
-      return binding.monsterId;
-    case "generic-object":
-      return binding.appearanceId;
-    case "object":
-      return binding.objectId;
-    case "terrain":
-      return binding.terrainId;
-    case "trap":
-      return binding.trapId;
-  }
-}
-
-/**
- * Compare every copied field in two display glyph structures.
- * @param left First glyph.
- * @param right Second glyph.
- * @returns True when both glyph values are identical.
- */
-function glyphsEqual(
-  left: GlyphInfo | null,
-  right: GlyphInfo | null,
-): boolean {
-  if (left === right) return true;
-  if (left === null || right === null) return false;
-  return left.glyph === right.glyph
-    && left.ttyChar === right.ttyChar
-    && left.frameColor === right.frameColor
-    && left.glyphFlags === right.glyphFlags
-    && left.color === right.color
-    && left.symbolIndex === right.symbolIndex
-    && left.customColor === right.customColor
-    && left.color256 === right.color256
-    && left.tileIndex === right.tileIndex;
 }

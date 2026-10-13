@@ -29,7 +29,10 @@ import {
   placeAnchoredOverlay,
   type AnchoredOverlayPosition,
 } from "../../interactions/anchored-overlay";
-import type { ContextMenuPresentation } from "../../game-actions/game-action-controller";
+import type {
+  ContextMenuPresentation,
+  ContextMenuRow,
+} from "../../game-actions/game-action-controller";
 import type { ActionBarStyle } from "../../settings/profile";
 import { colorClass, textAttributeClass } from "../../text-styling";
 import { filterExtendedCommands } from "./extended-command-search";
@@ -50,23 +53,38 @@ export const GameModalRenderer = memo(function GameModalRenderer({
   actionBarStyle = "original",
   contextMenu,
   modal,
+  onCancelContextMenu,
+  onChooseContextMenuRow,
 }: {
   actionBarStyle?: ActionBarStyle;
   contextMenu?: ContextMenuPresentation | null;
   modal: GameModal;
+  onCancelContextMenu?(menuGeneration: number): boolean;
+  onChooseContextMenuRow?(
+    menuGeneration: number,
+    row: ContextMenuRow,
+    count: number,
+  ): boolean;
 }) {
   if (modal.kind === "menu") {
     const window = getWindow(modal.windowId);
-    return window
+    if (!window) return null;
+    return contextMenu
       ? (
-        <MenuOverlay
-          compact={actionBarStyle === "blisshack" && !contextMenu}
-          contextMenu={contextMenu}
-          how={modal.how}
+        <ContextMenuOverlay
+          onCancel={onCancelContextMenu}
+          onChoose={onChooseContextMenuRow}
+          presentation={contextMenu}
           window={window}
         />
       )
-      : null;
+      : (
+        <MenuOverlay
+          compact={actionBarStyle === "blisshack"}
+          how={modal.how}
+          window={window}
+        />
+      );
   }
   if (modal.kind === "extcmd") {
     return <ExtendedCommandOverlay commands={modal.commands} />;
@@ -119,6 +137,323 @@ function TextOverlay({
           ))}
         </pre>
       </section>
+    </div>
+  );
+}
+
+interface ContextDisplayRow {
+  accelerator: number;
+  row: ContextMenuRow;
+  rowIndex: number;
+}
+
+/**
+ * Render a generation-bound context menu with core and local semantic rows.
+ * @param props Current presentation, core window, and semantic handlers.
+ * @returns Anchored context menu.
+ */
+function ContextMenuOverlay({
+  onCancel,
+  onChoose,
+  presentation,
+  window,
+}: {
+  onCancel?(menuGeneration: number): boolean;
+  onChoose?(
+    menuGeneration: number,
+    row: ContextMenuRow,
+    count: number,
+  ): boolean;
+  presentation: ContextMenuPresentation;
+  window: WindowState;
+}) {
+  const rows = useMemo(
+    () => assignContextAccelerators(presentation.rows),
+    [presentation.rows],
+  );
+  const selectableIndexes = useMemo(
+    () => rows
+      .filter(({ row }) =>
+        row.kind === "examine" || row.item.identifier !== null
+      )
+      .map(({ rowIndex }) => rowIndex),
+    [rows],
+  );
+  const [focusIndex, setFocusIndex] = useState(
+    selectableIndexes[0] ?? -1,
+  );
+  const activeFocusIndex = selectableIndexes.includes(focusIndex)
+    ? focusIndex
+    : selectableIndexes[0] ?? -1;
+  const [count, setCount] = useState("");
+  const menuRef = useRef<HTMLElement>(null);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
+  const restoreFocusRef = useRef(true);
+  const [position, setPosition] = useState<AnchoredOverlayPosition | null>(null);
+  const anchor = presentation.origin.kind === "keyboard"
+    ? null
+    : presentation.origin;
+
+  useLayoutEffect(() => {
+    const menu = menuRef.current;
+    if (!anchor || !menu) {
+      setPosition(null);
+      return;
+    }
+
+    /** Reposition the measured semantic menu after viewport changes. */
+    const update = (): void => {
+      const bounds = menu.getBoundingClientRect();
+      setPosition(placeAnchoredOverlay({
+        anchor: { x: anchor.clientX, y: anchor.clientY },
+        gap: 8,
+        margin: 8,
+        overlay: { width: bounds.width, height: bounds.height },
+        viewport: {
+          width: globalThis.innerWidth,
+          height: globalThis.innerHeight,
+        },
+      }));
+    };
+
+    update();
+    globalThis.addEventListener("resize", update);
+    return () => globalThis.removeEventListener("resize", update);
+  }, [anchor, presentation.rows]);
+
+  useLayoutEffect(() => {
+    if (position === null || activeFocusIndex < 0) return;
+    menuRef.current
+      ?.querySelector<HTMLElement>(`[data-menu-row="${activeFocusIndex}"]`)
+      ?.focus();
+  }, [activeFocusIndex, position]);
+
+  useEffect(() => {
+    returnFocusRef.current = findContextMenuTrigger(presentation.origin);
+    return () => {
+      if (restoreFocusRef.current) {
+        restoreContextMenuFocus(returnFocusRef.current);
+      }
+    };
+  }, [presentation.origin]);
+
+  useEffect(() => {
+    /** Cancel secondary clicks outside the active semantic menu. */
+    function handleContextMenu(event: MouseEvent): void {
+      event.preventDefault();
+      const menu = menuRef.current;
+      if (
+        !menu
+        || !(event.target instanceof Node)
+        || !menu.contains(event.target)
+      ) {
+        onCancel?.(presentation.menuGeneration);
+      }
+    }
+
+    document.addEventListener("contextmenu", handleContextMenu, {
+      capture: true,
+    });
+    return () => document.removeEventListener(
+      "contextmenu",
+      handleContextMenu,
+      { capture: true },
+    );
+  }, [onCancel, presentation.menuGeneration]);
+
+  useEffect(() => {
+    /**
+     * Apply only semantic context navigation and accelerators.
+     * @param event Browser key event while the menu is active.
+     */
+    function handleContextKey(event: KeyboardEvent): void {
+      const encoded = keyboardEventToNetHackKey(event, { numberPad: false });
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onCancel?.(presentation.menuGeneration);
+        return;
+      }
+      if (/^[0-9]$/.test(event.key)) {
+        event.preventDefault();
+        setCount((current) => `${current}${event.key}`.slice(0, 9));
+        return;
+      }
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        setFocusIndex((current) =>
+          moveMenuFocus(
+            selectableIndexes,
+            selectableIndexes.includes(current)
+              ? current
+              : selectableIndexes[0] ?? -1,
+            event.key === "ArrowDown" ? 1 : -1,
+          )
+        );
+        return;
+      }
+      if (
+        (event.key === "Enter" || event.key === " ")
+        && activeFocusIndex >= 0
+      ) {
+        event.preventDefault();
+        chooseRow(activeFocusIndex);
+        return;
+      }
+      if (encoded === null) return;
+      const accelerated = rows.find(({ accelerator, row }) =>
+        accelerator === encoded
+        || (
+          row.kind === "core"
+          && row.item.groupAccelerator === encoded
+        )
+      );
+      if (!accelerated) return;
+      event.preventDefault();
+      chooseRow(accelerated.rowIndex);
+    }
+
+    windowThis().addEventListener("keydown", handleContextKey);
+    return () => windowThis().removeEventListener(
+      "keydown",
+      handleContextKey,
+    );
+  });
+
+  /**
+   * Activate one semantic row without translating it into a fake core index.
+   * @param rowIndex Presentation-local row index.
+   */
+  function chooseRow(rowIndex: number): void {
+    const selected = rows[rowIndex];
+    if (!selected) return;
+    const accepted = onChoose?.(
+      presentation.menuGeneration,
+      selected.row,
+      parsedCount(count),
+    ) ?? false;
+    if (accepted && selected.row.kind === "examine") {
+      restoreFocusRef.current = false;
+    }
+  }
+
+  const resolvedPosition = position ?? (
+    anchor
+      ? {
+        left: anchor.clientX + 8,
+        top: anchor.clientY + 8,
+        horizontal: "after" as const,
+        vertical: "after" as const,
+      }
+      : null
+  );
+  const menu = (
+    <section
+      aria-hidden={position === null ? "true" : undefined}
+      aria-label={window.menuPrompt || "Context menu"}
+      className="nh-context-menu"
+      data-browser-keyboard
+      data-horizontal={resolvedPosition?.horizontal}
+      data-vertical={resolvedPosition?.vertical}
+      ref={menuRef}
+      role="menu"
+      style={resolvedPosition
+        ? {
+          "--overlay-left": `${resolvedPosition.left}px`,
+          "--overlay-top": `${resolvedPosition.top}px`,
+        } as CSSProperties
+        : undefined}
+    >
+      {window.menuPrompt && <header>{window.menuPrompt}</header>}
+      <div className="nh-menu-items nh-action-menu-items">
+        {rows.map(({ accelerator, row, rowIndex }) => {
+          if (row.kind === "examine") {
+            return (
+              <div
+                className="nh-context-menu-examine-group"
+                key={`examine:${row.target.entityId}`}
+              >
+                <div
+                  aria-hidden="true"
+                  className="nh-context-menu-separator"
+                  role="separator"
+                />
+                <button
+                  className={[
+                    "nh-menu-item",
+                    "nh-action-menu-item",
+                    "nh-examine-menu-item",
+                    activeFocusIndex === rowIndex ? "focused" : "",
+                  ].filter(Boolean).join(" ")}
+                  data-menu-row={rowIndex}
+                  onClick={() => chooseRow(rowIndex)}
+                  onFocus={() => setFocusIndex(rowIndex)}
+                  onMouseEnter={() => setFocusIndex(rowIndex)}
+                  role="menuitem"
+                  tabIndex={activeFocusIndex === rowIndex ? 0 : -1}
+                  type="button"
+                >
+                  <span className="nh-menu-accelerator">
+                    {accelerator ? String.fromCharCode(accelerator) : " "}
+                  </span>
+                  <span className="nh-menu-text">Examine</span>
+                </button>
+              </div>
+            );
+          }
+          const item = row.item;
+          return item.identifier === null
+            ? (
+              <div
+                className={`nh-menu-heading ${textAttributeClass(item.attribute)}`}
+                key={`${row.itemIndex}:${item.text}`}
+              >
+                {item.text || "\u00a0"}
+              </div>
+            )
+            : (
+              <button
+                className={[
+                  "nh-menu-item",
+                  "nh-action-menu-item",
+                  activeFocusIndex === rowIndex ? "focused" : "",
+                  colorClass(item.color),
+                  textAttributeClass(item.attribute),
+                ].filter(Boolean).join(" ")}
+                data-core-identifier={item.identifier}
+                data-menu-row={rowIndex}
+                key={`${row.itemIndex}:${item.text}`}
+                onClick={() => chooseRow(rowIndex)}
+                onFocus={() => setFocusIndex(rowIndex)}
+                onMouseEnter={() => setFocusIndex(rowIndex)}
+                role="menuitem"
+                tabIndex={activeFocusIndex === rowIndex ? 0 : -1}
+                type="button"
+              >
+                <span className="nh-menu-accelerator">
+                  {accelerator ? String.fromCharCode(accelerator) : " "}
+                </span>
+                <span className="nh-menu-text">{item.text}</span>
+              </button>
+            );
+        })}
+      </div>
+      {count && <output className="nh-count">{count}</output>}
+    </section>
+  );
+
+  return (
+    <div
+      className="nh-context-menu-layer"
+      onPointerDown={(event) => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        onCancel?.(presentation.menuGeneration);
+      }}
+      role="presentation"
+    >
+      <div onPointerDown={(event) => event.stopPropagation()}>
+        {menu}
+      </div>
     </div>
   );
 }
@@ -204,7 +539,7 @@ function MenuOverlay({
 
   useEffect(() => {
     if (!contextMenu || !anchor) return undefined;
-    returnFocusRef.current = findContextMenuTrigger(contextMenu);
+    returnFocusRef.current = findContextMenuTrigger(contextMenu.origin);
     return () => restoreContextMenuFocus(returnFocusRef.current);
   }, [anchor, contextMenu]);
 
@@ -662,6 +997,28 @@ function assignAccelerators(items: MenuItem[]) {
 }
 
 /**
+ * Assign display accelerators while preserving semantic row identities.
+ * @param rows Core and Examine rows in presentation order.
+ * @returns Rows paired with presentation indexes and visible accelerators.
+ */
+function assignContextAccelerators(
+  rows: readonly ContextMenuRow[],
+): ContextDisplayRow[] {
+  let automaticIndex = 0;
+  return rows.map((row, rowIndex) => {
+    if (row.kind === "examine") {
+      return { accelerator: row.accelerator, row, rowIndex };
+    }
+    let accelerator = row.item.accelerator;
+    if (row.item.identifier !== null && accelerator === 0) {
+      accelerator = AUTO_ACCELERATORS.charCodeAt(automaticIndex) || 0;
+      automaticIndex += 1;
+    }
+    return { accelerator, row, rowIndex };
+  });
+}
+
+/**
  * Move menu focus with wraparound.
  * @param indexes - selectable source indexes.
  * @param current - current source index.
@@ -697,13 +1054,12 @@ function parsedCount(value: string): number {
 
 /**
  * Resolve the programmatic focus target which opened an anchored menu.
- * @param contextMenu - active serializable menu presentation.
+ * @param origin - serializable context-menu origin.
  * @returns the connected map or inventory trigger, when one exists.
  */
 function findContextMenuTrigger(
-  contextMenu: ContextMenuPresentation,
+  origin: ContextMenuPresentation["origin"],
 ): HTMLElement | null {
-  const origin = contextMenu.origin;
   if (typeof document === "undefined") {
     return null;
   }

@@ -1896,6 +1896,20 @@
   grid-template-columns: 2ch minmax(0, 1fr);
 }
 
+.nh-context-menu-examine-group {
+  display: contents;
+}
+
+.nh-context-menu-separator {
+  height: 1px;
+  margin: 5px 8px;
+  background: #41484c;
+}
+
+.nh-examine-menu-item {
+  color: #f5d779;
+}
+
 .nh-menu-item:hover,
 .nh-menu-item.focused {
   border-color: #5a6268;

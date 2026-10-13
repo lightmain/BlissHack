@@ -1,4 +1,8 @@
 import type { GlyphInfo } from "../game-state";
+import type {
+  InventoryExamineCapture,
+  MapExamineCapture,
+} from "../encyclopedia/examine-target";
 import type { InteractionOrigin } from "./interaction-origin";
 
 interface ActionIntentBase {
@@ -20,6 +24,7 @@ export type ActionIntent =
   })
   | (ActionIntentBase & {
     kind: "map-context";
+    examineCapture?: MapExamineCapture | null;
     origin: Extract<InteractionOrigin, { kind: "map" }>;
   })
   | (ActionIntentBase & {
@@ -33,6 +38,7 @@ export type ActionIntent =
     inventoryRevision: number;
     identifier: number;
     accelerator: number;
+    examineCapture?: InventoryExamineCapture | null;
     origin: Extract<InteractionOrigin, { kind: "inventory" }>;
   })
   | (ActionIntentBase & {
