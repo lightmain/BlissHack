@@ -18,6 +18,9 @@ React and TypeScript frontend for the NetHack WebAssembly build.
   authoritative command, menu, snapshot, and inventory observations.
 - `src/interactions/` owns shared anchored overlays, hover inspection, and the
   Pointer Events permanent-inventory drag controller.
+- `src/encyclopedia/` validates the runtime-bound catalog, resolves only
+  core-published visible identities, lazy-loads hashed entity and Wiki chunks,
+  and owns the local Examine request lifecycle.
 - `src/map/` contains the shared `MapViewport`, camera and right-drag hooks,
   retained ASCII renderer, Canvas tile renderer, atlas loader, and
   renderer-independent draw primitives.
@@ -26,11 +29,13 @@ React and TypeScript frontend for the NetHack WebAssembly build.
 - `src/settings/profile.ts` owns the explicit strict v1-to-v2-to-v3-to-v4
   migration chain; `interface` contains map, information, endgame,
   character-setup, and action-bar presentation preferences.
-- `interface.informationLevel` controls only explanatory status inspection;
-  map and inventory inspection remain available in both modes.
+- `interface.informationLevel` controls explanatory status inspection and the
+  synthetic `Examine` row. Existing map and inventory hover inspection remains
+  available in both modes.
 - `src/screens/game/` contains the fullscreen HUD layout, the Original
   two-line status, the BlissHack graphical status and action dock, shared
-  secondary input dialogs, fixed messages, and modal presentation.
+  secondary input dialogs, Examine dialog, fixed messages, and modal
+  presentation.
   `src/screens/settings/` contains the profile and in-game Settings
   presentation.
 - `src/styles/` contains page-scoped global styles loaded through `src/App.css`.
@@ -39,6 +44,22 @@ The checked-in `public/nethack.js`, `public/nethack.wasm`, and
 `public/nethack-runtime.json` files form one verified runtime triplet. Follow
 the repository [WASM build process](../doc/BlissHack/build-process.md) before
 changing them.
+
+The loader fetches and verifies `nethack.js` and `nethack.wasm`, imports the
+verified JavaScript bytes through a temporary Blob URL, and injects the
+verified WASM bytes into the resulting factory. Factories are cached by
+verified loader digest and importer; failed imports are evicted. A deployment
+with Content Security Policy must include `blob:` in `script-src`.
+
+The checked-in `public/encyclopedia/` directory contains deterministic
+NetHack source facts and separately licensed, reviewed NetHackWiki excerpts.
+The runtime manifest binds both encyclopedia manifests to the runtime triplet.
+Verify all checked-in encyclopedia assets without network access or worktree
+rewrites:
+
+```sh
+npm run encyclopedia:verify
+```
 
 The checked-in `public/tiles/nethack-classic.png` and
 `public/tiles/nethack-classic.json` are generated together from NetHack's
