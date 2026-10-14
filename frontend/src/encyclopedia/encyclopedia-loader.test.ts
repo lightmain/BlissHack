@@ -111,6 +111,8 @@ describe("encyclopedia manifest preload", () => {
       fixture.urls.glyphChunk,
       fixture.urls.visibleObjectBindings,
       fixture.urls.entityChunk,
+      fixture.urls.artifactChunk,
+      fixture.urls.objectChunk,
       fixture.urls.wikiChunk,
     ]) {
       expect(callsForUrl(fetchBytes, url), url).toBe(0);
@@ -169,6 +171,8 @@ describe("encyclopedia manifest preload", () => {
       fixture.urls.glyphChunk,
       fixture.urls.visibleObjectBindings,
       fixture.urls.entityChunk,
+      fixture.urls.artifactChunk,
+      fixture.urls.objectChunk,
       fixture.urls.wikiChunk,
     ]) {
       expect(callsForUrl(fetchBytes, url), url).toBe(0);
@@ -224,7 +228,7 @@ describe("encyclopedia runtime loader", () => {
       .toMatchObject({
         core: {
           id: "terrain:S_FOUNTAIN",
-          kind: "terrain",
+          family: "terrain",
         },
         wiki: {
           entityId: "terrain:S_FOUNTAIN",
@@ -251,6 +255,35 @@ describe("encyclopedia runtime loader", () => {
       fetchBytes,
       fixture.urls.visibleObjectBindings,
     )).toBe(1);
+  });
+
+  it("loads an artifact as its base object plus an additive overlay", async () => {
+    const fixture = createEncyclopediaAssetFixture();
+    const fetchBytes = fixtureFetcher(fixture);
+    const loader = fixtureLoader(fixture, fetchBytes);
+
+    await expect(loader.loadEntity("artifact:ART_TEST")).resolves
+      .toMatchObject({
+        core: {
+          id: "artifact:ART_TEST",
+          family: "artifact",
+          facts: { baseObjectId: "object:TEST_WEAPON" },
+        },
+        artifactBaseObject: {
+          id: "object:TEST_WEAPON",
+          family: "object",
+          facts: {
+            objectClass: "WEAPON_CLASS",
+            subtype: {
+              damageSmall: 6,
+              damageLarge: 8,
+              skill: "P_SPEAR",
+            },
+          },
+        },
+      });
+    expect(callsForUrl(fetchBytes, fixture.urls.artifactChunk)).toBe(1);
+    expect(callsForUrl(fetchBytes, fixture.urls.objectChunk)).toBe(1);
   });
 
   it.each([
@@ -328,7 +361,7 @@ describe("encyclopedia runtime loader", () => {
   it("rejects a core manifest schema error even when runtime metadata matches", async () => {
     const fixture = createEncyclopediaAssetFixture();
     const manifest = readJsonAsset(fixture, fixture.urls.coreManifest);
-    manifest.schemaVersion = 2;
+    manifest.schemaVersion = 1;
     writeJsonAsset(fixture, fixture.urls.coreManifest, manifest);
     bindRuntimeToCore(fixture);
 
@@ -366,7 +399,7 @@ describe("encyclopedia runtime loader", () => {
       load: "glyph" as const,
       mutate(fixture: EncyclopediaAssetFixture) {
         const chunk = readJsonAsset(fixture, fixture.urls.glyphChunk);
-        chunk.schemaVersion = 2;
+        chunk.schemaVersion = 1;
         writeJsonAsset(fixture, fixture.urls.glyphChunk, chunk);
         bindChunkMetadata(
           fixture,
@@ -394,7 +427,10 @@ describe("encyclopedia runtime loader", () => {
       load: "entity" as const,
       mutate(fixture: EncyclopediaAssetFixture) {
         const manifest = readJsonAsset(fixture, fixture.urls.coreManifest);
-        manifest.chunks[0].bytes += 1;
+        const metadata = manifest.chunks.find(
+          (chunk: { file: string }) => chunk.file === "terrain-001.json",
+        );
+        metadata.bytes += 1;
         writeJsonAsset(fixture, fixture.urls.coreManifest, manifest);
         bindRuntimeToCore(fixture);
       },
@@ -405,7 +441,7 @@ describe("encyclopedia runtime loader", () => {
       load: "entity" as const,
       mutate(fixture: EncyclopediaAssetFixture) {
         const chunk = readJsonAsset(fixture, fixture.urls.entityChunk);
-        chunk.schemaVersion = 2;
+        chunk.schemaVersion = 1;
         writeJsonAsset(fixture, fixture.urls.entityChunk, chunk);
         bindChunkMetadata(
           fixture,
@@ -449,7 +485,7 @@ describe("encyclopedia runtime loader", () => {
           fixture,
           fixture.urls.visibleObjectBindings,
         );
-        index.schemaVersion = 2;
+        index.schemaVersion = 1;
         writeJsonAsset(fixture, fixture.urls.visibleObjectBindings, index);
         bindChunkMetadata(
           fixture,

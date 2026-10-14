@@ -11,6 +11,7 @@ import { resolveWikiPage } from "../../encyclopedia/wiki-page";
 import { ExamineDialog } from "./ExamineDialog";
 import { ExamineFacts } from "./ExamineFacts";
 import {
+  ARTIFACT_CORE,
   NEWT_CORE,
   NEWT_ENTITY,
   NEWT_TARGET,
@@ -27,6 +28,33 @@ type EntityWithWikiPage = LoadedEncyclopediaEntity & {
   wikiPage: TrustedWikiPage | null;
 };
 
+const FACTS_SOURCE = readFileSync(
+  new URL("./ExamineFacts.tsx", import.meta.url),
+  "utf8",
+);
+const DIALOG_SOURCE = readFileSync(
+  new URL("./ExamineDialog.tsx", import.meta.url),
+  "utf8",
+);
+const OBJECT_CLASSES = [
+  "ILLOBJ_CLASS",
+  "WEAPON_CLASS",
+  "ARMOR_CLASS",
+  "RING_CLASS",
+  "AMULET_CLASS",
+  "TOOL_CLASS",
+  "FOOD_CLASS",
+  "POTION_CLASS",
+  "SCROLL_CLASS",
+  "SPBOOK_CLASS",
+  "WAND_CLASS",
+  "COIN_CLASS",
+  "GEM_CLASS",
+  "ROCK_CLASS",
+  "BALL_CLASS",
+  "CHAIN_CLASS",
+  "VENOM_CLASS",
+] as const;
 const OBJECT_RECORDS = ["object-002.json", "object-003.json"].flatMap((file) =>
   (JSON.parse(readFileSync(
     new URL(`../../../public/encyclopedia/core/${file}`, import.meta.url),
@@ -46,11 +74,15 @@ function renderDialog(
   entity: LoadedEncyclopediaEntity,
   target: ExamineTarget = NEWT_TARGET,
 ): string {
+  const renderedEntity = {
+    ...entity,
+    core: presentationCompatibleCore(entity.core),
+  };
   return renderToStaticMarkup(createElement(ExamineDialog, {
     nethackVersion: "5.0.0",
     onClose: vi.fn(),
     onRestoreFocus: vi.fn(),
-    state: { status: "ready", entity },
+    state: { status: "ready", entity: renderedEntity },
     target,
   }));
 }
@@ -79,6 +111,61 @@ function catalogEntity(
 /** Escape the characters React encodes inside static href attributes. */
 function renderedHref(url: string): string {
   return url.replaceAll("&", "&amp;");
+}
+
+/** Render only the core facts presentation for one schema-v2 fixture. */
+function renderFacts(
+  core: CoreEntityRecord,
+): string {
+  return renderToStaticMarkup(createElement(ExamineFacts, {
+    core: presentationCompatibleCore(core),
+    nethackVersion: "5.0.0",
+  }));
+}
+
+/**
+ * Let the legacy renderer reach the new assertions while schema tests keep
+ * v2 records themselves free of the removed kind field.
+ */
+function presentationCompatibleCore(
+  core: CoreEntityRecord,
+): CoreEntityRecord {
+  const candidate = core as unknown as Record<string, unknown>;
+  return "kind" in candidate || typeof candidate.family !== "string"
+    ? core
+    : { ...candidate, kind: candidate.family } as unknown as CoreEntityRecord;
+}
+
+/** Build one schema-v2 object presentation fixture for an exact class. */
+function objectClassRecord(objectClass: string): CoreEntityRecord {
+  const record = structuredClone(WEAPON_CORE) as unknown as {
+    id: string;
+    names: { primary: string };
+    facts: Record<string, unknown>;
+  };
+  record.id = `object:TEST_${objectClass}`;
+  record.names = { primary: `test ${objectClass.toLowerCase()}` };
+  record.facts.objectClass = objectClass;
+  record.facts.subtype = {};
+  return record as unknown as CoreEntityRecord;
+}
+
+/** Return the opening tag for one rendered class. */
+function openingTag(html: string, className: string): string {
+  const match = html.match(new RegExp(
+    `<[^>]+class="[^"]*\\b${className}\\b[^"]*"[^>]*>`,
+  ));
+  expect(match, `missing ${className} opening tag`).not.toBeNull();
+  return match![0];
+}
+
+/** Return the complete core facts subtree from static dialog markup. */
+function factsMarkup(html: string): string {
+  const start = html.indexOf("<aside");
+  const end = html.indexOf("</aside>", start);
+  expect(start, "missing facts subtree").toBeGreaterThan(-1);
+  expect(end, "missing facts subtree end").toBeGreaterThan(start);
+  return html.slice(start, end + "</aside>".length);
 }
 
 describe("refined Examine Wiki page links", () => {
@@ -115,15 +202,15 @@ describe("refined Examine Wiki page links", () => {
 
   it("keeps generic appearances fixed-map and fail-closed", () => {
     const appearance = (objectClass: string): CoreEntityRecord => ({
-      schemaVersion: 1,
+      schemaVersion: 2,
       id: `appearance:${objectClass}:GENERIC`,
-      kind: "appearance",
+      family: "appearance",
       names: { primary: "wand of fire from visible text" },
       symbol: 33,
       color: null,
       facts: { objectClass },
       sourceRefs: [{ path: "include/objects.h", symbol: objectClass }],
-    });
+    } as unknown as CoreEntityRecord);
 
     expect(resolveWikiPage({
       core: appearance("POTION_CLASS"),
@@ -166,10 +253,10 @@ describe("refined Examine Wiki page links", () => {
   });
 
   it("uses only an explicit safe category page for a generic appearance", () => {
-    const core: CoreEntityRecord = {
-      schemaVersion: 1,
+    const core = {
+      schemaVersion: 2,
       id: "appearance:POTION_CLASS:GENERIC",
-      kind: "appearance",
+      family: "appearance",
       names: {
         primary: "potion of healing from untrusted visible text",
       },
@@ -180,7 +267,7 @@ describe("refined Examine Wiki page links", () => {
         path: "include/objects.h",
         symbol: "POTION_CLASS",
       }],
-    };
+    } as unknown as CoreEntityRecord;
     const target: ExamineTarget = {
       ...NEWT_TARGET,
       entityId: core.id,
@@ -228,23 +315,22 @@ describe("refined Examine Wiki page links", () => {
 });
 
 describe("refined Examine fact hierarchy", () => {
-  it("keeps non-monster facts-only content out of the monster column grid", () => {
+  it("selects an objectClass template instead of a family-wide object page", () => {
     const html = renderDialog(
       { core: WEAPON_CORE, wiki: null },
       { ...NEWT_TARGET, entityId: WEAPON_CORE.id },
     );
 
-    expect(html).toContain('data-facts-only="true"');
-    expect(html).toContain('data-entity-kind="object"');
+    expect(html).toContain(
+      'data-examine-template="object:WEAPON_CLASS"',
+    );
+    expect(html).not.toContain("data-entity-kind");
     expect(html).not.toContain("examine-facts-primary");
     expect(html).not.toContain("examine-facts-secondary");
   });
 
   it("groups primary and secondary monster facts into distinct columns", () => {
-    const html = renderToStaticMarkup(createElement(ExamineFacts, {
-      core: NEWT_CORE,
-      nethackVersion: "5.0.0",
-    }));
+    const html = renderFacts(NEWT_CORE);
     const primary = html.indexOf("examine-facts-primary");
     const secondary = html.indexOf("examine-facts-secondary");
     const provenance = html.indexOf("examine-provenance");
@@ -255,6 +341,7 @@ describe("refined Examine fact hierarchy", () => {
     );
     expect(provenance, "provenance must follow both fact columns")
       .toBeGreaterThan(secondary);
+    expect(html).toContain('data-examine-template="monster"');
 
     for (const heading of ["Core statistics", "Attack", "Generation"]) {
       const index = html.indexOf(`>${heading}</h2>`);
@@ -280,10 +367,7 @@ describe("refined Examine fact hierarchy", () => {
   });
 
   it("marks the core statistics and key combat fields for emphasis", () => {
-    const html = renderToStaticMarkup(createElement(ExamineFacts, {
-      core: NEWT_CORE,
-      nethackVersion: "5.0.0",
-    }));
+    const html = renderFacts(NEWT_CORE);
     const emphasizedLabels = [
       ...html.matchAll(
         /<div class="[^"]*\bexamine-key-fact\b[^"]*"><dt>([^<]+)<\/dt>/g,
@@ -302,5 +386,170 @@ describe("refined Examine fact hierarchy", () => {
     ]);
     expect(emphasizedLabels).not.toContain("weight");
     expect(emphasizedLabels).not.toContain("nutrition");
+  });
+});
+
+describe("core-class Examine template dispatch", () => {
+  it.each(OBJECT_CLASSES)(
+    "maps %s through facts.objectClass",
+    (objectClass) => {
+      const html = renderFacts(objectClassRecord(objectClass));
+
+      expect(html).toContain(
+        `data-examine-template="object:${objectClass}"`,
+      );
+      expect(html).toContain(objectClass);
+      expect(html).not.toContain("data-entity-kind");
+    },
+  );
+
+  it.each([
+    [
+      "terrain",
+      {
+        schemaVersion: 2,
+        id: "terrain:S_FOUNTAIN",
+        family: "terrain",
+        names: { primary: "fountain" },
+        symbol: 123,
+        color: 6,
+        facts: { terrainSymbol: "S_FOUNTAIN", category: "feature" },
+        sourceRefs: [{
+          path: "include/defsym.h",
+          symbol: "S_FOUNTAIN",
+        }],
+      },
+      "terrain",
+    ],
+    [
+      "trap",
+      {
+        schemaVersion: 2,
+        id: "trap:ARROW_TRAP",
+        family: "trap",
+        names: { primary: "arrow trap" },
+        symbol: 94,
+        color: 7,
+        facts: { trapSymbol: "ARROW_TRAP", category: "physical" },
+        sourceRefs: [{ path: "include/trap.h", symbol: "ARROW_TRAP" }],
+      },
+      "trap",
+    ],
+    [
+      "appearance",
+      {
+        schemaVersion: 2,
+        id: "appearance:POTION_CLASS:GENERIC",
+        family: "appearance",
+        names: { primary: "potion" },
+        symbol: 33,
+        color: 5,
+        facts: { objectClass: "POTION_CLASS" },
+        sourceRefs: [{
+          path: "include/objects.h",
+          symbol: "GENERIC_POTION",
+        }],
+      },
+      "appearance:POTION_CLASS",
+    ],
+  ])("uses the %s core template", (_label, fixture, template) => {
+    const html = renderFacts(fixture as unknown as CoreEntityRecord);
+    expect(html).toContain(`data-examine-template="${template}"`);
+  });
+
+  it("uses the base object template before adding an artifact overlay", () => {
+    const html = renderDialog({
+      core: ARTIFACT_CORE,
+      wiki: null,
+      artifactBaseObject: WEAPON_CORE,
+    } as unknown as LoadedEncyclopediaEntity, {
+      ...NEWT_TARGET,
+      entityId: ARTIFACT_CORE.id,
+    });
+    const baseTemplate = html.indexOf(
+      'data-examine-template="object:WEAPON_CLASS"',
+    );
+    const artifactOverlay = html.indexOf(
+      'data-examine-overlay="artifact"',
+    );
+
+    expect(baseTemplate).toBeGreaterThan(-1);
+    expect(artifactOverlay).toBeGreaterThan(baseTemplate);
+    for (const baseFact of [
+      "damageSmall",
+      "damageLarge",
+      "P_SPEAR",
+      "strikeModes",
+    ]) {
+      expect(html).toContain(baseFact);
+    }
+    for (const overlayFact of [
+      "baseObjectId",
+      "SPFX_INTEL",
+      "generationEnchantment",
+      "giftValue",
+    ]) {
+      expect(html).toContain(overlayFact);
+    }
+  });
+
+  it("does not use the loading family as a generic presentation template", () => {
+    expect(FACTS_SOURCE).not.toMatch(
+      /displayName\(core\.(?:kind|family)\)/,
+    );
+    expect(DIALOG_SOURCE).not.toMatch(
+      /displayName\(core\.(?:kind|family)\)/,
+    );
+    expect(FACTS_SOURCE).not.toContain("data-entity-kind");
+  });
+});
+
+describe("appearance and optional Wiki presentation boundaries", () => {
+  it("keeps an appearance on its spoiler-safe category view", () => {
+    const core = {
+      schemaVersion: 2,
+      id: "appearance:POTION_CLASS:GENERIC",
+      family: "appearance",
+      names: { primary: "potion of healing from concrete visible text" },
+      symbol: 33,
+      color: 5,
+      facts: { objectClass: "POTION_CLASS" },
+      sourceRefs: [{
+        path: "include/objects.h",
+        symbol: "GENERIC_POTION",
+      }],
+    } as unknown as CoreEntityRecord;
+    const html = renderDialog(
+      { core, wiki: null } as LoadedEncyclopediaEntity,
+      { ...NEWT_TARGET, entityId: core.id },
+    );
+
+    expect(html).toContain(">Potion</h1>");
+    expect(html).toContain(
+      'data-examine-template="appearance:POTION_CLASS"',
+    );
+    expect(html).not.toMatch(/healing|concrete visible text/i);
+  });
+
+  it("keeps the main layout and core facts invariant when Wiki is present", () => {
+    const factsOnly = renderDialog({
+      core: NEWT_CORE,
+      wiki: null,
+    });
+    const withWiki = renderDialog(NEWT_ENTITY);
+
+    expect(openingTag(factsOnly, "examine-layout"))
+      .toBe(openingTag(withWiki, "examine-layout"));
+    expect(openingTag(withWiki, "examine-layout"))
+      .not.toContain("data-facts-only");
+    expect(factsMarkup(factsOnly)).toBe(factsMarkup(withWiki));
+    expect(withWiki.indexOf("examine-facts"))
+      .toBeLessThan(withWiki.indexOf("examine-article"));
+  });
+
+  it("does not special-case Newt in production presentation code", () => {
+    expect(`${FACTS_SOURCE}\n${DIALOG_SOURCE}`).not.toMatch(
+      /\b(?:PM_NEWT|Newt)\b/,
+    );
   });
 });
