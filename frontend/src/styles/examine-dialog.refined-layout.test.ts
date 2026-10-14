@@ -51,13 +51,18 @@ describe("refined Examine typography and fact hierarchy", () => {
     expect(CSS).not.toMatch(/\bnewt\b/i);
   });
 
-  it("uses emphasized primary and secondary columns only for monsters", () => {
+  it("uses monster columns only when facts span the full layout", () => {
     const facts = cssFor(CSS, ".examine-facts");
+    const factsOnly = cssFor(CSS, ".examine-facts:only-child");
     const monsterFacts = cssFor(
       CSS,
-      '.examine-facts[data-examine-template="monster"]',
+      '.examine-facts[data-examine-template="monster"]:only-child',
     );
-    const primary = cssFor(CSS, ".examine-facts-primary");
+    const primary = cssFor(
+      CSS,
+      '.examine-facts[data-examine-template="monster"]:only-child '
+        + ".examine-facts-primary",
+    );
     const statistics = cssFor(
       CSS,
       ".examine-core-statistics .examine-detail-list",
@@ -69,6 +74,7 @@ describe("refined Examine typography and fact hierarchy", () => {
     expect(facts).toMatch(/\bmax-width\s*:\s*none\s*;/);
     expect(facts).not.toMatch(/\bdisplay\s*:\s*grid\s*;/);
     expect(facts).not.toMatch(/\bgrid-template-columns\s*:/);
+    expect(factsOnly).toMatch(/\bgrid-column\s*:\s*1\s*\/\s*-1\s*;/);
     expect(monsterFacts).toMatch(/\bdisplay\s*:\s*grid\s*;/);
     expect(monsterFacts).toMatch(
       /\bgrid-template-columns\s*:\s*minmax\(0,\s*1\.08fr\)\s+minmax\(0,\s*0\.92fr\)\s*;/,
@@ -92,7 +98,11 @@ describe("refined Examine narrow-screen scroll ownership", () => {
       narrow,
       '.examine-facts[data-examine-template="monster"]',
     );
-    const primary = cssFor(narrow, ".examine-facts-primary");
+    const primary = cssFor(
+      narrow,
+      '.examine-facts[data-examine-template="monster"]:only-child '
+        + ".examine-facts-primary",
+    );
 
     expect(cssFor(narrow, ".examine-layout"))
       .toMatch(/\boverflow-y\s*:\s*auto\s*;/);

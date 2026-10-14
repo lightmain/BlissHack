@@ -1,4 +1,4 @@
-export type CoreEntityKind =
+export type EncyclopediaEntityFamily =
   | "appearance"
   | "artifact"
   | "monster"
@@ -7,7 +7,7 @@ export type CoreEntityKind =
   | "trap";
 
 export interface CoreAssetMetadata {
-  kind: CoreEntityKind;
+  family: EncyclopediaEntityFamily;
   file: string;
   bytes: number;
   sha256: string;
@@ -32,7 +32,7 @@ export interface VisibleObjectBindingMetadata {
 }
 
 export interface CoreEncyclopediaManifest {
-  schemaVersion: 1;
+  schemaVersion: 2;
   nethackVersion: string;
   generatorVersion: string;
   compileDefines: string[];
@@ -42,7 +42,7 @@ export interface CoreEncyclopediaManifest {
     sha256: string;
   }>;
   sourceFingerprint: string;
-  entityCounts: Record<CoreEntityKind, number>;
+  entityCounts: Record<EncyclopediaEntityFamily, number>;
   chunks: CoreAssetMetadata[];
   glyphBindings: {
     maxGlyph: number;
@@ -52,9 +52,9 @@ export interface CoreEncyclopediaManifest {
 }
 
 export interface CoreEntityRecord {
-  schemaVersion: 1;
+  schemaVersion: 2;
   id: string;
-  kind: CoreEntityKind;
+  family: EncyclopediaEntityFamily;
   names: {
     primary: string;
     female?: string;
@@ -105,25 +105,48 @@ export type GlyphBindingResult =
   | { glyph: number; status: "unsupported"; reason: string };
 
 export interface CoreEntityChunk {
-  schemaVersion: 1;
-  kind: CoreEntityKind;
+  schemaVersion: 2;
+  family: EncyclopediaEntityFamily;
   records: CoreEntityRecord[];
 }
 
 export interface GlyphBindingChunk {
-  schemaVersion: 1;
+  schemaVersion: 2;
   bindings: GlyphBindingResult[];
 }
 
 export interface VisibleObjectBindingAsset {
-  schemaVersion: 1;
+  schemaVersion: 2;
   bindings: Array<{
     glyph: number;
     objectId: string;
   }>;
 }
 
-const ENTITY_KINDS = new Set<CoreEntityKind>([
+export const NETHACK_OBJECT_CLASSES = [
+  "ILLOBJ_CLASS",
+  "WEAPON_CLASS",
+  "ARMOR_CLASS",
+  "RING_CLASS",
+  "AMULET_CLASS",
+  "TOOL_CLASS",
+  "FOOD_CLASS",
+  "POTION_CLASS",
+  "SCROLL_CLASS",
+  "SPBOOK_CLASS",
+  "WAND_CLASS",
+  "COIN_CLASS",
+  "GEM_CLASS",
+  "ROCK_CLASS",
+  "BALL_CLASS",
+  "CHAIN_CLASS",
+  "VENOM_CLASS",
+] as const;
+
+export type NetHackObjectClass = typeof NETHACK_OBJECT_CLASSES[number];
+
+const OBJECT_CLASSES = new Set<string>(NETHACK_OBJECT_CLASSES);
+const ENTITY_FAMILIES = new Set<EncyclopediaEntityFamily>([
   "appearance",
   "artifact",
   "monster",
@@ -146,7 +169,7 @@ const MANIFEST_KEYS = [
 const ENTITY_KEYS = [
   "schemaVersion",
   "id",
-  "kind",
+  "family",
   "names",
   "symbol",
   "color",
@@ -581,7 +604,14 @@ function validateObjectFacts(value: unknown, label: string): void {
     [],
     label,
   );
-  stringValue(facts.objectClass, `${label}.objectClass`, 64);
+  const objectClass = stringValue(
+    facts.objectClass,
+    `${label}.objectClass`,
+    64,
+  );
+  if (!OBJECT_CLASSES.has(objectClass)) {
+    throw new Error(`${label}.objectClass is invalid`);
+  }
   stringValue(facts.material, `${label}.material`, 64);
   for (const key of ["probability", "weight", "baseCost", "useDelay"]) {
     integerValue(facts[key], `${label}.${key}`, -128, 100000);
@@ -605,23 +635,24 @@ function validateObjectFacts(value: unknown, label: string): void {
     }
   }
   const subtype = objectValue(facts.subtype, `${label}.subtype`);
-  const kind = stringValue(subtype.kind, `${label}.subtype.kind`, 32);
-  const schemas: Record<string, readonly string[]> = {
-    weapon: [
-      "kind", "damageSmall", "damageLarge", "hitBonus", "skill",
-      "projectile", "strikeModes",
-    ],
-    armor: ["kind", "category", "armorClass", "magicCancellation"],
-    food: ["kind", "nutrition"],
-    spellbook: ["kind", "skill", "level"],
-    other: ["kind"],
+  const weaponKeys = [
+    "damageSmall", "damageLarge", "hitBonus", "skill", "projectile",
+    "strikeModes",
+  ] as const;
+  const subtypeKeys: Partial<Record<
+    NetHackObjectClass,
+    readonly string[]
+  >> = {
+    WEAPON_CLASS: weaponKeys,
+    ARMOR_CLASS: ["category", "armorClass", "magicCancellation"],
+    FOOD_CLASS: ["nutrition"],
+    SPBOOK_CLASS: ["skill", "level"],
   };
-  const keys = schemas[kind];
-  if (!keys) {
-    throw new Error(`${label}.subtype.kind is invalid`);
-  }
+  const keys = objectClass === "TOOL_CLASS"
+    ? (Object.keys(subtype).length === 0 ? [] : weaponKeys)
+    : subtypeKeys[objectClass as NetHackObjectClass] ?? [];
   exactKeys(subtype, keys, [], `${label}.subtype`);
-  if (kind === "weapon") {
+  if (objectClass === "WEAPON_CLASS" || keys === weaponKeys) {
     for (const key of ["damageSmall", "damageLarge", "hitBonus"]) {
       integerValue(subtype[key], `${label}.subtype.${key}`, -128, 255);
     }
@@ -635,7 +666,7 @@ function validateObjectFacts(value: unknown, label: string): void {
           throw new Error(`${label}.subtype.strikeModes[${index}] is invalid`);
         }
       });
-  } else if (kind === "armor") {
+  } else if (objectClass === "ARMOR_CLASS") {
     stringValue(subtype.category, `${label}.subtype.category`, 64);
     integerValue(subtype.armorClass, `${label}.subtype.armorClass`, -128, 255);
     integerValue(
@@ -644,9 +675,9 @@ function validateObjectFacts(value: unknown, label: string): void {
       -128,
       255,
     );
-  } else if (kind === "food") {
+  } else if (objectClass === "FOOD_CLASS") {
     integerValue(subtype.nutrition, `${label}.subtype.nutrition`, 0, 100000);
-  } else if (kind === "spellbook") {
+  } else if (objectClass === "SPBOOK_CLASS") {
     stringValue(subtype.skill, `${label}.subtype.skill`, 64);
     integerValue(subtype.level, `${label}.subtype.level`, 0, 255);
   }
@@ -665,7 +696,7 @@ function validateAppearanceFacts(value: unknown, label: string): void {
     `${label}.objectClass`,
     64,
   );
-  if (!/^[A-Z0-9_]+_CLASS$/.test(objectClass)) {
+  if (!OBJECT_CLASSES.has(objectClass)) {
     throw new Error(`${label}.objectClass is invalid`);
   }
 }
@@ -732,16 +763,16 @@ function validateArtifactFacts(value: unknown, label: string): void {
 /**
  * Validate exact terrain or trap facts.
  * @param value Candidate facts.
- * @param kind Entity kind.
+ * @param family Entity family.
  * @param label Diagnostic label.
  */
 function validateMapFacts(
   value: unknown,
-  kind: "terrain" | "trap",
+  family: "terrain" | "trap",
   label: string,
 ): void {
   const facts = objectValue(value, label);
-  const symbolKey = kind === "terrain" ? "terrainSymbol" : "trapSymbol";
+  const symbolKey = family === "terrain" ? "terrainSymbol" : "trapSymbol";
   exactKeys(facts, [symbolKey, "category"], [], label);
   stringValue(facts[symbolKey], `${label}.${symbolKey}`, 64);
   stringValue(facts.category, `${label}.category`, 64);
@@ -749,7 +780,7 @@ function validateMapFacts(
 
 /**
  * Recursively inspect facts for attack descriptors and bounded JSON values.
- * Exact kind-specific facts are additionally checked by required top-level
+ * Exact family-specific facts are additionally checked by required top-level
  * keys, while this walk rejects unsupported runtime value types.
  * @param value Candidate JSON subtree.
  * @param label Diagnostic label.
@@ -810,14 +841,17 @@ export function validateCoreEntityRecord(
   label = "core entity",
 ): CoreEntityRecord {
   const record = objectValue(value, label);
-  exactKeys(record, ENTITY_KEYS, [], label);
-  if (record.schemaVersion !== 1) {
+  if (record.schemaVersion !== 2) {
     throw new Error(`${label} has unsupported schemaVersion`);
   }
+  exactKeys(record, ENTITY_KEYS, [], label);
   const id = entityId(record.id, `${label}.id`);
-  const kind = stringValue(record.kind, `${label}.kind`) as CoreEntityKind;
-  if (!ENTITY_KINDS.has(kind) || !id.startsWith(`${kind}:`)) {
-    throw new Error(`${label} has an invalid kind`);
+  const family = stringValue(
+    record.family,
+    `${label}.family`,
+  ) as EncyclopediaEntityFamily;
+  if (!ENTITY_FAMILIES.has(family) || !id.startsWith(`${family}:`)) {
+    throw new Error(`${label} has an invalid family`);
   }
   const names = objectValue(record.names, `${label}.names`);
   exactKeys(
@@ -837,19 +871,19 @@ export function validateCoreEntityRecord(
   }
   const facts = objectValue(record.facts, `${label}.facts`);
   validateFactsTree(facts, `${label}.facts`);
-  if (kind === "appearance") {
+  if (family === "appearance") {
     validateAppearanceFacts(facts, `${label}.facts`);
     if (id !== `appearance:${String(facts.objectClass)}:GENERIC`) {
       throw new Error(`${label} appearance ID and object class disagree`);
     }
-  } else if (kind === "monster") {
+  } else if (family === "monster") {
     validateMonsterFacts(facts, `${label}.facts`);
-  } else if (kind === "object") {
+  } else if (family === "object") {
     validateObjectFacts(facts, `${label}.facts`);
-  } else if (kind === "artifact") {
+  } else if (family === "artifact") {
     validateArtifactFacts(facts, `${label}.facts`);
   } else {
-    validateMapFacts(facts, kind, `${label}.facts`);
+    validateMapFacts(facts, family, `${label}.facts`);
   }
   const sourceRefs = arrayValue(record.sourceRefs, `${label}.sourceRefs`, 16);
   sourceRefs.forEach((sourceRef, index) => {
@@ -871,7 +905,7 @@ export function validateCoreManifest(
 ): CoreEncyclopediaManifest {
   const manifest = objectValue(value, "core manifest");
   exactKeys(manifest, MANIFEST_KEYS, [], "core manifest");
-  if (manifest.schemaVersion !== 1) {
+  if (manifest.schemaVersion !== 2) {
     throw new Error("Core manifest has unsupported schemaVersion");
   }
   stringValue(manifest.nethackVersion, "core manifest nethackVersion", 32);
@@ -913,9 +947,9 @@ export function validateCoreManifest(
       );
     });
   const counts = objectValue(manifest.entityCounts, "core manifest counts");
-  exactKeys(counts, [...ENTITY_KINDS], [], "core manifest counts");
-  for (const kind of ENTITY_KINDS) {
-    integerValue(counts[kind], `core manifest count ${kind}`, 0, 10000);
+  exactKeys(counts, [...ENTITY_FAMILIES], [], "core manifest counts");
+  for (const family of ENTITY_FAMILIES) {
+    integerValue(counts[family], `core manifest count ${family}`, 0, 10000);
   }
   arrayValue(manifest.chunks, "core manifest chunks", 128)
     .forEach((chunk, index) => validateEntityMetadata(chunk, index));
@@ -946,12 +980,17 @@ function validateEntityMetadata(value: unknown, index: number): void {
   const metadata = objectValue(value, label);
   exactKeys(
     metadata,
-    ["kind", "file", "bytes", "sha256", "count", "firstId", "lastId"],
+    ["family", "file", "bytes", "sha256", "count", "firstId", "lastId"],
     [],
     label,
   );
-  if (!ENTITY_KINDS.has(stringValue(metadata.kind, `${label}.kind`) as CoreEntityKind)) {
-    throw new Error(`${label}.kind is invalid`);
+  if (!ENTITY_FAMILIES.has(
+    stringValue(
+      metadata.family,
+      `${label}.family`,
+    ) as EncyclopediaEntityFamily,
+  )) {
+    throw new Error(`${label}.family is invalid`);
   }
   assetFilename(metadata.file, `${label}.file`);
   integerValue(metadata.bytes, `${label}.bytes`, 1, 256 * 1024);
@@ -1007,9 +1046,12 @@ export function validateCoreEntityChunk(
   metadata: CoreAssetMetadata,
 ): CoreEntityChunk {
   const chunk = objectValue(value, metadata.file);
-  exactKeys(chunk, ["schemaVersion", "kind", "records"], [], metadata.file);
-  if (chunk.schemaVersion !== 1 || chunk.kind !== metadata.kind) {
-    throw new Error(`${metadata.file} schema or kind mismatch`);
+  if (chunk.schemaVersion !== 2) {
+    throw new Error(`${metadata.file} schema mismatch`);
+  }
+  exactKeys(chunk, ["schemaVersion", "family", "records"], [], metadata.file);
+  if (chunk.family !== metadata.family) {
+    throw new Error(`${metadata.file} schema or family mismatch`);
   }
   const records = arrayValue(chunk.records, `${metadata.file}.records`, 10000);
   if (records.length !== metadata.count) {
@@ -1018,6 +1060,9 @@ export function validateCoreEntityChunk(
   const validated = records.map((record, index) =>
     validateCoreEntityRecord(record, `${metadata.file}.records[${index}]`)
   );
+  if (validated.some((record) => record.family !== metadata.family)) {
+    throw new Error(`${metadata.file} contains the wrong entity family`);
+  }
   if (
     validated[0]?.id !== metadata.firstId
     || validated.at(-1)?.id !== metadata.lastId
@@ -1039,7 +1084,7 @@ export function validateGlyphBindingChunk(
 ): GlyphBindingChunk {
   const chunk = objectValue(value, metadata.file);
   exactKeys(chunk, ["schemaVersion", "bindings"], [], metadata.file);
-  if (chunk.schemaVersion !== 1) {
+  if (chunk.schemaVersion !== 2) {
     throw new Error(`${metadata.file} schema mismatch`);
   }
   const bindings = arrayValue(
@@ -1074,7 +1119,7 @@ export function validateVisibleObjectBindingAsset(
 ): VisibleObjectBindingAsset {
   const asset = objectValue(value, metadata.file);
   exactKeys(asset, ["schemaVersion", "bindings"], [], metadata.file);
-  if (asset.schemaVersion !== 1) {
+  if (asset.schemaVersion !== 2) {
     throw new Error(`${metadata.file} schema mismatch`);
   }
   const bindings = arrayValue(

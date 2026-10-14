@@ -515,11 +515,9 @@
   grid-template-columns: minmax(0, 1fr) 330px;
 }
 
-.examine-layout[data-facts-only="true"] {
-  grid-template-columns: minmax(0, 1fr);
-}
-
 .examine-article {
+  grid-row: 1;
+  grid-column: 1;
   min-width: 0;
   min-height: 0;
   display: grid;
@@ -611,6 +609,10 @@
 }
 
 .examine-facts {
+  grid-row: 1;
+  grid-column: 2;
+  width: 100%;
+  max-width: none;
   min-width: 0;
   min-height: 0;
   padding: 24px;
@@ -620,13 +622,11 @@
   scrollbar-width: thin;
 }
 
-.examine-layout[data-facts-only="true"] .examine-facts {
-  width: 100%;
-  max-width: none;
-  justify-self: stretch;
+.examine-facts:only-child {
+  grid-column: 1 / -1;
 }
 
-.examine-layout[data-facts-only="true"] .examine-facts[data-entity-kind="monster"] {
+.examine-facts[data-examine-template="monster"]:only-child {
   display: grid;
   grid-template-columns: minmax(0, 1.08fr) minmax(0, 0.92fr);
   gap: 0 28px;
@@ -638,14 +638,9 @@
   min-width: 0;
 }
 
-.examine-facts-primary {
+.examine-facts[data-examine-template="monster"]:only-child .examine-facts-primary {
   padding-right: 28px;
   border-right: 1px solid #30383a;
-}
-
-.examine-layout[data-facts-only="false"] .examine-facts-primary {
-  padding-right: 0;
-  border-right: 0;
 }
 
 .examine-facts section {
@@ -769,6 +764,15 @@
   color: #e6e8e4;
   font-size: 14px;
   text-align: right;
+}
+
+.examine-facts:not(:only-child) .examine-detail-row {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+}
+
+.examine-facts:not(:only-child) .examine-detail-row dd {
+  text-align: left;
 }
 
 .examine-core-statistics .examine-detail-list {
@@ -929,6 +933,19 @@
   .examine-facts {
     border-top: 1px solid #30383a;
   }
+
+  .examine-facts[data-examine-template="monster"] {
+    display: block;
+  }
+
+  .examine-facts[data-examine-template="monster"]:only-child {
+    display: block;
+  }
+
+  .examine-facts[data-examine-template="monster"]:only-child .examine-facts-primary {
+    padding-right: 0;
+    border-right: 0;
+  }
 }
 
 @media (max-width: 820px) {
@@ -963,16 +980,19 @@
     overflow: visible;
   }
 
-  .examine-layout[data-facts-only="true"] .examine-facts {
-    display: block;
+  .examine-facts {
     padding: 18px;
   }
 
-  .examine-layout[data-facts-only="true"] .examine-facts[data-entity-kind="monster"] {
+  .examine-facts[data-examine-template="monster"] {
     display: block;
   }
 
-  .examine-facts-primary {
+  .examine-facts[data-examine-template="monster"]:only-child {
+    display: block;
+  }
+
+  .examine-facts[data-examine-template="monster"]:only-child .examine-facts-primary {
     padding-right: 0;
     border-right: 0;
   }

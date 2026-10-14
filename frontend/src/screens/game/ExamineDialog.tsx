@@ -13,7 +13,7 @@ import type { ExamineTarget } from "../../encyclopedia/examine-target";
 import { resolveWikiPage } from "../../encyclopedia/wiki-page";
 import { loadTileAtlas } from "../../map/tile-assets";
 import type { MapRenderer } from "../../settings/profile";
-import { ExamineFacts } from "./ExamineFacts";
+import { ExamineFacts, objectClassLabel } from "./ExamineFacts";
 import { ExamineSourceStrip } from "./ExamineSourceStrip";
 import {
   ExamineWikiArticle,
@@ -61,12 +61,15 @@ export function ExamineDialog({
 
   if (state.status === "core-failure") return null;
 
-  const core = state.status === "ready" ? state.entity.core : null;
-  const wiki = state.status === "ready" ? state.entity.wiki : null;
-  const wikiPage = state.status === "ready"
-    ? resolveWikiPage(state.entity)
+  const entity = state.status === "ready" ? state.entity : null;
+  const core = entity?.core ?? null;
+  const wiki = entity?.core.family === "appearance"
+    ? null
+    : entity?.wiki ?? null;
+  const wikiPage = entity
+    ? resolveWikiPage(entity)
     : null;
-  const title = core ? displayName(core.names.primary) : "Loading";
+  const title = core ? entityTitle(core) : "Loading";
 
   /**
    * Contain browser keys and close without entering the NetHack key router.
@@ -161,11 +164,11 @@ export function ExamineDialog({
                 </a>
               )}
             </div>
-            {core
+            {entity
               ? (
                 <>
-                  <p>{entityCategory(core)}</p>
-                  <HeaderBadges core={core} />
+                  <p>{entityCategory(entity)}</p>
+                  <HeaderBadges core={entity.core} />
                 </>
               )
               : <p>Loading local encyclopedia data...</p>}
@@ -194,17 +197,15 @@ export function ExamineDialog({
           : (
             <>
               {wiki && <ExamineSourceStrip record={wiki} />}
-              <div
-                className="examine-layout"
-                data-facts-only={wiki ? "false" : "true"}
-              >
-                {wiki && <ExamineWikiArticle record={wiki} />}
-                {core && (
+              <div className="examine-layout">
+                {entity && (
                   <ExamineFacts
-                    core={core}
+                    artifactBaseObject={entity.artifactBaseObject}
+                    core={entity.core}
                     nethackVersion={nethackVersion}
                   />
                 )}
+                {wiki && <ExamineWikiArticle record={wiki} />}
               </div>
             </>
           )}
@@ -366,15 +367,43 @@ function ExamineGlyph({
 }
 
 /**
- * Build a concise kind line exclusively from validated core fields.
- * @param core - validated core entity.
+ * Build a concise category line exclusively from validated core fields.
+ * @param entity - validated entity and optional artifact base object.
  * @returns display category without inferred gameplay state.
  */
-function entityCategory(core: LoadedEncyclopediaEntity["core"]): string {
-  const className = typeof core.facts.monsterClass === "string"
-    ? ` \u00b7 ${core.facts.monsterClass}`
+function entityCategory(entity: LoadedEncyclopediaEntity): string {
+  const { core } = entity;
+  if (core.family === "monster") {
+    const monsterClass = typeof core.facts.monsterClass === "string"
+      ? ` \u00b7 ${core.facts.monsterClass}`
+      : "";
+    return `Monster${monsterClass}`;
+  }
+  if (core.family === "object") {
+    return objectClassLabel(core.facts.objectClass);
+  }
+  if (core.family === "appearance") {
+    return `${objectClassLabel(core.facts.objectClass)} category`;
+  }
+  if (core.family === "artifact") {
+    const baseClass = entity.artifactBaseObject?.facts.objectClass;
+    return `${objectClassLabel(baseClass)} \u00b7 Artifact`;
+  }
+  const category = typeof core.facts.category === "string"
+    ? ` \u00b7 ${displayName(core.facts.category)}`
     : "";
-  return `${displayName(core.kind)}${className}`;
+  return `${core.family === "terrain" ? "Terrain" : "Trap"}${category}`;
+}
+
+/**
+ * Resolve the visible dialog title without trusting generic appearance text.
+ * @param core - validated core entity.
+ * @returns source-backed entity name or spoiler-safe object category.
+ */
+function entityTitle(core: LoadedEncyclopediaEntity["core"]): string {
+  return core.family === "appearance"
+    ? objectClassLabel(core.facts.objectClass)
+    : displayName(core.names.primary);
 }
 
 /**

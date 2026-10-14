@@ -15,8 +15,8 @@ import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
-const GENERATOR_VERSION = "1.2.0";
-const SCHEMA_VERSION = 1;
+const GENERATOR_VERSION = "2.0.0";
+const SCHEMA_VERSION = 2;
 const NETHACK_VERSION = "5.0.0";
 const VISIBLE_OBJECT_BINDINGS_FILE = "visible-object-bindings.json";
 const MAX_CHUNK_BYTES = 256 * 1024;
@@ -77,7 +77,7 @@ const SOURCE_INPUT_PATHS = [
   "src/monst.c",
   "src/objects.c",
 ].sort();
-const ENTITY_KINDS = [
+const ENTITY_FAMILIES = [
   "appearance",
   "artifact",
   "monster",
@@ -85,6 +85,25 @@ const ENTITY_KINDS = [
   "terrain",
   "trap",
 ];
+const OBJECT_CLASSES = new Set([
+  "ILLOBJ_CLASS",
+  "WEAPON_CLASS",
+  "ARMOR_CLASS",
+  "RING_CLASS",
+  "AMULET_CLASS",
+  "TOOL_CLASS",
+  "FOOD_CLASS",
+  "POTION_CLASS",
+  "SCROLL_CLASS",
+  "SPBOOK_CLASS",
+  "WAND_CLASS",
+  "COIN_CLASS",
+  "GEM_CLASS",
+  "ROCK_CLASS",
+  "BALL_CLASS",
+  "CHAIN_CLASS",
+  "VENOM_CLASS",
+]);
 const ATTACK_TYPES = new Set([
   "AT_NONE",
   "AT_CLAW",
@@ -730,7 +749,7 @@ function validateMonsterFacts(value, label) {
 }
 
 /**
- * Validate object facts and their discriminated subtype.
+ * Validate object facts and their object-class-specific subtype.
  * @param {unknown} value Candidate facts.
  * @param {string} label Diagnostic label.
  */
@@ -753,6 +772,9 @@ function validateObjectFacts(value, label) {
     label,
   );
   assertString(value.objectClass, `${label}.objectClass`, 64);
+  if (!OBJECT_CLASSES.has(value.objectClass)) {
+    throw new Error(`${label}.objectClass is invalid`);
+  }
   assertString(value.material, `${label}.material`, 64);
   for (const key of ["probability", "weight", "baseCost", "useDelay"]) {
     assertInteger(value[key], `${label}.${key}`, -128, 100000);
@@ -783,7 +805,66 @@ function validateObjectFacts(value, label) {
     }
   }
   assertObject(value.subtype, `${label}.subtype`);
-  assertString(value.subtype.kind, `${label}.subtype.kind`, 32);
+  const weaponKeys = [
+    "damageSmall",
+    "damageLarge",
+    "hitBonus",
+    "skill",
+    "projectile",
+    "strikeModes",
+  ];
+  const subtypeKeys = {
+    WEAPON_CLASS: weaponKeys,
+    ARMOR_CLASS: ["category", "armorClass", "magicCancellation"],
+    FOOD_CLASS: ["nutrition"],
+    SPBOOK_CLASS: ["skill", "level"],
+  };
+  const keys = value.objectClass === "TOOL_CLASS"
+    ? (Object.keys(value.subtype).length === 0 ? [] : weaponKeys)
+    : (subtypeKeys[value.objectClass] ?? []);
+  assertKeys(value.subtype, keys, [], `${label}.subtype`);
+  if (value.objectClass === "WEAPON_CLASS" || keys === weaponKeys) {
+    for (const key of ["damageSmall", "damageLarge", "hitBonus"]) {
+      assertInteger(value.subtype[key], `${label}.subtype.${key}`, -128, 255);
+    }
+    assertString(value.subtype.skill, `${label}.subtype.skill`, 64);
+    if (typeof value.subtype.projectile !== "boolean") {
+      throw new Error(`${label}.subtype.projectile must be boolean`);
+    }
+    if (
+      !Array.isArray(value.subtype.strikeModes)
+      || value.subtype.strikeModes.length > 3
+      || value.subtype.strikeModes.some((mode) =>
+        !["PIERCE", "SLASH", "WHACK"].includes(mode)
+      )
+    ) {
+      throw new Error(`${label}.subtype.strikeModes is invalid`);
+    }
+  } else if (value.objectClass === "ARMOR_CLASS") {
+    assertString(value.subtype.category, `${label}.subtype.category`, 64);
+    assertInteger(
+      value.subtype.armorClass,
+      `${label}.subtype.armorClass`,
+      -128,
+      255,
+    );
+    assertInteger(
+      value.subtype.magicCancellation,
+      `${label}.subtype.magicCancellation`,
+      -128,
+      255,
+    );
+  } else if (value.objectClass === "FOOD_CLASS") {
+    assertInteger(
+      value.subtype.nutrition,
+      `${label}.subtype.nutrition`,
+      0,
+      100000,
+    );
+  } else if (value.objectClass === "SPBOOK_CLASS") {
+    assertString(value.subtype.skill, `${label}.subtype.skill`, 64);
+    assertInteger(value.subtype.level, `${label}.subtype.level`, 0, 255);
+  }
 }
 
 /**
@@ -795,7 +876,7 @@ function validateAppearanceFacts(value, label) {
   assertObject(value, label);
   assertKeys(value, ["objectClass"], [], label);
   assertString(value.objectClass, `${label}.objectClass`, 64);
-  if (!/^[A-Z0-9_]+_CLASS$/.test(value.objectClass)) {
+  if (!OBJECT_CLASSES.has(value.objectClass)) {
     throw new Error(`${label}.objectClass is invalid`);
   }
 }
@@ -848,12 +929,12 @@ function validateArtifactFacts(value, label) {
 /**
  * Validate terrain or trap facts.
  * @param {unknown} value Candidate facts.
- * @param {"terrain"|"trap"} kind Entity kind.
+ * @param {"terrain"|"trap"} family Entity family.
  * @param {string} label Diagnostic label.
  */
-function validateMapFacts(value, kind, label) {
+function validateMapFacts(value, family, label) {
   assertObject(value, label);
-  if (kind === "terrain") {
+  if (family === "terrain") {
     assertKeys(value, ["terrainSymbol", "category"], [], label);
     assertString(value.terrainSymbol, `${label}.terrainSymbol`, 64);
   } else {
@@ -878,7 +959,7 @@ function validateEntityRecord(value, label) {
     [
       "schemaVersion",
       "id",
-      "kind",
+      "family",
       "names",
       "symbol",
       "color",
@@ -892,11 +973,11 @@ function validateEntityRecord(value, label) {
     throw new Error(`${label} has unsupported schemaVersion`);
   }
   assertEntityId(value.id, `${label}.id`);
-  if (!ENTITY_KINDS.includes(value.kind)) {
-    throw new Error(`${label} has unknown entity kind`);
+  if (!ENTITY_FAMILIES.includes(value.family)) {
+    throw new Error(`${label} has unknown entity family`);
   }
-  if (!value.id.startsWith(`${value.kind}:`)) {
-    throw new Error(`${label} ID and kind disagree`);
+  if (!value.id.startsWith(`${value.family}:`)) {
+    throw new Error(`${label} ID and family disagree`);
   }
   assertObject(value.names, `${label}.names`);
   assertKeys(
@@ -914,19 +995,19 @@ function validateEntityRecord(value, label) {
   if (value.color !== null) {
     assertInteger(value.color, `${label}.color`, 0, 255);
   }
-  if (value.kind === "appearance") {
+  if (value.family === "appearance") {
     validateAppearanceFacts(value.facts, `${label}.facts`);
     if (value.id !== `appearance:${value.facts.objectClass}:GENERIC`) {
       throw new Error(`${label} appearance ID and object class disagree`);
     }
-  } else if (value.kind === "monster") {
+  } else if (value.family === "monster") {
     validateMonsterFacts(value.facts, `${label}.facts`);
-  } else if (value.kind === "object") {
+  } else if (value.family === "object") {
     validateObjectFacts(value.facts, `${label}.facts`);
-  } else if (value.kind === "artifact") {
+  } else if (value.family === "artifact") {
     validateArtifactFacts(value.facts, `${label}.facts`);
   } else {
-    validateMapFacts(value.facts, value.kind, `${label}.facts`);
+    validateMapFacts(value.facts, value.family, `${label}.facts`);
   }
   if (!Array.isArray(value.sourceRefs) || value.sourceRefs.length > 16) {
     throw new Error(`${label}.sourceRefs must be a bounded array`);
@@ -1200,23 +1281,25 @@ async function writeAsset(directory, file, value) {
  */
 async function writeEntityChunks(directory, records) {
   const metadata = [];
-  for (const kind of ENTITY_KINDS) {
-    const kindRecords = records.filter((record) => record.kind === kind);
-    const slices = splitValues(kindRecords, (slice) => ({
+  for (const family of ENTITY_FAMILIES) {
+    const familyRecords = records.filter((record) =>
+      record.family === family
+    );
+    const slices = splitValues(familyRecords, (slice) => ({
       schemaVersion: SCHEMA_VERSION,
-      kind,
+      family,
       records: slice,
     }));
     for (let index = 0; index < slices.length; index += 1) {
       const slice = slices[index];
-      const file = `${kind}-${String(index + 1).padStart(3, "0")}.json`;
+      const file = `${family}-${String(index + 1).padStart(3, "0")}.json`;
       const integrity = await writeAsset(directory, file, {
         schemaVersion: SCHEMA_VERSION,
-        kind,
+        family,
         records: slice,
       });
       metadata.push({
-        kind,
+        family,
         ...integrity,
         count: slice.length,
         firstId: slice[0].id,
@@ -1497,12 +1580,12 @@ function validateManifest(value) {
     assertObject(chunk, label);
     assertKeys(
       chunk,
-      ["kind", "file", "bytes", "sha256", "count", "firstId", "lastId"],
+      ["family", "file", "bytes", "sha256", "count", "firstId", "lastId"],
       [],
       label,
     );
-    if (!ENTITY_KINDS.includes(chunk.kind)) {
-      throw new Error(`${label}.kind is invalid`);
+    if (!ENTITY_FAMILIES.includes(chunk.family)) {
+      throw new Error(`${label}.family is invalid`);
     }
     assertAssetFilename(chunk.file, `${label}.file`);
     assertInteger(chunk.bytes, `${label}.bytes`, 1, MAX_CHUNK_BYTES);
@@ -1637,21 +1720,21 @@ export async function validateCoreAssetDirectory(directory) {
     assertObject(catalog, metadata.file);
     assertKeys(
       catalog,
-      ["schemaVersion", "kind", "records"],
+      ["schemaVersion", "family", "records"],
       [],
       metadata.file,
     );
     if (
       catalog.schemaVersion !== SCHEMA_VERSION
-      || catalog.kind !== metadata.kind
+      || catalog.family !== metadata.family
       || !Array.isArray(catalog.records)
     ) {
       throw new Error(`${metadata.file} catalog metadata mismatch`);
     }
     for (const [index, record] of catalog.records.entries()) {
       validateEntityRecord(record, `${metadata.file}.records[${index}]`);
-      if (record.kind !== metadata.kind) {
-        throw new Error(`${metadata.file} contains the wrong entity kind`);
+      if (record.family !== metadata.family) {
+        throw new Error(`${metadata.file} contains the wrong entity family`);
       }
       if (ids.has(record.id)) {
         throw new Error(`Duplicate entity id ${record.id}`);
@@ -1675,9 +1758,9 @@ export async function validateCoreAssetDirectory(directory) {
     throw new Error("Entity IDs are not globally sorted");
   }
   const actualCounts = Object.fromEntries(
-    Object.keys(EXPECTED_COUNTS).map((kind) => [
-      kind,
-      records.filter((record) => record.kind === kind).length,
+    Object.keys(EXPECTED_COUNTS).map((family) => [
+      family,
+      records.filter((record) => record.family === family).length,
     ]),
   );
   if (JSON.stringify(actualCounts) !== JSON.stringify(EXPECTED_COUNTS)) {
@@ -1752,7 +1835,10 @@ export async function validateCoreAssetDirectory(directory) {
     }
   }
   for (const record of records) {
-    if (record.kind === "artifact" && !ids.has(record.facts.baseObjectId)) {
+    if (
+      record.family === "artifact"
+      && !ids.has(record.facts.baseObjectId)
+    ) {
       throw new Error(
         `Dangling artifact reference ${record.facts.baseObjectId}`,
       );

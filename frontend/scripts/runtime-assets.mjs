@@ -298,7 +298,7 @@ async function coreEncyclopediaMetadata(manifestPath) {
   }
   assertRecord(manifest, "encyclopedia source");
   if (
-    manifest.schemaVersion !== 1
+    manifest.schemaVersion !== 2
     || typeof manifest.sourceFingerprint !== "string"
     || !/^[a-f0-9]{64}$/.test(manifest.sourceFingerprint)
   ) {

@@ -53,17 +53,22 @@ const OBJECT_WIKI_TITLE_OVERRIDES: Readonly<Record<string, string>> =
  * @returns A canonical NetHackWiki page or null when no safe mapping exists.
  */
 export function resolveWikiPage(entity: WikiPageEntity): TrustedWikiPage | null {
+  if (entity.core.family === "appearance") {
+    const objectClass = entity.core.facts.objectClass;
+    if (typeof objectClass !== "string") return null;
+    const title = GENERIC_APPEARANCE_WIKI_TITLES[objectClass];
+    const categoryPage = title ? wikiPage(title) : null;
+    if (!("wikiPage" in entity)) return categoryPage;
+    const explicitPage = validateExplicitWikiPage(entity.wikiPage);
+    return explicitPage?.title === categoryPage?.title
+      ? explicitPage
+      : null;
+  }
   if ("wikiPage" in entity) {
     return validateExplicitWikiPage(entity.wikiPage);
   }
   if (entity.wiki) {
     return wikiPage(entity.wiki.page.title);
-  }
-  if (entity.core.kind === "appearance") {
-    const objectClass = entity.core.facts.objectClass;
-    if (typeof objectClass !== "string") return null;
-    const title = GENERIC_APPEARANCE_WIKI_TITLES[objectClass];
-    return title ? wikiPage(title) : null;
   }
   const title = sourceBackedWikiTitle(entity.core);
   return title ? wikiPage(title) : null;
@@ -79,7 +84,7 @@ function sourceBackedWikiTitle(core: CoreEntityRecord): string | null {
   if (primary.length === 0) return null;
   const override = OBJECT_WIKI_TITLE_OVERRIDES[core.id];
   if (override) return override;
-  if (core.kind === "object") {
+  if (core.family === "object") {
     const objectClass = core.facts.objectClass;
     if (typeof objectClass !== "string") return null;
     const prefix = OBJECT_CLASS_WIKI_PREFIXES[objectClass];

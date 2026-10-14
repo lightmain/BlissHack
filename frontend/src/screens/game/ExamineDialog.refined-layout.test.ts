@@ -276,6 +276,10 @@ describe("refined Examine Wiki page links", () => {
       title: "Potion",
       url: "https://nethackwiki.com/wiki/Potion",
     }), target));
+    const concreteHeading = headingMarkup(renderDialog(catalogEntity(core, {
+      title: "Potion of healing",
+      url: "https://nethackwiki.com/wiki/Potion_of_healing",
+    }), target));
     const unmappedHeading = headingMarkup(renderDialog(
       catalogEntity(core, null),
       target,
@@ -284,11 +288,15 @@ describe("refined Examine Wiki page links", () => {
     expect(safeHeading).toContain(
       'href="https://nethackwiki.com/wiki/Potion"',
     );
-    expect(safeHeading).not.toMatch(/Potion_of_healing|potion_of_healing/i);
-    expect(unmappedHeading).not.toContain("href=");
-    expect(unmappedHeading).not.toMatch(
-      /nethackwiki\.com[^"]*(?:healing|untrusted)/i,
+    expect(safeHeading).toContain(
+      'href="https://nethackwiki.com/wiki/Potion"',
     );
+    for (const heading of [concreteHeading, unmappedHeading]) {
+      expect(heading).not.toContain("href=");
+      expect(heading).not.toMatch(
+        /nethackwiki\.com[^"]*(?:healing|untrusted)/i,
+      );
+    }
   });
 
   it("retains the existing Wiki attribution and license source strip", () => {
@@ -519,16 +527,30 @@ describe("appearance and optional Wiki presentation boundaries", () => {
         symbol: "GENERIC_POTION",
       }],
     } as unknown as CoreEntityRecord;
-    const html = renderDialog(
+    const factsOnly = renderDialog(
       { core, wiki: null } as LoadedEncyclopediaEntity,
       { ...NEWT_TARGET, entityId: core.id },
     );
-
-    expect(html).toContain(">Potion</h1>");
-    expect(html).toContain(
-      'data-examine-template="appearance:POTION_CLASS"',
+    const unsafeWiki = structuredClone(NEWT_WIKI);
+    unsafeWiki.entityId = core.id;
+    unsafeWiki.page.title = "Potion of healing";
+    unsafeWiki.sections[0].paragraphs = [
+      "This concrete appearance is a potion of healing.",
+    ];
+    const withUnsafeWiki = renderDialog(
+      { core, wiki: unsafeWiki } as LoadedEncyclopediaEntity,
+      { ...NEWT_TARGET, entityId: core.id },
     );
-    expect(html).not.toMatch(/healing|concrete visible text/i);
+
+    for (const html of [factsOnly, withUnsafeWiki]) {
+      expect(html).toContain(">Potion</h1>");
+      expect(html).toContain(
+        'data-examine-template="appearance:POTION_CLASS"',
+      );
+      expect(html).not.toMatch(/healing|concrete visible text/i);
+      expect(html).not.toContain("examine-article");
+      expect(html).not.toContain("examine-source-strip");
+    }
   });
 
   it("keeps the main layout and core facts invariant when Wiki is present", () => {
