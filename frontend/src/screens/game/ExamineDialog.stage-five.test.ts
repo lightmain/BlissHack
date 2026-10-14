@@ -236,6 +236,8 @@ describe("stage-five dialog accessibility and event isolation", () => {
     expect(resolveExamineTabKey("PageDown", 1, 3)).toBeNull();
     expect(resolveExamineFocusTrap("Tab", false, 3, 4)).toBe(0);
     expect(resolveExamineFocusTrap("Tab", true, 0, 4)).toBe(3);
+    expect(resolveExamineFocusTrap("Tab", false, 1, 4)).toBe(2);
+    expect(resolveExamineFocusTrap("Tab", true, 2, 4)).toBe(1);
     expect(resolveExamineFocusTrap("Enter", false, 1, 4)).toBeNull();
   });
 

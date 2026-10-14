@@ -2,7 +2,8 @@
 /* Copyright (c) Adam Powers, 2020                                */
 /* NetHack may be freely redistributed.  See license for details. */
 /* Modified for BlissHack by lightmain, 2026-09-02, 2026-09-06, 2026-09-07,
- * 2026-09-14, 2026-09-15, 2026-09-18, 2026-09-23, and 2026-10-13:
+ * 2026-09-14, 2026-09-15, 2026-09-18, 2026-09-23, 2026-10-13, and
+ * 2026-10-14:
  * preserve character selection quit semantics, expose narrow browser save
  * helpers, and synchronize a fixed set of in-game options at command
  * boundaries, including the permanent inventory capability and settings;
@@ -12,7 +13,8 @@
  * publish its generation; scope action-owned getobj menus with provenance,
  * request identity, and menu generations; expose the restore-only guard as
  * a typed WASM global for pending askname flows; attach one-shot,
- * already-visible artifact identity to permanent inventory rows. */
+ * already-visible artifact and ordinary object identity to permanent
+ * inventory rows. */
 
 /* not an actual windowing port, but a fake win port for libnethack */
 
@@ -59,52 +61,66 @@ void shim_graphics_set_restore_required(int required);
 int shim_graphics_get_save_fingerprint(uchar *outbuf, int outbufsz);
 static void shim_command_reset(void);
 
-#define SHIM_VISIBLE_ARTIFACT_TOKEN_SIZE 160
+#define SHIM_VISIBLE_ENTITY_TOKEN_SIZE 160
 static char
-    shim_pending_visible_artifact[SHIM_VISIBLE_ARTIFACT_TOKEN_SIZE];
+    shim_pending_visible_entity[SHIM_VISIBLE_ENTITY_TOKEN_SIZE];
 
 /* Drop any row identity which has not been consumed synchronously. */
 static void
-shim_visible_artifact_clear(void)
+shim_visible_entity_clear(void)
 {
-    (void) memset(shim_pending_visible_artifact, 0,
-                  sizeof shim_pending_visible_artifact);
+    (void) memset(shim_pending_visible_entity, 0,
+                  sizeof shim_pending_visible_entity);
 }
 
-/* Accept one bounded canonical token from the permanent inventory producer. */
+/*
+ * Accept one bounded canonical token from the permanent inventory producer.
+ * @param token Artifact or ordinary object identity already visible to player.
+ */
 void
-shim_visible_artifact_publish(const char *token)
+shim_visible_entity_publish(const char *token)
 {
-    size_t i, length;
+    size_t i, length, prefix_length;
 
-    shim_visible_artifact_clear();
-    if (!token || strncmp(token, "artifact:ART_", 13) != 0)
+    shim_visible_entity_clear();
+    if (!token)
+        return;
+    if (strncmp(token, "artifact:ART_", 13) == 0)
+        prefix_length = 13;
+    else if (strncmp(token, "object:", 7) == 0)
+        prefix_length = 7;
+    else
         return;
     length = strlen(token);
-    if (length < 14 || length >= sizeof shim_pending_visible_artifact)
+    if (length <= prefix_length
+        || length >= sizeof shim_pending_visible_entity)
         return;
-    for (i = 13; i < length; ++i)
+    for (i = prefix_length; i < length; ++i)
         if (!((token[i] >= 'A' && token[i] <= 'Z')
               || (token[i] >= '0' && token[i] <= '9')
               || token[i] == '_'))
             return;
-    (void) memcpy(shim_pending_visible_artifact, token, length + 1);
+    (void) memcpy(shim_pending_visible_entity, token, length + 1);
 }
 
-/* Copy a pending token into callback-owned stack memory, then consume it. */
+/*
+ * Copy a pending token into callback-owned stack memory, then consume it.
+ * @param destination Callback-owned buffer to receive the token.
+ * @param size Destination buffer size including its terminator.
+ */
 static void
-shim_visible_artifact_copy_and_clear(char *destination, size_t size)
+shim_visible_entity_copy_and_clear(char *destination, size_t size)
 {
     if (destination && size > 0) {
-        (void) strncpy(destination, shim_pending_visible_artifact, size - 1);
+        (void) strncpy(destination, shim_pending_visible_entity, size - 1);
         destination[size - 1] = '\0';
     }
-    shim_visible_artifact_clear();
+    shim_visible_entity_clear();
 }
 
 void shim_graphics_set_callback(char *cbName) {
     if (shim_callback_name != NULL) free(shim_callback_name);
-    shim_visible_artifact_clear();
+    shim_visible_entity_clear();
     shim_command_reset();
     if(cbName && strlen(cbName) > 0) {
         debugf("setting shim_callback_name: %s\n", cbName);
@@ -491,7 +507,7 @@ shim_settings_result(int success, int snapshot)
 static void
 shim_command_reset(void)
 {
-    shim_visible_artifact_clear();
+    shim_visible_entity_clear();
     command_boundary_generation = 0U;
     last_command_request_nonce = 0U;
     shim_action_getobj_request_nonce = 0U;
@@ -664,7 +680,7 @@ shim_exit_nhwindows(const char *str)
 {
     void *args[] = { P2V str };
 
-    shim_visible_artifact_clear();
+    shim_visible_entity_clear();
     if (shim_callback_name)
         local_callback(shim_callback_name, "shim_exit_nhwindows",
                        (void *) 0, "vs", args);
@@ -683,7 +699,7 @@ shim_destroy_nhwindow(winid window)
 {
     void *args[] = { &window };
 
-    shim_visible_artifact_clear();
+    shim_visible_entity_clear();
     if (shim_callback_name)
         local_callback(shim_callback_name, "shim_destroy_nhwindow",
                        (void *) 0, "vi", args);
@@ -700,7 +716,7 @@ shim_start_menu(winid window, unsigned long mbehavior)
 {
     void *args[] = { &window, &mbehavior };
 
-    shim_visible_artifact_clear();
+    shim_visible_entity_clear();
     if (shim_callback_name)
         local_callback(shim_callback_name, "shim_start_menu",
                        (void *) 0, "vii", args);
@@ -714,18 +730,18 @@ shim_add_menu(winid window, const glyph_info *glyphinfo,
               const ANY_P *identifier, char ch, char gch, int attr, int clr,
               const char *str, unsigned int itemflags)
 {
-    char visible_artifact_token[SHIM_VISIBLE_ARTIFACT_TOKEN_SIZE];
+    char visible_entity_token[SHIM_VISIBLE_ENTITY_TOKEN_SIZE];
     void *args[] = {
         &window, P2V glyphinfo, P2V identifier, &ch, &gch, &attr, &clr,
-        P2V str, &itemflags, P2V visible_artifact_token
+        P2V str, &itemflags, P2V visible_entity_token
     };
 
-    shim_visible_artifact_copy_and_clear(
-        visible_artifact_token, sizeof visible_artifact_token);
+    shim_visible_entity_copy_and_clear(
+        visible_entity_token, sizeof visible_entity_token);
     if (shim_callback_name)
         local_callback(shim_callback_name, "shim_add_menu",
                        (void *) 0, "vipi00iisis", args);
-    shim_visible_artifact_clear();
+    shim_visible_entity_clear();
 }
 #else
 VDECLCB(shim_add_menu,
@@ -739,7 +755,7 @@ shim_end_menu(winid window, const char *prompt)
 {
     void *args[] = { &window, P2V prompt };
 
-    shim_visible_artifact_clear();
+    shim_visible_entity_clear();
     if (shim_callback_name)
         local_callback(shim_callback_name, "shim_end_menu",
                        (void *) 0, "vis", args);
@@ -762,14 +778,14 @@ shim_select_menu(winid window, int how, MENU_ITEM_P **menu_list)
         &menu_generation
     };
 
-    shim_visible_artifact_clear();
+    shim_visible_entity_clear();
     if (shim_menu_generation == UINT_MAX)
         panic("BlissHack menu generation exhausted");
     menu_generation = ++shim_menu_generation;
     if (shim_callback_name)
         local_callback(shim_callback_name, "shim_select_menu",
                        (void *) &result, "iiipiii", args);
-    shim_visible_artifact_clear();
+    shim_visible_entity_clear();
     return result;
 }
 #else

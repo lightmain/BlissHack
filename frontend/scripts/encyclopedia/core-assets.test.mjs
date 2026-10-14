@@ -257,6 +257,7 @@ async function rewriteCatalogFile(directory, file, mutate) {
   const metadata = [
     ...coreManifest.chunks,
     ...coreManifest.glyphBindings.chunks,
+    coreManifest.visibleObjectBindings,
   ].find((chunk) => chunk.file === file);
   expect(metadata, `missing manifest metadata for ${file}`).toBeDefined();
   metadata.bytes = bytes.byteLength;
@@ -574,6 +575,7 @@ describe("alpha-2.4 stage-one core encyclopedia assets", () => {
     for (const metadata of [
       ...manifest.chunks,
       ...manifest.glyphBindings.chunks,
+      manifest.visibleObjectBindings,
     ]) {
       const bytes = await readFile(join(generatedDirectory, metadata.file));
       expect(metadata.bytes).toBe(bytes.byteLength);
@@ -728,6 +730,32 @@ describe("alpha-2.4 stage-one core encyclopedia assets", () => {
     await expect(validateCoreAssetDirectory(incomplete)).rejects.toThrow(
       /glyph|MAX_GLYPH|coverage/i,
     );
+
+    const duplicateVisibleGlyph = await cloneGeneratedCatalog(
+      "duplicate-visible-glyph",
+    );
+    await rewriteCatalogFile(
+      duplicateVisibleGlyph,
+      manifest.visibleObjectBindings.file,
+      (catalog) => {
+        catalog.bindings[1].glyph = catalog.bindings[0].glyph;
+      },
+    );
+    await expect(validateCoreAssetDirectory(duplicateVisibleGlyph))
+      .rejects.toThrow(/visible object glyphs.*unique|sorted/i);
+
+    const danglingVisibleObject = await cloneGeneratedCatalog(
+      "dangling-visible-object",
+    );
+    await rewriteCatalogFile(
+      danglingVisibleObject,
+      manifest.visibleObjectBindings.file,
+      (catalog) => {
+        catalog.bindings[0].objectId = "object:DOES_NOT_EXIST";
+      },
+    );
+    await expect(validateCoreAssetDirectory(danglingVisibleObject))
+      .rejects.toThrow(/dangling visible object identity/i);
   });
 
   /** Reject traversal before opening a manifest-controlled path. */

@@ -109,6 +109,7 @@ describe("encyclopedia manifest preload", () => {
     }
     for (const url of [
       fixture.urls.glyphChunk,
+      fixture.urls.visibleObjectBindings,
       fixture.urls.entityChunk,
       fixture.urls.wikiChunk,
     ]) {
@@ -166,6 +167,7 @@ describe("encyclopedia manifest preload", () => {
     await expect(preload()).resolves.toBeUndefined();
     for (const url of [
       fixture.urls.glyphChunk,
+      fixture.urls.visibleObjectBindings,
       fixture.urls.entityChunk,
       fixture.urls.wikiChunk,
     ]) {
@@ -234,6 +236,21 @@ describe("encyclopedia runtime loader", () => {
       });
     expect(callsForUrl(fetchBytes, fixture.urls.runtimeManifest)).toBe(1);
     expect(callsForUrl(fetchBytes, fixture.urls.coreManifest)).toBe(1);
+  });
+
+  it("loads an exact object identity only from its manifest-bound index", async () => {
+    const fixture = createEncyclopediaAssetFixture();
+    const fetchBytes = fixtureFetcher(fixture);
+    const loader = fixtureLoader(fixture, fetchBytes);
+
+    await expect(loader.loadObjectIdForGlyph(0))
+      .resolves.toBe("object:TEST_OBJECT");
+    await expect(loader.loadObjectIdForGlyph(-1)).resolves.toBeNull();
+    await expect(loader.loadObjectIdForGlyph(1)).resolves.toBeNull();
+    expect(callsForUrl(
+      fetchBytes,
+      fixture.urls.visibleObjectBindings,
+    )).toBe(1);
   });
 
   it.each([
@@ -398,6 +415,91 @@ describe("encyclopedia runtime loader", () => {
         bindRuntimeToCore(fixture);
       },
     },
+    {
+      label: "visible object index digest",
+      asset: "visibleObjectBindings" as const,
+      load: "object" as const,
+      mutate(fixture: EncyclopediaAssetFixture) {
+        const bytes = fixture.assets.get(
+          fixture.urls.visibleObjectBindings,
+        )!;
+        fixture.assets.set(
+          fixture.urls.visibleObjectBindings,
+          Uint8Array.from([...bytes, 0x20]),
+        );
+      },
+    },
+    {
+      label: "visible object index byte length",
+      asset: "visibleObjectBindings" as const,
+      load: "object" as const,
+      mutate(fixture: EncyclopediaAssetFixture) {
+        const manifest = readJsonAsset(fixture, fixture.urls.coreManifest);
+        manifest.visibleObjectBindings.bytes += 1;
+        writeJsonAsset(fixture, fixture.urls.coreManifest, manifest);
+        bindRuntimeToCore(fixture);
+      },
+    },
+    {
+      label: "visible object index schema",
+      asset: "visibleObjectBindings" as const,
+      load: "object" as const,
+      mutate(fixture: EncyclopediaAssetFixture) {
+        const index = readJsonAsset(
+          fixture,
+          fixture.urls.visibleObjectBindings,
+        );
+        index.schemaVersion = 2;
+        writeJsonAsset(fixture, fixture.urls.visibleObjectBindings, index);
+        bindChunkMetadata(
+          fixture,
+          fixture.urls.coreManifest,
+          fixture.urls.visibleObjectBindings,
+        );
+        bindRuntimeToCore(fixture);
+      },
+    },
+    {
+      label: "visible object index duplicate glyph",
+      asset: "visibleObjectBindings" as const,
+      load: "object" as const,
+      mutate(fixture: EncyclopediaAssetFixture) {
+        const index = readJsonAsset(
+          fixture,
+          fixture.urls.visibleObjectBindings,
+        );
+        index.bindings.push(structuredClone(index.bindings[0]));
+        writeJsonAsset(fixture, fixture.urls.visibleObjectBindings, index);
+        bindChunkMetadata(
+          fixture,
+          fixture.urls.coreManifest,
+          fixture.urls.visibleObjectBindings,
+        );
+        const manifest = readJsonAsset(fixture, fixture.urls.coreManifest);
+        manifest.visibleObjectBindings.count = index.bindings.length;
+        writeJsonAsset(fixture, fixture.urls.coreManifest, manifest);
+        bindRuntimeToCore(fixture);
+      },
+    },
+    {
+      label: "visible object index out-of-range glyph",
+      asset: "visibleObjectBindings" as const,
+      load: "object" as const,
+      mutate(fixture: EncyclopediaAssetFixture) {
+        const index = readJsonAsset(
+          fixture,
+          fixture.urls.visibleObjectBindings,
+        );
+        index.bindings[0].glyph = 1;
+        writeJsonAsset(fixture, fixture.urls.visibleObjectBindings, index);
+        bindChunkMetadata(
+          fixture,
+          fixture.urls.coreManifest,
+          fixture.urls.visibleObjectBindings,
+        );
+        bindRuntimeToCore(fixture);
+      },
+    },
   ])("fails closed on a $label error", async ({ load, mutate }) => {
     const fixture = createEncyclopediaAssetFixture();
     mutate(fixture);
@@ -405,8 +507,47 @@ describe("encyclopedia runtime loader", () => {
 
     const pending = load === "glyph"
       ? loader.loadGlyphBinding(0)
+      : load === "object"
+      ? loader.loadObjectIdForGlyph(0)
       : loader.loadEntity("terrain:S_FOUNTAIN");
     await expect(pending).rejects.toThrow();
+  });
+
+  it("aborts the exact object index fetch after its only caller is cancelled", async () => {
+    const fixture = createEncyclopediaAssetFixture();
+    let requestedSignal: AbortSignal | undefined;
+    let markIndexRequested: (() => void) | undefined;
+    const indexRequested = new Promise<void>((resolve) => {
+      markIndexRequested = resolve;
+    });
+    const fetchBytes: FetchAsset = async (url, options) => {
+      if (url !== fixture.urls.visibleObjectBindings) {
+        const bytes = fixture.assets.get(url);
+        if (!bytes) throw new Error(`Asset not found: ${url}`);
+        return bytes.slice();
+      }
+      requestedSignal = options?.signal;
+      markIndexRequested?.();
+      return await new Promise<Uint8Array>((_resolve, reject) => {
+        const abort = () =>
+          reject(new DOMException("The operation was aborted", "AbortError"));
+        options?.signal?.addEventListener("abort", abort, { once: true });
+        if (options?.signal?.aborted) abort();
+      });
+    };
+    const controller = new AbortController();
+    const pending = fixtureLoader(fixture, fetchBytes).loadObjectIdForGlyph(
+      0,
+      { signal: controller.signal },
+    );
+
+    await indexRequested;
+    expect(requestedSignal).toBeDefined();
+    expect(requestedSignal).not.toBe(controller.signal);
+    controller.abort();
+
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    expect(requestedSignal?.aborted).toBe(true);
   });
 
   it("deduplicates concurrent manifest and chunk requests and reuses cache", async () => {

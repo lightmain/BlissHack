@@ -1226,7 +1226,7 @@ async function run() {
   );
   const displayPickinv = cBlockAfter(
     inventSource,
-    /\nstaticfn\s+char\s*\ndisplay_pickinv\s*\([^;{}]*\)\s*/,
+    /\nstaticfn\s+char\s*\ndisplay_pickinv\s*\([\s\S]*?\)\s*(?:\/\*[\s\S]*?\*\/\s*)?(?=\{)/,
   );
   const visibleEntityPublish = cBlockAfter(
     winshimSource,

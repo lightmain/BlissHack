@@ -343,7 +343,7 @@ M win/shim/winshim.c
   - 当前 callback 没有远程/近程、射程或阻挡元数据，因此前端不绘制推测射线。
   - 此阶段没有继续修改上游 C 或 WASM；已验证的运行时三件套保持不变。
 
-### 2.15 永久背包已公开神器身份
+### 2.15 永久背包已公开物品身份
 
 - **文件**：
   - `src/invent.c`
@@ -351,16 +351,23 @@ M win/shim/winshim.c
 - **引入提交**：alpha-2.4 阶段三提交
   `feat: resolve visible NetHack encyclopedia entities`
 - **目的**：
-  - 只在永久背包已经通过 `doname()` / `doname_with_cgender()` 公开神器名称，
-    且对象具有 `oartifact`、`has_oname()` 和 `dknown` 时，发布由
-    `DUMP_ARTI_ENUM` 生成的 `artifact:ART_*`。
+  - 在永久背包已经通过 `doname()` / `doname_with_cgender()` 公开普通对象
+    名称，且 `dknown` 与 `objects[otyp].oc_name_known` 都为真时，发布由
+    `DUMP_ENUMS` 生成的 `object:OBJECT_ENUM`。
+  - 对具有 `oartifact`、`has_oname()` 和 `dknown` 的已公开神器，继续发布由
+    `DUMP_ARTI_ENUM` 生成的 `artifact:ART_*`，并优先于基础对象 token。
   - 通过一个有界同步槽把 token 交给紧邻的 `shim_add_menu()`；在进入
     Asyncify callback 前复制到栈并消费，callback 返回后再次清理。
   - 在 callback 注册、command reset、菜单 start/end/select、窗口销毁和退出
     边界 fail closed 清理，防止身份跨行、跨菜单或跨 session 泄漏。
-- **ABI 范围**：只为 Emscripten `shim_add_menu` callback 增加第十个 string
+- **ABI 范围**：Emscripten `shim_add_menu` callback 的第十个 string
   参数；不改变 `struct window_procs`、原生 `libnethack.a` 的九参数 callback
   ABI、对象结构或 save 格式，也不暴露对象指针、编号、显示名或菜单自由文本。
+- **前端校验**：
+  - core manifest 绑定独立的精确 glyph 到 object ID 索引；公开 generic glyph
+    binding 仍只包含对象类别。
+  - token 必须存在于当前构建目录，并与该行最终 glyph 的精确对象匹配；同为
+    `WEAPON_CLASS` 但对象不同也会 fail closed。
 - **行为依据**：
   `doc/BlissHack/shim-interface-reference.md` 第 2.9 节。
 - **回归测试**：

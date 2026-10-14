@@ -9,7 +9,7 @@ import {
   type InventoryExamineCapture,
   type MapExamineCapture,
 } from "./examine-target";
-import { validateVisibleArtifactToken } from "./visible-entity-token";
+import { validateVisibleEntityToken } from "./visible-entity-token";
 
 export interface ResolvedVisibleEntity {
   entityId: string;
@@ -45,13 +45,15 @@ interface InventoryTargetState {
 
 /**
  * Create a resolver which maps only final display glyphs to catalog entities.
- * @param options Bound glyph lookup and artifact-to-base-object catalog.
+ * @param options Bound public and exact-visible identity lookups.
  * @returns Synchronous map and inventory resolution methods.
  */
 export function createEntityResolver(options: {
   maxGlyph: number;
   bindingForGlyph: (glyph: number) => GlyphBindingResult | null;
   artifactBaseObjects: ReadonlyMap<string, string>;
+  knownObjectIds: ReadonlySet<string>;
+  objectIdForGlyph: (glyph: number) => string | null;
 }): EntityResolver {
   /**
    * Resolve one in-range display glyph without applying hidden-state fallback.
@@ -97,15 +99,27 @@ export function createEntityResolver(options: {
       if (!item.glyph) return null;
       const resolved = resolveGlyph(item.glyph, "inventory");
       if (!resolved) return null;
-      if (resolved.binding.kind !== "object") return resolved;
-      const artifactId = validateVisibleArtifactToken(
+      if (
+        resolved.binding.kind !== "object"
+        && resolved.binding.kind !== "generic-object"
+      ) {
+        return resolved;
+      }
+      const displayedObjectId = resolved.binding.kind === "object"
+        ? resolved.binding.objectId
+        : options.objectIdForGlyph(resolved.glyph);
+      if (displayedObjectId === null) return resolved;
+      const visibleEntityId = validateVisibleEntityToken(
         visibleEntityToken,
-        resolved.binding.objectId,
-        options.artifactBaseObjects,
+        {
+          displayedObjectId,
+          knownObjectIds: options.knownObjectIds,
+          artifactBaseObjects: options.artifactBaseObjects,
+        },
       );
-      return artifactId === null
+      return visibleEntityId === null
         ? resolved
-        : { ...resolved, entityId: artifactId };
+        : { ...resolved, entityId: visibleEntityId };
     },
   };
 }

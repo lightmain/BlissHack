@@ -74,10 +74,10 @@
 - `interface.informationLevel` 控制状态栏解释性 Tooltip 和右键菜单中的
   synthetic `Examine` 入口；地图、背包 hover 和 `nethack.showExperience`
   在两种模式下均可用。此扩展不提升 profile schema。
-- `frontend/src/encyclopedia/` 只根据核心最终 glyph 或已公开的有界神器 token
-  解析可见身份，严格校验 runtime-bound manifest 和 chunk，并按实体 lazy-load
-  core facts 与可选 Wiki 节选。核心与 Wiki 资料保持目录、类型、来源和许可
-  分离。
+- `frontend/src/encyclopedia/` 只根据核心最终 glyph 或已公开的有界物品身份
+  token 解析可见身份；普通对象 token 还必须与 runtime-bound 精确 glyph 对照
+  一致。manifest 和 chunk 均严格校验，并按实体 lazy-load core facts 与可选
+  Wiki 节选。核心与 Wiki 资料保持目录、类型、来源和许可分离。
 - `Examine` 是前端合成的判别联合菜单行，不会伪造核心 item index。控制器先
   向核心菜单提交一次 `null`，等待 resolver 消费、新 command boundary 和
   intent 回到 idle 后才发布本地窗口请求；打开、切 Tab 和关闭均不消耗回合。

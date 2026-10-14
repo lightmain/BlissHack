@@ -11,7 +11,7 @@ import {
   type ExtendedCommand,
   type GlyphInfo,
 } from "../game-state";
-import { parseVisibleArtifactToken } from "../encyclopedia/visible-entity-token";
+import { parseVisibleEntityToken } from "../encyclopedia/visible-entity-token";
 import type { EmscriptenModule } from "./emscripten-module";
 
 const BL_ATTCLR_MAX = 24;
@@ -86,7 +86,7 @@ export function addDecodedMenuItem(
     color: asNumber(args[6]),
     text: asString(args[7]),
     itemFlags: asNumber(args[8]) >>> 0,
-    visibleEntityToken: parseVisibleArtifactToken(args[9]),
+    visibleEntityToken: parseVisibleEntityToken(args[9]),
   });
 }
 

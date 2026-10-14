@@ -8,6 +8,7 @@ export const TEST_ASSET_URLS = Object.freeze({
   runtimeManifest: "/nethack-runtime.json",
   coreManifest: "/encyclopedia/core/manifest.json",
   glyphChunk: "/encyclopedia/core/glyph-bindings-001.json",
+  visibleObjectBindings: "/encyclopedia/core/visible-object-bindings.json",
   entityChunk: "/encyclopedia/core/terrain-001.json",
   wikiManifest: "/encyclopedia/wiki/manifest.json",
   wikiChunk: "/encyclopedia/wiki/wiki-001.json",
@@ -89,6 +90,7 @@ export function bindChunkMetadata(
   const entries = [
     ...(manifest.chunks ?? []),
     ...(manifest.glyphBindings?.chunks ?? []),
+    manifest.visibleObjectBindings,
   ];
   const metadata = entries.find((entry: any) => entry.file === filename);
   if (!metadata) {
@@ -186,6 +188,13 @@ export function createEncyclopediaAssetFixture(): EncyclopediaAssetFixture {
       },
     }],
   };
+  const visibleObjectBindings = {
+    schemaVersion: 1,
+    bindings: [{
+      glyph: 0,
+      objectId: "object:TEST_OBJECT",
+    }],
+  };
   const wikiParagraph = "A fountain is a dungeon feature.";
   const wikiChunk = {
     schemaVersion: 1,
@@ -222,6 +231,7 @@ export function createEncyclopediaAssetFixture(): EncyclopediaAssetFixture {
   };
   const entityBytes = encodeJson(entityChunk);
   const glyphBytes = encodeJson(glyphChunk);
+  const visibleObjectBytes = encodeJson(visibleObjectBindings);
   const wikiBytes = encodeJson(wikiChunk);
   const coreManifest = {
     schemaVersion: 1,
@@ -256,6 +266,12 @@ export function createEncyclopediaAssetFixture(): EncyclopediaAssetFixture {
         bytes: glyphBytes.byteLength,
         sha256: sha256(glyphBytes),
       }],
+    },
+    visibleObjectBindings: {
+      file: "visible-object-bindings.json",
+      bytes: visibleObjectBytes.byteLength,
+      sha256: sha256(visibleObjectBytes),
+      count: 1,
     },
   };
   const wikiManifest = {
@@ -325,6 +341,7 @@ export function createEncyclopediaAssetFixture(): EncyclopediaAssetFixture {
       [urls.runtimeManifest, encodeJson(runtimeManifest)],
       [urls.coreManifest, coreManifestBytes],
       [urls.glyphChunk, glyphBytes],
+      [urls.visibleObjectBindings, visibleObjectBytes],
       [urls.entityChunk, entityBytes],
       [urls.wikiManifest, encodeJson(wikiManifest)],
       [urls.wikiChunk, wikiBytes],

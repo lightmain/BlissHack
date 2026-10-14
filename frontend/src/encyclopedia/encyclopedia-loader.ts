@@ -2,6 +2,7 @@ import {
   validateCoreEntityChunk,
   validateCoreManifest,
   validateGlyphBindingChunk,
+  validateVisibleObjectBindingAsset,
   type CoreAssetMetadata,
   type CoreEncyclopediaManifest,
   type CoreEntityRecord,
@@ -55,6 +56,10 @@ export interface EncyclopediaLoader {
   loadArtifactBaseObjects(
     options?: LoadOptions,
   ): Promise<ReadonlyMap<string, string>>;
+  loadObjectIdForGlyph(
+    glyph: number,
+    options?: LoadOptions,
+  ): Promise<string | null>;
 }
 
 interface PendingBytes {
@@ -359,6 +364,25 @@ export function createEncyclopediaLoader(options: {
       });
       throwIfAborted(loadOptions.signal);
       return new Map(entries);
+    },
+
+    async loadObjectIdForGlyph(glyph, loadOptions = {}) {
+      throwIfAborted(loadOptions.signal);
+      if (!Number.isSafeInteger(glyph) || glyph < 0) return null;
+      const { manifest } = await loadCoreContext(loadOptions.signal);
+      if (glyph >= manifest.glyphBindings.maxGlyph) return null;
+      const metadata = manifest.visibleObjectBindings;
+      const url = assetUrl(options.coreBaseUrl, metadata.file);
+      const bytes = await loadBytes(url, loadOptions.signal);
+      await verifyRuntimeAssetBytes(bytes, metadata, url);
+      const bindings = validateVisibleObjectBindingAsset(
+        parseJson(bytes, metadata.file),
+        metadata,
+        manifest.glyphBindings.maxGlyph,
+      ).bindings;
+      throwIfAborted(loadOptions.signal);
+      const match = bindings.find((binding) => binding.glyph === glyph);
+      return match?.objectId ?? null;
     },
   };
 }

@@ -11,7 +11,7 @@ alpha-2.4 已完成实现、独立复审和自动门禁。人工验收仍待用�
 
 ## 2. 测试环境
 
-- 最终自动复验日期：2026-10-13。
+- 最终自动复验日期：2026-10-14。
 - 机器：Apple M4 Pro，arm64。
 - 系统：macOS 26.5.1。
 - 固定工具链：Node.js 24.19.0、npm 11.17.0、Emscripten 6.0.9、
@@ -25,10 +25,13 @@ alpha-2.4 已完成实现、独立复审和自动门禁。人工验收仍待用�
   synthetic `Examine` 行；Original 与全部核心原有动作保持不变。
 - `GameActionController` 只取消一次核心菜单，并等待 resolver、窗口消失和新
   command boundary 后发布本地窗口请求；查看资料不消耗回合。
-- 可见身份只来自核心最终 glyph 或已经公开的有界神器 token，不读取 C 指针、
-  对象链、隐藏陷阱、未鉴定真值或英文菜单文本。
+- 可见身份只来自核心最终 glyph 或已经公开、并与精确 glyph 对照验证的有界
+  普通物品/神器 token，不读取 C 指针、对象链、隐藏陷阱、未鉴定真值或英文
+  菜单文本。
 - 由当前 NetHack 5.0.0 源码确定性生成 970 条实体资料，并对 9,624 个 glyph
   完成 supported 或显式 unsupported 分类。
+- 独立的 926 条 normal/pile-top 精确对象 glyph 对照只用于校验核心已经公开的
+  普通物品 token；公开 glyph binding 继续把静态未知类型保持为通用类别。
 - 运行时严格校验并按需加载 core/Wiki manifest、glyph binding 和 entity
   chunk；并发请求合并，失败与 stale 请求 fail closed。
 - 响应式观察窗口包含事实、Wiki Tab、分离的来源与许可、焦点限制、键盘导航和
@@ -43,7 +46,9 @@ alpha-2.4 已完成实现、独立复审和自动门禁。人工验收仍待用�
 结果见 [Wiki 发布审查报告](wiki-review-report.md)。
 
 - core records：970；supported glyph：6,444；unsupported glyph：3,180。
-- core JSON：1,843,537 B；首次 Detailed 索引最坏 107,520 B，均低于预算。
+- core JSON：1,888,798 B；首次 Detailed 基础索引最坏 107,686 B。普通物品
+  token 首次校验另按需读取 45,095 B 精确索引，合计最坏 152,781 B，均低于
+  预算。
 - Wiki 只发布 `Newt` revision 205110 的 1 条记录、4 个完整原文段落：
   Strategy 2 段、History 1 段、Dudley's dungeon 1 段。
 - 两段不安全的 Overview 内容未发布；运行时没有 Overview Tab，也没有摘要、
@@ -54,9 +59,9 @@ alpha-2.4 已完成实现、独立复审和自动门禁。人工验收仍待用�
 
 | 产物 | 字节 | SHA-256 |
 | --- | ---: | --- |
-| `nethack.js` | 96,199 | `0678e42957ca4516dc3224fc7acb8498da9888d54ee6a05b152c67a0bd94a9f9` |
-| `nethack.wasm` | 6,636,857 | `1f251ab58f18106dac35f775c0ddeb2b489c22e9a043fd9d1841ef254df2eea2` |
-| `nethack-runtime.json` | 1,007 | `005a0d378545d692d133269a550ddd93a5ed01a1673d228b21f4bda1d02dedc4` |
+| `nethack.js` | 96,199 | `dd9572c4775b10009a05904cc8a090d8713762425d42f4a1462fdf1f121a970f` |
+| `nethack.wasm` | 6,647,378 | `7dd34483bb310434aa55025319a663ed3c7084f3b5518cf4fd2172a9f7fc5343` |
+| `nethack-runtime.json` | 1,007 | `54402df051d3f1be5e00e90590d1193e94ee9d734eedc3881889a424da71bd68` |
 
 浏览器先校验 `nethack.js` 与 `nethack.wasm`，再从临时 Blob URL 导入 loader
 并注入已校验 WASM bytes。部署 CSP 必须在 `script-src` 中允许 `blob:`。
@@ -69,13 +74,13 @@ alpha-2.4 已完成实现、独立复审和自动门禁。人工验收仍待用�
 | `npm run verify:tiles` | 2,307 tiles 与输入 checksum 通过 |
 | `npm run encyclopedia:verify` | 9,624 glyph、970 core records、1 Wiki record 通过 |
 | 阶段六 release gates | 4/4 |
-| `npm test` | 94 files，1,086/1,086 |
+| `npm test` | 96 files，1,123/1,123 |
 | `npm run lint` | 0 warnings，0 errors |
 | `VITE_BASE_PATH=/BlissHack/ npm run build` | TypeScript 与 production build 通过 |
-| `npm run test:integration:wasm` | 162/162 |
+| `npm run test:integration:wasm` | 166/166 |
 | `npm run test:integration:browser` | Chromium 156/156 |
 | `npm run test:integration:compat` | Firefox + WebKit 192/192 |
-| `npm run test:performance` | 2/2；Canvas 全图 p95 5.3 ms，300 行背包提交 14.9 ms |
+| `npm run test:performance` | 2/2；Canvas 全图 p95 5.4 ms，300 行背包提交 15.0 ms |
 | `npm run test:long` | 4/4 |
 | `git diff --check` | 通过 |
 
@@ -93,14 +98,26 @@ factory cache 可能跨自定义 importer 污染；实现已改为
 README、frontend README 和 WASM 构建文档中补全。修正后的 follow-up review
 没有剩余 P1/P2 finding。
 
+- 2026-10-14 普通物品可见身份 follow-up reviewer 未发现高严重性 correctness
+  或 security 问题，确认核心可见性条件、神器优先级、row-local Asyncify
+  生命周期、十参数 callback ABI、hallucination/pile glyph 对照及 runtime
+  manifest 绑定成立。
+- reviewer 的中等级 finding 是本文件仍保留旧产物摘要；低等级 finding 是新
+  精确对象索引缺少损坏摘要、长度、schema、重复/越界 glyph 和取消测试。摘要
+  已更新，loader 与生成器负向测试已补齐并通过。
+- 浏览器复验确认具体普通物品会新增 Wiki 页链接；Examine 现在显式推进每次
+  Tab/Shift+Tab，使 Wiki、NGPL 与关闭按钮的焦点顺序在 Chromium、Firefox 和
+  WebKit 一致。
+
 ## 8. 人工验收待办
 
 - [ ] Detailed 下分别检查地图 Newt、地形、陷阱、地面物品和永久背包物品的
-  `Examine`；Original 下确认没有 synthetic 行。
+  `Examine`，并确认武士初始 katana 显示具体资料；Original 下确认没有
+  synthetic 行。
 - [ ] 记录 moves/time，反复打开、切 Tab、关闭，确认菜单先关闭、窗口后打开，
   全程不消耗回合；原有攻击、移动、拾取和物品动作保持原路径。
-- [ ] 检查未鉴定物品、hallucination、mimic/disguise、隐藏/可见陷阱以及未公开
-  和已公开神器，确认没有隐藏身份泄露。
+- [ ] 检查未鉴定 wand 等物品、hallucination、mimic/disguise、隐藏/可见陷阱
+  以及未公开和已公开神器，确认没有隐藏身份泄露。
 - [ ] 逐段核对 Newt revision 205110：Strategy 两段、History 一段、
   Dudley's dungeon 一段；确认没有 Overview Wiki 内容，并检查来源、历史、
   contributors、CC BY-SA 3.0、源码路径和 NGPL 标识。

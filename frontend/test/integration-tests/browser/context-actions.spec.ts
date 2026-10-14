@@ -616,9 +616,15 @@ test("Examine browser lifecycle: contains keys and restores an inventory trigger
   await expect(dialog.locator(".examine-facts")).toBeVisible();
 
   const close = dialog.getByRole("button", { name: "Close examine window" });
+  const wikiPage = dialog.getByRole("link", { name: /on NetHackWiki/ });
+  const license = dialog.getByRole("link", { name: /NGPL/ });
   await close.focus();
   await page.keyboard.press("Shift+Tab");
-  await expect(dialog.getByRole("link", { name: /NGPL/ })).toBeFocused();
+  await expect(wikiPage).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(license).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(wikiPage).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(close).toBeFocused();
 
