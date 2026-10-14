@@ -1962,7 +1962,7 @@ describe("menus", () => {
     expect(getWindow(menu)?.menuItems[1]?.identifier).toBe(7);
   });
 
-  it("copies the tenth add_menu argument without leaking it to the next row", async () => {
+  it("copies each visible entity token without leaking it to the next row", async () => {
     const menu = await shimCallback("shim_create_nhwindow", NHW_MENU) as number;
 
     await shimCallback("shim_start_menu", menu, MENU_BEHAVE_PERMINV);
@@ -1975,9 +1975,9 @@ describe("menus", () => {
       0,
       0,
       2,
-      "a - Excalibur",
+      "a - a katana",
       0,
-      "artifact:ART_EXCALIBUR",
+      "object:KATANA",
     );
     await shimCallback(
       "shim_add_menu",
@@ -1992,21 +1992,36 @@ describe("menus", () => {
       0,
       "",
     );
+    await shimCallback(
+      "shim_add_menu",
+      menu,
+      0,
+      43,
+      "c".charCodeAt(0),
+      0,
+      0,
+      2,
+      "c - Excalibur",
+      0,
+      "artifact:ART_EXCALIBUR",
+    );
     await shimCallback("shim_end_menu", menu, "Inventory");
 
     expect(
       getWindow(menu)?.menuItems.map(visibleEntityToken),
     ).toEqual([
-      "artifact:ART_EXCALIBUR",
+      "object:KATANA",
       null,
+      "artifact:ART_EXCALIBUR",
     ]);
 
     await shimCallback("shim_select_menu", menu, PICK_NONE, 0);
     expect(
       getSnapshot().permanentInventory?.items.map(visibleEntityToken),
     ).toEqual([
-      "artifact:ART_EXCALIBUR",
+      "object:KATANA",
       null,
+      "artifact:ART_EXCALIBUR",
     ]);
   });
 

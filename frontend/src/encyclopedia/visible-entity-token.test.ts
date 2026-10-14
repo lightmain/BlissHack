@@ -1,13 +1,111 @@
 import { describe, expect, it } from "vitest";
-import {
+import * as visibleEntityTokens from "./visible-entity-token";
+
+const {
   createVisibleIdentityTokenChannel,
   validateVisibleArtifactToken,
-} from "./visible-entity-token";
+} = visibleEntityTokens;
 
 const ARTIFACT_BASE_OBJECTS = new Map([
   ["artifact:ART_EXCALIBUR", "object:LONG_SWORD"],
   ["artifact:ART_CLEAVER", "object:BATTLE_AXE"],
 ]);
+const KNOWN_OBJECT_IDS = new Set([
+  "object:DAGGER",
+  "object:KATANA",
+  "object:LONG_SWORD",
+]);
+
+interface VisibleEntityTokenApi {
+  parseVisibleEntityToken?: (token: unknown) => string | null;
+  validateVisibleEntityToken?: (
+    token: unknown,
+    options: {
+      displayedObjectId: string;
+      knownObjectIds: ReadonlySet<string>;
+      artifactBaseObjects: ReadonlyMap<string, string>;
+    },
+  ) => string | null;
+}
+
+/**
+ * Require the generalized token API while keeping this red test loadable.
+ * @returns The expected parser and validator.
+ */
+function visibleEntityTokenApi() {
+  const api = visibleEntityTokens as VisibleEntityTokenApi;
+  expect(api.parseVisibleEntityToken).toBeTypeOf("function");
+  expect(api.validateVisibleEntityToken).toBeTypeOf("function");
+  return {
+    parse: api.parseVisibleEntityToken!,
+    validate: api.validateVisibleEntityToken!,
+  };
+}
+
+describe("visible entity identity token", () => {
+  it("parses canonical ordinary object and artifact tokens", () => {
+    const { parse } = visibleEntityTokenApi();
+
+    expect(parse("object:KATANA")).toBe("object:KATANA");
+    expect(parse("artifact:ART_EXCALIBUR"))
+      .toBe("artifact:ART_EXCALIBUR");
+  });
+
+  it("rejects malformed token shapes", () => {
+    const { parse } = visibleEntityTokenApi();
+    const malformed = [
+      null,
+      "",
+      "object:katana",
+      "object:",
+      "object:../KATANA",
+      "object:KATANA ",
+      "monster:PM_SAMURAI",
+      `object:${"A".repeat(160)}`,
+    ];
+
+    for (const token of malformed) {
+      expect(parse(token)).toBeNull();
+    }
+  });
+
+  it("accepts a known object matching the exact displayed glyph identity", () => {
+    const { validate } = visibleEntityTokenApi();
+
+    expect(validate("object:KATANA", {
+      displayedObjectId: "object:KATANA",
+      knownObjectIds: KNOWN_OBJECT_IDS,
+      artifactBaseObjects: ARTIFACT_BASE_OBJECTS,
+    })).toBe("object:KATANA");
+  });
+
+  it("rejects malformed, unknown, and same-class mismatched objects", () => {
+    const { validate } = visibleEntityTokenApi();
+    const rejected = [
+      "object:../KATANA",
+      "object:NOT_IN_BUILD",
+      "object:DAGGER",
+    ];
+
+    for (const token of rejected) {
+      expect(validate(token, {
+        displayedObjectId: "object:KATANA",
+        knownObjectIds: KNOWN_OBJECT_IDS,
+        artifactBaseObjects: ARTIFACT_BASE_OBJECTS,
+      })).toBeNull();
+    }
+  });
+
+  it("retains artifact validation through the generalized API", () => {
+    const { validate } = visibleEntityTokenApi();
+
+    expect(validate("artifact:ART_EXCALIBUR", {
+      displayedObjectId: "object:LONG_SWORD",
+      knownObjectIds: KNOWN_OBJECT_IDS,
+      artifactBaseObjects: ARTIFACT_BASE_OBJECTS,
+    })).toBe("artifact:ART_EXCALIBUR");
+  });
+});
 
 describe("visible artifact identity token", () => {
   it("accepts only a catalog artifact token matching the displayed base object", () => {
@@ -65,6 +163,36 @@ describe("visible artifact identity token", () => {
       sessionId: "session-1",
       rowId: 4,
       baseObjectId: "object:LONG_SWORD",
+    })).toBeNull();
+  });
+
+  it("publishes a validated ordinary object row token exactly once", () => {
+    const createChannel = createVisibleIdentityTokenChannel as unknown as (
+      options: {
+        artifactBaseObjects: ReadonlyMap<string, string>;
+        knownObjectIds: ReadonlySet<string>;
+      },
+    ) => ReturnType<typeof createVisibleIdentityTokenChannel>;
+    const channel = createChannel({
+      artifactBaseObjects: ARTIFACT_BASE_OBJECTS,
+      knownObjectIds: KNOWN_OBJECT_IDS,
+    });
+    channel.publishRow({
+      sessionId: "session-1",
+      rowId: 5,
+      baseObjectId: "object:KATANA",
+      token: "object:KATANA",
+    });
+
+    expect(channel.consumeRow({
+      sessionId: "session-1",
+      rowId: 5,
+      baseObjectId: "object:KATANA",
+    })).toBe("object:KATANA");
+    expect(channel.consumeRow({
+      sessionId: "session-1",
+      rowId: 5,
+      baseObjectId: "object:KATANA",
     })).toBeNull();
   });
 

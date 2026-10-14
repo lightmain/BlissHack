@@ -1015,6 +1015,8 @@ async function blissCallback(name, ...args) {
         permanentInventoryUpdates.push({
           kind: "item",
           windowId,
+          identifier,
+          glyph: readGlyphInfo(Number(args[1]))?.glyph ?? null,
           text: String(args[7] ?? ""),
           argumentCount: args.length,
           visibleEntityToken,
@@ -1222,6 +1224,36 @@ async function run() {
     winshimSource,
     /\nint\s*\nshim_select_menu\s*\([^;{}]*\)\s*/,
   );
+  const displayPickinv = cBlockAfter(
+    inventSource,
+    /\nstaticfn\s+char\s*\ndisplay_pickinv\s*\([^;{}]*\)\s*/,
+  );
+  const visibleEntityPublish = cBlockAfter(
+    winshimSource,
+    /\nvoid\s*\nshim_visible_entity_publish\s*\([^;{}]*\)\s*/,
+  );
+  const visibleEntityCopy = cBlockAfter(
+    winshimSource,
+    /\nstatic\s+void\s*\nshim_visible_entity_copy_and_clear\s*\([^;{}]*\)\s*/,
+  );
+  const addMenuWrapper = cBlockAfter(
+    winshimSource,
+    /\nvoid\s*\nshim_add_menu\s*\([^;{}]*\)\s*/,
+  );
+  const startMenuWrapper = cBlockAfter(
+    winshimSource,
+    /\nvoid\s*\nshim_start_menu\s*\([^;{}]*\)\s*/,
+  );
+  const endMenuWrapper = cBlockAfter(
+    winshimSource,
+    /\nvoid\s*\nshim_end_menu\s*\([^;{}]*\)\s*/,
+  );
+  const normalInventoryRow = displayPickinv === null
+    ? null
+    : displayPickinv.slice(
+      displayPickinv.indexOf("/* normal inventory item */"),
+      displayPickinv.indexOf("maybereleaseobuf(formattedobj)"),
+    );
   const characterCatalogInit = cBlockAfter(
     libnhMainSource,
     /\njs_character_catalog_init\s*\(\s*void\s*\)\s*/,
@@ -1292,6 +1324,91 @@ async function run() {
         selectMenuWrapper,
       ),
     "select_menu copies provenance, request nonce, and menu generation",
+  );
+  const ordinaryNameIndex = normalInventoryRow?.search(
+    /\bformattedobj\s*=\s*![^;]+\?\s*doname\s*\(/,
+  ) ?? -1;
+  const ordinaryNameEndIndex = ordinaryNameIndex < 0
+    ? -1
+    : normalInventoryRow?.indexOf(";", ordinaryNameIndex) ?? -1;
+  const objectTokenIndex = normalInventoryRow?.indexOf('"object:%s"') ?? -1;
+  const ordinaryAddMenuIndex = normalInventoryRow?.lastIndexOf(
+    "add_menu(",
+  ) ?? -1;
+  const ordinaryPublication = (
+    ordinaryNameEndIndex < 0 || ordinaryAddMenuIndex < 0
+  )
+    ? ""
+    : normalInventoryRow?.slice(
+      ordinaryNameEndIndex + 1,
+      ordinaryAddMenuIndex,
+    ) ?? "";
+  const ordinaryPublicationPrefix = objectTokenIndex < 0
+    ? ""
+    : ordinaryPublication.slice(
+      0,
+      ordinaryPublication.indexOf('"object:%s"'),
+    );
+  assert(
+    /#define\s+DUMP_ENUMS\b[\s\S]*?\bbliss_object_symbols\b[\s\S]*?#include\s+"objects\.h"/.test(
+      inventSource,
+    )
+      && /\bvisible_object_symbol\s*\(\s*(?:\(int\)\s*)?otmp->otyp\s*\)/.test(
+        normalInventoryRow ?? "",
+      )
+      && ordinaryNameIndex >= 0
+      && ordinaryNameEndIndex > ordinaryNameIndex
+      && ordinaryNameEndIndex < objectTokenIndex
+      && objectTokenIndex < ordinaryAddMenuIndex,
+    "ordinary permanent inventory identity uses the canonical object enum"
+      + " symbol after doname and before add_menu",
+  );
+  assert(
+    ordinaryPublicationPrefix.includes("doing_perm_invent")
+      && ordinaryPublicationPrefix.includes("otmp->dknown")
+      && /objects\s*\[\s*otmp->otyp\s*\]\.oc_name_known/.test(
+        ordinaryPublicationPrefix,
+      )
+      && /\bshim_visible_entity_publish\s*\(/.test(
+        normalInventoryRow ?? "",
+      )
+      && !/\bformattedobj\b/.test(ordinaryPublication),
+    "ordinary object tokens require permanent inventory plus authoritative"
+      + " seen and name-known state without parsing menu text",
+  );
+  assert(
+    /\botmp->oartifact\b/.test(normalInventoryRow ?? "")
+      && /\bvisible_artifact_symbol\s*\(/.test(normalInventoryRow ?? "")
+      && /"artifact:%s"/.test(normalInventoryRow ?? "")
+      && /\bshim_visible_entity_publish\s*\(/.test(
+        normalInventoryRow ?? "",
+      ),
+    "artifact publication remains compatible with the generalized token"
+      + " channel",
+  );
+  assert(
+    /#define\s+SHIM_VISIBLE_ENTITY_TOKEN_SIZE\s+160\b/.test(winshimSource)
+      && visibleEntityPublish !== null
+      && visibleEntityCopy !== null
+      && visibleEntityPublish.includes('"artifact:ART_"')
+      && visibleEntityPublish.includes('"object:"')
+      && /\bshim_visible_entity_clear\s*\(\s*\)/.test(
+        visibleEntityPublish,
+      )
+      && /\bshim_visible_entity_clear\s*\(\s*\)/.test(visibleEntityCopy)
+      && /token\[i\]\s*>=\s*'A'/.test(visibleEntityPublish)
+      && /token\[i\]\s*<=\s*'Z'/.test(visibleEntityPublish)
+      && addMenuWrapper !== null
+      && /\bshim_visible_entity_copy_and_clear\s*\(/.test(addMenuWrapper)
+      && /\blocal_callback\s*\(/.test(addMenuWrapper)
+      && /\bshim_visible_entity_clear\s*\(\s*\)/.test(addMenuWrapper)
+      && [startMenuWrapper, endMenuWrapper, selectMenuWrapper].every(
+        (block) =>
+          block !== null
+          && /\bshim_visible_entity_clear\s*\(\s*\)/.test(block),
+      ),
+    "visible entity slot validates both canonical shapes and clears on every"
+      + " row and menu boundary",
   );
   assert(
     getobjBlock !== null
@@ -1855,9 +1972,14 @@ async function run() {
     permanentInventoryUpdates
       .filter((event) => event.kind === "item")
       .every((event) =>
-        event.argumentCount === 10 && event.visibleEntityToken === ""
+        event.argumentCount === 10
+        && (
+          event.visibleEntityToken === ""
+          || /^object:[A-Z0-9_]+$/.test(event.visibleEntityToken)
+        )
       ),
-    "ordinary permanent inventory rows receive an empty visible identity token",
+    "ordinary permanent inventory rows receive an empty or canonical object"
+      + " identity token",
   );
   assert(
     selectedCharacterFixture?.role?.fileCode === "Tou"
@@ -3018,7 +3140,7 @@ async function run() {
     "/home/web_user/artifact-wizkit",
     new TextEncoder().encode([
       "long sword named Excalibur",
-      "apple",
+      "wand of light",
       "",
     ].join("\n")),
   );
@@ -3054,7 +3176,7 @@ async function run() {
   commandBoundaryGeneration = 0;
   selectedCharacterFixture = null;
   characterFixtureCodes = {
-    role: "Kni",
+    role: "Sam",
     race: "Hum",
     gender: "Mal",
     alignment: "Law",
@@ -3078,17 +3200,30 @@ async function run() {
       .filter((event) => event.kind === "item");
   };
   const initialArtifactItems = latestPermanentInventoryItems();
-  const initialTokens = initialArtifactItems
-    .map((event) => event.visibleEntityToken)
-    .filter(Boolean);
+  const initialExcaliburItems = initialArtifactItems.filter(
+    (event) => event.visibleEntityToken === "artifact:ART_EXCALIBUR",
+  );
+  const initialKatanaItems = initialArtifactItems.filter(
+    (event) => event.visibleEntityToken === "object:KATANA",
+  );
+  const undisclosedWand = initialArtifactItems.find(
+    (event) => /wand/i.test(event.text),
+  );
   assert(
-    initialTokens.length === 1
-      && initialTokens[0] === "artifact:ART_EXCALIBUR"
-      && initialArtifactItems
-        .filter((event) => event.visibleEntityToken === "")
-        .length === initialArtifactItems.length - 1,
-    "real permanent inventory publishes one disclosed Excalibur token without"
-      + " leaking it to ordinary rows",
+    selectedCharacterFixture?.role?.fileCode === "Sam"
+      && initialExcaliburItems.length === 1
+      && initialKatanaItems.length === 1
+      && Number.isInteger(initialKatanaItems[0]?.glyph)
+      && undisclosedWand?.visibleEntityToken === ""
+      && initialArtifactItems.every(
+        (event) =>
+          event.visibleEntityToken === ""
+          || /^(?:object:[A-Z0-9_]+|artifact:ART_[A-Z0-9_]+)$/.test(
+            event.visibleEntityToken,
+          ),
+      ),
+    "real Samurai permanent inventory publishes exact katana and artifact"
+      + " identity while withholding an undiscovered wand",
   );
 
   const artifactCommands = readAllWasmCommands(artifactModule);
@@ -3174,10 +3309,15 @@ async function run() {
       && !refreshedArtifactItems.some(
       (event) => event.visibleEntityToken === "artifact:ART_CLEAVER",
       )
+      && refreshedArtifactItems.some(
+        (event) => event.visibleEntityToken === "object:KATANA",
+      )
       && refreshedArtifactItems.every(
         (event) =>
           event.visibleEntityToken === ""
-          || event.visibleEntityToken === "artifact:ART_EXCALIBUR",
+          || /^(?:object:[A-Z0-9_]+|artifact:ART_EXCALIBUR)$/.test(
+            event.visibleEntityToken,
+          ),
       ),
     "later inventory refreshes do not leak an undisclosed or stale artifact"
       + " token",
