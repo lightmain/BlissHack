@@ -13,6 +13,15 @@ interface AttackFact {
 const NETHACK_LICENSE_URL =
   "https://github.com/NetHack/NetHack/blob/"
   + "04834a93165482a28257bac282543e3583658622/dat/license";
+const KEY_MONSTER_FACTS = new Set([
+  "monsterClass",
+  "level",
+  "difficulty",
+  "speed",
+  "armorClass",
+  "magicResistance",
+  "alignment",
+]);
 
 /**
  * Render validated NetHack source facts without merging their NGPL provenance
@@ -32,6 +41,7 @@ export function ExamineFacts({
       aria-label={`${displayName(core.names.primary)} facts`}
       className="examine-facts"
       data-content-license="NGPL"
+      data-entity-kind={core.kind}
     >
       {core.kind === "monster"
         ? <MonsterFacts facts={core.facts} />
@@ -100,60 +110,73 @@ function MonsterFacts({ facts }: { facts: Record<string, unknown> }) {
 
   return (
     <>
-      <FactSection title="Core statistics">
-        <FactTree value={coreStatistics} />
-        {zeroLevelHpRange(hpRule) && (
-          <dl className="examine-stat-grid">
-            <div>
-              <dt>HP at level 0</dt>
-              <dd>{zeroLevelHpRange(hpRule)}</dd>
-            </div>
-          </dl>
-        )}
-      </FactSection>
-      {Object.keys(hpRule).length > 0 && (
-        <FactSection title="HP rule">
-          <FactTree value={hpRule} />
-        </FactSection>
-      )}
-      {Object.keys(generation).length > 0 && (
-        <FactSection title="Generation">
-          <FactTree value={generation} />
-        </FactSection>
-      )}
-      {attacks.length > 0 && (
-        <FactSection title={attacks.length === 1 ? "Attack" : "Attacks"}>
-          <div className="examine-attacks">
-            {attacks.map((attack, index) => (
-              <div className="examine-attack" key={`${index}:${attack.attackType}`}>
-                <span className="examine-attack-index">{index + 1}</span>
-                <div>
-                  <strong>{attack.attackType}</strong>
-                  <span>{attack.damageType}</span>
-                </div>
-                <code>{diceLabel(attack.dice)}</code>
+      <div className="examine-facts-primary">
+        <FactSection
+          className="examine-core-statistics"
+          title="Core statistics"
+        >
+          <FactTree
+            emphasizedKeys={KEY_MONSTER_FACTS}
+            value={coreStatistics}
+          />
+          {zeroLevelHpRange(hpRule) && (
+            <dl className="examine-stat-grid">
+              <div>
+                <dt>HP at level 0</dt>
+                <dd>{zeroLevelHpRange(hpRule)}</dd>
               </div>
-            ))}
-          </div>
+            </dl>
+          )}
         </FactSection>
-      )}
-      <FactSection title="Traits and resistances">
-        <FactTree value={{
-          resistances: facts.resistances,
-          conveys: facts.conveys,
-          ...flags,
-        }} />
-      </FactSection>
-      {Object.keys(corpse).length > 0 && (
-        <FactSection title="Corpse">
-          <FactTree value={corpse} />
+        {attacks.length > 0 && (
+          <FactSection title={attacks.length === 1 ? "Attack" : "Attacks"}>
+            <div className="examine-attacks">
+              {attacks.map((attack, index) => (
+                <div
+                  className="examine-attack"
+                  key={`${index}:${attack.attackType}`}
+                >
+                  <span className="examine-attack-index">{index + 1}</span>
+                  <div>
+                    <strong>{attack.attackType}</strong>
+                    <span>{attack.damageType}</span>
+                  </div>
+                  <code>{diceLabel(attack.dice)}</code>
+                </div>
+              ))}
+            </div>
+          </FactSection>
+        )}
+        {Object.keys(generation).length > 0 && (
+          <FactSection title="Generation">
+            <FactTree value={generation} />
+          </FactSection>
+        )}
+      </div>
+      <div className="examine-facts-secondary">
+        {Object.keys(hpRule).length > 0 && (
+          <FactSection title="HP rule">
+            <FactTree value={hpRule} />
+          </FactSection>
+        )}
+        <FactSection title="Traits and resistances">
+          <FactTree value={{
+            resistances: facts.resistances,
+            conveys: facts.conveys,
+            ...flags,
+          }} />
         </FactSection>
-      )}
-      {specialEffects && specialEffects.length > 0 && (
-        <FactSection title="Special effects">
-          <FactTree value={specialEffects} />
-        </FactSection>
-      )}
+        {Object.keys(corpse).length > 0 && (
+          <FactSection title="Corpse">
+            <FactTree value={corpse} />
+          </FactSection>
+        )}
+        {specialEffects && specialEffects.length > 0 && (
+          <FactSection title="Special effects">
+            <FactTree value={specialEffects} />
+          </FactSection>
+        )}
+      </div>
     </>
   );
 }
@@ -165,13 +188,15 @@ function MonsterFacts({ facts }: { facts: Record<string, unknown> }) {
  */
 function FactSection({
   children,
+  className,
   title,
 }: {
   children: ReactNode;
+  className?: string;
   title: string;
 }) {
   return (
-    <section>
+    <section className={className}>
       <h2>{title}</h2>
       {children}
     </section>
@@ -184,7 +209,13 @@ function FactSection({
  * @param props - validated facts subtree.
  * @returns semantic definition lists and ordered collections.
  */
-function FactTree({ value }: { value: unknown }): ReactNode {
+function FactTree({
+  emphasizedKeys,
+  value,
+}: {
+  emphasizedKeys?: ReadonlySet<string>;
+  value: unknown;
+}): ReactNode {
   if (Array.isArray(value)) {
     if (value.length === 0) return <span className="examine-empty-value">None</span>;
     if (value.every(isScalar)) {
@@ -216,7 +247,13 @@ function FactTree({ value }: { value: unknown }): ReactNode {
         )}
         <dl className="examine-detail-list">
           {Object.entries(record).map(([key, entry]) => (
-            <div className="examine-detail-row" key={key}>
+            <div
+              className={[
+                "examine-detail-row",
+                emphasizedKeys?.has(key) ? "examine-key-fact" : "",
+              ].filter(Boolean).join(" ")}
+              key={key}
+            >
               <dt>{key}</dt>
               <dd>
                 {isScalar(entry)
