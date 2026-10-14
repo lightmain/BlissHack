@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { GlyphInfo, MapCell, MenuItem } from "../game-state";
 import type { GlyphBindingResult } from "./core-schema";
+import type { EncyclopediaLoader } from "./encyclopedia-loader";
 import {
   captureInventoryExamineTarget,
   captureMapExamineTarget,
@@ -8,9 +9,18 @@ import {
   isInventoryExamineTargetCurrent,
   isMapExamineTargetCurrent,
 } from "./entity-resolution";
+import {
+  resolveExamineCapture,
+  type InventoryExamineCapture,
+} from "./examine-target";
 
 const ARTIFACT_BASE_OBJECTS = new Map([
   ["artifact:ART_EXCALIBUR", "object:LONG_SWORD"],
+]);
+const KNOWN_OBJECT_IDS = new Set([
+  "object:DAGGER",
+  "object:KATANA",
+  "object:LONG_SWORD",
 ]);
 const MODULE_ID = "module-1";
 const SESSION_ID = "session-1";
@@ -69,18 +79,72 @@ function inventoryItem(glyph: number): MenuItem {
 function resolverFixture(
   bindings: ReadonlyMap<number, GlyphBindingResult>,
   maxGlyph = 100,
+  objectIdsByGlyph: ReadonlyMap<number, string> = new Map(),
 ) {
   const bindingForGlyph = vi.fn(
     (glyph: number): GlyphBindingResult | null =>
       bindings.get(glyph) ?? null,
   );
+  const objectIdForGlyph = vi.fn(
+    (glyph: number): string | null =>
+      objectIdsByGlyph.get(glyph) ?? null,
+  );
+  const createResolver = createEntityResolver as unknown as (
+    options: Parameters<typeof createEntityResolver>[0] & {
+      knownObjectIds: ReadonlySet<string>;
+      objectIdForGlyph: (glyph: number) => string | null;
+    },
+  ) => ReturnType<typeof createEntityResolver>;
   return {
     bindingForGlyph,
-    resolver: createEntityResolver({
+    objectIdForGlyph,
+    resolver: createResolver({
       maxGlyph,
       bindingForGlyph,
       artifactBaseObjects: ARTIFACT_BASE_OBJECTS,
+      knownObjectIds: KNOWN_OBJECT_IDS,
+      objectIdForGlyph,
     }),
+  };
+}
+
+/**
+ * Build a loader exposing the generated exact object identity for each glyph.
+ * @param binding Static public glyph binding.
+ * @param objectId Exact object represented by the glyph, when available.
+ * @returns Loader fixture accepted by asynchronous examine resolution.
+ */
+function examineLoader(
+  binding: GlyphBindingResult,
+  objectId: string | null,
+): EncyclopediaLoader {
+  return {
+    preload: vi.fn(),
+    loadGlyphBinding: vi.fn().mockResolvedValue(binding),
+    loadEntity: vi.fn(),
+    loadArtifactBaseObjects: vi.fn().mockResolvedValue(
+      ARTIFACT_BASE_OBJECTS,
+    ),
+    loadObjectIdForGlyph: vi.fn().mockResolvedValue(objectId),
+  } as unknown as EncyclopediaLoader;
+}
+
+/**
+ * Create a copied permanent-inventory target for asynchronous resolution.
+ * @param token Row-local visible entity token.
+ * @returns Immutable inventory capture.
+ */
+function inventoryCapture(token: string | null): InventoryExamineCapture {
+  return {
+    surface: "inventory",
+    moduleId: MODULE_ID,
+    sessionId: SESSION_ID,
+    inventoryRevision: INVENTORY_REVISION,
+    identifier: 41,
+    accelerator: "a".charCodeAt(0),
+    source: "inventory",
+    glyph: glyphInfo(30),
+    visibleEntityToken: token,
   };
 }
 
@@ -360,6 +424,69 @@ describe("visible entity resolution", () => {
     });
   });
 
+  it("upgrades a generic weapon only for its exact ordinary object token", () => {
+    const genericWeapon: GlyphBindingResult = {
+      glyph: 30,
+      status: "supported",
+      binding: {
+        kind: "generic-object",
+        appearanceId: "appearance:WEAPON_CLASS:GENERIC",
+        objectClass: "WEAPON_CLASS",
+        pileTop: false,
+      },
+    };
+    const { resolver } = resolverFixture(
+      new Map([[30, genericWeapon]]),
+      100,
+      new Map([[30, "object:KATANA"]]),
+    );
+
+    expect(
+      resolver.resolveInventoryItem(inventoryItem(30), "object:KATANA"),
+    ).toMatchObject({
+      entityId: "object:KATANA",
+      glyph: 30,
+      source: "inventory",
+      binding: {
+        kind: "generic-object",
+        appearanceId: "appearance:WEAPON_CLASS:GENERIC",
+      },
+    });
+  });
+
+  it.each([
+    ["missing", null],
+    ["malformed", "object:../KATANA"],
+    ["unknown", "object:NOT_IN_BUILD"],
+    ["same-class mismatch", "object:DAGGER"],
+  ])("keeps a generic weapon for a %s object token", (_label, token) => {
+    const genericWeapon: GlyphBindingResult = {
+      glyph: 30,
+      status: "supported",
+      binding: {
+        kind: "generic-object",
+        appearanceId: "appearance:WEAPON_CLASS:GENERIC",
+        objectClass: "WEAPON_CLASS",
+        pileTop: false,
+      },
+    };
+    const { resolver } = resolverFixture(
+      new Map([[30, genericWeapon]]),
+      100,
+      new Map([
+        [30, "object:KATANA"],
+        [31, "object:DAGGER"],
+      ]),
+    );
+
+    expect(resolver.resolveInventoryItem(inventoryItem(30), token))
+      .toMatchObject({
+        entityId: "appearance:WEAPON_CLASS:GENERIC",
+        glyph: 30,
+        source: "inventory",
+      });
+  });
+
   it.each([
     ["null", null],
     ["malformed", "artifact:../../save"],
@@ -386,6 +513,66 @@ describe("visible entity resolution", () => {
         glyph: 30,
         source: "inventory",
       });
+  });
+});
+
+describe("asynchronous examine target resolution", () => {
+  const genericWeapon: GlyphBindingResult = {
+    glyph: 30,
+    status: "supported",
+    binding: {
+      kind: "generic-object",
+      appearanceId: "appearance:WEAPON_CLASS:GENERIC",
+      objectClass: "WEAPON_CLASS",
+      pileTop: false,
+    },
+  };
+
+  it("upgrades a generic weapon for a matching ordinary object token", async () => {
+    const loader = examineLoader(genericWeapon, "object:KATANA");
+
+    await expect(resolveExamineCapture(
+      loader,
+      inventoryCapture("object:KATANA"),
+    )).resolves.toMatchObject({
+      entityId: "object:KATANA",
+      visibleEntityToken: "object:KATANA",
+    });
+  });
+
+  it.each([
+    ["missing", null],
+    ["malformed", "object:../KATANA"],
+    ["same-class mismatch", "object:DAGGER"],
+  ])("keeps a generic weapon for a %s token", async (_label, token) => {
+    const loader = examineLoader(genericWeapon, "object:KATANA");
+
+    await expect(resolveExamineCapture(
+      loader,
+      inventoryCapture(token),
+    )).resolves.toMatchObject({
+      entityId: "appearance:WEAPON_CLASS:GENERIC",
+    });
+  });
+
+  it("retains artifact upgrades for an exact ordinary object binding", async () => {
+    const loader = examineLoader({
+      glyph: 30,
+      status: "supported",
+      binding: {
+        kind: "object",
+        objectId: "object:LONG_SWORD",
+        pileTop: false,
+      },
+    }, "object:LONG_SWORD");
+
+    await expect(resolveExamineCapture(
+      loader,
+      inventoryCapture("artifact:ART_EXCALIBUR"),
+    )).resolves.toMatchObject({
+      entityId: "artifact:ART_EXCALIBUR",
+      visibleEntityToken: "artifact:ART_EXCALIBUR",
+    });
   });
 });
 
