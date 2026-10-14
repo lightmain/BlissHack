@@ -57,7 +57,7 @@ async function runtimeFixture() {
     writeFile(
       join(encyclopediaDirectory, "manifest.json"),
       JSON.stringify({
-        schemaVersion: 1,
+        schemaVersion: 2,
         sourceFingerprint: "a".repeat(64),
       }),
       "utf8",

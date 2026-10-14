@@ -644,9 +644,9 @@ json_monster(int index)
     int attack_index;
     int wrote_attack = 0;
 
-    fputs("{\"schemaVersion\":1,\"id\":", stdout);
+    fputs("{\"schemaVersion\":2,\"id\":", stdout);
     entity_id("monster:", symbol);
-    fputs(",\"kind\":\"monster\",\"names\":{\"primary\":", stdout);
+    fputs(",\"family\":\"monster\",\"names\":{\"primary\":", stdout);
     json_string(primary_name);
     if (monster->pmnames[FEMALE]
         && strcmp(monster->pmnames[FEMALE], primary_name)) {
@@ -754,9 +754,9 @@ json_appearance(int index)
                  class_symbol)
         >= (int) sizeof appearance_id)
         fail("appearance ID exceeds exporter bound");
-    fputs("{\"schemaVersion\":1,\"id\":", stdout);
+    fputs("{\"schemaVersion\":2,\"id\":", stdout);
     json_string(appearance_id);
-    fputs(",\"kind\":\"appearance\",\"names\":{\"primary\":", stdout);
+    fputs(",\"family\":\"appearance\",\"names\":{\"primary\":", stdout);
     json_string(obj_descr[index].oc_descr);
     fprintf(stdout, "},\"symbol\":%d,\"color\":%u,\"facts\":{\"objectClass\":",
             (int) object->oc_class, (unsigned) object->oc_color);
@@ -818,7 +818,7 @@ json_object_subtype(const struct objclass *object)
         || (object->oc_class == TOOL_CLASS
             && (object->oc_wsdam || object->oc_wldam))) {
         skill = object->oc_skill;
-        fputs("{\"kind\":\"weapon\",\"damageSmall\":", stdout);
+        fputs("{\"damageSmall\":", stdout);
         fprintf(stdout,
                 "%d,\"damageLarge\":%d,\"hitBonus\":%d,\"skill\":",
                 (int) object->oc_wsdam, (int) object->oc_wldam,
@@ -841,20 +841,20 @@ json_object_subtype(const struct objclass *object)
         }
         fputs("]}", stdout);
     } else if (object->oc_class == ARMOR_CLASS) {
-        fputs("{\"kind\":\"armor\",\"category\":", stdout);
+        fputs("{\"category\":", stdout);
         json_string(enum_symbol(armor_type_names, ARRAY_SIZE(armor_type_names),
                                 object->oc_armcat, "armor category"));
         fprintf(stdout, ",\"armorClass\":%d,\"magicCancellation\":%d}",
                 (int) object->a_ac, (int) object->a_can);
     } else if (object->oc_class == FOOD_CLASS) {
-        fprintf(stdout, "{\"kind\":\"food\",\"nutrition\":%u}",
+        fprintf(stdout, "{\"nutrition\":%u}",
                 (unsigned) object->oc_nutrition);
     } else if (object->oc_class == SPBOOK_CLASS) {
-        fputs("{\"kind\":\"spellbook\",\"skill\":", stdout);
+        fputs("{\"skill\":", stdout);
         json_string(skill_symbol(object->oc_skill));
         fprintf(stdout, ",\"level\":%d}", (int) object->oc_level);
     } else {
-        fputs("{\"kind\":\"other\"}", stdout);
+        fputs("{}", stdout);
     }
 }
 
@@ -871,9 +871,9 @@ json_object(int index)
                                    ? obj_descr[index].oc_name
                                    : obj_descr[index].oc_descr;
 
-    fputs("{\"schemaVersion\":1,\"id\":", stdout);
+    fputs("{\"schemaVersion\":2,\"id\":", stdout);
     entity_id("object:", symbol);
-    fputs(",\"kind\":\"object\",\"names\":{\"primary\":", stdout);
+    fputs(",\"family\":\"object\",\"names\":{\"primary\":", stdout);
     json_string(primary_name);
     if (obj_descr[index].oc_descr
         && strcmp(obj_descr[index].oc_descr, primary_name)) {
@@ -991,9 +991,9 @@ json_artifact(int index)
                                      ARRAY_SIZE(artifact_names), index,
                                      "artifact");
 
-    fputs("{\"schemaVersion\":1,\"id\":", stdout);
+    fputs("{\"schemaVersion\":2,\"id\":", stdout);
     entity_id("artifact:", symbol);
-    fputs(",\"kind\":\"artifact\",\"names\":{\"primary\":", stdout);
+    fputs(",\"family\":\"artifact\",\"names\":{\"primary\":", stdout);
     json_string(artifact->name);
     fputs("},\"symbol\":null,\"color\":", stdout);
     if (artifact->acolor == NO_COLOR)
@@ -1070,9 +1070,9 @@ json_terrain(int index)
 {
     const char *symbol = terrain_symbol(index);
 
-    fputs("{\"schemaVersion\":1,\"id\":", stdout);
+    fputs("{\"schemaVersion\":2,\"id\":", stdout);
     entity_id("terrain:", symbol);
-    fputs(",\"kind\":\"terrain\",\"names\":{\"primary\":", stdout);
+    fputs(",\"family\":\"terrain\",\"names\":{\"primary\":", stdout);
     json_string(defsyms[index].explanation);
     fprintf(stdout, "},\"symbol\":%u,\"color\":%u,\"facts\":{\"terrainSymbol\":",
             (unsigned) defsyms[index].sym, (unsigned) defsyms[index].color);
@@ -1096,9 +1096,9 @@ json_trap(int type)
                                      "trap");
     const struct symdef *display = &defsyms[S_arrow_trap + type - 1];
 
-    fputs("{\"schemaVersion\":1,\"id\":", stdout);
+    fputs("{\"schemaVersion\":2,\"id\":", stdout);
     entity_id("trap:", symbol);
-    fputs(",\"kind\":\"trap\",\"names\":{\"primary\":", stdout);
+    fputs(",\"family\":\"trap\",\"names\":{\"primary\":", stdout);
     json_string(display->explanation);
     fprintf(stdout,
             "},\"symbol\":%u,\"color\":%u,\"facts\":{\"trapSymbol\":",
@@ -1429,7 +1429,7 @@ main(void)
     monst_globals_init();
     objects_globals_init();
 
-    fprintf(stdout, "{\"schemaVersion\":1,\"maxGlyph\":%d,\"counts\":{"
+    fprintf(stdout, "{\"schemaVersion\":2,\"maxGlyph\":%d,\"counts\":{"
                     "\"appearance\":%d,\"monster\":%d,\"object\":%d,\"artifact\":%d,"
                     "\"terrain\":%d,\"trap\":%d},\"records\":[",
             MAX_GLYPH, FIRST_OBJECT - 1, NUMMONS, NUM_OBJECTS - FIRST_OBJECT,

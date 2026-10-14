@@ -286,6 +286,75 @@ describe("encyclopedia runtime loader", () => {
     expect(callsForUrl(fetchBytes, fixture.urls.objectChunk)).toBe(1);
   });
 
+  it("never requests Wiki data for a generic appearance record", async () => {
+    const fixture = createEncyclopediaAssetFixture();
+    const appearanceId = "appearance:POTION_CLASS:GENERIC";
+    const coreChunk = readJsonAsset(fixture, fixture.urls.entityChunk);
+    coreChunk.family = "appearance";
+    coreChunk.records[0] = {
+      schemaVersion: 2,
+      id: appearanceId,
+      family: "appearance",
+      names: { primary: "potion of healing from untrusted text" },
+      symbol: 33,
+      color: 5,
+      facts: { objectClass: "POTION_CLASS" },
+      sourceRefs: [{
+        path: "include/objects.h",
+        symbol: "POTION_CLASS",
+      }],
+    };
+    writeJsonAsset(fixture, fixture.urls.entityChunk, coreChunk);
+
+    const coreManifest = readJsonAsset(
+      fixture,
+      fixture.urls.coreManifest,
+    );
+    coreManifest.entityCounts.appearance = 1;
+    coreManifest.entityCounts.terrain = 0;
+    const coreMetadata = coreManifest.chunks.find(
+      (chunk: { file: string }) => chunk.file === "terrain-001.json",
+    );
+    coreMetadata.family = "appearance";
+    coreMetadata.firstId = appearanceId;
+    coreMetadata.lastId = appearanceId;
+    writeJsonAsset(fixture, fixture.urls.coreManifest, coreManifest);
+    bindChunkMetadata(
+      fixture,
+      fixture.urls.coreManifest,
+      fixture.urls.entityChunk,
+    );
+
+    const wikiChunk = readJsonAsset(fixture, fixture.urls.wikiChunk);
+    wikiChunk.records[0].entityId = appearanceId;
+    wikiChunk.records[0].page.title = "Potion of healing";
+    writeJsonAsset(fixture, fixture.urls.wikiChunk, wikiChunk);
+    const wikiManifest = readJsonAsset(
+      fixture,
+      fixture.urls.wikiManifest,
+    );
+    wikiManifest.chunks[0].firstEntityId = appearanceId;
+    wikiManifest.chunks[0].lastEntityId = appearanceId;
+    wikiManifest.revisions[0].entityId = appearanceId;
+    wikiManifest.revisions[0].title = "Potion of healing";
+    writeJsonAsset(fixture, fixture.urls.wikiManifest, wikiManifest);
+    bindChunkMetadata(
+      fixture,
+      fixture.urls.wikiManifest,
+      fixture.urls.wikiChunk,
+    );
+    bindRuntimeToCore(fixture);
+
+    const fetchBytes = fixtureFetcher(fixture);
+    const loader = fixtureLoader(fixture, fetchBytes);
+    await expect(loader.loadEntity(appearanceId)).resolves.toMatchObject({
+      core: { id: appearanceId, family: "appearance" },
+      wiki: null,
+    });
+    expect(callsForUrl(fetchBytes, fixture.urls.wikiManifest)).toBe(0);
+    expect(callsForUrl(fetchBytes, fixture.urls.wikiChunk)).toBe(0);
+  });
+
   it.each([
     {
       label: "core manifest byte length",

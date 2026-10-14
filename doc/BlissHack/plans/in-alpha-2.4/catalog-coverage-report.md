@@ -8,17 +8,18 @@ chunk；`frontend/scripts/encyclopedia/release-gates.stage-six.test.mjs`
 ## 1. 构建身份
 
 - NetHack：`5.0.0`。
-- generator：`1.1.0`。
+- core schema：`2`。
+- generator：`2.0.0`。
 - source inputs：25 个。
 - source fingerprint：
-  `0b621c4004df301842e287eb0a9bc3465a367d3d478c636c3f1b3ad3e8fe50d4`。
+  `9ae8f4fa29d54139de661e346c5c58dd44e78c4cd10d398fdd33e1865e2cc465`。
 - core entity chunks：11 个；glyph binding chunks：12 个。
 - runtime manifest 绑定 core manifest 的字节数、SHA-256 和 source
   fingerprint；运行时不接受不同 WASM 构建的资料。
 
 ## 2. 实体覆盖
 
-| kind | 记录数 |
+| family | 记录数 |
 | --- | ---: |
 | appearance | 17 |
 | monster | 383 |
@@ -53,11 +54,12 @@ supported glyph 引用的 entity ID 都存在，悬空引用为 0。
 
 ## 4. 资源预算
 
-- 全部 core JSON：1,843,537 B，低于 2 MiB 门禁。
+- 全部 core JSON（不含独立精确对象索引）：1,838,744 B，低于 2 MiB 门禁。
+- 加上 45,095 B 独立精确对象索引后总计 1,883,839 B。
 - 最大 chunk：`glyph-bindings-010.json`，98,281 B，低于 256 KiB。
-- 最大实体记录：`monster:PM_CHROMATIC_DRAGON`，1,625 B，低于 64 KiB。
-- Detailed 挂载只预加载 runtime、core 和 Wiki manifest，共 9,239 B。
-- 加上最坏单个 glyph chunk 后为 107,520 B，低于 150 KiB 首次索引预算。
+- 最大实体记录：`monster:PM_CHROMATIC_DRAGON`，1,627 B，低于 64 KiB。
+- Detailed 挂载只预加载 runtime、core 和 Wiki manifest，共 9,418 B。
+- 加上最坏单个 glyph chunk 后为 107,699 B，低于 150 KiB 首次索引预算。
 - entity 与 Wiki chunk 仍按目标 lazy-load；同 URL 请求合并并缓存。
 
 ## 5. 结论

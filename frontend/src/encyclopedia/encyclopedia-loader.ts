@@ -39,6 +39,7 @@ type FetchBytes = (
 
 export interface LoadedEncyclopediaEntity {
   core: CoreEntityRecord;
+  artifactBaseObject?: CoreEntityRecord;
   nethackVersion?: string;
   wiki: WikiRecord | null;
 }
@@ -327,18 +328,42 @@ export function createEncyclopediaLoader(options: {
       if (!core) {
         throw new Error(`${metadata.file} does not contain ${entityId}`);
       }
-      let wiki: WikiRecord | null = null;
-      try {
-        wiki = await loadWikiRecord(entityId, loadOptions.signal);
-      } catch (error) {
-        if (loadOptions.signal?.aborted) {
-          throw abortReason(loadOptions.signal);
+      let artifactBaseObject: CoreEntityRecord | undefined;
+      if (core.family === "artifact") {
+        const baseObjectId = core.facts.baseObjectId;
+        if (typeof baseObjectId !== "string") {
+          throw new Error(`${core.id} has no artifact base object`);
         }
-        if (isAbortError(error)) throw error;
+        const baseMetadata = findCoreChunk(manifest, baseObjectId);
+        if (!baseMetadata) {
+          throw new Error(`${core.id} refers to missing ${baseObjectId}`);
+        }
+        const baseRecords = await loadCoreChunk(
+          baseMetadata,
+          loadOptions.signal,
+        );
+        artifactBaseObject = baseRecords.find(
+          (record) => record.id === baseObjectId,
+        );
+        if (!artifactBaseObject || artifactBaseObject.family !== "object") {
+          throw new Error(`${core.id} has an invalid base object`);
+        }
+      }
+      let wiki: WikiRecord | null = null;
+      if (core.family !== "appearance") {
+        try {
+          wiki = await loadWikiRecord(entityId, loadOptions.signal);
+        } catch (error) {
+          if (loadOptions.signal?.aborted) {
+            throw abortReason(loadOptions.signal);
+          }
+          if (isAbortError(error)) throw error;
+        }
       }
       throwIfAborted(loadOptions.signal);
       return {
         core,
+        ...(artifactBaseObject ? { artifactBaseObject } : {}),
         nethackVersion: manifest.nethackVersion,
         wiki,
       };
@@ -348,7 +373,7 @@ export function createEncyclopediaLoader(options: {
       throwIfAborted(loadOptions.signal);
       const { manifest } = await loadCoreContext(loadOptions.signal);
       const chunks = manifest.chunks.filter((chunk) =>
-        chunk.kind === "artifact"
+        chunk.family === "artifact"
       );
       const records = (
         await Promise.all(
@@ -504,9 +529,9 @@ function findCoreChunk(
   manifest: CoreEncyclopediaManifest,
   entityId: string,
 ): CoreAssetMetadata | null {
-  const kind = entityId.slice(0, entityId.indexOf(":"));
+  const family = entityId.slice(0, entityId.indexOf(":"));
   return manifest.chunks.find((chunk) =>
-    chunk.kind === kind
+    chunk.family === family
     && entityId >= chunk.firstId
     && entityId <= chunk.lastId
   ) ?? null;

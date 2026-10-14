@@ -1,5 +1,10 @@
+/* oxlint-disable react/only-export-components */
 import type { ReactNode } from "react";
-import type { CoreEntityRecord } from "../../encyclopedia/core-schema";
+import {
+  NETHACK_OBJECT_CLASSES,
+  type CoreEntityRecord,
+  type NetHackObjectClass,
+} from "../../encyclopedia/core-schema";
 
 interface AttackFact {
   attackType: string;
@@ -22,6 +27,25 @@ const KEY_MONSTER_FACTS = new Set([
   "magicResistance",
   "alignment",
 ]);
+const OBJECT_CLASS_LABELS: Record<NetHackObjectClass, string> = {
+  ILLOBJ_CLASS: "Unclassified object",
+  WEAPON_CLASS: "Weapon",
+  ARMOR_CLASS: "Armor",
+  RING_CLASS: "Ring",
+  AMULET_CLASS: "Amulet",
+  TOOL_CLASS: "Tool",
+  FOOD_CLASS: "Food",
+  POTION_CLASS: "Potion",
+  SCROLL_CLASS: "Scroll",
+  SPBOOK_CLASS: "Spellbook",
+  WAND_CLASS: "Wand",
+  COIN_CLASS: "Coin",
+  GEM_CLASS: "Gem",
+  ROCK_CLASS: "Rock",
+  BALL_CLASS: "Heavy ball",
+  CHAIN_CLASS: "Chain",
+  VENOM_CLASS: "Venom",
+};
 
 /**
  * Render validated NetHack source facts without merging their NGPL provenance
@@ -30,33 +54,35 @@ const KEY_MONSTER_FACTS = new Set([
  * @returns a lossless facts column with kind-specific grouping.
  */
 export function ExamineFacts({
+  artifactBaseObject,
   core,
   nethackVersion,
 }: {
+  artifactBaseObject?: CoreEntityRecord;
   core: CoreEntityRecord;
   nethackVersion: string;
 }) {
+  const sourceRefs = artifactBaseObject
+    ? [...artifactBaseObject.sourceRefs, ...core.sourceRefs]
+    : core.sourceRefs;
   return (
     <aside
-      aria-label={`${displayName(core.names.primary)} facts`}
+      aria-label={factAriaLabel(core)}
       className="examine-facts"
       data-content-license="NGPL"
-      data-entity-kind={core.kind}
+      data-examine-template={examineTemplate(core, artifactBaseObject)}
     >
-      {core.kind === "monster"
-        ? <MonsterFacts facts={core.facts} />
-        : (
-          <FactSection title={`${displayName(core.kind)} facts`}>
-            <FactTree value={core.facts} />
-          </FactSection>
-        )}
+      <CoreFacts
+        artifactBaseObject={artifactBaseObject}
+        core={core}
+      />
       <section className="examine-provenance">
         <h2>Core provenance</h2>
         <p>
           NetHack {nethackVersion} source
         </p>
         <ul className="examine-source-list">
-          {core.sourceRefs.map((source) => (
+          {sourceRefs.map((source) => (
             <li key={`${source.path}:${source.symbol}`}>
               <code>{source.path}</code>
               <span>{source.symbol}</span>
@@ -76,6 +102,53 @@ export function ExamineFacts({
       </section>
     </aside>
   );
+}
+
+/**
+ * Build an accessible facts label without exposing generic appearance text.
+ * @param core - validated entity being described.
+ * @returns a safe facts-region label.
+ */
+function factAriaLabel(core: CoreEntityRecord): string {
+  const name = core.family === "appearance"
+    ? objectClassLabel(core.facts.objectClass)
+    : displayName(core.names.primary);
+  return `${name} facts`;
+}
+
+/**
+ * Select the exact source-backed presentation without consulting Wiki data.
+ * @param props - validated entity and optional artifact base object.
+ * @returns the family- or object-class-specific fact groups.
+ */
+function CoreFacts({
+  artifactBaseObject,
+  core,
+}: {
+  artifactBaseObject?: CoreEntityRecord;
+  core: CoreEntityRecord;
+}) {
+  switch (core.family) {
+    case "monster":
+      return <MonsterFacts facts={core.facts} />;
+    case "object":
+      return <ObjectFacts facts={core.facts} />;
+    case "appearance":
+      return <AppearanceFacts facts={core.facts} />;
+    case "terrain":
+      return <MapFacts facts={core.facts} title="Terrain facts" />;
+    case "trap":
+      return <MapFacts facts={core.facts} title="Trap facts" />;
+    case "artifact":
+      return (
+        <>
+          {artifactBaseObject && (
+            <ObjectFacts facts={artifactBaseObject.facts} />
+          )}
+          <ArtifactOverlay facts={core.facts} />
+        </>
+      );
+  }
 }
 
 /**
@@ -179,6 +252,145 @@ function MonsterFacts({ facts }: { facts: Record<string, unknown> }) {
       </div>
     </>
   );
+}
+
+/**
+ * Render one of the complete NetHack object-class templates.
+ * @param props - strictly validated object facts.
+ * @returns common object fields followed by class-specific facts and flags.
+ */
+function ObjectFacts({ facts }: { facts: Record<string, unknown> }) {
+  const objectClass = objectClassValue(facts.objectClass);
+  const subtype = objectFact(facts.subtype);
+  const common = pickFacts(facts, [
+    "objectClass",
+    "material",
+    "probability",
+    "weight",
+    "baseCost",
+    "useDelay",
+    "property",
+  ]);
+  return (
+    <>
+      <FactSection title={`${objectClassLabel(objectClass)} facts`}>
+        <FactTree value={common} />
+      </FactSection>
+      {Object.keys(subtype).length > 0 && (
+        <FactSection title={objectSubtypeTitle(objectClass)}>
+          <FactTree value={subtype} />
+        </FactSection>
+      )}
+      <FactSection title="Object flags">
+        <FactTree value={facts.flags} />
+      </FactSection>
+    </>
+  );
+}
+
+/**
+ * Render only the category disclosed by a generic object glyph.
+ * @param props - validated appearance facts.
+ * @returns a spoiler-safe category section.
+ */
+function AppearanceFacts({ facts }: { facts: Record<string, unknown> }) {
+  const objectClass = objectClassValue(facts.objectClass);
+  return (
+    <FactSection title={`${objectClassLabel(objectClass)} appearance`}>
+      <FactTree value={{ objectClass }} />
+    </FactSection>
+  );
+}
+
+/**
+ * Render static terrain or trap fields without instance-state inference.
+ * @param props - validated facts and explicit presentation heading.
+ * @returns one map-entity fact section.
+ */
+function MapFacts({
+  facts,
+  title,
+}: {
+  facts: Record<string, unknown>;
+  title: string;
+}) {
+  return (
+    <FactSection title={title}>
+      <FactTree value={facts} />
+    </FactSection>
+  );
+}
+
+/**
+ * Append artifact-only data after the base object's class template.
+ * @param props - validated artifact facts.
+ * @returns additive artifact fields.
+ */
+function ArtifactOverlay({ facts }: { facts: Record<string, unknown> }) {
+  return (
+    <section data-examine-overlay="artifact">
+      <h2>Artifact properties</h2>
+      <FactTree value={facts} />
+    </section>
+  );
+}
+
+/**
+ * Resolve the stable template marker used by tests and responsive styling.
+ * @param core - validated entity being rendered.
+ * @param artifactBaseObject - validated base object for an artifact.
+ * @returns an explicit family or object-class template identifier.
+ */
+function examineTemplate(
+  core: CoreEntityRecord,
+  artifactBaseObject?: CoreEntityRecord,
+): string {
+  if (core.family === "monster") return "monster";
+  if (core.family === "terrain") return "terrain";
+  if (core.family === "trap") return "trap";
+  if (core.family === "appearance") {
+    return `appearance:${objectClassValue(core.facts.objectClass)}`;
+  }
+  const objectRecord = core.family === "object" ? core : artifactBaseObject;
+  return objectRecord?.family === "object"
+    ? `object:${objectClassValue(objectRecord.facts.objectClass)}`
+    : "artifact";
+}
+
+/**
+ * Return the safe display label for one validated object class.
+ * @param objectClass - exact NetHack object-class symbol.
+ * @returns concise player-facing category name.
+ */
+export function objectClassLabel(objectClass: unknown): string {
+  return OBJECT_CLASS_LABELS[objectClassValue(objectClass)];
+}
+
+/**
+ * Narrow a validated fact to the complete object-class domain.
+ * @param value - objectClass facts member.
+ * @returns exact object class; validation makes the fallback unreachable.
+ */
+function objectClassValue(value: unknown): NetHackObjectClass {
+  return typeof value === "string"
+      && NETHACK_OBJECT_CLASSES.includes(value as NetHackObjectClass)
+    ? value as NetHackObjectClass
+    : "ILLOBJ_CLASS";
+}
+
+/**
+ * Name the class-specific object section without inspecting subtype shape.
+ * @param objectClass - exact NetHack object-class symbol.
+ * @returns section heading for that class.
+ */
+function objectSubtypeTitle(objectClass: NetHackObjectClass): string {
+  if (objectClass === "WEAPON_CLASS" || objectClass === "TOOL_CLASS") {
+    return "Combat properties";
+  }
+  if (objectClass === "ARMOR_CLASS") return "Armor properties";
+  if (objectClass === "FOOD_CLASS") return "Nutrition";
+  if (objectClass === "SPBOOK_CLASS") return "Spellcasting";
+  return `${objectClassLabel(objectClass)} properties`;
 }
 
 /**

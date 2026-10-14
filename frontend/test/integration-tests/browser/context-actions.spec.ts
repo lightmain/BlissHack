@@ -706,6 +706,13 @@ test("Examine Newt content: validates revision 205110 tabs in a real browser", a
   await opened.menu.getByRole("menuitem", { name: "Examine" }).click();
   const dialog = page.getByRole("dialog", { name: "Newt" });
   await expect(dialog).toBeVisible();
+  const factsWidth = await dialog.locator(".examine-facts").evaluate(
+    (element) => ({
+      client: element.clientWidth,
+      scroll: element.scrollWidth,
+    }),
+  );
+  expect(factsWidth.scroll).toBeLessThanOrEqual(factsWidth.client);
   await expect(dialog.locator(".examine-article")).toHaveAttribute(
     "data-source-revision",
     String(NEWT_ACCEPTANCE.revision),
@@ -748,6 +755,22 @@ test("Examine browser fallback: a real entity without Wiki stays facts-only", as
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
   await expect(dialog.locator(".examine-facts")).toBeVisible();
+  const factsGeometry = await dialog.evaluate((element) => {
+    const layout = element.querySelector(".examine-layout")
+      ?.getBoundingClientRect();
+    const facts = element.querySelector(".examine-facts")
+      ?.getBoundingClientRect();
+    return {
+      factsLeft: facts?.left ?? 0,
+      factsWidth: facts?.width ?? 0,
+      layoutLeft: layout?.left ?? 0,
+      layoutWidth: layout?.width ?? 0,
+    };
+  });
+  expect(Math.abs(factsGeometry.factsLeft - factsGeometry.layoutLeft))
+    .toBeLessThanOrEqual(1);
+  expect(Math.abs(factsGeometry.factsWidth - factsGeometry.layoutWidth))
+    .toBeLessThanOrEqual(1);
   await expect(dialog.getByRole("tablist")).toHaveCount(0);
   expect(await turn.textContent()).toBe(turnBefore);
   await page.keyboard.press("Escape");

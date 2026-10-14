@@ -793,6 +793,34 @@ describe("alpha-2.4 stage-two verbatim Wiki excerpts", () => {
     expect(immutableCoreIds).toEqual(coreEntityIds);
   });
 
+  /** Never attach reviewed prose to a generic appearance identity. */
+  it("rejects Wiki selections for spoiler-safe generic appearances", async () => {
+    const appearanceId = "appearance:POTION_CLASS:GENERIC";
+    const aliases = structuredClone(aliasCatalog);
+    for (const alias of aliases.aliases) {
+      alias.entityId = appearanceId;
+    }
+    const selections = structuredClone(selectionCatalog);
+    selections.selections[0].entityId = appearanceId;
+
+    const imported = await importFixture(23, {
+      aliasCatalog: aliases,
+      selectionCatalog: selections,
+      coreEntityIds: [appearanceId],
+    });
+
+    expect(imported.records).toEqual([]);
+    expect(imported.manifest.recordCount).toBe(0);
+    expect(imported.attributionManifest.pages).toEqual([]);
+    expect(imported.coverage).toEqual([{
+      entityId: appearanceId,
+      status: "wiki-rejected",
+      pageTitle: "Newt",
+      revisionId: 205110,
+      reason: "generic-appearance-wiki-forbidden",
+    }]);
+  });
+
   /** List every and only published reviewed page in stable NOTICE output. */
   it("generates NOTICE from exactly the published attribution manifest", async () => {
     const imported = await importFixture(47);

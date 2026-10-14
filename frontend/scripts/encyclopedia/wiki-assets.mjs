@@ -889,6 +889,16 @@ export async function importWikiDump({
   const publishedEntityIds = new Set();
   const redirects = [];
   for (const selection of selectionCatalog.selections) {
+    if (selection.entityId.startsWith("appearance:")) {
+      coverage.push({
+        entityId: selection.entityId,
+        status: "wiki-rejected",
+        pageTitle: selection.pageTitle,
+        revisionId: selection.revisionId,
+        reason: "generic-appearance-wiki-forbidden",
+      });
+      continue;
+    }
     if (!coreIds.has(selection.entityId)) {
       coverage.push({
         entityId: selection.entityId,

@@ -66,9 +66,9 @@ describe("stage-five Examine presentation", () => {
     const provenance = layerIndex(html, "examine-provenance");
 
     expect(header).toBeLessThan(source);
-    expect(source).toBeLessThan(article);
-    expect(article).toBeLessThan(facts);
+    expect(source).toBeLessThan(facts);
     expect(facts).toBeLessThan(provenance);
+    expect(provenance).toBeLessThan(article);
     expect(html).toContain('data-content-license="CC-BY-SA-3.0"');
     expect(html).toContain('data-content-license="NGPL"');
     expect(html).toContain("NetHack 5.0.0");

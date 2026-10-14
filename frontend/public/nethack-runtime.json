@@ -22,10 +22,10 @@
   "encyclopedia": {
     "core": {
       "manifest": {
-        "bytes": 7915,
-        "sha256": "0d6c6b02f62bc5783267fa063ce954dafae443e9864cfd84b1afe5d8a521c4d5"
+        "bytes": 7928,
+        "sha256": "0dd2f94e886a7030aff05da9d383e833b4f67f1d6a61b8a87d5aaf01abf60fa6"
       },
-      "sourceFingerprint": "b86d27c9474a19ea527aca670869e6cca2d12174c7709517598e33090ff052b9"
+      "sourceFingerprint": "9ae8f4fa29d54139de661e346c5c58dd44e78c4cd10d398fdd33e1865e2cc465"
     },
     "wiki": {
       "manifest": {
