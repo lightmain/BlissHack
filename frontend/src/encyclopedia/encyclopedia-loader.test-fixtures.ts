@@ -10,6 +10,8 @@ export const TEST_ASSET_URLS = Object.freeze({
   glyphChunk: "/encyclopedia/core/glyph-bindings-001.json",
   visibleObjectBindings: "/encyclopedia/core/visible-object-bindings.json",
   entityChunk: "/encyclopedia/core/terrain-001.json",
+  artifactChunk: "/encyclopedia/core/artifact-001.json",
+  objectChunk: "/encyclopedia/core/object-001.json",
   wikiManifest: "/encyclopedia/wiki/manifest.json",
   wikiChunk: "/encyclopedia/wiki/wiki-001.json",
 });
@@ -157,12 +159,12 @@ export function createEncyclopediaAssetFixture(): EncyclopediaAssetFixture {
   const sourceFingerprint = "a".repeat(64);
   const entityId = "terrain:S_FOUNTAIN";
   const entityChunk = {
-    schemaVersion: 1,
-    kind: "terrain",
+    schemaVersion: 2,
+    family: "terrain",
     records: [{
-      schemaVersion: 1,
+      schemaVersion: 2,
       id: entityId,
-      kind: "terrain",
+      family: "terrain",
       names: { primary: "fountain" },
       symbol: 123,
       color: 6,
@@ -176,8 +178,98 @@ export function createEncyclopediaAssetFixture(): EncyclopediaAssetFixture {
       }],
     }],
   };
+  const artifactId = "artifact:ART_TEST";
+  const objectId = "object:TEST_WEAPON";
+  const artifactChunk = {
+    schemaVersion: 2,
+    family: "artifact",
+    records: [{
+      schemaVersion: 2,
+      id: artifactId,
+      family: "artifact",
+      names: { primary: "The Test Artifact" },
+      symbol: null,
+      color: null,
+      facts: {
+        baseObjectId: objectId,
+        flags: ["SPFX_INTEL"],
+        carryFlags: ["SPFX_WARN"],
+        target: null,
+        attack: {
+          attackType: "AT_WEAP",
+          damageType: "AD_FIRE",
+          dice: { count: 2, sides: 4 },
+        },
+        defense: {
+          attackType: "AT_NONE",
+          damageType: "AD_COLD",
+          dice: { count: 0, sides: 0 },
+        },
+        carry: {
+          attackType: "AT_NONE",
+          damageType: "AD_ELEC",
+          dice: { count: 0, sides: 0 },
+        },
+        invoke: null,
+        alignment: "A_LAWFUL",
+        role: null,
+        race: null,
+        generationEnchantment: 3,
+        giftValue: 7,
+        baseCost: 4000,
+      },
+      sourceRefs: [{
+        path: "include/artilist.h",
+        symbol: "ART_TEST",
+      }],
+    }],
+  };
+  const objectChunk = {
+    schemaVersion: 2,
+    family: "object",
+    records: [{
+      schemaVersion: 2,
+      id: objectId,
+      family: "object",
+      names: { primary: "test weapon" },
+      symbol: 41,
+      color: 7,
+      facts: {
+        objectClass: "WEAPON_CLASS",
+        material: "IRON",
+        probability: 7,
+        weight: 40,
+        baseCost: 23,
+        useDelay: 1,
+        property: null,
+        flags: {
+          nameKnown: true,
+          merge: false,
+          usesKnown: false,
+          magic: true,
+          charged: false,
+          unique: false,
+          notWishable: true,
+          big: true,
+          tough: false,
+        },
+        subtype: {
+          damageSmall: 6,
+          damageLarge: 8,
+          hitBonus: 2,
+          skill: "P_SPEAR",
+          projectile: false,
+          strikeModes: ["PIERCE", "SLASH"],
+        },
+      },
+      sourceRefs: [{
+        path: "include/objects.h",
+        symbol: "TEST_WEAPON",
+      }],
+    }],
+  };
   const glyphChunk = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     bindings: [{
       glyph: 0,
       status: "supported",
@@ -189,7 +281,7 @@ export function createEncyclopediaAssetFixture(): EncyclopediaAssetFixture {
     }],
   };
   const visibleObjectBindings = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     bindings: [{
       glyph: 0,
       objectId: "object:TEST_OBJECT",
@@ -230,11 +322,13 @@ export function createEncyclopediaAssetFixture(): EncyclopediaAssetFixture {
     }],
   };
   const entityBytes = encodeJson(entityChunk);
+  const artifactBytes = encodeJson(artifactChunk);
+  const objectBytes = encodeJson(objectChunk);
   const glyphBytes = encodeJson(glyphChunk);
   const visibleObjectBytes = encodeJson(visibleObjectBindings);
   const wikiBytes = encodeJson(wikiChunk);
   const coreManifest = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     nethackVersion: "5.0.0",
     generatorVersion: "1.0.0",
     compileDefines: ["TILES_IN_GLYPHMAP"],
@@ -242,21 +336,41 @@ export function createEncyclopediaAssetFixture(): EncyclopediaAssetFixture {
     sourceFingerprint,
     entityCounts: {
       appearance: 0,
-      artifact: 0,
+      artifact: 1,
       monster: 0,
-      object: 0,
+      object: 1,
       terrain: 1,
       trap: 0,
     },
-    chunks: [{
-      kind: "terrain",
-      file: "terrain-001.json",
-      bytes: entityBytes.byteLength,
-      sha256: sha256(entityBytes),
-      count: 1,
-      firstId: entityId,
-      lastId: entityId,
-    }],
+    chunks: [
+      {
+        family: "artifact",
+        file: "artifact-001.json",
+        bytes: artifactBytes.byteLength,
+        sha256: sha256(artifactBytes),
+        count: 1,
+        firstId: artifactId,
+        lastId: artifactId,
+      },
+      {
+        family: "object",
+        file: "object-001.json",
+        bytes: objectBytes.byteLength,
+        sha256: sha256(objectBytes),
+        count: 1,
+        firstId: objectId,
+        lastId: objectId,
+      },
+      {
+        family: "terrain",
+        file: "terrain-001.json",
+        bytes: entityBytes.byteLength,
+        sha256: sha256(entityBytes),
+        count: 1,
+        firstId: entityId,
+        lastId: entityId,
+      },
+    ],
     glyphBindings: {
       maxGlyph: 1,
       chunks: [{
@@ -343,6 +457,8 @@ export function createEncyclopediaAssetFixture(): EncyclopediaAssetFixture {
       [urls.glyphChunk, glyphBytes],
       [urls.visibleObjectBindings, visibleObjectBytes],
       [urls.entityChunk, entityBytes],
+      [urls.artifactChunk, artifactBytes],
+      [urls.objectChunk, objectBytes],
       [urls.wikiManifest, encodeJson(wikiManifest)],
       [urls.wikiChunk, wikiBytes],
     ]),

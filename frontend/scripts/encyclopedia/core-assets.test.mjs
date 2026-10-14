@@ -36,6 +36,33 @@ const expectedEntityCounts = {
   terrain: 49,
   trap: 25,
 };
+const encyclopediaEntityFamilies = [
+  "appearance",
+  "artifact",
+  "monster",
+  "object",
+  "terrain",
+  "trap",
+];
+const netHackObjectClasses = [
+  "ILLOBJ_CLASS",
+  "WEAPON_CLASS",
+  "ARMOR_CLASS",
+  "RING_CLASS",
+  "AMULET_CLASS",
+  "TOOL_CLASS",
+  "FOOD_CLASS",
+  "POTION_CLASS",
+  "SCROLL_CLASS",
+  "SPBOOK_CLASS",
+  "WAND_CLASS",
+  "COIN_CLASS",
+  "GEM_CLASS",
+  "ROCK_CLASS",
+  "BALL_CLASS",
+  "CHAIN_CLASS",
+  "VENOM_CLASS",
+];
 const requiredFingerprintInputs = [
   "include/artilist.h",
   "include/artifact.h",
@@ -342,9 +369,85 @@ describe("alpha-2.4 stage-one core encyclopedia assets", () => {
     }
   });
 
+  /** Require one v2 family envelope across every generated core asset. */
+  it("publishes schema v2 consistently across the generated asset graph", async () => {
+    expect(manifest.schemaVersion).toBe(2);
+    expect(Object.keys(manifest.entityCounts).sort())
+      .toEqual([...encyclopediaEntityFamilies].sort());
+
+    for (const metadata of manifest.chunks) {
+      expect(Object.keys(metadata)).toContain("family");
+      expect(Object.keys(metadata)).not.toContain("kind");
+      expect(encyclopediaEntityFamilies).toContain(metadata.family);
+      const chunk = await readJson(join(generatedDirectory, metadata.file));
+      expect(chunk.schemaVersion).toBe(2);
+      expect(chunk.family).toBe(metadata.family);
+      expect(chunk).not.toHaveProperty("kind");
+      for (const record of chunk.records) {
+        expect(record.schemaVersion).toBe(2);
+        expect(record.family).toBe(metadata.family);
+        expect(record).not.toHaveProperty("kind");
+      }
+    }
+
+    for (const metadata of manifest.glyphBindings.chunks) {
+      const chunk = await readJson(join(generatedDirectory, metadata.file));
+      expect(chunk.schemaVersion).toBe(2);
+    }
+    const visibleObjects = await readJson(join(
+      generatedDirectory,
+      manifest.visibleObjectBindings.file,
+    ));
+    expect(visibleObjects.schemaVersion).toBe(2);
+  });
+
+  /** Make objectClass the complete and sole object presentation classifier. */
+  it("covers every NetHack object class without subtype.kind", () => {
+    const classifiedRecords = records.filter((record) =>
+      typeof record.facts.objectClass === "string"
+    );
+    const objectRecords = records.filter((record) =>
+      (record.family ?? record.kind) === "object"
+    );
+    expect([...new Set(classifiedRecords.map(
+      (record) => record.facts.objectClass,
+    ))].sort()).toEqual([...netHackObjectClasses].sort());
+    expect(objectRecords).toHaveLength(expectedEntityCounts.object);
+    for (const record of objectRecords) {
+      expect(netHackObjectClasses).toContain(record.facts.objectClass);
+      expect(record.facts.subtype).not.toHaveProperty("kind");
+    }
+
+    expect(entity("object:DAGGER").facts.subtype).toMatchObject({
+      damageSmall: 4,
+      damageLarge: 3,
+      hitBonus: 2,
+      skill: "P_DAGGER",
+      projectile: false,
+      strikeModes: ["PIERCE"],
+    });
+    expect(entity("object:PICK_AXE").facts.subtype).toMatchObject({
+      damageSmall: 6,
+      skill: "P_PICK_AXE",
+      strikeModes: ["WHACK"],
+    });
+    expect(entity("object:PLATE_MAIL").facts.subtype).toEqual({
+      category: "ARM_SUIT",
+      armorClass: 7,
+      magicCancellation: 2,
+    });
+    expect(entity("object:FOOD_RATION").facts.subtype).toEqual({
+      nutrition: 800,
+    });
+    expect(entity("object:SPE_MAGIC_MISSILE").facts.subtype).toEqual({
+      skill: "P_ATTACK_SPELL",
+      level: 2,
+    });
+  });
+
   /** Require symbolic enum/flag output and preserve source attack order. */
   it("uses exhaustive symbolic enums and ordered attacks", () => {
-    const monsters = records.filter((record) => record.kind === "monster");
+    const monsters = records.filter((record) => record.family === "monster");
     for (const monster of monsters) {
       for (const attack of monster.facts.attacks) {
         expect(attack.attackType).toMatch(/^AT_[A-Z0-9_]+$/);
@@ -459,9 +562,9 @@ describe("alpha-2.4 stage-one core encyclopedia assets", () => {
       /POT_HEALING|POT_GAIN_LEVEL|effect|identity/i,
     );
     expect(entity("appearance:POTION_CLASS:GENERIC")).toEqual({
-      schemaVersion: 1,
+      schemaVersion: 2,
       id: "appearance:POTION_CLASS:GENERIC",
-      kind: "appearance",
+      family: "appearance",
       names: { primary: "potion" },
       symbol: expect.any(Number),
       color: expect.any(Number),
@@ -472,7 +575,7 @@ describe("alpha-2.4 stage-one core encyclopedia assets", () => {
       }],
     });
     const appearanceIds = records
-      .filter((record) => record.kind === "appearance")
+      .filter((record) => record.family === "appearance")
       .map((record) => record.id)
       .sort();
     const genericReferences = [...new Set(bindings
@@ -631,7 +734,7 @@ describe("alpha-2.4 stage-one core encyclopedia assets", () => {
 
     const unknownSymbol = await cloneGeneratedCatalog("unknown-symbol");
     const monsterChunk = manifest.chunks.find(
-      (chunk) => chunk.kind === "monster",
+      (chunk) => chunk.family === "monster",
     );
     await rewriteCatalogFile(
       unknownSymbol,
@@ -650,7 +753,7 @@ describe("alpha-2.4 stage-one core encyclopedia assets", () => {
   it("strictly rejects duplicate or dangling catalog references", async () => {
     const duplicate = await cloneGeneratedCatalog("duplicate");
     const monsterChunk = manifest.chunks.find(
-      (chunk) => chunk.kind === "monster",
+      (chunk) => chunk.family === "monster",
     );
     await rewriteCatalogFile(duplicate, monsterChunk.file, (chunk) => {
       chunk.records.push(structuredClone(chunk.records[0]));
@@ -778,7 +881,7 @@ describe("alpha-2.4 stage-one core encyclopedia assets", () => {
   it("rejects records over the 64 KiB size limit", async () => {
     const oversized = await cloneGeneratedCatalog("oversized");
     const monsterChunk = manifest.chunks.find(
-      (chunk) => chunk.kind === "monster",
+      (chunk) => chunk.family === "monster",
     );
     await rewriteCatalogFile(oversized, monsterChunk.file, (chunk) => {
       chunk.records[0].names.primary = "x".repeat(65 * 1024);

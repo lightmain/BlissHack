@@ -23,6 +23,25 @@ const acceptancePath = join(
   frontendRoot,
   "test/integration-tests/fixtures/newt-wiki-revision-205110.json",
 );
+const netHackObjectClasses = [
+  "ILLOBJ_CLASS",
+  "WEAPON_CLASS",
+  "ARMOR_CLASS",
+  "RING_CLASS",
+  "AMULET_CLASS",
+  "TOOL_CLASS",
+  "FOOD_CLASS",
+  "POTION_CLASS",
+  "SCROLL_CLASS",
+  "SPBOOK_CLASS",
+  "WAND_CLASS",
+  "COIN_CLASS",
+  "GEM_CLASS",
+  "ROCK_CLASS",
+  "BALL_CLASS",
+  "CHAIN_CLASS",
+  "VENOM_CLASS",
+];
 
 /** Read and parse one checked-in JSON asset. */
 async function readJson(path) {
@@ -65,8 +84,19 @@ function bindingEntityIds(binding) {
 describe("alpha-2.4 stage-six checked-in release gates", () => {
   it("accepts every checked-in core chunk through the production validator", async () => {
     const manifest = await readJson(join(coreRoot, "manifest.json"));
+    expect(manifest.schemaVersion).toBe(2);
     for (const metadata of manifest.chunks) {
       const chunk = await readJson(join(coreRoot, metadata.file));
+      expect(metadata).toHaveProperty("family");
+      expect(metadata).not.toHaveProperty("kind");
+      expect(chunk.schemaVersion).toBe(2);
+      expect(chunk.family).toBe(metadata.family);
+      expect(chunk).not.toHaveProperty("kind");
+      expect(chunk.records.every((record) =>
+        record.schemaVersion === 2
+        && record.family === metadata.family
+        && !Object.hasOwn(record, "kind")
+      )).toBe(true);
       expect(
         () => validateCoreEntityChunk(chunk, metadata),
         metadata.file,
@@ -82,14 +112,23 @@ describe("alpha-2.4 stage-six checked-in release gates", () => {
     ]);
     const ids = new Set(records.map((record) => record.id));
     const actualCounts = Object.fromEntries(
-      Object.keys(manifest.entityCounts).map((kind) => [
-        kind,
-        records.filter((record) => record.kind === kind).length,
+      Object.keys(manifest.entityCounts).map((family) => [
+        family,
+        records.filter((record) => record.family === family).length,
       ]),
     );
 
     expect(actualCounts).toEqual(manifest.entityCounts);
     expect(ids.size).toBe(records.length);
+    expect([...new Set(records
+      .map((record) => record.facts?.objectClass)
+      .filter((objectClass) => typeof objectClass === "string"))].sort())
+      .toEqual([...netHackObjectClasses].sort());
+    for (const record of records.filter((candidate) =>
+      candidate.family === "object"
+    )) {
+      expect(record.facts.subtype).not.toHaveProperty("kind");
+    }
     expect(bindings).toHaveLength(manifest.glyphBindings.maxGlyph);
     expect(bindings.map((binding) => binding.glyph))
       .toEqual(Array.from({ length: bindings.length }, (_, glyph) => glyph));

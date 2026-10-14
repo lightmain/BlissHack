@@ -64,10 +64,10 @@ export const NEWT_TARGET: ExamineTarget = {
   },
 };
 
-export const WEAPON_CORE: CoreEntityRecord = {
-  schemaVersion: 1,
+export const WEAPON_CORE = {
+  schemaVersion: 2,
   id: "object:TEST_WEAPON",
-  kind: "object",
+  family: "object",
   names: { primary: "ordered test weapon" },
   symbol: 41,
   color: 7,
@@ -91,7 +91,6 @@ export const WEAPON_CORE: CoreEntityRecord = {
       tough: false,
     },
     subtype: {
-      kind: "weapon",
       damageSmall: 6,
       damageLarge: 8,
       hitBonus: 2,
@@ -101,12 +100,12 @@ export const WEAPON_CORE: CoreEntityRecord = {
     },
   },
   sourceRefs: [{ path: "include/objects.h", symbol: "TEST_WEAPON" }],
-};
+} as unknown as CoreEntityRecord;
 
-export const ARTIFACT_CORE: CoreEntityRecord = {
-  schemaVersion: 1,
+export const ARTIFACT_CORE = {
+  schemaVersion: 2,
   id: "artifact:ART_TEST",
-  kind: "artifact",
+  family: "artifact",
   names: { primary: "The Test Artifact" },
   symbol: null,
   color: null,
@@ -139,4 +138,4 @@ export const ARTIFACT_CORE: CoreEntityRecord = {
     baseCost: 4000,
   },
   sourceRefs: [{ path: "include/artilist.h", symbol: "ART_TEST" }],
-};
+} as unknown as CoreEntityRecord;
