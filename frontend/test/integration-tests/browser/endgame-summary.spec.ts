@@ -361,12 +361,26 @@ test("[defect-probing] scrolls overflowing result tabs with a real vertical whee
     (tablistBox?.y ?? 0) + (tablistBox?.height ?? 0) / 2,
   );
 
-  await tablist.evaluate((element) => {
+  const horizontalWheel = await tablist.evaluate((element) => {
     element.scrollLeft = 80;
+    const event = new WheelEvent("wheel", {
+      bubbles: true,
+      cancelable: true,
+      deltaMode: WheelEvent.DOM_DELTA_PIXEL,
+      deltaX: 80,
+      deltaY: 10,
+    });
+    return {
+      defaultAllowed: element.dispatchEvent(event),
+      defaultPrevented: event.defaultPrevented,
+      scrollLeft: element.scrollLeft,
+    };
   });
-  await page.mouse.wheel(80, 10);
-  await expect.poll(() =>
-    tablist.evaluate((element) => element.scrollLeft)).toBe(160);
+  expect(horizontalWheel).toEqual({
+    defaultAllowed: true,
+    defaultPrevented: false,
+    scrollLeft: 80,
+  });
 
   await tablist.evaluate((element) => {
     element.scrollLeft = 0;

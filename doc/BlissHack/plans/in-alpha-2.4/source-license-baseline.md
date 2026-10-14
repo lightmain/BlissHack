@@ -56,18 +56,30 @@ Newt 尸体的能量效果不是 `struct permonst` 字段。
 `obj_to_glyph()` 与 `map_glyphinfo()`，再以 `doname(otmp)` 的可见文本调用
 `add_menu()`。
 
-`src/objnam.c:xname()` 只在 `has_oname(obj) && dknown` 时追加对象名称；
-artifact 的核心名称保存在同一个 oname 中。`distant_name()` 对 artifact
-仍然走相同的 `dknown` 约束。因此最小安全 token 条件是：
+`src/objnam.c:xname()` 以 `objects[otyp].oc_name_known` 决定普通类型的真实
+名称是否已经发现，并以 `dknown` 决定当前对象外观是否已经观察。对于运行时
+才发现的类型，静态资料生成时不能把该 glyph 永久固定为 generic；普通对象的
+最小安全 token 条件是：
+
+```text
+doing_perm_invent && otmp->dknown
+&& objects[otmp->otyp].oc_name_known
+```
+
+`xname()` 只在 `has_oname(obj) && dknown` 时追加对象名称；artifact 的核心名称
+保存在同一个 oname 中。`distant_name()` 对 artifact 仍然走相同的 `dknown`
+约束。因此神器 token 条件是：
 
 ```text
 otmp->oartifact > 0 && has_oname(otmp) && otmp->dknown
 ```
 
-token 只能是生成目录中的有界 `artifact:ART_*` ID，并且必须在上述同一个
-inventory row producer 已经执行 `doname()` 后、调用 `add_menu()` 前设置，
-调用后立即清理。shim 在复制该行后还需再次清理，并在菜单取消、window
-销毁、session reset 与 fatal 路径清理。不得把 artifact 编号、对象指针或菜单
+token 只能是生成目录中的有界 `object:OBJECT_ENUM` 或 `artifact:ART_*` ID，
+并且必须在上述同一个 inventory row producer 已经执行 `doname()` 后、调用
+`add_menu()` 前设置，调用后立即清理。神器 token 优先于基础对象 token。shim
+在复制该行后还需再次清理，并在菜单取消、window 销毁、session reset 与 fatal
+路径清理。前端还必须把普通对象 token 与当前构建生成的精确 glyph 对照校验；
+generic glyph 的公开 binding 继续只含类别。不得把对象编号、对象指针或菜单
 文字留给 React 推断。
 
 地图上的 artifact 没有这种 row-local producer metadata，只解析基础对象

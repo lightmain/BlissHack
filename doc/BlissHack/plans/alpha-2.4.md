@@ -343,19 +343,25 @@ interface InventoryExamineCapture {
 ```
 
 - identifier 和 accelerator 仍只用于验证并选择本次核心生成的背包菜单行。
-- 普通对象、尸体和雕像优先通过最终 glyph 解析。
-- 神器不能通过对象 glyph 区分。实现必须在实际 inventory/menu producer
-  调用链中增加一次性的可见身份 metadata，并在 `shim_add_menu` 处复制成有界
-  token；token 使用生成目录中的枚举 ID，不包含指针或自由文本。
-- 只有核心用于显示对象名称的同一判断已经公开神器名称时，才允许 token 为
-  `artifact:*`；未公开时必须为 null。
+- 普通对象、尸体和雕像优先通过最终 glyph 解析。对于静态生成时尚未发现、但
+  本局运行时已经公开类型的普通对象，核心可以发布 `object:OBJECT_ENUM`
+  可见 token。
+- 神器不能通过对象 glyph 区分。普通对象的运行时发现状态也不能由静态 glyph
+  binding 表达。实现必须在实际 inventory/menu producer 调用链中增加一次性的
+  可见身份 metadata，并在 `shim_add_menu` 处复制成有界 token；token 使用
+  生成目录中的枚举 ID，不包含指针或自由文本。
+- 普通对象 token 要求同一行已经执行 `doname()`，并且 `dknown` 与
+  `objects[otyp].oc_name_known` 都为真。只有核心用于显示对象名称的同一判断
+  已经公开神器名称时，才允许 token 为 `artifact:*`；未公开时必须为 null。
+- 前端只在 token 存在于当前构建目录并与最终 glyph 的精确对象对照一致时升级
+  身份；公开 generic glyph binding 仍只表达类别。
 - metadata 在每个 menu row 后立即清理，并在取消、窗口销毁、session reset
   和 fatal 时清理，不能泄漏到下一行或下一菜单。
 - 如果阶段性源码审计不能证明该 token 与玩家可见名称完全同边界，必须暂停
   神器接入并请求范围复审；不得退回解析英文物品文本。
 
-地图上的神器若只有基础对象 glyph 且没有安全的公开身份 token，只显示基础物品
-资料。alpha-2.4 不为此读取地图对象链。
+地图上的神器或运行时发现对象若只有基础对象 glyph 且没有安全的公开身份 token，
+只显示 glyph 公开的基础物品或类别资料。alpha-2.4 不为此读取地图对象链。
 
 ## 6. 数据资产与 schema
 

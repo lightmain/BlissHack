@@ -12,20 +12,20 @@
   "files": {
     "nethack.js": {
       "bytes": 96199,
-      "sha256": "0678e42957ca4516dc3224fc7acb8498da9888d54ee6a05b152c67a0bd94a9f9"
+      "sha256": "dd9572c4775b10009a05904cc8a090d8713762425d42f4a1462fdf1f121a970f"
     },
     "nethack.wasm": {
-      "bytes": 6636857,
-      "sha256": "1f251ab58f18106dac35f775c0ddeb2b489c22e9a043fd9d1841ef254df2eea2"
+      "bytes": 6647378,
+      "sha256": "7dd34483bb310434aa55025319a663ed3c7084f3b5518cf4fd2172a9f7fc5343"
     }
   },
   "encyclopedia": {
     "core": {
       "manifest": {
-        "bytes": 7749,
-        "sha256": "5e6837b48c3609eff6d039e16211613793418f9d2dc4a42916d4c33797446c5e"
+        "bytes": 7915,
+        "sha256": "0d6c6b02f62bc5783267fa063ce954dafae443e9864cfd84b1afe5d8a521c4d5"
       },
-      "sourceFingerprint": "0b621c4004df301842e287eb0a9bc3465a367d3d478c636c3f1b3ad3e8fe50d4"
+      "sourceFingerprint": "b86d27c9474a19ea527aca670869e6cca2d12174c7709517598e33090ff052b9"
     },
     "wiki": {
       "manifest": {

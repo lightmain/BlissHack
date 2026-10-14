@@ -15,9 +15,10 @@ import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
-const GENERATOR_VERSION = "1.1.0";
+const GENERATOR_VERSION = "1.2.0";
 const SCHEMA_VERSION = 1;
 const NETHACK_VERSION = "5.0.0";
+const VISIBLE_OBJECT_BINDINGS_FILE = "visible-object-bindings.json";
 const MAX_CHUNK_BYTES = 256 * 1024;
 const TARGET_CHUNK_BYTES = 96 * 1024;
 const MAX_RECORD_BYTES = 64 * 1024;
@@ -1013,6 +1014,21 @@ function validateGlyphResult(value, expectedGlyph, references) {
 }
 
 /**
+ * Validate one exact glyph-to-object entry used by visible row tokens.
+ * @param {unknown} value Candidate binding.
+ * @param {string} label Diagnostic label.
+ */
+function validateVisibleObjectBinding(value, label) {
+  assertObject(value, label);
+  assertKeys(value, ["glyph", "objectId"], [], label);
+  assertInteger(value.glyph, `${label}.glyph`, 0, 1_000_000);
+  assertEntityId(value.objectId, `${label}.objectId`);
+  if (!value.objectId.startsWith("object:")) {
+    throw new Error(`${label}.objectId is not an object identity`);
+  }
+}
+
+/**
  * Load source bytes and build sorted source-fingerprint metadata.
  * @param {string} repositoryRoot Repository root.
  * @returns {Promise<Array<{path:string,bytes:number,sha256:string}>>}
@@ -1080,7 +1096,14 @@ function validateExporterResult(value) {
   assertObject(value, "exporter result");
   assertKeys(
     value,
-    ["schemaVersion", "maxGlyph", "counts", "records", "glyphBindings"],
+    [
+      "schemaVersion",
+      "maxGlyph",
+      "counts",
+      "records",
+      "glyphBindings",
+      "visibleObjectBindings",
+    ],
     [],
     "exporter result",
   );
@@ -1107,6 +1130,23 @@ function validateExporterResult(value) {
   ) {
     throw new Error("Exporter glyph coverage does not match MAX_GLYPH");
   }
+  if (
+    !Array.isArray(value.visibleObjectBindings)
+    || value.visibleObjectBindings.length !== EXPECTED_COUNTS.object * 2
+  ) {
+    throw new Error("Exporter visible object binding count mismatch");
+  }
+  const visibleGlyphs = new Set();
+  value.visibleObjectBindings.forEach((binding, index) => {
+    validateVisibleObjectBinding(
+      binding,
+      `exporter visible object binding ${index}`,
+    );
+    if (visibleGlyphs.has(binding.glyph)) {
+      throw new Error(`Duplicate visible object glyph ${binding.glyph}`);
+    }
+    visibleGlyphs.add(binding.glyph);
+  });
 }
 
 /**
@@ -1220,6 +1260,30 @@ async function writeGlyphChunks(directory, bindings) {
 }
 
 /**
+ * Write the compact exact mapping used only after the core publishes a token.
+ * @param {string} directory Staging directory.
+ * @param {Record<string, unknown>[]} bindings Exact glyph-to-object entries.
+ * @returns {Promise<Record<string, unknown>>} Manifest integrity metadata.
+ */
+async function writeVisibleObjectBindings(directory, bindings) {
+  const ordered = [...bindings].sort((left, right) =>
+    left.glyph - right.glyph
+  );
+  const integrity = await writeAsset(
+    directory,
+    VISIBLE_OBJECT_BINDINGS_FILE,
+    {
+      schemaVersion: SCHEMA_VERSION,
+      bindings: ordered,
+    },
+  );
+  return {
+    ...integrity,
+    count: ordered.length,
+  };
+}
+
+/**
  * Replace a destination directory only after staging is complete.
  * @param {string} stagingDirectory Complete staged directory.
  * @param {string} outputDirectory Caller-owned destination.
@@ -1312,6 +1376,10 @@ export async function generateCoreEncyclopedia(options) {
       stagingDirectory,
       exported.glyphBindings,
     );
+    const visibleObjectBindings = await writeVisibleObjectBindings(
+      stagingDirectory,
+      exported.visibleObjectBindings,
+    );
     const sourceFingerprint = sha256(assetBytes({
       generatorVersion: GENERATOR_VERSION,
       compileDefines: COMPILE_DEFINES,
@@ -1330,6 +1398,7 @@ export async function generateCoreEncyclopedia(options) {
         maxGlyph: exported.maxGlyph,
         chunks: glyphChunks,
       },
+      visibleObjectBindings,
     };
     await writeFile(
       join(stagingDirectory, "manifest.json"),
@@ -1362,6 +1431,7 @@ function validateManifest(value) {
       "entityCounts",
       "chunks",
       "glyphBindings",
+      "visibleObjectBindings",
     ],
     [],
     "manifest",
@@ -1470,6 +1540,32 @@ function validateManifest(value) {
     assertInteger(chunk.bytes, `${label}.bytes`, 1, MAX_CHUNK_BYTES);
     assertHash(chunk.sha256, `${label}.sha256`);
   }
+  assertObject(value.visibleObjectBindings, "manifest.visibleObjectBindings");
+  assertKeys(
+    value.visibleObjectBindings,
+    ["file", "bytes", "sha256", "count"],
+    [],
+    "manifest.visibleObjectBindings",
+  );
+  if (value.visibleObjectBindings.file !== VISIBLE_OBJECT_BINDINGS_FILE) {
+    throw new Error("Visible object binding filename is invalid");
+  }
+  assertInteger(
+    value.visibleObjectBindings.bytes,
+    "manifest.visibleObjectBindings.bytes",
+    1,
+    MAX_CHUNK_BYTES,
+  );
+  assertHash(
+    value.visibleObjectBindings.sha256,
+    "manifest.visibleObjectBindings.sha256",
+  );
+  assertInteger(
+    value.visibleObjectBindings.count,
+    "manifest.visibleObjectBindings.count",
+    1,
+    10000,
+  );
 }
 
 /**
@@ -1510,6 +1606,7 @@ export async function validateCoreAssetDirectory(directory) {
   const declared = [
     ...manifest.chunks,
     ...manifest.glyphBindings.chunks,
+    manifest.visibleObjectBindings,
   ];
   const declaredFiles = new Set(["manifest.json"]);
   for (const metadata of declared) {
@@ -1615,6 +1712,39 @@ export async function validateCoreAssetDirectory(directory) {
   }
   if (nextGlyph !== manifest.glyphBindings.maxGlyph) {
     throw new Error("Glyph coverage does not reach MAX_GLYPH");
+  }
+  const visibleObjectCatalog = await readDeclaredAsset(
+    root,
+    manifest.visibleObjectBindings,
+  );
+  assertObject(visibleObjectCatalog, manifest.visibleObjectBindings.file);
+  assertKeys(
+    visibleObjectCatalog,
+    ["schemaVersion", "bindings"],
+    [],
+    manifest.visibleObjectBindings.file,
+  );
+  if (
+    visibleObjectCatalog.schemaVersion !== SCHEMA_VERSION
+    || !Array.isArray(visibleObjectCatalog.bindings)
+    || visibleObjectCatalog.bindings.length
+      !== manifest.visibleObjectBindings.count
+  ) {
+    throw new Error("Visible object binding metadata mismatch");
+  }
+  let previousVisibleGlyph = -1;
+  for (const [index, binding] of visibleObjectCatalog.bindings.entries()) {
+    validateVisibleObjectBinding(
+      binding,
+      `visible object binding ${index}`,
+    );
+    if (binding.glyph <= previousVisibleGlyph) {
+      throw new Error("Visible object glyphs are not unique and sorted");
+    }
+    if (!ids.has(binding.objectId)) {
+      throw new Error(`Dangling visible object identity ${binding.objectId}`);
+    }
+    previousVisibleGlyph = binding.glyph;
   }
   for (const reference of references) {
     if (!ids.has(reference)) {

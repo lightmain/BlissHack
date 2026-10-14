@@ -1,4 +1,11 @@
-const ARTIFACT_TOKEN_PATTERN = /^artifact:ART_[A-Z0-9_]{1,128}$/;
+const VISIBLE_ENTITY_TOKEN_PATTERN =
+  /^(?:object:[A-Z0-9_]{1,128}|artifact:ART_[A-Z0-9_]{1,128})$/;
+
+export interface VisibleEntityTokenCatalog {
+  displayedObjectId: string;
+  knownObjectIds: ReadonlySet<string>;
+  artifactBaseObjects: ReadonlyMap<string, string>;
+}
 
 export interface VisibleIdentityTokenChannel {
   publishRow(input: {
@@ -17,14 +24,48 @@ export interface VisibleIdentityTokenChannel {
 }
 
 /**
- * Parse the bounded canonical shape allowed across the WASM callback boundary.
+ * Parse a bounded ordinary object or artifact identity from the WASM boundary.
  * @param token Candidate callback value.
  * @returns Canonical token string, or null when its shape is unsafe.
  */
-export function parseVisibleArtifactToken(token: unknown): string | null {
-  return typeof token === "string" && ARTIFACT_TOKEN_PATTERN.test(token)
+export function parseVisibleEntityToken(token: unknown): string | null {
+  return typeof token === "string"
+      && VISIBLE_ENTITY_TOKEN_PATTERN.test(token)
     ? token
     : null;
+}
+
+/**
+ * Validate a visible identity against the exact object represented by a glyph.
+ * @param token Candidate value copied from the WASM callback.
+ * @param catalog Runtime-bound object and artifact identity metadata.
+ * @returns The canonical visible entity token, or null when any check fails.
+ */
+export function validateVisibleEntityToken(
+  token: unknown,
+  catalog: VisibleEntityTokenCatalog,
+): string | null {
+  const parsed = parseVisibleEntityToken(token);
+  if (parsed === null) return null;
+  if (parsed.startsWith("object:")) {
+    return catalog.knownObjectIds.has(parsed)
+        && parsed === catalog.displayedObjectId
+      ? parsed
+      : null;
+  }
+  return catalog.artifactBaseObjects.get(parsed) === catalog.displayedObjectId
+    ? parsed
+    : null;
+}
+
+/**
+ * Parse the legacy artifact-only token shape.
+ * @param token Candidate callback value.
+ * @returns Canonical artifact token, or null for objects and malformed input.
+ */
+export function parseVisibleArtifactToken(token: unknown): string | null {
+  const parsed = parseVisibleEntityToken(token);
+  return parsed?.startsWith("artifact:") ? parsed : null;
 }
 
 /**
@@ -40,10 +81,13 @@ export function validateVisibleArtifactToken(
   artifactBaseObjects: ReadonlyMap<string, string>,
 ): string | null {
   const parsed = parseVisibleArtifactToken(token);
-  if (parsed === null || artifactBaseObjects.get(parsed) !== baseObjectId) {
-    return null;
-  }
-  return parsed;
+  return parsed === null
+    ? null
+    : validateVisibleEntityToken(parsed, {
+      displayedObjectId: baseObjectId,
+      knownObjectIds: new Set(),
+      artifactBaseObjects,
+    });
 }
 
 /**
@@ -53,6 +97,7 @@ export function validateVisibleArtifactToken(
  */
 export function createVisibleIdentityTokenChannel(options: {
   artifactBaseObjects: ReadonlyMap<string, string>;
+  knownObjectIds?: ReadonlySet<string>;
 }): VisibleIdentityTokenChannel {
   const sessions = new Map<
     string,
@@ -61,10 +106,13 @@ export function createVisibleIdentityTokenChannel(options: {
 
   return {
     publishRow(input): void {
-      const token = validateVisibleArtifactToken(
+      const token = validateVisibleEntityToken(
         input.token,
-        input.baseObjectId,
-        options.artifactBaseObjects,
+        {
+          displayedObjectId: input.baseObjectId,
+          knownObjectIds: options.knownObjectIds ?? new Set(),
+          artifactBaseObjects: options.artifactBaseObjects,
+        },
       );
       const existingRows = sessions.get(input.sessionId);
       if (token === null) {

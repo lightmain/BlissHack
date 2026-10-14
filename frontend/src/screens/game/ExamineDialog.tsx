@@ -214,12 +214,12 @@ export function ExamineDialog({
 }
 
 /**
- * Resolve only the two focus-trap boundary transitions.
+ * Resolve deterministic forward or reverse focus traversal inside the dialog.
  * @param key - browser keyboard key.
  * @param reverse - whether Shift reverses traversal.
  * @param activeIndex - currently focused control.
  * @param count - number of focusable controls.
- * @returns wrapped destination or null for native in-range traversal.
+ * @returns next wrapped destination or null for unrelated keys.
  */
 export function resolveExamineFocusTrap(
   key: string,
@@ -228,9 +228,7 @@ export function resolveExamineFocusTrap(
   count: number,
 ): number | null {
   if (key !== "Tab" || count <= 0) return null;
-  if (reverse && activeIndex === 0) return count - 1;
-  if (!reverse && activeIndex === count - 1) return 0;
-  return null;
+  return (activeIndex + (reverse ? -1 : 1) + count) % count;
 }
 
 /**

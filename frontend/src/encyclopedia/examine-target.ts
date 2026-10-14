@@ -1,7 +1,10 @@
 import type { GlyphInfo } from "../game-state";
 import type { GlyphBinding } from "./core-schema";
 import type { EncyclopediaLoader } from "./encyclopedia-loader";
-import { validateVisibleArtifactToken } from "./visible-entity-token";
+import {
+  parseVisibleEntityToken,
+  validateVisibleEntityToken,
+} from "./visible-entity-token";
 
 /** Display identity captured from one committed map cell. */
 export interface MapExamineCapture {
@@ -58,15 +61,28 @@ export async function resolveExamineCapture(
   let entityId = entityIdForBinding(result.binding);
   if (
     capture.surface === "inventory"
-    && result.binding.kind === "object"
     && capture.visibleEntityToken !== null
+    && (
+      result.binding.kind === "object"
+      || result.binding.kind === "generic-object"
+    )
   ) {
-    const artifactBaseObjects = await loader.loadArtifactBaseObjects({ signal });
-    entityId = validateVisibleArtifactToken(
-      capture.visibleEntityToken,
-      result.binding.objectId,
-      artifactBaseObjects,
-    ) ?? entityId;
+    const token = parseVisibleEntityToken(capture.visibleEntityToken);
+    if (token !== null) {
+      const displayedObjectId = result.binding.kind === "object"
+        ? result.binding.objectId
+        : await loader.loadObjectIdForGlyph(capture.glyph.glyph, { signal });
+      if (displayedObjectId !== null) {
+        const artifactBaseObjects = token.startsWith("artifact:")
+          ? await loader.loadArtifactBaseObjects({ signal })
+          : new Map<string, string>();
+        entityId = validateVisibleEntityToken(token, {
+          displayedObjectId,
+          knownObjectIds: new Set([displayedObjectId]),
+          artifactBaseObjects,
+        }) ?? entityId;
+      }
+    }
   }
   return cloneExamineTarget({ ...capture, entityId });
 }

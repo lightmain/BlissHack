@@ -1295,6 +1295,19 @@ object_glyph(int glyph)
 }
 
 /**
+ * Write one exact object identity used only to validate a visible row token.
+ * @param glyph Normal or pile-top object glyph index.
+ * @param object_index Exact objects[] index encoded by the glyph.
+ */
+static void
+visible_object_binding(int glyph, int object_index)
+{
+    fprintf(stdout, "{\"glyph\":%d,\"objectId\":", glyph);
+    entity_id("object:", object_symbol(object_index));
+    fputc('}', stdout);
+}
+
+/**
  * Write a trap glyph binding.
  * @param glyph Glyph index.
  */
@@ -1453,6 +1466,14 @@ main(void)
         if (index)
             fputc(',', stdout);
         json_glyph(index);
+    }
+    fputs("],\"visibleObjectBindings\":[", stdout);
+    for (index = FIRST_OBJECT; index < NUM_OBJECTS; ++index) {
+        if (index > FIRST_OBJECT)
+            fputc(',', stdout);
+        visible_object_binding(GLYPH_OBJ_OFF + index, index);
+        fputc(',', stdout);
+        visible_object_binding(GLYPH_OBJ_PILETOP_OFF + index, index);
     }
     fputs("]}\n", stdout);
     if (ferror(stdout))

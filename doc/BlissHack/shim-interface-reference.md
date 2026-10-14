@@ -38,7 +38,8 @@
 >     `glyph_info.gm.tileidx`（偏移 `+30` 的 16-bit 字段）因此包含与
 >     `frontend/public/tiles/nethack-classic.png` 一致的官方 tile index。
 > 13. Emscripten 的 `shim_add_menu` callback 在原有 9 个参数后追加一个
->     `visibleEntityToken` 字符串；当前只允许 `artifact:ART_*`。原生
+>     `visibleEntityToken` 字符串；当前只允许 `object:OBJECT_ENUM` 或
+>     `artifact:ART_*`。原生
 >     `libnethack.a` 和 `struct window_procs` ABI 仍保持 9 参数不变。
 >
 > 以上结论由当前源码和 Emscripten WASM32 record layout 验证；实现应优先遵循
@@ -813,16 +814,23 @@ local_callback(shim_callback_name, "shim_add_menu",
 | | `clr` (int): 颜色索引 |
 | | `str` (string): 菜单项文本 |
 | | `itemflags` (int): 菜单项标志位 |
-| | `visibleEntityToken` (string, Emscripten only): 已公开神器身份的规范 token；普通行为空字符串 |
+| | `visibleEntityToken` (string, Emscripten only): 已公开物品身份的规范 token；未公开行为空字符串 |
 
 `visibleEntityToken` 不是菜单文本解析结果。核心只在构造永久背包行时，并且
-`doname()` / `doname_with_cgender()` 已经公开对象名称、对象为神器且
-`dknown` 为真时，才通过 `DUMP_ARTI_ENUM` 发布 `artifact:ART_*`。shim 在进入
-可能触发 Asyncify 的 `local_callback()` 前，把同步槽复制到当前
+`doname()` / `doname_with_cgender()` 已经执行后发布身份：
+
+- 普通对象要求 `dknown` 和 `objects[otyp].oc_name_known` 同时为真，并通过
+  `DUMP_ENUMS` 发布 `object:OBJECT_ENUM`。
+- 神器要求 `oartifact`、`has_oname()` 和 `dknown` 同时成立，并通过
+  `DUMP_ARTI_ENUM` 发布 `artifact:ART_*`；神器 token 优先于基础对象 token。
+
+shim 在进入可能触发 Asyncify 的 `local_callback()` 前，把同步槽复制到当前
 `shim_add_menu()` 调用栈并立即消费；callback 返回后再次清理。callback
 注册、command reset、菜单 start/end/select、窗口销毁和退出也会 fail closed
 清理未消费 token。因此 token 只属于紧邻的一行，不能跨行、跨菜单或跨
-session 复用，也不暴露对象指针、编号或自由文本。
+session 复用，也不暴露对象指针、编号或自由文本。前端只在 token 存在于当前
+运行时资料目录、与最终显示 glyph 的精确对象映射一致，并且神器的基础对象也
+一致时升级身份；同类别但不同对象的 token 会被拒绝。
 
 菜单项标志常量（`itemflags`）：
 - `MENU_ITEMFLAGS_NONE = 0x0` — 无特殊标志
@@ -2131,6 +2139,31 @@ BlissHack 在 `sys/libnh/libnhmain.c` 中将
 只消费现有回调并复制窗口数据；Asyncify callback pending 期间不会通过
 `ccall()` 重入核心。真实 WASM 集成测试验证该值初始为 `false`、实时读取 C
 内存且 JavaScript 属性不可写。
+
+### 6.8 永久背包已公开物品身份
+
+BlissHack 将 Emscripten `shim_add_menu` 的第十个字符串参数从只支持神器的
+通道扩展为通用可见实体 token：
+
+```text
+object:KATANA
+artifact:ART_EXCALIBUR
+```
+
+普通对象 token 只在永久背包的同一行已经经过 `doname()`，并且核心的
+`dknown` 与 `objects[otyp].oc_name_known` 都为真时发布。对象符号由
+`include/objects.h` 的 `DUMP_ENUMS` 生成，不解析显示名、职业或菜单文本。
+神器继续使用原有 `oartifact + has_oname() + dknown` 条件，并优先发布
+`artifact:ART_*`。
+
+shim 的同步槽、栈复制和全部清理边界保持不变，只把允许的规范形状扩展为
+`object:[A-Z0-9_]+` 与 `artifact:ART_[A-Z0-9_]+`。前端资料 manifest 另外绑定
+一个精确 glyph 到 object ID 的小型索引；generic glyph 的公开 binding 仍然
+只有对象类别。只有 token、精确 glyph 映射和资料目录三者一致时才显示具体
+普通物品资料，未鉴定物品继续显示通用类别。
+
+该修改不改变 `struct window_procs`、原生 `libnethack.a` ABI、对象结构或存档
+格式，也不读取对象链或保存 C 指针。
 
 ---
 

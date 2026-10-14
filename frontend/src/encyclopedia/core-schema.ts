@@ -24,6 +24,13 @@ export interface GlyphAssetMetadata {
   sha256: string;
 }
 
+export interface VisibleObjectBindingMetadata {
+  file: string;
+  bytes: number;
+  sha256: string;
+  count: number;
+}
+
 export interface CoreEncyclopediaManifest {
   schemaVersion: 1;
   nethackVersion: string;
@@ -41,6 +48,7 @@ export interface CoreEncyclopediaManifest {
     maxGlyph: number;
     chunks: GlyphAssetMetadata[];
   };
+  visibleObjectBindings: VisibleObjectBindingMetadata;
 }
 
 export interface CoreEntityRecord {
@@ -107,6 +115,14 @@ export interface GlyphBindingChunk {
   bindings: GlyphBindingResult[];
 }
 
+export interface VisibleObjectBindingAsset {
+  schemaVersion: 1;
+  bindings: Array<{
+    glyph: number;
+    objectId: string;
+  }>;
+}
+
 const ENTITY_KINDS = new Set<CoreEntityKind>([
   "appearance",
   "artifact",
@@ -125,6 +141,7 @@ const MANIFEST_KEYS = [
   "entityCounts",
   "chunks",
   "glyphBindings",
+  "visibleObjectBindings",
 ] as const;
 const ENTITY_KEYS = [
   "schemaVersion",
@@ -915,6 +932,7 @@ export function validateCoreManifest(
   integerValue(glyphBindings.maxGlyph, "core manifest maxGlyph", 1, 100000);
   arrayValue(glyphBindings.chunks, "core manifest glyph chunks", 256)
     .forEach((chunk, index) => validateGlyphMetadata(chunk, index));
+  validateVisibleObjectMetadata(manifest.visibleObjectBindings);
   return manifest as unknown as CoreEncyclopediaManifest;
 }
 
@@ -962,6 +980,20 @@ function validateGlyphMetadata(value: unknown, index: number): void {
   integerValue(metadata.count, `${label}.count`, 1, 100000);
   integerValue(metadata.bytes, `${label}.bytes`, 1, 256 * 1024);
   hashValue(metadata.sha256, `${label}.sha256`);
+}
+
+/**
+ * Validate metadata for the exact object identity lookup asset.
+ * @param value Candidate manifest metadata.
+ */
+function validateVisibleObjectMetadata(value: unknown): void {
+  const label = "core manifest visibleObjectBindings";
+  const metadata = objectValue(value, label);
+  exactKeys(metadata, ["file", "bytes", "sha256", "count"], [], label);
+  assetFilename(metadata.file, `${label}.file`);
+  integerValue(metadata.bytes, `${label}.bytes`, 1, 256 * 1024);
+  hashValue(metadata.sha256, `${label}.sha256`);
+  integerValue(metadata.count, `${label}.count`, 1, 10000);
 }
 
 /**
@@ -1026,6 +1058,54 @@ export function validateGlyphBindingChunk(
     )
   );
   return chunk as unknown as GlyphBindingChunk;
+}
+
+/**
+ * Validate the exact glyph identities used only after a visible object token.
+ * @param value Candidate asset.
+ * @param metadata Trusted manifest metadata.
+ * @param maxGlyph Exclusive glyph domain bound.
+ * @returns Validated glyph-to-object mappings.
+ */
+export function validateVisibleObjectBindingAsset(
+  value: unknown,
+  metadata: VisibleObjectBindingMetadata,
+  maxGlyph: number,
+): VisibleObjectBindingAsset {
+  const asset = objectValue(value, metadata.file);
+  exactKeys(asset, ["schemaVersion", "bindings"], [], metadata.file);
+  if (asset.schemaVersion !== 1) {
+    throw new Error(`${metadata.file} schema mismatch`);
+  }
+  const bindings = arrayValue(
+    asset.bindings,
+    `${metadata.file}.bindings`,
+    10000,
+  );
+  if (bindings.length !== metadata.count) {
+    throw new Error(`${metadata.file} binding count mismatch`);
+  }
+  let previousGlyph = -1;
+  bindings.forEach((candidate, index) => {
+    const label = `${metadata.file}.bindings[${index}]`;
+    const binding = objectValue(candidate, label);
+    exactKeys(binding, ["glyph", "objectId"], [], label);
+    const glyph = integerValue(
+      binding.glyph,
+      `${label}.glyph`,
+      0,
+      maxGlyph - 1,
+    );
+    const objectId = entityId(binding.objectId, `${label}.objectId`);
+    if (!objectId.startsWith("object:")) {
+      throw new Error(`${label}.objectId is not an object identity`);
+    }
+    if (glyph <= previousGlyph) {
+      throw new Error(`${metadata.file} glyphs must be unique and sorted`);
+    }
+    previousGlyph = glyph;
+  });
+  return asset as unknown as VisibleObjectBindingAsset;
 }
 
 /**

@@ -2,10 +2,11 @@
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /*-Copyright (c) Derek S. Ray, 2015. */
 /* NetHack may be freely redistributed.  See license for details. */
-/* Modified for BlissHack by lightmain, 2026-09-23 and 2026-10-13:
+/* Modified for BlissHack by lightmain, 2026-09-23, 2026-10-13, and 2026-10-14:
  * force action-owned getobj selection through the real candidate menu and
- * scope WASM provenance to that menu callback; publish a bounded artifact
- * identity only when permanent inventory has already disclosed its name. */
+ * scope WASM provenance to that menu callback; publish bounded artifact and
+ * ordinary object identities only after permanent inventory has disclosed
+ * their names. */
 
 #include "hack.h"
 
@@ -13,15 +14,21 @@
 extern boolean shim_action_getobj_requested(void);
 extern void shim_action_getobj_begin(void);
 extern void shim_action_getobj_end(void);
-extern void shim_visible_artifact_publish(const char *);
+extern void shim_visible_entity_publish(const char *);
 
-struct bliss_artifact_symbol {
+struct bliss_enum_symbol {
     int value;
     const char *symbol;
 };
 
+#define DUMP_ENUMS
+static const struct bliss_enum_symbol bliss_object_symbols[] = {
+#include "objects.h"
+};
+#undef DUMP_ENUMS
+
 #define DUMP_ARTI_ENUM
-static const struct bliss_artifact_symbol bliss_artifact_symbols[] = {
+static const struct bliss_enum_symbol bliss_artifact_symbols[] = {
 #include "artilist.h"
 };
 #undef DUMP_ARTI_ENUM
@@ -77,6 +84,22 @@ visible_artifact_symbol(int artifact)
     for (i = 0; i < SIZE(bliss_artifact_symbols); ++i)
         if (bliss_artifact_symbols[i].value == artifact)
             return bliss_artifact_symbols[i].symbol;
+    return (const char *) 0;
+}
+
+/*
+ * Return the stable source symbol for one object enumeration value.
+ * @param object_type objects[] index to resolve.
+ * @return Canonical source symbol, or null when the value is unavailable.
+ */
+staticfn const char *
+visible_object_symbol(int object_type)
+{
+    int i;
+
+    for (i = 0; i < SIZE(bliss_object_symbols); ++i)
+        if (bliss_object_symbols[i].value == object_type)
+            return bliss_object_symbols[i].symbol;
     return (const char *) 0;
 }
 #endif
@@ -3427,8 +3450,19 @@ display_pickinv(
                     if (artifact_symbol) {
                         Sprintf(visible_artifact_token, "artifact:%s",
                                 artifact_symbol);
-                        shim_visible_artifact_publish(
+                        shim_visible_entity_publish(
                             visible_artifact_token);
+                    }
+                } else if (doing_perm_invent && otmp->dknown
+                           && objects[otmp->otyp].oc_name_known) {
+                    const char *object_symbol =
+                        visible_object_symbol(otmp->otyp);
+                    char visible_object_token[BUFSZ];
+
+                    if (object_symbol) {
+                        Sprintf(visible_object_token, "object:%s",
+                                object_symbol);
+                        shim_visible_entity_publish(visible_object_token);
                     }
                 }
 #endif
