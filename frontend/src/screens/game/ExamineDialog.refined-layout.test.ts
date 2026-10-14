@@ -1,9 +1,13 @@
+/// <reference types="node" />
+
+import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import type { CoreEntityRecord } from "../../encyclopedia/core-schema";
 import type { LoadedEncyclopediaEntity } from "../../encyclopedia/encyclopedia-loader";
 import type { ExamineTarget } from "../../encyclopedia/examine-target";
+import { resolveWikiPage } from "../../encyclopedia/wiki-page";
 import { ExamineDialog } from "./ExamineDialog";
 import { ExamineFacts } from "./ExamineFacts";
 import {
@@ -11,6 +15,7 @@ import {
   NEWT_ENTITY,
   NEWT_TARGET,
   NEWT_WIKI,
+  WEAPON_CORE,
 } from "./ExamineDialog.test-fixtures";
 
 interface TrustedWikiPage {
@@ -21,6 +26,20 @@ interface TrustedWikiPage {
 type EntityWithWikiPage = LoadedEncyclopediaEntity & {
   wikiPage: TrustedWikiPage | null;
 };
+
+const OBJECT_RECORDS = ["object-002.json", "object-003.json"].flatMap((file) =>
+  (JSON.parse(readFileSync(
+    new URL(`../../../public/encyclopedia/core/${file}`, import.meta.url),
+    "utf8",
+  )) as { records: CoreEntityRecord[] }).records
+);
+
+/** Return one checked-in object record by its stable source ID. */
+function objectRecord(id: string): CoreEntityRecord {
+  const record = OBJECT_RECORDS.find((candidate) => candidate.id === id);
+  if (!record) throw new Error(`Missing object fixture ${id}`);
+  return structuredClone(record);
+}
 
 /** Render one ready Examine dialog with explicit trusted page metadata. */
 function renderDialog(
@@ -63,6 +82,62 @@ function renderedHref(url: string): string {
 }
 
 describe("refined Examine Wiki page links", () => {
+  it.each([
+    [
+      "object:POT_HEALING",
+      "Potion of healing",
+      "https://nethackwiki.com/wiki/Potion_of_healing",
+    ],
+    [
+      "object:WAN_FIRE",
+      "Wand of fire",
+      "https://nethackwiki.com/wiki/Wand_of_fire",
+    ],
+  ])("resolves the runtime catalog page for %s", (id, title, url) => {
+    expect(resolveWikiPage({
+      core: objectRecord(id),
+      wiki: null,
+    })).toEqual({ title, url });
+  });
+
+  it("prefers a reviewed Wiki title over the runtime fallback", () => {
+    const wiki = structuredClone(NEWT_WIKI);
+    wiki.page.title = "Potion";
+
+    expect(resolveWikiPage({
+      core: objectRecord("object:POT_HEALING"),
+      wiki,
+    })).toEqual({
+      title: "Potion",
+      url: "https://nethackwiki.com/wiki/Potion",
+    });
+  });
+
+  it("keeps generic appearances fixed-map and fail-closed", () => {
+    const appearance = (objectClass: string): CoreEntityRecord => ({
+      schemaVersion: 1,
+      id: `appearance:${objectClass}:GENERIC`,
+      kind: "appearance",
+      names: { primary: "wand of fire from visible text" },
+      symbol: 33,
+      color: null,
+      facts: { objectClass },
+      sourceRefs: [{ path: "include/objects.h", symbol: objectClass }],
+    });
+
+    expect(resolveWikiPage({
+      core: appearance("POTION_CLASS"),
+      wiki: null,
+    })).toEqual({
+      title: "Potion",
+      url: "https://nethackwiki.com/wiki/Potion",
+    });
+    expect(resolveWikiPage({
+      core: appearance("MYSTERY_CLASS"),
+      wiki: null,
+    })).toBeNull();
+  });
+
   it("links a safely resolved facts-only entity from the page header", () => {
     const core = structuredClone(NEWT_CORE);
     core.id = "monster:PM_KITTEN";
@@ -153,6 +228,18 @@ describe("refined Examine Wiki page links", () => {
 });
 
 describe("refined Examine fact hierarchy", () => {
+  it("keeps non-monster facts-only content out of the monster column grid", () => {
+    const html = renderDialog(
+      { core: WEAPON_CORE, wiki: null },
+      { ...NEWT_TARGET, entityId: WEAPON_CORE.id },
+    );
+
+    expect(html).toContain('data-facts-only="true"');
+    expect(html).toContain('data-entity-kind="object"');
+    expect(html).not.toContain("examine-facts-primary");
+    expect(html).not.toContain("examine-facts-secondary");
+  });
+
   it("groups primary and secondary monster facts into distinct columns", () => {
     const html = renderToStaticMarkup(createElement(ExamineFacts, {
       core: NEWT_CORE,
