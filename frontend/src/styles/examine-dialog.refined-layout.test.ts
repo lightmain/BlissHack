@@ -40,10 +40,31 @@ describe("refined Examine typography and fact hierarchy", () => {
     expect(dialog).not.toMatch(/\bInter\b|ui-sans-serif|system-ui/);
   });
 
-  it("lays facts-only content out as emphasized primary and secondary columns", () => {
+  it("keeps a fixed facts rail with Wiki content and widens facts-only content", () => {
+    const withWiki = cssFor(CSS, ".examine-layout");
+    const factsOnly = cssFor(
+      CSS,
+      '.examine-layout[data-facts-only="true"]',
+    );
+
+    expect(withWiki).toMatch(
+      /\bgrid-template-columns\s*:\s*minmax\(0,\s*1fr\)\s+330px\s*;/,
+    );
+    expect(factsOnly).toMatch(
+      /\bgrid-template-columns\s*:\s*minmax\(0,\s*1fr\)\s*;/,
+    );
+    expect(factsOnly).not.toMatch(/\b330px\b/);
+  });
+
+  it("uses emphasized primary and secondary columns only for monsters", () => {
     const factsOnly = cssFor(
       CSS,
       '.examine-layout[data-facts-only="true"] .examine-facts',
+    );
+    const monsterFactsOnly = cssFor(
+      CSS,
+      '.examine-layout[data-facts-only="true"] '
+        + '.examine-facts[data-entity-kind="monster"]',
     );
     const primary = cssFor(CSS, ".examine-facts-primary");
     const statistics = cssFor(
@@ -55,8 +76,10 @@ describe("refined Examine typography and fact hierarchy", () => {
 
     expect(factsOnly).toMatch(/\bwidth\s*:\s*100%\s*;/);
     expect(factsOnly).toMatch(/\bmax-width\s*:\s*none\s*;/);
-    expect(factsOnly).toMatch(/\bdisplay\s*:\s*grid\s*;/);
-    expect(factsOnly).toMatch(
+    expect(factsOnly).not.toMatch(/\bdisplay\s*:\s*grid\s*;/);
+    expect(factsOnly).not.toMatch(/\bgrid-template-columns\s*:/);
+    expect(monsterFactsOnly).toMatch(/\bdisplay\s*:\s*grid\s*;/);
+    expect(monsterFactsOnly).toMatch(
       /\bgrid-template-columns\s*:\s*minmax\(0,\s*1\.08fr\)\s+minmax\(0,\s*0\.92fr\)\s*;/,
     );
     expect(primary).toMatch(/\bborder-right\s*:\s*1px\s+solid\b/);
