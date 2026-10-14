@@ -4,40 +4,20 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>BlissHack Examine 排版对比原型</title>
+  <title>BlissHack Examine 真实界面对比原型</title>
   <style>
     :root {
-      --bg: #080a0b;
-      --bg2: #0d1011;
-      --surface: #0f1314;
-      --surface-raised: #171c1e;
-      --surface-soft: #121718;
-      --surface-hover: #202729;
-      --surface-accent: #151b1c;
-      --ink: #d8d8d2;
-      --ink-bright: #f4f6f3;
-      --ink-soft: #c8cdca;
-      --muted: #9ba5a6;
-      --muted-dark: #818b8c;
-      --rule: #30383a;
-      --rule-strong: #626d70;
-      --accent: #e5ca70;
-      --accent-soft: #817547;
-      --accent2: #78bac8;
-      --positive: #89cf97;
-      --danger: #e29289;
-      --backdrop: rgb(0 0 0 / 74%);
-      --shadow: rgb(0 0 0 / 72%);
-      --toolbar-shadow: rgb(0 0 0 / 46%);
-      --transparent: transparent;
-      --font-ui:
-        Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
-        "Segoe UI", sans-serif;
-      --font-mono:
+      color-scheme: dark;
+      --prototype-bg: #080a0b;
+      --prototype-surface: #171c1e;
+      --prototype-surface-hover: #202729;
+      --prototype-ink: #e7e9e5;
+      --prototype-muted: #9ba5a6;
+      --prototype-rule: #626d70;
+      --prototype-accent: #e5ca70;
+      --prototype-focus: #78bac8;
+      --prototype-font:
         "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-      --terminal-size: 14px;
-      --dialog-width: 1180px;
-      --facts-width: 510px;
     }
 
     * {
@@ -49,17 +29,12 @@
     body {
       width: 100%;
       min-width: 320px;
-      min-height: 100%;
+      height: 100%;
       margin: 0;
       overflow: hidden;
-      background: var(--bg);
-      color: var(--ink);
-    }
-
-    body {
-      font-family: var(--font-mono);
-      font-size: var(--terminal-size);
-      line-height: 1.3;
+      background: var(--prototype-bg);
+      color: var(--prototype-ink);
+      font-family: var(--prototype-font);
     }
 
     button,
@@ -67,1196 +42,264 @@
       font: inherit;
     }
 
-    button {
-      color: inherit;
+    .runtime-snapshot {
+      position: fixed;
+      z-index: 1;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      border: 0;
+      background: var(--prototype-bg);
     }
 
-    [hidden] {
-      display: none !important;
-    }
-
-    .prototype-toolbar {
+    .snapshot-controls {
       position: fixed;
       z-index: 100;
-      top: 0;
-      right: 0;
-      left: 0;
-      min-height: 48px;
+      top: 8px;
+      left: 50%;
+      min-height: 42px;
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      gap: 18px;
-      padding: 7px 14px;
-      border-bottom: 1px solid var(--rule-strong);
-      background: var(--surface-raised);
-      box-shadow: 0 7px 18px var(--toolbar-shadow);
+      gap: 12px;
+      padding: 5px 6px 5px 12px;
+      border: 1px solid var(--prototype-rule);
+      border-radius: 5px;
+      background: rgb(23 28 30 / 96%);
+      box-shadow: 0 8px 24px rgb(0 0 0 / 55%);
+      transform: translateX(-50%);
     }
 
-    .prototype-toolbar h1 {
+    .snapshot-controls h1 {
       margin: 0;
-      color: var(--ink-bright);
-      font-size: 13px;
+      color: var(--prototype-ink);
+      font-size: 12px;
       font-weight: 700;
       white-space: nowrap;
     }
 
-    .prototype-controls,
-    .prototype-control-group {
+    .snapshot-control-group,
+    .snapshot-segment {
       display: flex;
       align-items: center;
-      gap: 8px;
     }
 
-    .prototype-controls {
-      flex-wrap: wrap;
-      justify-content: flex-end;
-    }
-
-    .prototype-control-label {
-      color: var(--muted);
-      font-size: 11px;
-    }
-
-    .prototype-segment {
-      display: inline-flex;
-      padding: 2px;
-      border: 1px solid var(--rule-strong);
-      border-radius: 4px;
-      background: var(--bg2);
-    }
-
-    .prototype-segment button,
-    .prototype-open {
-      min-height: 28px;
-      padding: 4px 10px;
-      border: 0;
-      border-radius: 2px;
-      background: var(--transparent);
-      color: var(--muted);
-      cursor: pointer;
-      font-size: 11px;
-    }
-
-    .prototype-segment button:hover,
-    .prototype-segment button:focus-visible,
-    .prototype-open:hover,
-    .prototype-open:focus-visible {
-      background: var(--surface-hover);
-      color: var(--ink-bright);
-      outline: 1px solid var(--accent2);
-      outline-offset: -1px;
-    }
-
-    .prototype-segment button[aria-pressed="true"] {
-      background: var(--accent);
-      color: var(--bg);
-      font-weight: 700;
-    }
-
-    .prototype-open {
-      border: 1px solid var(--rule-strong);
-      color: var(--ink);
-    }
-
-    .prototype-stage {
-      position: relative;
-      width: 100vw;
-      height: 100dvh;
-      padding-top: 48px;
-      overflow: hidden;
-      background: var(--bg);
-    }
-
-    .game-surface {
-      position: absolute;
-      inset: 48px 0 0;
-      display: grid;
-      grid-template:
-        "messages messages" 58px
-        "map inventory" minmax(0, 1fr)
-        "status inventory" 92px
-        / minmax(0, 1fr) 280px;
-      gap: 7px;
-      padding: 8px;
-      color: var(--muted-dark);
-      font-size: 12px;
-      opacity: 0.5;
-    }
-
-    .game-messages,
-    .game-map,
-    .game-status,
-    .game-inventory {
-      overflow: hidden;
-      border: 1px solid var(--rule);
-      background: var(--bg2);
-    }
-
-    .game-messages {
-      grid-area: messages;
-      padding: 9px 12px;
-      white-space: pre-line;
-    }
-
-    .game-map {
-      grid-area: map;
-      display: grid;
-      place-items: center;
-      color: var(--positive);
-      white-space: pre;
-      line-height: 1.08;
-    }
-
-    .game-status {
-      grid-area: status;
-      display: flex;
-      align-items: center;
-      gap: 24px;
-      padding: 14px;
-    }
-
-    .game-inventory {
-      grid-area: inventory;
-      padding: 10px;
-      white-space: pre-line;
-    }
-
-    .examine-backdrop {
-      position: fixed;
-      z-index: 50;
-      inset: 48px 0 0;
-      display: grid;
-      place-items: center;
-      padding: 28px;
-      background: var(--backdrop);
-      backdrop-filter: blur(2px);
-    }
-
-    .examine-dialog {
-      width: min(var(--dialog-width), calc(100vw - 56px));
-      height: min(760px, calc(100dvh - 104px));
-      min-height: 540px;
-      display: grid;
-      grid-template-rows: auto auto minmax(0, 1fr);
-      overflow: hidden;
-      border: 1px solid var(--rule-strong);
-      border-radius: 6px;
-      background: var(--surface);
-      box-shadow: 0 28px 70px var(--shadow);
-      color: var(--ink);
-      font-family: var(--font-mono);
-      font-size: var(--terminal-size);
-    }
-
-    body[data-mode="current"] .examine-dialog {
-      --dialog-width: 1040px;
-      --facts-width: 330px;
-      height: min(720px, calc(100dvh - 104px));
-      min-height: 520px;
-      font-family: var(--font-ui);
-      font-size: 14px;
-    }
-
-    .examine-header {
-      min-width: 0;
-      min-height: 88px;
-      display: grid;
-      grid-template-columns: auto minmax(0, 1fr) auto;
-      align-items: center;
-      gap: 14px;
-      padding: 14px 18px;
-      border-bottom: 1px solid var(--rule);
-      background: var(--surface-raised);
-    }
-
-    .examine-portrait {
-      width: 54px;
-      height: 54px;
-      display: grid;
-      place-items: center;
-      border: 1px solid var(--accent-soft);
-      border-radius: 5px;
-      background: var(--surface-accent);
-      color: var(--accent);
-      font: 700 32px/1 var(--font-mono);
-    }
-
-    .examine-heading {
-      min-width: 0;
-    }
-
-    .examine-title-row {
-      display: flex;
-      min-width: 0;
-      align-items: center;
-      gap: 11px;
-    }
-
-    .examine-heading h2 {
-      min-width: 0;
-      margin: 0;
-      overflow-wrap: anywhere;
-      color: var(--ink-bright);
-      font-size: 25px;
-      font-weight: 700;
-      line-height: 1.15;
-    }
-
-    .examine-wiki-link {
-      flex: 0 0 auto;
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      padding: 4px 7px;
-      border: 1px solid var(--rule-strong);
-      border-radius: 3px;
-      color: var(--accent2);
-      text-decoration: none;
-      font-size: 12px;
-      font-weight: 700;
-    }
-
-    .examine-wiki-link:hover,
-    .examine-wiki-link:focus-visible {
-      border-color: var(--accent2);
-      background: var(--surface-hover);
-      color: var(--ink-bright);
-      outline: none;
-    }
-
-    body[data-mode="current"] .examine-wiki-link {
-      display: none;
-    }
-
-    .examine-heading > p {
-      margin: 5px 0 0;
-      color: var(--muted);
-      font-size: 0.86em;
-    }
-
-    body[data-mode="current"] .examine-heading > p {
-      font-size: 12px;
-    }
-
-    .examine-badges,
-    .trait-list {
-      display: flex;
-      flex-wrap: wrap;
+    .snapshot-control-group {
       gap: 6px;
     }
 
-    .examine-badges {
-      margin-top: 8px;
-    }
-
-    .examine-badge,
-    .trait {
-      max-width: 100%;
-      padding: 3px 7px;
-      overflow-wrap: anywhere;
-      border: 1px solid var(--rule-strong);
-      border-radius: 3px;
-      color: var(--ink-soft);
-      font-family: var(--font-mono);
-      font-size: 0.78em;
-      font-weight: 600;
-    }
-
-    body[data-mode="current"] .examine-badge {
+    .snapshot-label {
+      color: var(--prototype-muted);
       font-size: 10px;
     }
 
-    .examine-close {
-      width: 34px;
-      height: 34px;
-      display: grid;
-      place-items: center;
-      padding: 0;
-      border: 1px solid var(--transparent);
+    .snapshot-segment {
+      gap: 2px;
+      padding: 2px;
+      border: 1px solid #3f494c;
       border-radius: 3px;
-      background: var(--transparent);
-      color: var(--muted);
+      background: #0d1011;
+    }
+
+    .snapshot-segment button,
+    .snapshot-icon-button,
+    .control-reveal {
+      border: 0;
+      border-radius: 2px;
+      background: transparent;
+      color: var(--prototype-muted);
       cursor: pointer;
-      font-size: 24px;
-      line-height: 1;
     }
 
-    .examine-close:hover,
-    .examine-close:focus-visible {
-      border-color: var(--rule-strong);
-      color: var(--ink-bright);
-      outline: 2px solid var(--accent2);
-      outline-offset: 1px;
-    }
-
-    .examine-source-strip {
-      min-height: 40px;
-      display: flex;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 6px 8px;
-      padding: 8px 18px;
-      border-bottom: 1px solid var(--rule);
-      background: var(--surface-soft);
-      color: var(--muted);
-      font-size: 0.82em;
-      white-space: normal;
-    }
-
-    body[data-mode="current"] .examine-source-strip {
-      min-height: 36px;
-      padding-block: 7px;
+    .snapshot-segment button {
+      min-height: 26px;
+      padding: 4px 9px;
       font-size: 11px;
     }
 
-    .examine-source-strip a,
-    .license-note a {
-      color: var(--accent2);
+    .snapshot-segment button[aria-pressed="true"] {
+      background: var(--prototype-accent);
+      color: #080a0b;
+      font-weight: 700;
+    }
+
+    .snapshot-segment button:hover,
+    .snapshot-segment button:focus-visible,
+    .snapshot-icon-button:hover,
+    .snapshot-icon-button:focus-visible,
+    .control-reveal:hover,
+    .control-reveal:focus-visible {
+      background: var(--prototype-surface-hover);
+      color: #fff;
+      outline: 1px solid var(--prototype-focus);
+      outline-offset: -1px;
+    }
+
+    .snapshot-icon-button,
+    .control-reveal {
+      width: 30px;
+      height: 30px;
+      display: grid;
+      place-items: center;
+      padding: 0;
+      line-height: 0;
+    }
+
+    .snapshot-icon-button {
       text-decoration: none;
     }
 
-    .examine-source-strip a:hover,
-    .examine-source-strip a:focus-visible,
-    .license-note a:hover,
-    .license-note a:focus-visible {
-      color: var(--ink-bright);
-      text-decoration: underline;
-      outline: none;
+    .snapshot-icon-button svg,
+    .control-reveal svg {
+      width: 16px;
+      height: 16px;
     }
 
-    .source-note {
-      flex-basis: 100%;
-      color: var(--muted-dark);
-      font-size: 0.9em;
-    }
-
-    .examine-layout {
-      min-width: 0;
-      min-height: 0;
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) var(--facts-width);
-    }
-
-    .examine-article {
-      min-width: 0;
-      min-height: 0;
-      display: grid;
-      grid-template-rows: auto minmax(0, 1fr);
-      border-right: 1px solid var(--rule);
-    }
-
-    .examine-tabs {
-      min-height: 44px;
-      display: flex;
-      gap: 2px;
-      padding: 6px 14px 0;
-      border-bottom: 1px solid var(--rule);
-      background: var(--surface-soft);
-    }
-
-    .examine-tab {
-      position: relative;
-      min-width: 92px;
-      padding: 8px 10px 10px;
-      border: 0;
-      background: var(--transparent);
-      color: var(--muted);
-      cursor: pointer;
-      font-size: 0.9em;
-      font-weight: 700;
-    }
-
-    body[data-mode="current"] .examine-tab {
-      font-size: 12px;
-    }
-
-    .examine-tab:hover,
-    .examine-tab:focus-visible {
-      color: var(--ink-bright);
-      outline: none;
-    }
-
-    .examine-tab[aria-selected="true"] {
-      color: var(--accent);
-    }
-
-    .examine-tab[aria-selected="true"]::after {
-      position: absolute;
-      right: 8px;
-      bottom: -1px;
-      left: 8px;
-      height: 2px;
-      background: var(--accent);
-      content: "";
-    }
-
-    .examine-tab-panel {
-      min-height: 0;
-      padding: 22px 24px 34px;
-      overflow-y: auto;
-      scrollbar-color: var(--rule-strong) var(--surface);
-      scrollbar-width: thin;
-    }
-
-    .wiki-section + .wiki-section {
-      margin-top: 26px;
-    }
-
-    .wiki-section h3 {
-      margin: 0 0 10px;
-      color: var(--ink-bright);
-      font-size: 1.14em;
-      font-weight: 700;
-    }
-
-    body[data-mode="current"] .wiki-section h3 {
-      font-size: 17px;
-    }
-
-    .excerpt-label {
-      margin: 0 0 9px;
-      color: var(--muted);
-      font-family: var(--font-mono);
-      font-size: 0.78em;
-      font-weight: 700;
-      text-transform: uppercase;
-    }
-
-    body[data-mode="current"] .excerpt-label {
-      font-size: 10px;
-    }
-
-    .wiki-excerpt {
-      max-width: 70ch;
-      margin: 0;
-      padding: 0;
-      border: 0;
-    }
-
-    .wiki-excerpt p {
-      margin: 0 0 15px;
-      overflow-wrap: anywhere;
-      color: var(--ink-soft);
-      font-size: 1em;
-      line-height: 1.58;
-    }
-
-    body[data-mode="current"] .wiki-excerpt p {
-      font-family: var(--font-ui);
-      font-size: 14px;
-      line-height: 1.62;
-    }
-
-    .examine-facts {
-      min-width: 0;
-      min-height: 0;
-      padding: 20px;
-      overflow-y: auto;
-      background: var(--bg2);
-      scrollbar-color: var(--rule-strong) var(--bg2);
-      scrollbar-width: thin;
-    }
-
-    body[data-mode="current"] .examine-facts {
-      padding: 18px;
-    }
-
-    .current-facts,
-    .proposed-facts {
-      min-width: 0;
-    }
-
-    body[data-mode="current"] .proposed-facts,
-    body[data-mode="proposal"] .current-facts {
+    .control-reveal {
+      position: fixed;
+      z-index: 101;
+      top: 7px;
+      right: 7px;
       display: none;
-    }
-
-    .fact-section {
-      min-width: 0;
-      padding: 0 0 17px;
-      border-bottom: 1px solid var(--rule);
-    }
-
-    .fact-section + .fact-section {
-      padding-top: 17px;
-    }
-
-    .fact-section:last-child {
-      border-bottom: 0;
-    }
-
-    .fact-section h3 {
-      margin: 0 0 11px;
-      color: var(--muted);
-      font-size: 10px;
-      font-weight: 700;
-      text-transform: uppercase;
-    }
-
-    .detail-list {
-      display: grid;
-      gap: 10px;
-      margin: 0;
-      padding: 0;
-    }
-
-    .detail-row {
-      min-width: 0;
-      display: grid;
-      grid-template-columns: minmax(6rem, auto) minmax(0, 1fr);
-      gap: 10px;
-      align-items: start;
-    }
-
-    .detail-row dt,
-    .detail-row dd {
-      min-width: 0;
-      margin: 0;
-      overflow-wrap: anywhere;
-    }
-
-    .detail-row dt {
-      color: var(--muted);
-      font-size: 10px;
-    }
-
-    .detail-row dd {
-      color: var(--ink);
-      font-size: 11px;
-      text-align: right;
-    }
-
-    .detail-row code {
-      font-family: var(--font-mono);
-    }
-
-    .attack-row {
-      min-width: 0;
-      display: grid;
-      grid-template-columns: 25px minmax(0, 1fr) auto;
-      align-items: center;
-      gap: 9px;
-    }
-
-    .attack-index {
-      width: 25px;
-      height: 25px;
-      display: grid;
-      place-items: center;
-      border: 1px solid var(--danger);
-      border-radius: 3px;
-      color: var(--danger);
-      font: 700 11px/1 var(--font-mono);
-    }
-
-    .attack-copy strong,
-    .attack-copy span {
-      display: block;
-    }
-
-    .attack-copy strong {
-      color: var(--ink-bright);
-      font-size: 12px;
-    }
-
-    .attack-copy span {
-      margin-top: 2px;
-      color: var(--muted);
-      font-size: 10px;
-    }
-
-    .attack-dice {
-      color: var(--accent);
-      font: 700 13px/1 var(--font-mono);
-    }
-
-    .proposed-facts {
-      display: grid;
-      grid-template-columns: minmax(0, 1.12fr) minmax(0, 0.88fr);
-      gap: 0 24px;
-      align-items: start;
-    }
-
-    .facts-primary {
-      padding-right: 22px;
-      border-right: 1px solid var(--rule);
-    }
-
-    .proposed-facts .fact-section h3 {
-      color: var(--ink-soft);
-      font-size: 0.86em;
-    }
-
-    .proposed-facts .facts-primary > .fact-section:first-child h3 {
-      color: var(--accent);
-    }
-
-    .key-facts {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 0;
-      margin: 0;
-      border-top: 1px solid var(--rule);
-    }
-
-    .key-fact {
-      min-width: 0;
-      padding: 11px 9px 12px 0;
-      border-bottom: 1px solid var(--rule);
-    }
-
-    .key-fact:nth-child(even) {
-      padding-right: 0;
-      padding-left: 13px;
-      border-left: 1px solid var(--rule);
-    }
-
-    .key-fact dt,
-    .compact-fact dt {
-      margin: 0 0 4px;
-      color: var(--muted);
-      font-size: 0.82em;
-    }
-
-    .key-fact dd {
-      margin: 0;
-      overflow-wrap: anywhere;
-      color: var(--ink-bright);
-      font-family: var(--font-mono);
-      font-size: 1.16em;
-      font-weight: 700;
-    }
-
-    .key-fact.is-accent dd {
-      color: var(--accent);
-    }
-
-    .proposed-attack {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      gap: 10px;
-      align-items: center;
-      padding: 11px 0;
-      border-top: 1px solid var(--rule);
-      border-bottom: 1px solid var(--rule);
-    }
-
-    .proposed-attack strong,
-    .proposed-attack span {
-      display: block;
-    }
-
-    .proposed-attack strong {
-      color: var(--ink-bright);
-      font-size: 1em;
-    }
-
-    .proposed-attack span {
-      margin-top: 3px;
-      color: var(--muted);
-      font-size: 0.82em;
-    }
-
-    .proposed-attack code {
-      color: var(--accent);
-      font-family: var(--font-mono);
-      font-size: 1.2em;
-      font-weight: 700;
-    }
-
-    .compact-facts {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 12px 16px;
-      margin: 0;
-    }
-
-    .compact-fact {
-      min-width: 0;
-    }
-
-    .compact-fact dd {
-      margin: 0;
-      overflow-wrap: anywhere;
-      color: var(--ink);
-      font-family: var(--font-mono);
-      font-size: 0.94em;
-    }
-
-    .trait-list {
-      gap: 7px;
-    }
-
-    .trait {
-      background: var(--surface-accent);
-      color: var(--accent2);
-      font-size: 0.78em;
-    }
-
-    .effect-note {
-      margin: 0;
-      color: var(--ink-soft);
-      font-size: 0.9em;
-      line-height: 1.5;
-    }
-
-    .effect-note strong {
-      color: var(--ink-bright);
-    }
-
-    .provenance {
-      grid-column: 1 / -1;
-      margin-top: 3px;
-      padding-top: 17px;
-      border-top: 1px solid var(--rule);
-    }
-
-    .provenance h3 {
-      margin: 0 0 10px;
-      color: var(--muted);
-      font-size: 0.82em;
-      text-transform: uppercase;
-    }
-
-    .source-list {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 7px 14px;
-      margin: 0 0 9px;
-      padding: 0;
-      list-style: none;
-    }
-
-    .source-list li {
-      min-width: 0;
-      color: var(--ink);
-      font-size: 0.82em;
-    }
-
-    .source-list span {
-      color: var(--muted-dark);
-    }
-
-    .license-note {
-      margin: 0;
-      color: var(--muted);
-      font-size: 0.82em;
-      line-height: 1.45;
-    }
-
-    .current-facts .provenance {
-      display: block;
-      margin-top: 0;
-    }
-
-    .current-facts .source-list {
-      display: grid;
-      gap: 7px;
-    }
-
-    .current-facts .source-list li,
-    .current-facts .license-note {
-      font-size: 10px;
+      border: 1px solid var(--prototype-rule);
+      background: rgb(23 28 30 / 92%);
+      box-shadow: 0 6px 18px rgb(0 0 0 / 45%);
     }
 
     .mode-caption {
       position: fixed;
-      z-index: 60;
-      right: 18px;
-      bottom: 14px;
-      padding: 6px 9px;
-      border: 1px solid var(--rule-strong);
+      z-index: 90;
+      right: 12px;
+      bottom: 10px;
+      max-width: min(430px, calc(100vw - 24px));
+      padding: 7px 9px;
+      border: 1px solid #4c5659;
       border-radius: 3px;
-      background: var(--surface-raised);
-      color: var(--muted);
+      background: rgb(15 19 20 / 94%);
+      box-shadow: 0 5px 16px rgb(0 0 0 / 42%);
+      color: var(--prototype-muted);
       font-size: 10px;
+      line-height: 1.45;
       pointer-events: none;
     }
 
-    body[data-mode="current"] .mode-caption::before {
-      content: "当前实现：固定 UI 字体 · 330px facts · 10–11px 字段";
+    .mode-caption strong {
+      color: var(--prototype-ink);
     }
 
-    body[data-mode="proposal"] .mode-caption::before {
-      content: "建议方案：继承终端字体 · 主次双栏 · 安全 Wiki 链接";
+    body[data-controls="collapsed"] .snapshot-controls {
+      display: none;
     }
 
-    @media (max-width: 1060px), (max-height: 690px) {
-      .examine-backdrop {
-        padding: 10px;
-      }
-
-      .examine-dialog {
-        width: calc(100vw - 20px);
-        height: calc(100dvh - 68px);
-        min-height: 0;
-      }
-
-      body[data-mode="proposal"] .examine-layout {
-        display: block;
-        overflow-y: auto;
-      }
-
-      body[data-mode="proposal"] .examine-article {
-        display: block;
-        border-right: 0;
-        border-bottom: 1px solid var(--rule);
-      }
-
-      body[data-mode="proposal"] .examine-tabs {
-        position: sticky;
-        z-index: 2;
-        top: 0;
-      }
-
-      body[data-mode="proposal"] .examine-tab-panel,
-      body[data-mode="proposal"] .examine-facts {
-        overflow: visible;
-      }
-
-      body[data-mode="proposal"] .examine-facts {
-        border-top: 1px solid var(--rule);
-      }
+    body[data-controls="collapsed"] .control-reveal {
+      display: grid;
     }
 
-    @media (max-width: 820px) {
-      .prototype-toolbar {
-        align-items: flex-start;
-        flex-direction: column;
-      }
-
-      .prototype-stage {
-        padding-top: 92px;
-      }
-
-      .game-surface,
-      .examine-backdrop {
-        top: 92px;
-      }
-
-      .examine-backdrop {
-        inset: 92px 0 0;
-      }
-
-      .examine-dialog {
-        height: calc(100dvh - 112px);
-      }
-
-      body[data-mode="current"] .examine-layout {
-        display: block;
-        overflow-y: auto;
-      }
-
-      body[data-mode="current"] .examine-article {
-        display: block;
-        border-right: 0;
-      }
-
-      body[data-mode="current"] .examine-tab-panel,
-      body[data-mode="current"] .examine-facts {
-        overflow: visible;
-      }
-
-      .proposed-facts {
-        grid-template-columns: minmax(0, 1fr);
-      }
-
-      .facts-primary {
-        padding-right: 0;
-        border-right: 0;
-      }
-
-      .provenance {
-        grid-column: 1;
-      }
-    }
-
-    @media (max-width: 560px) {
-      .prototype-toolbar h1,
-      .prototype-control-label {
+    @media (max-width: 1000px), (max-height: 780px) {
+      body[data-controls="auto"] .snapshot-controls {
         display: none;
       }
 
-      .prototype-controls {
-        justify-content: flex-start;
+      body[data-controls="auto"] .control-reveal {
+        display: grid;
       }
 
-      .examine-header {
-        grid-template-columns: auto minmax(0, 1fr) auto;
-        padding-inline: 12px;
+      .mode-caption {
+        display: none;
       }
+    }
 
-      .examine-wiki-link {
-        width: 30px;
-        height: 30px;
+    @media (max-width: 680px) {
+      .snapshot-controls {
+        right: 8px;
+        left: 8px;
+        flex-wrap: wrap;
         justify-content: center;
-        padding: 0;
-        font-size: 0;
+        transform: none;
       }
 
-      .examine-wiki-link span {
-        font-size: 16px;
-      }
-
-      .examine-source-strip,
-      .examine-tab-panel,
-      .examine-facts {
-        padding-inline: 14px;
+      .snapshot-controls h1,
+      .snapshot-label {
+        display: none;
       }
     }
   </style>
 </head>
-<body data-font="medium" data-mode="proposal">
-  <header class="prototype-toolbar">
-    <h1>Examine 排版对比原型</h1>
-    <div class="prototype-controls">
-      <div class="prototype-control-group">
-        <span class="prototype-control-label">版本</span>
-        <div class="prototype-segment" aria-label="选择原型版本">
-          <button data-mode-control="current" type="button">当前实现</button>
-          <button aria-pressed="true" data-mode-control="proposal" type="button">建议方案</button>
-        </div>
+<body data-controls="auto" data-font="medium" data-mode="current">
+  <iframe
+    class="runtime-snapshot"
+    data-runtime-snapshot
+    title="BlissHack 游戏内 Examine 界面快照"
+  ></iframe>
+
+  <header class="snapshot-controls" data-snapshot-controls>
+    <h1>Examine 真实界面对比</h1>
+    <div class="snapshot-control-group">
+      <span class="snapshot-label">版本</span>
+      <div class="snapshot-segment" aria-label="选择对比版本">
+        <button aria-pressed="true" data-mode-control="current" type="button">当前实现</button>
+        <button aria-pressed="false" data-mode-control="proposal" type="button">建议方案</button>
       </div>
-      <div class="prototype-control-group">
-        <span class="prototype-control-label">终端字号</span>
-        <div class="prototype-segment" aria-label="选择终端字号">
-          <button data-font-control="small" type="button">12</button>
-          <button aria-pressed="true" data-font-control="medium" type="button">14</button>
-          <button data-font-control="large" type="button">16</button>
-        </div>
-      </div>
-      <button class="prototype-open" data-open-dialog type="button">重新打开</button>
     </div>
+    <div class="snapshot-control-group">
+      <span class="snapshot-label">游戏字号</span>
+      <div class="snapshot-segment" aria-label="选择游戏字号">
+        <button aria-pressed="false" data-font-control="small" type="button">12</button>
+        <button aria-pressed="true" data-font-control="medium" type="button">14</button>
+        <button aria-pressed="false" data-font-control="large" type="button">16</button>
+      </div>
+    </div>
+    <button
+      aria-label="关闭 Examine 窗口"
+      aria-pressed="true"
+      class="snapshot-icon-button"
+      data-dialog-toggle
+      title="关闭 Examine 窗口"
+      type="button"
+    >
+      <svg aria-hidden="true" class="lucide lucide-eye" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2">
+        <path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"></path>
+        <circle cx="12" cy="12" r="3"></circle>
+      </svg>
+    </button>
+    <button
+      aria-label="隐藏原型控制栏"
+      class="snapshot-icon-button"
+      data-controls-collapse
+      title="隐藏控制栏"
+      type="button"
+    >
+      <svg aria-hidden="true" class="lucide lucide-chevron-up" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2">
+        <path d="m18 15-6-6-6 6"></path>
+      </svg>
+    </button>
   </header>
 
-  <main class="prototype-stage">
-    <div class="game-surface" aria-hidden="true">
-      <div class="game-messages">You see here a newt.
-The newt bites!</div>
-      <div class="game-map">┌──────────────────────────────────────────────┐
-│...............───────........................│
-│.........@.....│.....│.........:..............│
-│...............+.....│........................│
-│...............───────........................│
-└──────────────────────────────────────────────┘</div>
-      <div class="game-status"><strong>HP 16 / 16</strong><span>Pw 4 / 4</span><span>AC 6</span><span>Dlvl 1</span></div>
-      <div class="game-inventory"><strong>Inventory</strong>
+  <button
+    aria-label="显示原型控制栏"
+    class="control-reveal"
+    data-controls-expand
+    title="显示原型控制栏"
+    type="button"
+  >
+    <svg aria-hidden="true" class="lucide lucide-sliders-horizontal" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2">
+      <line x1="21" x2="14" y1="4" y2="4"></line>
+      <line x1="10" x2="3" y1="4" y2="4"></line>
+      <line x1="21" x2="12" y1="12" y2="12"></line>
+      <line x1="8" x2="3" y1="12" y2="12"></line>
+      <line x1="21" x2="16" y1="20" y2="20"></line>
+      <line x1="12" x2="3" y1="20" y2="20"></line>
+      <line x1="14" x2="14" y1="2" y2="6"></line>
+      <line x1="8" x2="8" y1="10" y2="14"></line>
+      <line x1="16" x2="16" y1="18" y2="22"></line>
+    </svg>
+  </button>
 
-a - a +1 bullwhip
-b - an uncursed leather jacket
-c - 3 food rations
-d - a purple-red potion</div>
-    </div>
+  <div aria-live="polite" class="mode-caption">
+    <strong data-caption-title>当前实现</strong>
+    <span data-caption-copy>：直接渲染游戏内保存的 Kitten facts-only 快照。</span>
+  </div>
 
-    <div class="examine-backdrop" data-backdrop>
-      <section
-        aria-labelledby="examine-title"
-        aria-modal="true"
-        class="examine-dialog"
-        data-browser-keyboard="true"
-        role="dialog"
-      >
-        <header class="examine-header">
-          <div aria-hidden="true" class="examine-portrait">:</div>
-          <div class="examine-heading">
-            <div class="examine-title-row">
-              <h2 id="examine-title">Newt</h2>
-              <a
-                aria-label="在 NetHackWiki 打开 Newt"
-                class="examine-wiki-link"
-                href="https://nethackwiki.com/wiki/Newt"
-                rel="noopener noreferrer"
-                target="_blank"
-                title="Open current NetHackWiki page"
-              >
-                <span aria-hidden="true">↗</span>
-                Wiki
-              </a>
-            </div>
-            <p>Monster · S_LIZARD</p>
-            <div aria-label="Entity characteristics" class="examine-badges">
-              <span class="examine-badge">MZ_TINY</span>
-              <span class="examine-badge">M1_SWIM</span>
-              <span class="examine-badge">M1_AMPHIBIOUS</span>
-              <span class="examine-badge">M1_NOHANDS</span>
-            </div>
-          </div>
-          <button aria-label="Close examine window" class="examine-close" data-close-dialog title="Close" type="button">×</button>
-        </header>
-
-        <div class="examine-source-strip">
-          <span>Verbatim excerpts from</span>
-          <a href="https://nethackwiki.com/index.php?title=Newt&amp;oldid=205110" rel="noopener noreferrer" target="_blank">“Newt”</a>
-          <span>by</span>
-          <a href="https://nethackwiki.com/index.php?title=Newt&amp;action=history" rel="noopener noreferrer" target="_blank">NetHackWiki contributors</a>
-          <span>·</span>
-          <span>revision 205110</span>
-          <span>·</span>
-          <a href="https://creativecommons.org/licenses/by-sa/3.0/" rel="license noopener noreferrer" target="_blank">CC BY-SA 3.0</a>
-          <span class="source-note">Selection only. Internal link destinations omitted; Wiki markup omitted; wording unchanged.</span>
-        </div>
-
-        <div class="examine-layout">
-          <article class="examine-article">
-            <nav aria-label="Newt information" class="examine-tabs" role="tablist">
-              <button aria-controls="strategy-panel" aria-selected="true" class="examine-tab" data-tab="strategy" id="strategy-tab" role="tab" type="button">Strategy</button>
-              <button aria-controls="history-panel" aria-selected="false" class="examine-tab" data-tab="history" id="history-tab" role="tab" type="button">History</button>
-            </nav>
-
-            <section aria-labelledby="strategy-tab" class="examine-tab-panel" data-panel="strategy" id="strategy-panel" role="tabpanel" tabindex="0">
-              <div class="wiki-section">
-                <h3>Strategy</h3>
-                <p class="excerpt-label">Verbatim Wiki excerpt</p>
-                <blockquote class="wiki-excerpt" cite="https://nethackwiki.com/index.php?title=Newt&amp;oldid=205110">
-                  <p>Newts are primarily a minor nuisance for a starting character unless you are especially weak, and become a non-issue once you are decently armed and/or armored. Newt corpses and tins provide a means of boosting your maximum energy early, though care must be taken so that a pet does not immediately snap up any freshly-made corpses; Archeologists in particular may consider using their tinning kit to obtain more nutrition from the corpses as well.</p>
-                  <p>Non-neutral players that wish to raise their alignment record early on for the protection racket (which relies on gaining alignment while avoiding killing co-aligned monsters and keeping experience low) and/or conducts that require frequent prayer (like foodless) should make sure to kill newts themselves.</p>
-                </blockquote>
-              </div>
-            </section>
-
-            <section aria-labelledby="history-tab" class="examine-tab-panel" data-panel="history" hidden id="history-panel" role="tabpanel" tabindex="0">
-              <div class="wiki-section">
-                <h3>History</h3>
-                <p class="excerpt-label">Verbatim Wiki excerpt</p>
-                <blockquote class="wiki-excerpt" cite="https://nethackwiki.com/index.php?title=Newt&amp;oldid=205110">
-                  <p>The newt first appears in NetHack 3.0.6.</p>
-                </blockquote>
-              </div>
-              <div class="wiki-section">
-                <h3>Dudley's dungeon</h3>
-                <p class="excerpt-label">Verbatim Wiki excerpt</p>
-                <blockquote class="wiki-excerpt" cite="https://nethackwiki.com/index.php?title=Newt&amp;oldid=205110">
-                  <p>Newts are featured prominently in Dudley's dungeon, where early strips often featured Dudley dying at the hands of these typically-weak monsters, which is typically improbable in normal play (but not impossible by any means). This has become a common enough gag to the point that Dudley is frequently portrayed with a profound fear of them - however, most newer strips whose punchline consists solely of newts killing Dudley are usually rated poorly and referred to as "newt jokes" or YANC ("Yet Another Newt Comic").</p>
-                </blockquote>
-              </div>
-            </section>
-          </article>
-
-          <aside aria-label="Newt facts" class="examine-facts">
-            <div class="current-facts">
-              <section class="fact-section">
-                <h3>Core statistics</h3>
-                <dl class="detail-list">
-                  <div class="detail-row"><dt>monsterClass</dt><dd><code>S_LIZARD</code></dd></div>
-                  <div class="detail-row"><dt>level</dt><dd><code>0</code></dd></div>
-                  <div class="detail-row"><dt>difficulty</dt><dd><code>1</code></dd></div>
-                  <div class="detail-row"><dt>speed</dt><dd><code>6</code></dd></div>
-                  <div class="detail-row"><dt>armorClass</dt><dd><code>8</code></dd></div>
-                  <div class="detail-row"><dt>magicResistance</dt><dd><code>0</code></dd></div>
-                  <div class="detail-row"><dt>alignment</dt><dd><code>0</code></dd></div>
-                  <div class="detail-row"><dt>size</dt><dd><code>MZ_TINY</code></dd></div>
-                  <div class="detail-row"><dt>weight</dt><dd><code>10</code></dd></div>
-                  <div class="detail-row"><dt>nutrition</dt><dd><code>20</code></dd></div>
-                  <div class="detail-row"><dt>HP at level 0</dt><dd><code>2–4</code></dd></div>
-                </dl>
-              </section>
-              <section class="fact-section">
-                <h3>Attack</h3>
-                <div class="attack-row">
-                  <span class="attack-index">1</span>
-                  <div class="attack-copy"><strong>AT_BITE</strong><span>AD_PHYS</span></div>
-                  <code class="attack-dice">1d2</code>
-                </div>
-              </section>
-              <section class="fact-section">
-                <h3>Generation</h3>
-                <dl class="detail-list">
-                  <div class="detail-row"><dt>frequency</dt><dd><code>5</code></dd></div>
-                  <div class="detail-row"><dt>flags</dt><dd><code>G_GENO</code></dd></div>
-                </dl>
-              </section>
-              <section class="fact-section">
-                <h3>Traits and resistances</h3>
-                <div class="trait-list">
-                  <span class="trait">M1_SWIM</span>
-                  <span class="trait">M1_AMPHIBIOUS</span>
-                  <span class="trait">M1_NOHANDS</span>
-                  <span class="trait">M1_ANIMAL</span>
-                  <span class="trait">M1_CARNIVORE</span>
-                  <span class="trait">M2_HOSTILE</span>
-                </div>
-              </section>
-              <section class="fact-section provenance">
-                <h3>Core provenance</h3>
-                <ul class="source-list">
-                  <li><code>include/monsters.h</code> <span>PM_NEWT</span></li>
-                  <li><code>src/makemon.c</code> <span>newmonhp</span></li>
-                </ul>
-                <p class="license-note">NetHack 5.0.0 source · <a href="../../../../dat/license" target="_blank">NGPL in dat/license</a></p>
-              </section>
-            </div>
-
-            <div class="proposed-facts">
-              <div class="facts-primary">
-                <section class="fact-section">
-                  <h3>Key facts</h3>
-                  <dl class="key-facts">
-                    <div class="key-fact"><dt>Level</dt><dd>0</dd></div>
-                    <div class="key-fact"><dt>Difficulty</dt><dd>1</dd></div>
-                    <div class="key-fact is-accent"><dt>HP at level 0</dt><dd>2–4</dd></div>
-                    <div class="key-fact"><dt>Speed</dt><dd>6</dd></div>
-                    <div class="key-fact"><dt>Armor class</dt><dd>8</dd></div>
-                    <div class="key-fact"><dt>Magic resistance</dt><dd>0</dd></div>
-                    <div class="key-fact"><dt>Alignment</dt><dd>0 · neutral</dd></div>
-                    <div class="key-fact"><dt>Monster class</dt><dd>S_LIZARD</dd></div>
-                  </dl>
-                </section>
-                <section class="fact-section">
-                  <h3>Attack</h3>
-                  <div class="proposed-attack">
-                    <div><strong>Bite</strong><span>Physical · AT_BITE / AD_PHYS</span></div>
-                    <code>1d2</code>
-                  </div>
-                </section>
-              </div>
-
-              <div class="facts-secondary">
-                <section class="fact-section">
-                  <h3>Generation &amp; body</h3>
-                  <dl class="compact-facts">
-                    <div class="compact-fact"><dt>Frequency</dt><dd>5 · common</dd></div>
-                    <div class="compact-fact"><dt>Generation</dt><dd>G_GENO</dd></div>
-                    <div class="compact-fact"><dt>Size</dt><dd>Tiny</dd></div>
-                    <div class="compact-fact"><dt>Weight</dt><dd>10</dd></div>
-                    <div class="compact-fact"><dt>Nutrition</dt><dd>20</dd></div>
-                    <div class="compact-fact"><dt>Sound</dt><dd>Silent</dd></div>
-                  </dl>
-                </section>
-                <section class="fact-section">
-                  <h3>Traits</h3>
-                  <div class="trait-list">
-                    <span class="trait">Swims</span>
-                    <span class="trait">Amphibious</span>
-                    <span class="trait">No hands</span>
-                    <span class="trait">Animal</span>
-                    <span class="trait">Carnivorous</span>
-                    <span class="trait">Hostile</span>
-                  </div>
-                </section>
-                <section class="fact-section">
-                  <h3>Corpse &amp; energy</h3>
-                  <p class="effect-note"><strong>Corpse:</strong> 10 weight, 20 nutrition. Eating it has a 2/3 energy-gain chance and may increase maximum energy.</p>
-                </section>
-              </div>
-
-              <section class="provenance">
-                <h3>Core provenance</h3>
-                <ul class="source-list">
-                  <li><code>include/monsters.h</code> <span>PM_NEWT</span></li>
-                  <li><code>src/makemon.c</code> <span>newmonhp</span></li>
-                  <li><code>src/eat.c</code> <span>eye_of_newt_buzz</span></li>
-                </ul>
-                <p class="license-note">Facts generated from NetHack 5.0.0 source · <a href="../../../../dat/license" target="_blank">NGPL in dat/license</a></p>
-              </section>
-            </div>
-          </aside>
-        </div>
-      </section>
-    </div>
-    <div aria-hidden="true" class="mode-caption"></div>
-  </main>
-
-  <script src="./_shared/js/echarts.min.js"></script>
+  <script src="./assets/snapshot-document.js"></script>
   <script src="./assets/prototype.js"></script>
 </body>
 </html>
