@@ -409,13 +409,13 @@ frontend/public/encyclopedia/
 
 ```ts
 interface CoreEncyclopediaManifest {
-  schemaVersion: 1;
+  schemaVersion: 2;
   nethackVersion: string;
   sourceFingerprint: string;
   generatorVersion: string;
-  entityCounts: Record<string, number>;
+  entityCounts: Record<EncyclopediaEntityFamily, number>;
   chunks: Array<{
-    kind: string;
+    family: EncyclopediaEntityFamily;
     file: string;
     sha256: string;
     bytes: number;
@@ -430,7 +430,7 @@ interface CoreEncyclopediaManifest {
 
 - `sourceFingerprint` 覆盖所有被读取的源码、生成头文件、编译条件和 exporter
   版本，不只写人类可读版本号。
-- 文件名使用内容稳定的分片方案；实体按 kind 和稳定 ID 排序。
+- 文件名使用内容稳定的分片方案；实体按 family 和稳定 ID 排序。
 - JSON 序列化顺序、换行和数字格式固定，同一源码重复生成应产生零 diff。
 - 所有数组、字符串、文件和总资源大小都有上限；运行时 validator 不信任
   `public/` 中的 JSON。
@@ -442,10 +442,18 @@ interface CoreEncyclopediaManifest {
 公共 envelope：
 
 ```ts
+type EncyclopediaEntityFamily =
+  | "appearance"
+  | "artifact"
+  | "monster"
+  | "object"
+  | "terrain"
+  | "trap";
+
 interface CoreEntityRecord {
-  schemaVersion: 1;
+  schemaVersion: 2;
   id: string;
-  kind: "monster" | "object" | "artifact" | "terrain" | "trap";
+  family: EncyclopediaEntityFamily;
   names: {
     primary: string;
     female?: string;
@@ -462,13 +470,49 @@ interface CoreEntityRecord {
 }
 ```
 
-具体 facts 使用判别联合，不建立一个大量 nullable 字段的万能对象：
+`family` 是资料加载、来源校验和稳定 ID 前缀的边界，不是观察窗口的完整展示
+分类。前端顶层“怪物、物品、地形、陷阱、神器、未鉴定外观”来自已验证
+glyph binding 或 visible token 指向的记录，不能由名称、Wiki 页面或 React
+组件猜测：
+
+| family | 身份来源 | 展示分派 |
+| --- | --- | --- |
+| `monster` | 最终 normal/pet/ridden/detected monster glyph | monster facts 模板 |
+| `object` | 精确 object glyph 或已公开且与 glyph 一致的 object token | `facts.objectClass` 模板 |
+| `appearance` | generic object glyph | `facts.objectClass` 的防剧透通用模板 |
+| `artifact` | 已公开且与基础 object glyph 一致的 artifact token | 基础 object 模板加 artifact overlay |
+| `terrain` | 最终持久 `S_*` glyph | terrain facts 模板 |
+| `trap` | 最终已显示 trap glyph | trap facts 模板 |
+
+因此 Wiki 是否存在、Wiki taxonomy 如何命名、页面标题如何组织，都不得改变
+核心事实树、模板选择或字段顺序。具体 facts 使用受严格校验的结构，不建立一个
+大量 nullable 字段的万能对象：
 
 - `MonsterFacts` 保留 ordered attacks、结构化 HP rule、generation、resistance、
   conveys、mflags、corpse 和基本战斗字段。
-- `ObjectFacts` 按 weapon/armor/food/spellbook/tool 等 subtype 保存直接字段。
-- `ArtifactFacts` 引用基础 object ID，并保存 artifact struct 的直接字段。
+- `ObjectFacts.objectClass` 是物品展示模板的唯一分类键；`subtype` 只保存该类别
+  直接字段，不再包含第二个 `subtype.kind` 判别键。
+- `ArtifactFacts` 引用基础 object ID，并保存 artifact struct 的直接字段；
+  loader 必须同时加载基础 object，UI 先渲染其 `objectClass` 模板，再添加
+  artifact overlay，不能用一个独立神器模板丢失基础物品事实。
+- `AppearanceFacts` 只保留 generic glyph 已公开的 `objectClass` 和通用类别
+  事实，不得借助显示文字、Wiki 标题或真实对象表升级到具体 object。
 - `TerrainFacts` 区分 terrain 与 trap，并只包含静态、非实例字段。
+
+`ObjectFacts.objectClass` 必须覆盖 `include/objclass.h` 当前定义的完整 17 类，
+并保留以下源码符号作为稳定值：
+
+```text
+ILLOBJ_CLASS  WEAPON_CLASS  ARMOR_CLASS  RING_CLASS  AMULET_CLASS
+TOOL_CLASS    FOOD_CLASS    POTION_CLASS SCROLL_CLASS SPBOOK_CLASS
+WAND_CLASS    COIN_CLASS    GEM_CLASS    ROCK_CLASS   BALL_CLASS
+CHAIN_CLASS   VENOM_CLASS
+```
+
+新增或未知 object class 必须使生成或运行时校验失败，不能回落到通用
+`object` 页面。不同类别可以共享低层字段组件，但模板分派只能读取
+`facts.objectClass`；不能从 `family`、`subtype` 字段形状、对象名称或 Wiki
+分类反推。
 
 所有 flag 和 enum 都由穷举映射转换为稳定符号名。遇到未知 bit、未知 attack
 类型、非法引用或 fencepost 条目时生成失败，不能静默输出裸数字后继续。
@@ -647,7 +691,9 @@ frontend/scripts/encyclopedia/
   打开核心菜单或阻塞主线程。
 - Wiki chunk 加载失败时仍显示核心事实；核心 chunk 缺失或校验失败时关闭本次
   请求并记录非敏感诊断，不显示可能错配的内容。
-- 诊断只记录 schema、asset hash、entity kind 和错误类别，不记录 Wiki 段落、
+- artifact 记录必须按 `baseObjectId` 加载并校验基础 object；返回值显式包含
+  `artifactBaseObject`。基础 object 缺失、family 错误或引用错配时 fail closed。
+- 诊断只记录 schema、asset hash、entity family 和错误类别，不记录 Wiki 段落、
   游戏消息、玩家命名或存档内容。
 
 ### 8.3 Context Menu 组合
@@ -747,6 +793,39 @@ type ActionCompletion =
 测试编写与 reviewer 必须是不同 subagent，也不能由主 Agent 自检替代。环境
 无法创建 subagent 时暂停，不进入实现。
 
+### 当前分类重构实施清单
+
+本轮对既有 Examine 实现的修正按以下 18 项执行；每项都必须进入测试、实现或
+验收记录，不能只停留在讨论结论：
+
+1. 核心资料 schema 从 v1 升为 v2，manifest、entity chunk、record、glyph
+   chunk 和 visible-object binding 使用同一版本。
+2. `CoreEntityKind` 重命名为 `EncyclopediaEntityFamily`，核心 record、chunk
+   metadata 和 chunk envelope 的 `kind` 字段改为 `family`。
+3. 明确六个 family 仅负责稳定 ID、加载与来源校验，不能充当全部 UI taxonomy。
+4. 在 schema 与生成器中穷举 `include/objclass.h` 的 17 个 object class。
+5. 以 `facts.objectClass` 作为物品模板的唯一分类来源。
+6. 保留 `facts.subtype` 作为类专属字段容器，但删除重复的 `subtype.kind`。
+7. 为 monster 建立核心统计、攻击/生成、HP、特征、尸体与特殊效果的分组模板。
+8. 为 17 个 object class 提供显式模板分派，允许复用字段组件但禁止隐式
+   fallback 分类。
+9. appearance 只使用 generic glyph 公开的 object class，并使用防剧透标题与
+   通用字段。
+10. artifact loader 同时加载 `baseObjectId` 指向的 object，并返回
+    `artifactBaseObject`。
+11. artifact UI 先使用基础 object 的 object-class 模板，再叠加神器专属字段。
+12. terrain 和 trap 使用独立核心事实模板，不从 Wiki 页面分类决定布局。
+13. Wiki taxonomy、节选存在与否或加载失败不得改变核心模板、字段和 DOM 事实树。
+14. 对话框在 DOM 中先放核心 facts，再放可选 Wiki article，同时保持桌面视觉
+    双列和窄屏单一 scroll owner。
+15. 模板根节点使用稳定的 `data-examine-template`，移除
+    `data-entity-kind` 和 `data-facts-only` 布局分支。
+16. 删除 Newt 专属渲染与样式特例；Newt 只作为普通 monster fixture 验证。
+17. 重生成 checked-in core assets，并把新 core manifest hash/fingerprint
+    重新绑定到 `nethack-runtime.json`，不无理由重建 JS/WASM。
+18. 运行定向与完整门禁，交由独立 reviewer 审查，修正 findings，并更新
+    release acceptance 后形成英文实现提交。
+
 ### 阶段零：行为、源码与许可基线
 
 测试 subagent 先建立：
@@ -790,6 +869,9 @@ docs: record examine source and license boundaries
 测试 subagent 先定义：
 
 - entity ID 唯一性、fencepost 排除和全量计数。
+- schema v2 在全部核心 envelope 一致，legacy v1 fail closed。
+- 六个 `family` 只承担资产边界，record/chunk 不残留旧 `kind` 字段。
+- 17 个 object class 完整覆盖，`objectClass` 唯一分派且无 `subtype.kind`。
 - enum/flag 穷举、ordered attacks 和复合 corpse/statue 引用。
 - 所有 glyph `0 <= glyph < MAX_GLYPH` 恰有一个 supported/unsupported 结果。
 - unidentified/generic glyph 不映射真实物品效果。
@@ -799,7 +881,8 @@ docs: record examine source and license boundaries
 - `verify` 不修改工作树。
 
 实施 host C exporter、Node generator、split assets、manifest、运行时严格类型和
-validator。所有核心实体必须进入 catalog；没有 Wiki 内容不影响 core coverage。
+validator。generator version 提升为 2.0.0；所有核心实体必须进入 catalog；
+没有 Wiki 内容不影响 core coverage。
 
 门禁：
 
@@ -808,6 +891,7 @@ validator。所有核心实体必须进入 catalog；没有 Wiki 内容不影响
 - 生产 Newt 事实与当前源码一致。
 - `npm run encyclopedia:generate` 后再次 generate 为零 diff。
 - `npm run encyclopedia:verify` 通过。
+- checked-in core assets 全部是 schema v2，runtime metadata 绑定新 manifest。
 
 建议提交：
 
@@ -921,7 +1005,12 @@ feat: add the synthetic examine context action
 
 - 已确认原型的 header、source strip、Tab、article、facts 和 provenance 层级。
 - 有 Wiki、无 Wiki、部分 Tab、facts 字段缺失和加载失败状态。
-- ordered attacks、HP formula、flags 和 object/artifact subtype 的无损呈现。
+- `data-examine-template` 的 monster、17 类 object、appearance、terrain、trap
+  和 artifact overlay 分派。
+- artifact 基础 object 字段与 overlay 的无损呈现。
+- ordered attacks、HP formula、flags 和 object subtype 的无损呈现。
+- 有无 Wiki 时核心 facts DOM 完全一致且位于 article 之前。
+- 不存在 `data-facts-only`、`data-entity-kind` 或 Newt 专属分支。
 - role/dialog、aria-modal、tablist/tabpanel、键盘导航、focus trap 和 focus
   restore。
 - Escape、backdrop、关闭按钮和外部链接事件隔离。
@@ -936,6 +1025,7 @@ feat: add the synthetic examine context action
 - 视觉层级与已确认 Newt 原型一致。
 - 最长实体名、最长 trait、六个 attack 和较长 Wiki 段落均不溢出或遮挡。
 - facts 列与 Wiki 来源条的许可归属清楚。
+- Wiki 缺失或失败时不改变核心事实结构和模板。
 - 窄屏只有一个对话框内容滚动容器。
 - 所有窗口操作均不进入 WASM。
 
@@ -972,8 +1062,10 @@ docs: complete alpha-2.4 examine acceptance
 
 ### 11.1 生成器与 schema
 
-- host exporter 的源码表数量、ID、flags、attacks、对象 subtype 和 glyph
+- host exporter 的源码表数量、ID、flags、attacks、对象 objectClass/subtype 和 glyph
   offsets。
+- schema v2、六个 family、17 个 object class、artifact 基础 object 引用和
+  legacy v1 拒绝。
 - 特殊 HP 规则的公式和范围，不只测试 Newt。
 - JSON schema、大小、hash、路径穿越、重复 ID、未知字段和错误引用。
 - 确定性输出和 verify 零修改。
@@ -1079,7 +1171,7 @@ docs: complete alpha-2.4 examine acceptance
 | Wiki 页面含混合许可内容 | 高风险节点和 section fail closed，允许 facts-only |
 | Wiki 更新造成无人审查的内容变化 | refresh 只产 candidate/PR，永不自动合并 |
 | 核心与 Wiki 许可归属混淆 | 独立目录、manifest、类型、UI 区域和 NOTICE |
-| 资料资产显著增加首屏大小 | 小索引预载、按 kind/entity chunk lazy-load、大小预算 |
+| 资料资产显著增加首屏大小 | 小索引预载、按 family/entity chunk lazy-load、大小预算 |
 | 对话框抢走游戏按键或焦点丢失 | data-browser-keyboard、focus trap、序列化 origin 恢复 |
 | 移动端多层滚动和内容遮挡 | 单一 scroll owner、稳定 max-size、跨浏览器几何测试 |
 | 生成器依赖本机偶然环境 | 固定 Node/host compiler 输入、工具链检查、确定性 verify |
@@ -1125,18 +1217,23 @@ alpha-2.4 只有同时满足以下条件才算完成：
 5. 所有目标核心实体都有由当前源码确定性生成、严格校验的数据记录。
 6. 幻觉、伪装、未鉴定、隐藏陷阱和未公开神器没有身份泄露。
 7. HP、attacks、flags、resistances 和 generation 等结构不被错误压缩。
-8. Wiki 内容只包含固定 revision 的完整原文段落，无摘要、翻译、改写或拼接。
-9. 每条 Wiki 节选和每个核心 facts 区域都显示正确且分离的来源与许可。
-10. 正常 build、test 和游戏运行完全离线；refresh 是显式维护命令。
-11. 对话框在桌面和窄屏无重叠，焦点、键盘、inert 和单 scroll owner 正确。
-12. 现有地图/背包右键动作、hover、动作栏、存档和 profile 流程无回归。
-13. 每阶段完成测试 subagent、实现、独立 reviewer、findings 修正、完整验证和
+8. schema v2、`family` 资产边界和完整 17 类 `objectClass` 经生成器与运行时
+   严格校验；不再存在 envelope `kind` 或 `subtype.kind`。
+9. monster、object class、appearance、artifact overlay、terrain 和 trap
+   模板均由核心字段分派，Wiki 不改变事实树。
+10. artifact 同时展示经校验的基础 object 事实与神器 overlay。
+11. Wiki 内容只包含固定 revision 的完整原文段落，无摘要、翻译、改写或拼接。
+12. 每条 Wiki 节选和每个核心 facts 区域都显示正确且分离的来源与许可。
+13. 正常 build、test 和游戏运行完全离线；refresh 是显式维护命令。
+14. 对话框在桌面和窄屏无重叠，焦点、键盘、inert 和单 scroll owner 正确。
+15. 现有地图/背包右键动作、hover、动作栏、存档和 profile 流程无回归。
+16. 每阶段完成测试 subagent、实现、独立 reviewer、findings 修正、完整验证和
     commit。
-14. `npm test`、`npm run lint`、`npm run build`、WASM 集成、三浏览器兼容、
+17. `npm test`、`npm run lint`、`npm run build`、WASM 集成、三浏览器兼容、
     性能与长流程门禁全部通过。
-15. `git diff --check` 通过，README、session-start、NOTICE、shim/upstream
+18. `git diff --check` 通过，README、session-start、NOTICE、shim/upstream
     文档和 release acceptance 与实现一致。
-16. 用户按人工验收清单确认。
+19. 用户按人工验收清单确认。
 
 ## 16. 计划提交序列
 
