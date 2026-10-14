@@ -315,8 +315,8 @@
 }
 
 .examine-dialog {
-  width: min(1040px, calc(100vw - 56px));
-  height: min(720px, calc(100dvh - 56px));
+  width: min(1180px, calc(100vw - 56px));
+  height: min(760px, calc(100dvh - 56px));
   min-height: 520px;
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr);
@@ -326,15 +326,15 @@
   background: #0f1314;
   box-shadow: 0 28px 70px rgb(0 0 0 / 72%);
   color: #d6dbd8;
-  font-family:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
-    "Segoe UI", sans-serif;
+  font-family: var(--blisshack-monospace-font);
+  font-size: inherit;
+  line-height: 1.3;
   letter-spacing: 0;
 }
 
 .examine-header {
   min-width: 0;
-  min-height: 84px;
+  min-height: 88px;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
@@ -367,6 +367,18 @@
   min-width: 0;
 }
 
+.examine-title-row {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.examine-title-row h1 {
+  min-width: 0;
+}
+
 .examine-heading h1 {
   margin: 0;
   overflow-wrap: anywhere;
@@ -376,10 +388,39 @@
   line-height: 1.15;
 }
 
+.examine-wiki-link {
+  min-height: 28px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 7px;
+  border: 1px solid #59666a;
+  border-radius: 3px;
+  color: #78bac8;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  text-decoration: none;
+}
+
+.examine-wiki-link:hover,
+.examine-wiki-link:focus-visible {
+  border-color: #78bac8;
+  outline: none;
+  background: #20292d;
+  color: #fff;
+}
+
+.examine-wiki-link svg {
+  width: 14px;
+  height: 14px;
+}
+
 .examine-heading p {
   margin: 5px 0 0;
   color: #97a1a2;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .examine-badges,
@@ -404,7 +445,7 @@
 
 .examine-badge {
   padding: 3px 7px;
-  font: 600 10px/1.2 "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
+  font: 600 12px/1.2 var(--blisshack-monospace-font);
 }
 
 .examine-close {
@@ -572,7 +613,7 @@
 .examine-facts {
   min-width: 0;
   min-height: 0;
-  padding: 18px;
+  padding: 24px;
   overflow-y: auto;
   background: #0c1011;
   scrollbar-color: #596365 #0c1011;
@@ -580,17 +621,40 @@
 }
 
 .examine-layout[data-facts-only="true"] .examine-facts {
-  width: min(100%, 48rem);
-  justify-self: center;
+  width: 100%;
+  max-width: none;
+  justify-self: stretch;
+}
+
+.examine-layout[data-facts-only="true"] .examine-facts[data-entity-kind="monster"] {
+  display: grid;
+  grid-template-columns: minmax(0, 1.08fr) minmax(0, 0.92fr);
+  gap: 0 28px;
+  align-content: start;
+}
+
+.examine-facts-primary,
+.examine-facts-secondary {
+  min-width: 0;
+}
+
+.examine-facts-primary {
+  padding-right: 28px;
+  border-right: 1px solid #30383a;
+}
+
+.examine-layout[data-facts-only="false"] .examine-facts-primary {
+  padding-right: 0;
+  border-right: 0;
 }
 
 .examine-facts section {
-  padding: 0 0 17px;
+  padding: 0 0 20px;
   border-bottom: 1px solid #2c3335;
 }
 
 .examine-facts section + section {
-  padding-top: 17px;
+  padding-top: 20px;
 }
 
 .examine-facts section:last-child {
@@ -598,11 +662,15 @@
 }
 
 .examine-facts h2 {
-  margin: 0 0 11px;
-  color: #9ba5a6;
-  font-size: 10px;
+  margin: 0 0 12px;
+  color: #b9c2c2;
+  font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
+}
+
+.examine-facts-primary > section > h2 {
+  color: #e5ca70;
 }
 
 .examine-stat-grid {
@@ -614,14 +682,14 @@
 
 .examine-stat-grid dt,
 .examine-detail-row dt {
-  color: #929c9d;
-  font-size: 10px;
+  color: #9ba5a6;
+  font-size: 13px;
 }
 
 .examine-stat-grid dd {
   margin: 2px 0 0;
   color: #f0f2ef;
-  font: 650 15px/1.2 "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
+  font: 650 15px/1.2 var(--blisshack-monospace-font);
 }
 
 .examine-attacks,
@@ -636,20 +704,20 @@
 .examine-attack {
   min-width: 0;
   display: grid;
-  grid-template-columns: 25px minmax(0, 1fr) auto;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 9px;
+  gap: 11px;
 }
 
 .examine-attack-index {
-  width: 25px;
-  height: 25px;
+  width: 30px;
+  height: 30px;
   display: grid;
   place-items: center;
   border: 1px solid #75504c;
   border-radius: 3px;
   color: #e29289;
-  font: 700 11px/1 "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
+  font: 700 13px/1 var(--blisshack-monospace-font);
 }
 
 .examine-attack strong,
@@ -660,33 +728,33 @@
 
 .examine-attack strong {
   color: #f0f2ef;
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .examine-attack span {
   margin-top: 2px;
   color: #929c9d;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .examine-attack > code {
   color: #e5ca70;
-  font-size: 13px;
+  font-size: 17px;
   font-weight: 700;
 }
 
 .examine-trait {
-  padding: 4px 7px;
+  padding: 5px 8px;
   background: #11191a;
   color: #a2cbd0;
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .examine-detail-row {
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(6rem, auto) minmax(0, 1fr);
-  gap: 10px;
+  grid-template-columns: minmax(9rem, auto) minmax(0, 1fr);
+  gap: 14px;
   align-items: start;
 }
 
@@ -698,9 +766,60 @@
 }
 
 .examine-detail-row dd {
-  color: #d6dbd8;
-  font-size: 11px;
+  color: #e6e8e4;
+  font-size: 14px;
   text-align: right;
+}
+
+.examine-core-statistics .examine-detail-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0;
+  border-top: 1px solid #30383a;
+}
+
+.examine-core-statistics .examine-detail-row {
+  display: block;
+  padding: 10px 12px 11px 0;
+  border-bottom: 1px solid #30383a;
+}
+
+.examine-core-statistics .examine-detail-row:nth-child(even) {
+  padding-right: 0;
+  padding-left: 14px;
+  border-left: 1px solid #30383a;
+}
+
+.examine-core-statistics .examine-detail-row dt {
+  font-size: 12px;
+}
+
+.examine-core-statistics .examine-detail-row dd {
+  margin-top: 4px;
+  color: #f4f6f3;
+  font-size: 16px;
+  font-weight: 700;
+  text-align: left;
+}
+
+.examine-key-fact dd {
+  color: #fff;
+  font-weight: 700;
+}
+
+.examine-core-statistics .examine-stat-grid {
+  margin-top: 12px;
+  padding: 11px 12px;
+  border: 1px solid #706438;
+  background: #17170f;
+}
+
+.examine-core-statistics .examine-stat-grid dt {
+  font-size: 12px;
+}
+
+.examine-core-statistics .examine-stat-grid dd {
+  color: #e5ca70;
+  font-size: 18px;
 }
 
 .examine-detail-row dd > .examine-detail-list,
@@ -720,8 +839,26 @@
   line-height: 1.5;
 }
 
+.examine-empty-value {
+  font-size: 13px;
+}
+
+.examine-provenance {
+  grid-column: 1 / -1;
+  margin-top: 2px;
+  padding-top: 18px;
+}
+
+.examine-provenance h2,
+.examine-provenance p,
+.examine-provenance code,
+.examine-license-note {
+  font-size: 11px;
+}
+
 .examine-source-list {
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 7px;
   margin: 0 0 12px;
   padding: 0;
@@ -824,6 +961,33 @@
   .examine-tab-panel,
   .examine-facts {
     overflow: visible;
+  }
+
+  .examine-layout[data-facts-only="true"] .examine-facts {
+    display: block;
+    padding: 18px;
+  }
+
+  .examine-layout[data-facts-only="true"] .examine-facts[data-entity-kind="monster"] {
+    display: block;
+  }
+
+  .examine-facts-primary {
+    padding-right: 0;
+    border-right: 0;
+  }
+
+  .examine-core-statistics .examine-detail-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .examine-core-statistics .examine-detail-row:nth-child(even) {
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .examine-provenance .examine-source-list {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .examine-facts {

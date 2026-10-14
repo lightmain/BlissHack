@@ -7,9 +7,10 @@ import {
   type KeyboardEvent,
   type MouseEvent,
 } from "react";
-import { X } from "lucide-react";
+import { ExternalLink, X } from "lucide-react";
 import type { LoadedEncyclopediaEntity } from "../../encyclopedia/encyclopedia-loader";
 import type { ExamineTarget } from "../../encyclopedia/examine-target";
+import { resolveWikiPage } from "../../encyclopedia/wiki-page";
 import { loadTileAtlas } from "../../map/tile-assets";
 import type { MapRenderer } from "../../settings/profile";
 import { ExamineFacts } from "./ExamineFacts";
@@ -62,6 +63,9 @@ export function ExamineDialog({
 
   const core = state.status === "ready" ? state.entity.core : null;
   const wiki = state.status === "ready" ? state.entity.wiki : null;
+  const wikiPage = state.status === "ready"
+    ? resolveWikiPage(state.entity)
+    : null;
   const title = core ? displayName(core.names.primary) : "Loading";
 
   /**
@@ -140,7 +144,23 @@ export function ExamineDialog({
             target={target}
           />
           <div className="examine-heading">
-            <h1 id={titleId}>{title}</h1>
+            <div className="examine-title-row">
+              <h1 id={titleId}>{title}</h1>
+              {wikiPage && (
+                <a
+                  aria-label={`Open ${wikiPage.title} on NetHackWiki`}
+                  className="examine-wiki-link"
+                  href={wikiPage.url}
+                  onClick={(event) => event.stopPropagation()}
+                  rel="noopener noreferrer"
+                  target="_blank"
+                  title={`Open ${wikiPage.title} on NetHackWiki`}
+                >
+                  <ExternalLink aria-hidden="true" size={14} />
+                  <span>Wiki</span>
+                </a>
+              )}
+            </div>
             {core
               ? (
                 <>
