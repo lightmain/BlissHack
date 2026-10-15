@@ -3,6 +3,7 @@
 import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { SaxesParser } from "saxes";
 import { describe, expect, it, vi } from "vitest";
 import type { CoreEntityRecord } from "../../encyclopedia/core-schema";
 import type { LoadedEncyclopediaEntity } from "../../encyclopedia/encyclopedia-loader";
@@ -22,6 +23,13 @@ import {
 interface TrustedWikiPage {
   title: string;
   url: string;
+}
+
+interface MarkupNode {
+  attributes: Record<string, string>;
+  children: MarkupNode[];
+  name: string;
+  text: string;
 }
 
 type EntityWithWikiPage = LoadedEncyclopediaEntity & {
@@ -55,7 +63,11 @@ const OBJECT_CLASSES = [
   "CHAIN_CLASS",
   "VENOM_CLASS",
 ] as const;
-const OBJECT_RECORDS = ["object-002.json", "object-003.json"].flatMap((file) =>
+const OBJECT_RECORDS = [
+  "object-001.json",
+  "object-002.json",
+  "object-003.json",
+].flatMap((file) =>
   (JSON.parse(readFileSync(
     new URL(`../../../public/encyclopedia/core/${file}`, import.meta.url),
     "utf8",
@@ -206,39 +218,93 @@ function factsMarkup(html: string): string {
   return html.slice(start, end + "</aside>".length);
 }
 
-/** Assert the family-neutral document and section skeleton for one facts tree. */
-function expectSharedFactSkeleton(html: string): void {
-  const documents = [
-    ...html.matchAll(
-      /<[^>]+class="[^"]*\bexamine-fact-document\b[^"]*"[^>]*>/g,
-    ),
-  ];
-  const sections = [...html.matchAll(/<section\b[^>]*>/g)];
+/** Parse one React static-markup fragment into an element-only test tree. */
+function parseMarkup(markup: string): MarkupNode {
+  const roots: MarkupNode[] = [];
+  const stack: MarkupNode[] = [];
+  const parser = new SaxesParser({ fragment: true });
+  parser.on("opentag", (tag) => {
+    const node: MarkupNode = {
+      attributes: Object.fromEntries(
+        Object.entries(tag.attributes).map(([key, value]) => [
+          key,
+          String(value),
+        ]),
+      ),
+      children: [],
+      name: tag.name,
+      text: "",
+    };
+    const parent = stack.at(-1);
+    if (parent) parent.children.push(node);
+    else roots.push(node);
+    stack.push(node);
+  });
+  parser.on("text", (text) => {
+    const current = stack.at(-1);
+    if (current) current.text += text;
+  });
+  parser.on("closetag", () => {
+    stack.pop();
+  });
+  parser.write(markup).close();
+  expect(roots, "facts markup must have one root").toHaveLength(1);
+  return roots[0];
+}
 
-  expect(documents, "facts must contain one shared document").toHaveLength(1);
-  expect(documents[0]?.index, "document must wrap the fact sections")
-    .toBeLessThan(sections[0]?.index ?? -1);
+/** Split one parsed class attribute into stable class tokens. */
+function nodeClasses(node: MarkupNode): string[] {
+  return (node.attributes.class ?? "").split(/\s+/).filter(Boolean);
+}
+
+/** Find every parsed descendant with one exact class token. */
+function nodesWithClass(node: MarkupNode, className: string): MarkupNode[] {
+  const matches = nodeClasses(node).includes(className) ? [node] : [];
+  return [
+    ...matches,
+    ...node.children.flatMap((child) => nodesWithClass(child, className)),
+  ];
+}
+
+/** Return the sole direct FactDocument child from rendered facts markup. */
+function factDocument(html: string): MarkupNode {
+  const root = parseMarkup(html);
+  const factsNodes = nodesWithClass(root, "examine-facts");
+  expect(factsNodes, "markup must contain one facts aside").toHaveLength(1);
+  const facts = factsNodes[0];
+  expect(facts.name).toBe("aside");
+  expect(facts.children, "facts aside must contain only the document")
+    .toHaveLength(1);
+  const document = facts.children[0];
+  expect(nodeClasses(document)).toContain("examine-fact-document");
+  return document;
+}
+
+/** Return stable section IDs in their rendered document order. */
+function factSectionIds(html: string): string[] {
+  return factDocument(html).children.map((section) =>
+    section.attributes["data-examine-section"]
+  );
+}
+
+/** Assert the family-neutral document and exact direct section sequence. */
+function expectSharedFactSkeleton(
+  html: string,
+  expectedSectionIds: string[],
+): void {
+  const sections = factDocument(html).children;
   expect(sections.length, "facts document must contain sections")
     .toBeGreaterThan(1);
   for (const section of sections) {
-    expect(section[0]).toMatch(
-      /\bclass="[^"]*\bexamine-fact-section\b[^"]*"/,
-    );
+    expect(section.name).toBe("section");
+    expect(nodeClasses(section)).toContain("examine-fact-section");
+    expect(section.attributes["data-examine-section"]).toBeTruthy();
   }
-  expect(sections[0]?.[0]).toMatch(
-    /\bclass="(?=[^"]*\bexamine-fact-section\b)(?=[^"]*\bexamine-key-facts\b)[^"]*"/,
-  );
-  expect(sections[0]?.[0]).toContain(
-    'data-examine-section="key-facts"',
-  );
-  const firstSectionStart = sections[0]?.index ?? -1;
-  const firstSectionEnd = html.indexOf("</section>", firstSectionStart);
-  expect(html.slice(firstSectionStart, firstSectionEnd))
-    .toContain(">Key facts</h2>");
-  const provenance = sections.find((section) =>
-    section[0].includes("examine-provenance")
-  );
-  expect(provenance, "missing shared provenance section").toBeDefined();
+  expect(factSectionIds(html)).toEqual(expectedSectionIds);
+  expect(nodeClasses(sections[0])).toContain("examine-key-facts");
+  expect(sections[0].children[0]?.name).toBe("h2");
+  expect(sections[0].children[0]?.text).toBe("Key facts");
+  expect(nodeClasses(sections.at(-1)!)).toContain("examine-provenance");
 }
 
 describe("refined Examine Wiki page links", () => {
@@ -413,7 +479,16 @@ describe("refined Examine fact hierarchy", () => {
   it("uses the shared section flow for every monster fact group", () => {
     const html = renderFacts(NEWT_CORE);
 
-    expectSharedFactSkeleton(html);
+    expectSharedFactSkeleton(html, [
+      "key-facts",
+      "attacks",
+      "generation",
+      "hp-rule",
+      "traits",
+      "corpse",
+      "special-effects",
+      "provenance",
+    ]);
     expect(html).toContain('data-examine-template="monster"');
     expect(html).not.toContain("examine-facts-primary");
     expect(html).not.toContain("examine-facts-secondary");
@@ -472,16 +547,64 @@ describe("refined Examine fact hierarchy", () => {
 
 describe("shared Examine fact document skeleton", () => {
   it.each([
-    ["monster", NEWT_CORE, undefined],
-    ["object", WEAPON_CORE, undefined],
-    ["artifact", ARTIFACT_CORE, WEAPON_CORE],
-    ["appearance", APPEARANCE_CORE, undefined],
-    ["terrain", TERRAIN_CORE, undefined],
-    ["trap", TRAP_CORE, undefined],
+    [
+      "monster",
+      NEWT_CORE,
+      undefined,
+      [
+        "key-facts",
+        "attacks",
+        "generation",
+        "hp-rule",
+        "traits",
+        "corpse",
+        "special-effects",
+        "provenance",
+      ],
+    ],
+    [
+      "object",
+      WEAPON_CORE,
+      undefined,
+      ["key-facts", "class-properties", "traits", "provenance"],
+    ],
+    [
+      "artifact",
+      ARTIFACT_CORE,
+      WEAPON_CORE,
+      [
+        "key-facts",
+        "class-properties",
+        "traits",
+        "artifact-properties",
+        "provenance",
+      ],
+    ],
+    [
+      "appearance",
+      APPEARANCE_CORE,
+      undefined,
+      ["key-facts", "provenance"],
+    ],
+    [
+      "terrain",
+      TERRAIN_CORE,
+      undefined,
+      ["key-facts", "provenance"],
+    ],
+    [
+      "trap",
+      TRAP_CORE,
+      undefined,
+      ["key-facts", "provenance"],
+    ],
   ] as const)(
     "uses one family-neutral document and section skeleton for %s",
-    (_family, core, artifactBaseObject) => {
-      expectSharedFactSkeleton(renderFacts(core, artifactBaseObject));
+    (_family, core, artifactBaseObject, sectionIds) => {
+      expectSharedFactSkeleton(
+        renderFacts(core, artifactBaseObject),
+        [...sectionIds],
+      );
     },
   );
 });
@@ -497,6 +620,43 @@ describe("core-class Examine template dispatch", () => {
       );
       expect(html).toContain(objectClass);
       expect(html).not.toContain("data-entity-kind");
+    },
+  );
+
+  it.each([
+    [
+      "object:ALCHEMY_SMOCK",
+      "Armor properties",
+      ["category", "armorClass", "magicCancellation"],
+    ],
+    [
+      "object:APPLE",
+      "Nutrition",
+      ["nutrition"],
+    ],
+    [
+      "object:SPE_BLANK_PAPER",
+      "Spellcasting",
+      ["skill", "level"],
+    ],
+    [
+      "object:GRAPPLING_HOOK",
+      "Combat properties",
+      ["damageSmall", "damageLarge", "hitBonus", "strikeModes"],
+    ],
+  ])(
+    "renders checked-in class properties for %s",
+    (id, heading, fields) => {
+      const html = renderFacts(objectRecord(id));
+
+      expect(factSectionIds(html)).toEqual([
+        "key-facts",
+        "class-properties",
+        "traits",
+        "provenance",
+      ]);
+      expect(html).toContain(`>${heading}</h2>`);
+      for (const field of fields) expect(html).toContain(`>${field}</dt>`);
     },
   );
 
@@ -563,6 +723,13 @@ describe("core-class Examine template dispatch", () => {
     expect(overlayTag![0]).toMatch(
       /\bclass="[^"]*\bexamine-fact-section\b[^"]*"/,
     );
+    expectSharedFactSkeleton(html, [
+      "key-facts",
+      "class-properties",
+      "traits",
+      "artifact-properties",
+      "provenance",
+    ]);
   });
 
   it("does not use the loading family as a generic presentation template", () => {
