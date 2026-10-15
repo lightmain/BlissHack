@@ -488,6 +488,32 @@ glyph binding 或 visible token 指向的记录，不能由名称、Wiki 页面�
 核心事实树、模板选择或字段顺序。具体 facts 使用受严格校验的结构，不建立一个
 大量 nullable 字段的万能对象：
 
+所有 family 的生产界面必须进一步共享同一份 presentation document：
+
+```text
+Examine header
+-> FactDocument
+   -> Key facts
+   -> zero or more type-detail sections
+   -> zero or more traits/effects sections
+   -> Core provenance
+-> optional Wiki article
+```
+
+- family 与 `objectClass` 只决定 document 中有哪些 section 和字段，不能决定
+  facts 根节点采用单栏、双栏或其他页面骨架。
+- 每个实体的第一个核心区块都是 `Key facts`，最后一个核心区块都是
+  `Core provenance`；中间区块按对应 schema 的稳定顺序出现。
+- Monster 可以保留攻击、生成、HP rule、抗性、尸体和特殊效果等丰富区块，
+  但不能拥有 `primary`/`secondary` DOM 包装或专属整页双栏 CSS。
+- 所有 section 使用同一个结构和视觉层级；关键指标、普通定义行、标签集合与
+  有序列表可以使用不同的共享低层原语。
+- facts 内容宽度决定关键指标网格的列数。桌面 facts-only、330 px facts
+  sidebar 和窄屏使用同一规则，不允许通过 family 选择器切换布局。
+- `data-examine-template` 只保留为稳定测试与诊断标记，不得参与 CSS 页面布局。
+- optional Wiki article 仍是核心 document 的同级补充；有无 Wiki 不得改变
+  FactDocument 的 section、顺序或 markup。
+
 - `MonsterFacts` 保留 ordered attacks、结构化 HP rule、generation、resistance、
   conveys、mflags、corpse 和基本战斗字段。
 - `ObjectFacts.objectClass` 是物品展示模板的唯一分类键；`subtype` 只保存该类别
@@ -806,7 +832,8 @@ type ActionCompletion =
 4. 在 schema 与生成器中穷举 `include/objclass.h` 的 17 个 object class。
 5. 以 `facts.objectClass` 作为物品模板的唯一分类来源。
 6. 保留 `facts.subtype` 作为类专属字段容器，但删除重复的 `subtype.kind`。
-7. 为 monster 建立核心统计、攻击/生成、HP、特征、尸体与特殊效果的分组模板。
+7. 为 monster 建立核心统计、攻击/生成、HP、特征、尸体与特殊效果的有序
+   section，但不建立 monster 专属页面布局。
 8. 为 17 个 object class 提供显式模板分派，允许复用字段组件但禁止隐式
    fallback 分类。
 9. appearance 只使用 generic glyph 公开的 object class，并使用防剧透标题与
@@ -825,6 +852,35 @@ type ActionCompletion =
     重新绑定到 `nethack-runtime.json`，不无理由重建 JS/WASM。
 18. 运行定向与完整门禁，交由独立 reviewer 审查，修正 findings，并更新
     release acceptance 后形成英文实现提交。
+
+### 当前统一界面重构实施清单
+
+分类重构完成后，所有类型的 Examine 界面按以下 14 项统一；本清单不改变
+schema v2、核心资产或可见身份边界：
+
+1. 在 facts 根节点内增加唯一的共享 `examine-fact-document`。
+2. 所有核心区块使用共享 `examine-fact-section` 结构和稳定 section 标记。
+3. monster、17 类 object、artifact、appearance、terrain 和 trap 都以
+   `Key facts` 作为第一个区块。
+4. `Key facts` 使用共享的 responsive metric grid；列数由容器宽度决定。
+5. Monster 保留当前全部事实字段和有序区块，但删除
+   `examine-facts-primary`、`examine-facts-secondary` 包装。
+6. Monster 的 level、difficulty、speed、AC、MR 等重点字段继续强调，但强调
+   只能来自共享 Key facts 原语。
+7. object 保留 object-class 专属 section 和 flags，不恢复 family-wide
+   通用物品页面。
+8. artifact 继续先输出基础 object section，再输出共享结构的 artifact
+   overlay section。
+9. appearance 继续只显示 object class；统一骨架不得扩大其标题、ARIA、Wiki
+   或正文身份信息。
+10. terrain 与 trap 使用同一 document 骨架，但保留各自稳定 template 标记。
+11. Core provenance 使用共享 section 并始终位于 document 末尾。
+12. 删除所有 `[data-examine-template="monster"]` 页面布局 CSS；
+    `data-examine-template` 只作测试和诊断。
+13. 保持桌面 Wiki/facts 分栏、facts-only 全宽和窄屏单一 scroll owner，补充
+    330 px sidebar、桌面 facts-only 与窄屏无横向溢出的几何断言。
+14. 先由测试 subagent 提交预期失败测试；实现后由不同 reviewer 审查，修正
+    findings，运行完整门禁并更新 release acceptance。
 
 ### 阶段零：行为、源码与许可基线
 
@@ -1009,6 +1065,11 @@ feat: add the synthetic examine context action
   和 artifact overlay 分派。
 - artifact 基础 object 字段与 overlay 的无损呈现。
 - ordered attacks、HP formula、flags 和 object subtype 的无损呈现。
+- 所有 family 共用 FactDocument、FactSection、Key facts 和 provenance
+  骨架；类型只能决定 section 内容。
+- Monster 不存在 primary/secondary DOM 或专属页面布局 CSS，全部事实仍按
+  schema 顺序无损呈现。
+- 关键指标网格只根据 facts 容器宽度响应，不读取 family 或 template 标记。
 - 有无 Wiki 时核心 facts DOM 完全一致且位于 article 之前。
 - 不存在 `data-facts-only`、`data-entity-kind` 或 Newt 专属分支。
 - role/dialog、aria-modal、tablist/tabpanel、键盘导航、focus trap 和 focus
@@ -1025,6 +1086,7 @@ feat: add the synthetic examine context action
 - 视觉层级与已确认 Newt 原型一致。
 - 最长实体名、最长 trait、六个 attack 和较长 Wiki 段落均不溢出或遮挡。
 - facts 列与 Wiki 来源条的许可归属清楚。
+- 六个 family 的页面骨架、section 间距、标题层级和关键事实网格一致。
 - Wiki 缺失或失败时不改变核心事实结构和模板。
 - 窄屏只有一个对话框内容滚动容器。
 - 所有窗口操作均不进入 WASM。
