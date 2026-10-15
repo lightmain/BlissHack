@@ -72,34 +72,39 @@ export function ExamineFacts({
       data-content-license="NGPL"
       data-examine-template={examineTemplate(core, artifactBaseObject)}
     >
-      <CoreFacts
-        artifactBaseObject={artifactBaseObject}
-        core={core}
-      />
-      <section className="examine-provenance">
-        <h2>Core provenance</h2>
-        <p>
-          NetHack {nethackVersion} source
-        </p>
-        <ul className="examine-source-list">
-          {sourceRefs.map((source) => (
-            <li key={`${source.path}:${source.symbol}`}>
-              <code>{source.path}</code>
-              <span>{source.symbol}</span>
-            </li>
-          ))}
-        </ul>
-        <p className="examine-license-note">
-          NetHack source facts are distributed under the{" "}
-          <a
-            href={NETHACK_LICENSE_URL}
-            rel="license noopener noreferrer"
-            target="_blank"
-          >
-            NGPL in dat/license
-          </a>.
-        </p>
-      </section>
+      <div className="examine-fact-document">
+        <CoreFacts
+          artifactBaseObject={artifactBaseObject}
+          core={core}
+        />
+        <section
+          className="examine-provenance examine-fact-section"
+          data-examine-section="provenance"
+        >
+          <h2>Core provenance</h2>
+          <p>
+            NetHack {nethackVersion} source
+          </p>
+          <ul className="examine-source-list">
+            {sourceRefs.map((source) => (
+              <li key={`${source.path}:${source.symbol}`}>
+                <code>{source.path}</code>
+                <span>{source.symbol}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="examine-license-note">
+            NetHack source facts are distributed under the{" "}
+            <a
+              href={NETHACK_LICENSE_URL}
+              rel="license noopener noreferrer"
+              target="_blank"
+            >
+              NGPL in dat/license
+            </a>.
+          </p>
+        </section>
+      </div>
     </aside>
   );
 }
@@ -136,9 +141,9 @@ function CoreFacts({
     case "appearance":
       return <AppearanceFacts facts={core.facts} />;
     case "terrain":
-      return <MapFacts facts={core.facts} title="Terrain facts" />;
+      return <MapFacts facts={core.facts} />;
     case "trap":
-      return <MapFacts facts={core.facts} title="Trap facts" />;
+      return <MapFacts facts={core.facts} />;
     case "artifact":
       return (
         <>
@@ -183,73 +188,73 @@ function MonsterFacts({ facts }: { facts: Record<string, unknown> }) {
 
   return (
     <>
-      <div className="examine-facts-primary">
-        <FactSection
-          className="examine-core-statistics"
-          title="Core statistics"
-        >
-          <FactTree
-            emphasizedKeys={KEY_MONSTER_FACTS}
-            value={coreStatistics}
-          />
-          {zeroLevelHpRange(hpRule) && (
-            <dl className="examine-stat-grid">
-              <div>
-                <dt>HP at level 0</dt>
-                <dd>{zeroLevelHpRange(hpRule)}</dd>
-              </div>
-            </dl>
-          )}
-        </FactSection>
-        {attacks.length > 0 && (
-          <FactSection title={attacks.length === 1 ? "Attack" : "Attacks"}>
-            <div className="examine-attacks">
-              {attacks.map((attack, index) => (
-                <div
-                  className="examine-attack"
-                  key={`${index}:${attack.attackType}`}
-                >
-                  <span className="examine-attack-index">{index + 1}</span>
-                  <div>
-                    <strong>{attack.attackType}</strong>
-                    <span>{attack.damageType}</span>
-                  </div>
-                  <code>{diceLabel(attack.dice)}</code>
-                </div>
-              ))}
+      <FactSection
+        className="examine-key-facts"
+        sectionId="key-facts"
+        title="Key facts"
+      >
+        <FactTree
+          emphasizedKeys={KEY_MONSTER_FACTS}
+          value={coreStatistics}
+        />
+        {zeroLevelHpRange(hpRule) && (
+          <dl className="examine-stat-grid">
+            <div>
+              <dt>HP at level 0</dt>
+              <dd>{zeroLevelHpRange(hpRule)}</dd>
             </div>
-          </FactSection>
+          </dl>
         )}
-        {Object.keys(generation).length > 0 && (
-          <FactSection title="Generation">
-            <FactTree value={generation} />
-          </FactSection>
-        )}
-      </div>
-      <div className="examine-facts-secondary">
-        {Object.keys(hpRule).length > 0 && (
-          <FactSection title="HP rule">
-            <FactTree value={hpRule} />
-          </FactSection>
-        )}
-        <FactSection title="Traits and resistances">
-          <FactTree value={{
-            resistances: facts.resistances,
-            conveys: facts.conveys,
-            ...flags,
-          }} />
+      </FactSection>
+      {attacks.length > 0 && (
+        <FactSection
+          sectionId="attacks"
+          title={attacks.length === 1 ? "Attack" : "Attacks"}
+        >
+          <div className="examine-attacks">
+            {attacks.map((attack, index) => (
+              <div
+                className="examine-attack"
+                key={`${index}:${attack.attackType}`}
+              >
+                <span className="examine-attack-index">{index + 1}</span>
+                <div>
+                  <strong>{attack.attackType}</strong>
+                  <span>{attack.damageType}</span>
+                </div>
+                <code>{diceLabel(attack.dice)}</code>
+              </div>
+            ))}
+          </div>
         </FactSection>
-        {Object.keys(corpse).length > 0 && (
-          <FactSection title="Corpse">
-            <FactTree value={corpse} />
-          </FactSection>
-        )}
-        {specialEffects && specialEffects.length > 0 && (
-          <FactSection title="Special effects">
-            <FactTree value={specialEffects} />
-          </FactSection>
-        )}
-      </div>
+      )}
+      {Object.keys(generation).length > 0 && (
+        <FactSection sectionId="generation" title="Generation">
+          <FactTree value={generation} />
+        </FactSection>
+      )}
+      {Object.keys(hpRule).length > 0 && (
+        <FactSection sectionId="hp-rule" title="HP rule">
+          <FactTree value={hpRule} />
+        </FactSection>
+      )}
+      <FactSection sectionId="traits" title="Traits and resistances">
+        <FactTree value={{
+          resistances: facts.resistances,
+          conveys: facts.conveys,
+          ...flags,
+        }} />
+      </FactSection>
+      {Object.keys(corpse).length > 0 && (
+        <FactSection sectionId="corpse" title="Corpse">
+          <FactTree value={corpse} />
+        </FactSection>
+      )}
+      {specialEffects && specialEffects.length > 0 && (
+        <FactSection sectionId="special-effects" title="Special effects">
+          <FactTree value={specialEffects} />
+        </FactSection>
+      )}
     </>
   );
 }
@@ -273,15 +278,22 @@ function ObjectFacts({ facts }: { facts: Record<string, unknown> }) {
   ]);
   return (
     <>
-      <FactSection title={`${objectClassLabel(objectClass)} facts`}>
+      <FactSection
+        className="examine-key-facts"
+        sectionId="key-facts"
+        title="Key facts"
+      >
         <FactTree value={common} />
       </FactSection>
       {Object.keys(subtype).length > 0 && (
-        <FactSection title={objectSubtypeTitle(objectClass)}>
+        <FactSection
+          sectionId="class-properties"
+          title={objectSubtypeTitle(objectClass)}
+        >
           <FactTree value={subtype} />
         </FactSection>
       )}
-      <FactSection title="Object flags">
+      <FactSection sectionId="traits" title="Object flags">
         <FactTree value={facts.flags} />
       </FactSection>
     </>
@@ -296,7 +308,11 @@ function ObjectFacts({ facts }: { facts: Record<string, unknown> }) {
 function AppearanceFacts({ facts }: { facts: Record<string, unknown> }) {
   const objectClass = objectClassValue(facts.objectClass);
   return (
-    <FactSection title={`${objectClassLabel(objectClass)} appearance`}>
+    <FactSection
+      className="examine-key-facts"
+      sectionId="key-facts"
+      title="Key facts"
+    >
       <FactTree value={{ objectClass }} />
     </FactSection>
   );
@@ -304,18 +320,16 @@ function AppearanceFacts({ facts }: { facts: Record<string, unknown> }) {
 
 /**
  * Render static terrain or trap fields without instance-state inference.
- * @param props - validated facts and explicit presentation heading.
+ * @param props - validated terrain or trap facts.
  * @returns one map-entity fact section.
  */
-function MapFacts({
-  facts,
-  title,
-}: {
-  facts: Record<string, unknown>;
-  title: string;
-}) {
+function MapFacts({ facts }: { facts: Record<string, unknown> }) {
   return (
-    <FactSection title={title}>
+    <FactSection
+      className="examine-key-facts"
+      sectionId="key-facts"
+      title="Key facts"
+    >
       <FactTree value={facts} />
     </FactSection>
   );
@@ -328,10 +342,13 @@ function MapFacts({
  */
 function ArtifactOverlay({ facts }: { facts: Record<string, unknown> }) {
   return (
-    <section data-examine-overlay="artifact">
-      <h2>Artifact properties</h2>
+    <FactSection
+      overlay="artifact"
+      sectionId="artifact-properties"
+      title="Artifact properties"
+    >
       <FactTree value={facts} />
-    </section>
+    </FactSection>
   );
 }
 
@@ -401,14 +418,25 @@ function objectSubtypeTitle(objectClass: NetHackObjectClass): string {
 function FactSection({
   children,
   className,
+  overlay,
+  sectionId,
   title,
 }: {
   children: ReactNode;
   className?: string;
+  overlay?: "artifact";
+  sectionId: string;
   title: string;
 }) {
   return (
-    <section className={className}>
+    <section
+      className={[
+        "examine-fact-section",
+        className,
+      ].filter(Boolean).join(" ")}
+      data-examine-overlay={overlay}
+      data-examine-section={sectionId}
+    >
       <h2>{title}</h2>
       {children}
     </section>

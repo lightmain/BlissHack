@@ -626,37 +626,27 @@
   grid-column: 1 / -1;
 }
 
-.examine-facts[data-examine-template="monster"]:only-child {
-  display: grid;
-  grid-template-columns: minmax(0, 1.08fr) minmax(0, 0.92fr);
-  gap: 0 28px;
-  align-content: start;
-}
-
-.examine-facts-primary,
-.examine-facts-secondary {
+.examine-fact-document {
+  width: 100%;
+  max-width: 960px;
   min-width: 0;
+  margin: 0 auto;
 }
 
-.examine-facts[data-examine-template="monster"]:only-child .examine-facts-primary {
-  padding-right: 28px;
-  border-right: 1px solid #30383a;
-}
-
-.examine-facts section {
+.examine-fact-section {
   padding: 0 0 20px;
   border-bottom: 1px solid #2c3335;
 }
 
-.examine-facts section + section {
+.examine-fact-section + .examine-fact-section {
   padding-top: 20px;
 }
 
-.examine-facts section:last-child {
+.examine-fact-section:last-child {
   border-bottom: 0;
 }
 
-.examine-facts h2 {
+.examine-fact-section > h2 {
   margin: 0 0 12px;
   color: #b9c2c2;
   font-size: 12px;
@@ -664,13 +654,16 @@
   text-transform: uppercase;
 }
 
-.examine-facts-primary > section > h2 {
+.examine-key-facts > h2 {
   color: #e5ca70;
 }
 
 .examine-stat-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(
+    auto-fit,
+    minmax(min(100%, 14rem), 1fr)
+  );
   gap: 12px 14px;
   margin: 12px 0 0;
 }
@@ -775,29 +768,30 @@
   text-align: left;
 }
 
-.examine-core-statistics .examine-detail-list {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+.examine-facts:not(:only-child) .examine-source-list {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.examine-key-facts .examine-detail-list {
+  grid-template-columns: repeat(
+    auto-fit,
+    minmax(min(100%, 14rem), 1fr)
+  );
   gap: 0;
   border-top: 1px solid #30383a;
 }
 
-.examine-core-statistics .examine-detail-row {
+.examine-key-facts .examine-detail-row {
   display: block;
   padding: 10px 12px 11px 0;
   border-bottom: 1px solid #30383a;
 }
 
-.examine-core-statistics .examine-detail-row:nth-child(even) {
-  padding-right: 0;
-  padding-left: 14px;
-  border-left: 1px solid #30383a;
-}
-
-.examine-core-statistics .examine-detail-row dt {
+.examine-key-facts .examine-detail-row dt {
   font-size: 12px;
 }
 
-.examine-core-statistics .examine-detail-row dd {
+.examine-key-facts .examine-detail-row dd {
   margin-top: 4px;
   color: #f4f6f3;
   font-size: 16px;
@@ -810,18 +804,18 @@
   font-weight: 700;
 }
 
-.examine-core-statistics .examine-stat-grid {
+.examine-key-facts .examine-stat-grid {
   margin-top: 12px;
   padding: 11px 12px;
   border: 1px solid #706438;
   background: #17170f;
 }
 
-.examine-core-statistics .examine-stat-grid dt {
+.examine-key-facts .examine-stat-grid dt {
   font-size: 12px;
 }
 
-.examine-core-statistics .examine-stat-grid dd {
+.examine-key-facts .examine-stat-grid dd {
   color: #e5ca70;
   font-size: 18px;
 }
@@ -848,7 +842,6 @@
 }
 
 .examine-provenance {
-  grid-column: 1 / -1;
   margin-top: 2px;
   padding-top: 18px;
 }
@@ -933,19 +926,6 @@
   .examine-facts {
     border-top: 1px solid #30383a;
   }
-
-  .examine-facts[data-examine-template="monster"] {
-    display: block;
-  }
-
-  .examine-facts[data-examine-template="monster"]:only-child {
-    display: block;
-  }
-
-  .examine-facts[data-examine-template="monster"]:only-child .examine-facts-primary {
-    padding-right: 0;
-    border-right: 0;
-  }
 }
 
 @media (max-width: 820px) {
@@ -984,26 +964,13 @@
     padding: 18px;
   }
 
-  .examine-facts[data-examine-template="monster"] {
-    display: block;
-  }
-
-  .examine-facts[data-examine-template="monster"]:only-child {
-    display: block;
-  }
-
-  .examine-facts[data-examine-template="monster"]:only-child .examine-facts-primary {
-    padding-right: 0;
-    border-right: 0;
-  }
-
-  .examine-core-statistics .examine-detail-list {
+  .examine-detail-row {
     grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
   }
 
-  .examine-core-statistics .examine-detail-row:nth-child(even) {
-    padding-left: 0;
-    border-left: 0;
+  .examine-detail-row dd {
+    text-align: left;
   }
 
   .examine-provenance .examine-source-list {

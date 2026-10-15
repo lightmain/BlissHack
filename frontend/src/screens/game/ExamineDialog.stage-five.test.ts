@@ -140,7 +140,7 @@ describe("stage-five Examine presentation", () => {
       nethackVersion: "5.0.0",
     }));
 
-    expect(html).toContain("Core statistics");
+    expect(html).toContain("Key facts");
     expect(html).not.toContain("Special effects");
     expect(html).not.toMatch(/Unknown|N\/A|Not available/i);
   });

@@ -11,7 +11,7 @@ alpha-2.4 已完成实现、独立复审和自动门禁。人工验收仍待用�
 
 ## 2. 测试环境
 
-- 最终自动复验日期：2026-10-14。
+- 最终自动复验日期：2026-10-15。
 - 机器：Apple M4 Pro，arm64。
 - 系统：macOS 26.5.1。
 - 固定工具链：Node.js 24.19.0、npm 11.17.0、Emscripten 6.0.9、
@@ -37,6 +37,9 @@ alpha-2.4 已完成实现、独立复审和自动门禁。人工验收仍待用�
 - 神器先使用所引用基础物品的 `objectClass` 模板，再添加 artifact overlay；
   terrain 与 trap 使用独立模板。核心事实节点始终先于可选 Wiki 文章，Wiki
   是否存在不会改变事实结构。
+- 六种实体 family 共用同一个 FactDocument 骨架：首段固定为 `Key facts`，
+  末段固定为 core provenance，中间保留各类型自身的攻击、生成、类别属性、
+  traits 和 artifact overlay 等内容。Monster 不再使用独立的双栏页面布局。
 - generic appearance 的标题、ARIA、事实和 Wiki 映射只使用安全物品类别；
   importer 拒绝 appearance 记录，loader 不请求其 Wiki 资产，显式具体页面也
   不能绕过类别映射。
@@ -91,20 +94,22 @@ source fingerprint 为
 | `npm run verify:tiles` | 2,307 tiles 与输入 checksum 通过 |
 | `npm run encyclopedia:verify` | schema v2、9,624 glyph、970 core records、1 Wiki record 通过 |
 | 阶段六 release gates | 4/4 |
-| `npm test` | 97 files，1,179/1,179 |
+| `npm test` | 97 files，1,189/1,189 |
 | `npm run lint` | 0 warnings，0 errors |
 | `VITE_BASE_PATH=/BlissHack/ npm run build` | TypeScript 与 production build 通过 |
 | `npm run test:integration:wasm` | 166/166 |
-| `npm run test:integration:browser` | Chromium 156/156 |
-| `npm run test:integration:compat` | Firefox + WebKit 192/192 |
-| `npm run test:performance` | 2/2；Canvas 全图 p95 4.9 ms，300 行背包提交 14.6 ms |
+| `npm run test:integration:browser` | Chromium 158/158 |
+| `npm run test:integration:compat` | Firefox + WebKit 196/196 |
+| `npm run test:performance` | 2/2；Canvas 全图 p95 5.5 ms，300 行背包提交 15.0 ms |
 | `npm run test:long` | 4/4 |
 | `git diff --check` | 通过 |
 
 真实浏览器覆盖 Newt revision 205110 的 4 段原文与无 Overview、facts-only
 降级、损坏资料拒绝、慢加载关闭、核心菜单 handoff、无回合消耗、键盘与焦点
-恢复，以及 1280×900、900×700、700×800、900×600 下的 Tiles/ASCII 和
-Right/Below 布局。普通运行不会请求 NetHackWiki。
+恢复，以及 1280×900、900×700、700×800、900×600 下的 Tiles/ASCII、
+Right/Below 和共享 FactDocument 多列布局。浏览器几何断言确认事实文档无横向
+溢出，窄屏 Wiki 观察窗口只有一个内容滚动 owner。普通运行不会请求
+NetHackWiki。
 
 ## 7. 独立复审
 
@@ -133,8 +138,16 @@ README、frontend README 和 WASM 构建文档中补全。修正后的 follow-up
   resolver 已改为先处理 appearance，且只接受与固定安全类别页完全一致的显式
   页面。对应恶意标题、正文和具体页面测试，以及真实浏览器
   `scrollWidth <= clientWidth` 几何断言均已补充。
+- 2026-10-15 统一展示 reviewer 首轮指出 820 px 以下强制单列会削弱宽度驱动的
+  自适应布局，且浏览器与 DOM 测试需要直接验证列数、包含关系、provenance
+  位置、真实物品 fixture 和神器 section 顺序。实现已删除该断点特例，改用
+  `auto-fit` 网格，并补齐对应测试。
+- follow-up reviewer 要求避免以正则近似 DOM；测试已使用 XML parser 解析
+  React 静态 markup，逐项验证唯一 facts aside、直接 FactDocument section、
+  稳定 section ID、首段 `Key facts` 和末段 provenance。最终复审要求 artifact
+  完整 Dialog 用例复用同一骨架断言，该用例已补齐。
 - 最终独立复审未发现剩余高、中严重性问题；生产代码和样式中不再包含 Newt
-  专属事实布局或渲染分支。
+  专属事实布局、Monster 页面布局特例或渲染分支。
 
 ## 8. 人工验收待办
 
