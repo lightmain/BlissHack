@@ -61,6 +61,42 @@ const OBJECT_RECORDS = ["object-002.json", "object-003.json"].flatMap((file) =>
     "utf8",
   )) as { records: CoreEntityRecord[] }).records
 );
+const APPEARANCE_CORE = {
+  schemaVersion: 2,
+  id: "appearance:POTION_CLASS:GENERIC",
+  family: "appearance",
+  names: { primary: "potion" },
+  symbol: 33,
+  color: 5,
+  facts: { objectClass: "POTION_CLASS" },
+  sourceRefs: [{
+    path: "include/objects.h",
+    symbol: "GENERIC_POTION",
+  }],
+} as unknown as CoreEntityRecord;
+const TERRAIN_CORE = {
+  schemaVersion: 2,
+  id: "terrain:S_FOUNTAIN",
+  family: "terrain",
+  names: { primary: "fountain" },
+  symbol: 123,
+  color: 6,
+  facts: { terrainSymbol: "S_FOUNTAIN", category: "feature" },
+  sourceRefs: [{
+    path: "include/defsym.h",
+    symbol: "S_FOUNTAIN",
+  }],
+} as unknown as CoreEntityRecord;
+const TRAP_CORE = {
+  schemaVersion: 2,
+  id: "trap:ARROW_TRAP",
+  family: "trap",
+  names: { primary: "arrow trap" },
+  symbol: 94,
+  color: 7,
+  facts: { trapSymbol: "ARROW_TRAP", category: "physical" },
+  sourceRefs: [{ path: "include/trap.h", symbol: "ARROW_TRAP" }],
+} as unknown as CoreEntityRecord;
 
 /** Return one checked-in object record by its stable source ID. */
 function objectRecord(id: string): CoreEntityRecord {
@@ -116,8 +152,10 @@ function renderedHref(url: string): string {
 /** Render only the core facts presentation for one schema-v2 fixture. */
 function renderFacts(
   core: CoreEntityRecord,
+  artifactBaseObject?: CoreEntityRecord,
 ): string {
   return renderToStaticMarkup(createElement(ExamineFacts, {
+    artifactBaseObject,
     core: presentationCompatibleCore(core),
     nethackVersion: "5.0.0",
   }));
@@ -166,6 +204,41 @@ function factsMarkup(html: string): string {
   expect(start, "missing facts subtree").toBeGreaterThan(-1);
   expect(end, "missing facts subtree end").toBeGreaterThan(start);
   return html.slice(start, end + "</aside>".length);
+}
+
+/** Assert the family-neutral document and section skeleton for one facts tree. */
+function expectSharedFactSkeleton(html: string): void {
+  const documents = [
+    ...html.matchAll(
+      /<[^>]+class="[^"]*\bexamine-fact-document\b[^"]*"[^>]*>/g,
+    ),
+  ];
+  const sections = [...html.matchAll(/<section\b[^>]*>/g)];
+
+  expect(documents, "facts must contain one shared document").toHaveLength(1);
+  expect(documents[0]?.index, "document must wrap the fact sections")
+    .toBeLessThan(sections[0]?.index ?? -1);
+  expect(sections.length, "facts document must contain sections")
+    .toBeGreaterThan(1);
+  for (const section of sections) {
+    expect(section[0]).toMatch(
+      /\bclass="[^"]*\bexamine-fact-section\b[^"]*"/,
+    );
+  }
+  expect(sections[0]?.[0]).toMatch(
+    /\bclass="(?=[^"]*\bexamine-fact-section\b)(?=[^"]*\bexamine-key-facts\b)[^"]*"/,
+  );
+  expect(sections[0]?.[0]).toContain(
+    'data-examine-section="key-facts"',
+  );
+  const firstSectionStart = sections[0]?.index ?? -1;
+  const firstSectionEnd = html.indexOf("</section>", firstSectionStart);
+  expect(html.slice(firstSectionStart, firstSectionEnd))
+    .toContain(">Key facts</h2>");
+  const provenance = sections.find((section) =>
+    section[0].includes("examine-provenance")
+  );
+  expect(provenance, "missing shared provenance section").toBeDefined();
 }
 
 describe("refined Examine Wiki page links", () => {
@@ -337,44 +410,44 @@ describe("refined Examine fact hierarchy", () => {
     expect(html).not.toContain("examine-facts-secondary");
   });
 
-  it("groups primary and secondary monster facts into distinct columns", () => {
+  it("uses the shared section flow for every monster fact group", () => {
     const html = renderFacts(NEWT_CORE);
-    const primary = html.indexOf("examine-facts-primary");
-    const secondary = html.indexOf("examine-facts-secondary");
-    const provenance = html.indexOf("examine-provenance");
 
-    expect(primary, "missing primary facts column").toBeGreaterThan(-1);
-    expect(secondary, "missing secondary facts column").toBeGreaterThan(
-      primary,
-    );
-    expect(provenance, "provenance must follow both fact columns")
-      .toBeGreaterThan(secondary);
+    expectSharedFactSkeleton(html);
     expect(html).toContain('data-examine-template="monster"');
+    expect(html).not.toContain("examine-facts-primary");
+    expect(html).not.toContain("examine-facts-secondary");
 
-    for (const heading of ["Core statistics", "Attack", "Generation"]) {
+    let previousHeading = -1;
+    for (const heading of [
+      "Key facts",
+      "Attack",
+      "Generation",
+      "HP rule",
+      "Traits and resistances",
+      "Corpse",
+      "Special effects",
+      "Core provenance",
+    ]) {
       const index = html.indexOf(`>${heading}</h2>`);
-      expect(index, `${heading} must be in the primary column`)
-        .toBeGreaterThan(primary);
-      expect(index, `${heading} must be in the primary column`)
-        .toBeLessThan(secondary);
+      expect(index, `missing ${heading} section`).toBeGreaterThan(
+        previousHeading,
+      );
+      previousHeading = index;
     }
-    for (
-      const heading of [
-        "HP rule",
-        "Traits and resistances",
-        "Corpse",
-        "Special effects",
-      ]
-    ) {
-      const index = html.indexOf(`>${heading}</h2>`);
-      expect(index, `${heading} must be in the secondary column`)
-        .toBeGreaterThan(secondary);
-      expect(index, `${heading} must be in the secondary column`)
-        .toBeLessThan(provenance);
+    for (const value of [
+      "AT_BITE",
+      "AD_PHYS",
+      "G_GENO",
+      "ordinary",
+      "M1_SWIM",
+      "corpse-energy",
+    ]) {
+      expect(html, `missing retained monster fact ${value}`).toContain(value);
     }
   });
 
-  it("marks the core statistics and key combat fields for emphasis", () => {
+  it("marks the shared key facts and combat metrics for emphasis", () => {
     const html = renderFacts(NEWT_CORE);
     const emphasizedLabels = [
       ...html.matchAll(
@@ -382,7 +455,7 @@ describe("refined Examine fact hierarchy", () => {
       ),
     ].map((match) => match[1]);
 
-    expect(html).toContain("examine-core-statistics");
+    expect(html).toContain('data-examine-section="key-facts"');
     expect(emphasizedLabels).toEqual([
       "monsterClass",
       "level",
@@ -395,6 +468,22 @@ describe("refined Examine fact hierarchy", () => {
     expect(emphasizedLabels).not.toContain("weight");
     expect(emphasizedLabels).not.toContain("nutrition");
   });
+});
+
+describe("shared Examine fact document skeleton", () => {
+  it.each([
+    ["monster", NEWT_CORE, undefined],
+    ["object", WEAPON_CORE, undefined],
+    ["artifact", ARTIFACT_CORE, WEAPON_CORE],
+    ["appearance", APPEARANCE_CORE, undefined],
+    ["terrain", TERRAIN_CORE, undefined],
+    ["trap", TRAP_CORE, undefined],
+  ] as const)(
+    "uses one family-neutral document and section skeleton for %s",
+    (_family, core, artifactBaseObject) => {
+      expectSharedFactSkeleton(renderFacts(core, artifactBaseObject));
+    },
+  );
 });
 
 describe("core-class Examine template dispatch", () => {
@@ -414,50 +503,17 @@ describe("core-class Examine template dispatch", () => {
   it.each([
     [
       "terrain",
-      {
-        schemaVersion: 2,
-        id: "terrain:S_FOUNTAIN",
-        family: "terrain",
-        names: { primary: "fountain" },
-        symbol: 123,
-        color: 6,
-        facts: { terrainSymbol: "S_FOUNTAIN", category: "feature" },
-        sourceRefs: [{
-          path: "include/defsym.h",
-          symbol: "S_FOUNTAIN",
-        }],
-      },
+      TERRAIN_CORE,
       "terrain",
     ],
     [
       "trap",
-      {
-        schemaVersion: 2,
-        id: "trap:ARROW_TRAP",
-        family: "trap",
-        names: { primary: "arrow trap" },
-        symbol: 94,
-        color: 7,
-        facts: { trapSymbol: "ARROW_TRAP", category: "physical" },
-        sourceRefs: [{ path: "include/trap.h", symbol: "ARROW_TRAP" }],
-      },
+      TRAP_CORE,
       "trap",
     ],
     [
       "appearance",
-      {
-        schemaVersion: 2,
-        id: "appearance:POTION_CLASS:GENERIC",
-        family: "appearance",
-        names: { primary: "potion" },
-        symbol: 33,
-        color: 5,
-        facts: { objectClass: "POTION_CLASS" },
-        sourceRefs: [{
-          path: "include/objects.h",
-          symbol: "GENERIC_POTION",
-        }],
-      },
+      APPEARANCE_CORE,
       "appearance:POTION_CLASS",
     ],
   ])("uses the %s core template", (_label, fixture, template) => {
@@ -499,6 +555,14 @@ describe("core-class Examine template dispatch", () => {
     ]) {
       expect(html).toContain(overlayFact);
     }
+    expect(openingTag(html, "examine-fact-document")).toBeTruthy();
+    const overlayTag = html.match(
+      /<section\b[^>]*data-examine-overlay="artifact"[^>]*>/,
+    );
+    expect(overlayTag).not.toBeNull();
+    expect(overlayTag![0]).toMatch(
+      /\bclass="[^"]*\bexamine-fact-section\b[^"]*"/,
+    );
   });
 
   it("does not use the loading family as a generic presentation template", () => {

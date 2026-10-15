@@ -51,68 +51,51 @@ describe("refined Examine typography and fact hierarchy", () => {
     expect(CSS).not.toMatch(/\bnewt\b/i);
   });
 
-  it("uses monster columns only when facts span the full layout", () => {
+  it("uses one responsive fact document for every family", () => {
     const facts = cssFor(CSS, ".examine-facts");
     const factsOnly = cssFor(CSS, ".examine-facts:only-child");
-    const monsterFacts = cssFor(
+    const document = cssFor(CSS, ".examine-fact-document");
+    const section = cssFor(CSS, ".examine-fact-section");
+    const keyFacts = cssFor(
       CSS,
-      '.examine-facts[data-examine-template="monster"]:only-child',
-    );
-    const primary = cssFor(
-      CSS,
-      '.examine-facts[data-examine-template="monster"]:only-child '
-        + ".examine-facts-primary",
-    );
-    const statistics = cssFor(
-      CSS,
-      ".examine-core-statistics .examine-detail-list",
+      ".examine-key-facts .examine-detail-list",
     );
     const keyValue = cssFor(CSS, ".examine-key-fact dd");
-    const provenance = cssFor(CSS, ".examine-provenance");
 
     expect(facts).toMatch(/\bwidth\s*:\s*100%\s*;/);
     expect(facts).toMatch(/\bmax-width\s*:\s*none\s*;/);
-    expect(facts).not.toMatch(/\bdisplay\s*:\s*grid\s*;/);
-    expect(facts).not.toMatch(/\bgrid-template-columns\s*:/);
+    expect(facts).toMatch(/\bmin-width\s*:\s*0\s*;/);
     expect(factsOnly).toMatch(/\bgrid-column\s*:\s*1\s*\/\s*-1\s*;/);
-    expect(monsterFacts).toMatch(/\bdisplay\s*:\s*grid\s*;/);
-    expect(monsterFacts).toMatch(
-      /\bgrid-template-columns\s*:\s*minmax\(0,\s*1\.08fr\)\s+minmax\(0,\s*0\.92fr\)\s*;/,
-    );
-    expect(primary).toMatch(/\bborder-right\s*:\s*1px\s+solid\b/);
-    expect(primary).toMatch(/\bpadding-right\s*:\s*\d+px\s*;/);
-    expect(statistics).toMatch(
-      /\bgrid-template-columns\s*:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)\s*;/,
+    expect(document).toMatch(/\bmin-width\s*:\s*0\s*;/);
+    expect(section).toMatch(/\bborder-bottom\s*:\s*1px\s+solid\b/);
+    expect(keyFacts).toMatch(
+      /\bgrid-template-columns\s*:\s*repeat\(\s*auto-fit\s*,\s*minmax\([^;]+\)\s*\)\s*;/,
     );
     expect(keyValue).toMatch(/\bfont-weight\s*:\s*(?:[7-9]00|bold)\s*;/);
-    expect(provenance).toMatch(/\bgrid-column\s*:\s*1\s*\/\s*-1\s*;/);
+    expect(CSS).not.toMatch(
+      /\[data-examine-template\s*=\s*["']monster["']\]/,
+    );
+    expect(CSS).not.toContain(".examine-facts-primary");
+    expect(CSS).not.toContain(".examine-facts-secondary");
   });
 });
 
 describe("refined Examine narrow-screen scroll ownership", () => {
-  it("collapses the fact columns without introducing a nested scroll owner", () => {
+  it("keeps one scroll owner without any family-specific layout branch", () => {
     const narrow = mediaBlock(
       /@media\s*\(\s*max-width\s*:\s*(?:[3-7]\d{2}|820)px\s*\)/,
-    );
-    const monsterFacts = cssFor(
-      narrow,
-      '.examine-facts[data-examine-template="monster"]',
-    );
-    const primary = cssFor(
-      narrow,
-      '.examine-facts[data-examine-template="monster"]:only-child '
-        + ".examine-facts-primary",
     );
 
     expect(cssFor(narrow, ".examine-layout"))
       .toMatch(/\boverflow-y\s*:\s*auto\s*;/);
-    expect(monsterFacts).toMatch(/\bdisplay\s*:\s*block\s*;/);
-    expect(primary).toMatch(/\bborder-right\s*:\s*(?:0|none)\s*;/);
     expect(cssFor(narrow, ".examine-tab-panel"))
       .toMatch(/\boverflow\s*:\s*visible\s*;/);
     expect(cssFor(narrow, ".examine-facts"))
       .toMatch(/\boverflow\s*:\s*visible\s*;/);
     expect(narrow.match(/\boverflow-y\s*:\s*auto\s*;/g) ?? [])
       .toHaveLength(1);
+    expect(narrow).not.toContain("data-examine-template");
+    expect(narrow).not.toContain("examine-facts-primary");
+    expect(narrow).not.toContain("examine-facts-secondary");
   });
 });
