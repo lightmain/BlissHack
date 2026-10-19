@@ -724,6 +724,11 @@ describe("local wizard acceptance startup", () => {
       viteDev: true,
       href: "http://localhost/?acceptance=Wizard",
     },
+    {
+      condition: "duplicate matching query values",
+      viteDev: true,
+      href: "http://localhost/?acceptance=wizard&acceptance=wizard",
+    },
   ])(
     "fails closed for $condition and preserves ordinary main",
     async ({ viteDev, href }) => {
@@ -742,6 +747,72 @@ describe("local wizard acceptance startup", () => {
         [],
         { async: true },
       );
+    },
+  );
+
+  it.each([
+    {
+      session: "wizard acceptance",
+      wizardAcceptance: true,
+      expectedStyle: "original",
+    },
+    {
+      session: "ordinary",
+      wizardAcceptance: false,
+      expectedStyle: "blisshack",
+    },
+  ] as const)(
+    "uses $expectedStyle character setup for a $session session with a BlissHack profile",
+    async ({ wizardAcceptance, expectedStyle }) => {
+      const module = createModuleHarness("module", "WIZARDS=alice\n");
+      const profile = createDefaultProfile();
+      profile.interface.characterSetupStyle = "blisshack";
+      const setCharacterSetupContext = vi.fn();
+      const { manager } = createHarness(
+        [module.module],
+        undefined,
+        {
+          installRuntimeConfig: vi.fn(),
+          loadProfile: () => profile,
+          setCharacterSetupContext,
+          wizardAcceptance,
+        },
+      );
+
+      await manager.startSession();
+
+      expect(setCharacterSetupContext).toHaveBeenCalledOnce();
+      expect(setCharacterSetupContext).toHaveBeenCalledWith(
+        expect.objectContaining({ style: expectedStyle }),
+      );
+    },
+  );
+
+  it.each([
+    {
+      assignmentCount: "zero",
+      sysconf: "# packaged settings\nEXPLORERS=*\n",
+    },
+    {
+      assignmentCount: "multiple",
+      sysconf: "WIZARDS=alice\nWIZARDS=bob\n",
+    },
+  ])(
+    "rejects $assignmentCount WIZARDS assignments without calling main",
+    async ({ sysconf }) => {
+      const module = createModuleHarness("module", sysconf);
+      useAcceptanceUrl(true, "http://localhost/?acceptance=wizard");
+      const { manager } = createHarness([module.module]);
+
+      await expect(manager.startSession()).rejects.toThrow(
+        "Wizard acceptance requires exactly one WIZARDS assignment",
+      );
+
+      const ccall = module.module.ccall as ReturnType<typeof vi.fn>;
+      expect(ccall.mock.calls.filter(([name]) => name === "main")).toHaveLength(
+        0,
+      );
+      expect(module.writeFile).not.toHaveBeenCalled();
     },
   );
 
@@ -809,6 +880,28 @@ describe("local wizard acceptance startup", () => {
       );
     },
   );
+
+  it("frees every argv allocation when main ccall throws synchronously", async () => {
+    const module = createModuleHarness("module", "WIZARDS=alice\n");
+    const failure = new Error("main ccall failed");
+    const ccall = module.module.ccall as ReturnType<typeof vi.fn>;
+    ccall.mockImplementation((name: string) => {
+      if (name === "main") throw failure;
+      return undefined;
+    });
+    useAcceptanceUrl(true, "http://localhost/?acceptance=wizard");
+    const { manager } = createHarness([module.module]);
+
+    await expect(manager.startSession()).rejects.toBe(failure);
+
+    const malloc = module.module._malloc as ReturnType<typeof vi.fn>;
+    const free = module.module._free as ReturnType<typeof vi.fn>;
+    const allocated = malloc.mock.results.map(({ value }) => Number(value));
+    expect(allocated).toHaveLength(3);
+    expect(free.mock.calls.map(([pointer]) => Number(pointer))).toEqual(
+      allocated,
+    );
+  });
 });
 
 describe("session callback isolation", () => {
