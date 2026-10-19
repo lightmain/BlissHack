@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type AppAction,
 } from "../app/app-state";
@@ -33,6 +33,15 @@ import { createIsolatedGameLock } from "./session-manager.test-fixtures";
 interface ModuleHarness {
   module: EmscriptenModule;
   memory: Uint8Array;
+  readFile: ReturnType<typeof vi.fn<
+    (
+      path: string,
+      options?: { encoding: "utf8" },
+    ) => string | Uint8Array
+  >>;
+  writeFile: ReturnType<typeof vi.fn<
+    (path: string, value: string | Uint8Array) => void
+  >>;
   resolveMain: (value?: unknown) => void;
   rejectMain: (error: unknown) => void;
   writeString: (pointer: number, value: string) => void;
@@ -43,11 +52,16 @@ type ShimCallback = (name: string, ...args: unknown[]) => Promise<unknown>;
 /**
  * Create the smallest Emscripten module needed by session lifecycle tests.
  * @param label - text returned for the shared pointer fixture.
+ * @param sysconf - packaged configuration exposed by the fake filesystem.
  * @returns module, memory, and a UTF-8 fixture writer.
  */
-function createModuleHarness(label: string): ModuleHarness {
+function createModuleHarness(
+  label: string,
+  sysconf = "WIZARDS=\n",
+): ModuleHarness {
   const memory = new Uint8Array(4096);
   const view = new DataView(memory.buffer);
+  let nextAllocation = 1024;
   let resolveMain!: (value?: unknown) => void;
   let rejectMain!: (error: unknown) => void;
   const mainResult = new Promise<unknown>((resolve, reject) => {
@@ -67,6 +81,24 @@ function createModuleHarness(label: string): ModuleHarness {
   }
 
   writeString(256, label);
+  const readFile = vi.fn((
+    _path: string,
+    options?: { encoding: "utf8" },
+  ) => options ? sysconf : new TextEncoder().encode(sysconf));
+  const writeFile = vi.fn(
+    (_path: string, _value: string | Uint8Array) => undefined,
+  );
+  const fileSystem = {
+    analyzePath: vi.fn(() => ({ exists: true })),
+    mkdir: vi.fn(),
+    mount: vi.fn(),
+    readFile,
+    writeFile,
+    syncfs: vi.fn((
+      _populate: boolean,
+      callback: (error: unknown | null) => void,
+    ) => callback(null)),
+  };
   const module: EmscriptenModule = {
     ccall: vi.fn((name: string) => name === "main" ? mainResult : undefined),
     getValue: vi.fn((pointer: number, type: string) => {
@@ -84,21 +116,23 @@ function createModuleHarness(label: string): ModuleHarness {
       while (memory[end] !== 0) end += 1;
       return new TextDecoder().decode(memory.subarray(pointer, end));
     }),
-    stringToUTF8: vi.fn(),
-    _malloc: vi.fn(() => 1024),
+    stringToUTF8: vi.fn((value: string, pointer: number) => {
+      writeString(pointer, value);
+    }),
+    _malloc: vi.fn((size: number) => {
+      const pointer = nextAllocation;
+      nextAllocation += Math.max(8, Math.ceil(size / 8) * 8);
+      return pointer;
+    }),
     _free: vi.fn(),
     ENV: {},
-    FS: {
-      analyzePath: vi.fn(() => ({ exists: true })),
-      mkdir: vi.fn(),
-      mount: vi.fn(),
-      readFile: vi.fn(() => new Uint8Array()),
-      syncfs: vi.fn((_populate, callback) => callback(null)),
-    },
+    FS: fileSystem,
   };
   return {
     module,
     memory,
+    readFile,
+    writeFile,
     resolveMain,
     rejectMain,
     writeString,
@@ -133,6 +167,28 @@ async function isSettled(promise: Promise<unknown>): Promise<boolean> {
   await Promise.resolve();
   await Promise.resolve();
   return settled;
+}
+
+/**
+ * Install one deterministic Vite mode and browser URL for an acceptance test.
+ * @param viteDev - value exposed as Vite's DEV flag.
+ * @param href - complete browser URL exposed through global location.
+ */
+function useAcceptanceUrl(viteDev: boolean, href: string): void {
+  vi.stubEnv("DEV", viteDev);
+  vi.stubEnv("PROD", !viteDev);
+  vi.stubGlobal("location", new URL(href));
+}
+
+/**
+ * Decode one filesystem write into text without constraining its representation.
+ * @param value - string or byte payload passed to Emscripten FS.
+ * @returns decoded text.
+ */
+function decodeWrittenText(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value instanceof Uint8Array) return new TextDecoder().decode(value);
+  throw new TypeError("Expected a string or Uint8Array filesystem payload");
 }
 
 /**
@@ -213,6 +269,11 @@ beforeEach(() => {
     },
     pointers: {},
   };
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
 });
 
 describe("cross-page game lock lifecycle", () => {
@@ -582,6 +643,167 @@ describe("session creation and startup", () => {
     await manager.cleanupSession(second.sessionId);
     expect(second.callbackName in callbackHost).toBe(false);
   });
+});
+
+describe("local wizard acceptance startup", () => {
+  it.each([
+    {
+      hostname: "localhost",
+      href: "http://localhost/?acceptance=wizard",
+    },
+    {
+      hostname: "127.0.0.1",
+      href: "http://127.0.0.1/?acceptance=wizard",
+    },
+    {
+      hostname: "[::1]",
+      href: "http://[::1]/?acceptance=wizard",
+    },
+  ])(
+    "enables on Vite DEV at $hostname and patches only WIZARDS",
+    async ({ href }) => {
+      const packagedSysconf = [
+        "# packaged settings",
+        "WIZARDS=alice bob",
+        "EXPLORERS=*",
+        "",
+      ].join("\n");
+      const expectedSysconf = [
+        "# packaged settings",
+        "WIZARDS=*",
+        "EXPLORERS=*",
+        "",
+      ].join("\n");
+      const module = createModuleHarness("module", packagedSysconf);
+      useAcceptanceUrl(true, href);
+      const { manager } = createHarness([module.module]);
+
+      await manager.startSession();
+
+      expect(module.readFile.mock.calls.some(
+        ([path]) => path === "/sysconf",
+      )).toBe(true);
+      expect(module.writeFile).toHaveBeenCalledOnce();
+      const [path, value] = module.writeFile.mock.calls[0]!;
+      expect(path).toBe("/sysconf");
+      expect(decodeWrittenText(value)).toBe(expectedSysconf);
+      const ccall = module.module.ccall as ReturnType<typeof vi.fn>;
+      const mainCallIndex = ccall.mock.calls.findIndex(
+        ([name]) => name === "main",
+      );
+      expect(mainCallIndex).toBeGreaterThanOrEqual(0);
+      expect(module.writeFile.mock.invocationCallOrder[0]).toBeLessThan(
+        ccall.mock.invocationCallOrder[mainCallIndex]!,
+      );
+    },
+  );
+
+  it.each([
+    {
+      condition: "Vite production",
+      viteDev: false,
+      href: "http://localhost/?acceptance=wizard",
+    },
+    {
+      condition: "a non-loopback hostname",
+      viteDev: true,
+      href: "https://example.test/?acceptance=wizard",
+    },
+    {
+      condition: "a loopback lookalike hostname",
+      viteDev: true,
+      href: "https://localhost.example.test/?acceptance=wizard",
+    },
+    {
+      condition: "a non-matching query value",
+      viteDev: true,
+      href: "http://localhost/?acceptance=Wizard",
+    },
+  ])(
+    "fails closed for $condition and preserves ordinary main",
+    async ({ viteDev, href }) => {
+      const module = createModuleHarness("module", "WIZARDS=alice\n");
+      useAcceptanceUrl(viteDev, href);
+      const { manager } = createHarness([module.module]);
+
+      await manager.startSession();
+
+      expect(module.readFile).not.toHaveBeenCalled();
+      expect(module.writeFile).not.toHaveBeenCalled();
+      expect(module.module.ccall).toHaveBeenCalledWith(
+        "main",
+        "number",
+        [],
+        [],
+        { async: true },
+      );
+    },
+  );
+
+  it("passes nethack -D through a complete argv vector", async () => {
+    const module = createModuleHarness("module", "WIZARDS=alice\n");
+    useAcceptanceUrl(true, "http://localhost/?acceptance=wizard");
+    const { manager } = createHarness([module.module]);
+
+    await manager.startSession();
+
+    const ccall = module.module.ccall as ReturnType<typeof vi.fn>;
+    const mainCall = ccall.mock.calls.find(([name]) => name === "main");
+    if (!mainCall) throw new Error("Expected main to be called");
+    expect(mainCall[1]).toBe("number");
+    expect(mainCall[2]).toEqual(["number", "number"]);
+    expect(mainCall[4]).toEqual({ async: true });
+    const [argc, argv] = mainCall[3] as [number, number];
+    expect(argc).toBe(2);
+    const programPointer = Number(module.module.getValue(argv, "*"));
+    const flagPointer = Number(module.module.getValue(argv + 4, "*"));
+    expect(module.module.getValue(argv + 8, "*")).toBe(0);
+    expect(module.module.UTF8ToString(programPointer)).toBe("nethack");
+    expect(module.module.UTF8ToString(flagPointer)).toBe("-D");
+    expect(module.module._malloc).toHaveBeenNthCalledWith(1, 8);
+    expect(module.module._malloc).toHaveBeenNthCalledWith(2, 3);
+    expect(module.module._malloc).toHaveBeenNthCalledWith(3, 12);
+  });
+
+  it.each([
+    {
+      settlement: "resolves",
+      settle(module: ModuleHarness) {
+        module.resolveMain();
+      },
+    },
+    {
+      settlement: "rejects",
+      settle(module: ModuleHarness) {
+        module.rejectMain(new Error("main rejected"));
+      },
+    },
+  ])(
+    "keeps argv alive until main $settlement, then frees every allocation",
+    async ({ settle }) => {
+      const module = createModuleHarness("module", "WIZARDS=alice\n");
+      useAcceptanceUrl(true, "http://localhost/?acceptance=wizard");
+      const { manager } = createHarness([module.module]);
+
+      await manager.startSession();
+
+      const malloc = module.module._malloc as ReturnType<typeof vi.fn>;
+      const free = module.module._free as ReturnType<typeof vi.fn>;
+      expect(malloc).toHaveBeenCalledTimes(3);
+      expect(free).not.toHaveBeenCalled();
+      const allocated = malloc.mock.results.map(({ value }) => Number(value));
+
+      settle(module);
+
+      await vi.waitFor(() => {
+        expect(free).toHaveBeenCalledTimes(allocated.length);
+      });
+      const freed = free.mock.calls.map(([pointer]) => Number(pointer));
+      expect(freed.toSorted((left, right) => left - right)).toEqual(
+        allocated.toSorted((left, right) => left - right),
+      );
+    },
+  );
 });
 
 describe("session callback isolation", () => {
