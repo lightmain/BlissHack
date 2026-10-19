@@ -38,6 +38,12 @@ export function startWizardAcceptanceMain(
   module: EmscriptenModule,
 ): Promise<unknown> {
   authorizeWizardMode(module);
+  Object.defineProperty(module, "blisshackWizardAcceptance", {
+    value: true,
+    configurable: false,
+    enumerable: true,
+    writable: false,
+  });
   return callMainWithArguments(module, WIZARD_ARGUMENTS);
 }
 

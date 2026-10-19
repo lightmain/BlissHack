@@ -121,7 +121,10 @@ export function readExtendedCommands(
     const flags = Number(
       module.getValue(entryPtr + EXTCMD_FLAGS_OFFSET, "i32"),
     ) >>> 0;
-    if ((flags & (WIZMODECMD | CMD_NOT_AVAILABLE | INTERNALCMD)) !== 0) continue;
+    if ((flags & (CMD_NOT_AVAILABLE | INTERNALCMD)) !== 0) continue;
+    if ((flags & WIZMODECMD) !== 0 && !module.blisshackWizardAcceptance) {
+      continue;
+    }
     const descriptionPtr = Number(
       module.getValue(entryPtr + EXTCMD_DESCRIPTION_OFFSET, "*"),
     );
