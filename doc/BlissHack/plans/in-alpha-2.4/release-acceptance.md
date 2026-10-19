@@ -157,28 +157,208 @@ README、frontend README 和 WASM 构建文档中补全。修正后的 follow-up
 - 最终独立复审未发现剩余高、中严重性问题；生产代码和样式中不再包含 Newt
   专属事实布局、Monster 页面布局特例、Wiki Tab 或双栏渲染分支。
 
-## 8. 人工验收待办
+## 8. 人工验收执行手册
 
-- [ ] Detailed 下分别检查地图 Newt、地形、陷阱、地面物品和永久背包物品的
-  `Examine`，并确认武士初始 katana 显示具体资料；Original 下确认没有
-  synthetic 行。
-- [ ] 记录 moves/time，反复打开、滚动、关闭，确认菜单先关闭、窗口后打开，
-  全程不消耗回合；原有攻击、移动、拾取和物品动作保持原路径。
-- [ ] 检查未鉴定 wand 等物品、hallucination、mimic/disguise、隐藏/可见陷阱
-  以及未公开和已公开神器，确认没有隐藏身份泄露。
-- [ ] 逐段核对 Newt revision 205110：Strategy 两段、History 一段、
-  Dudley's dungeon 一段；确认没有 Overview Wiki 内容，并检查来源、历史、
-  contributors、CC BY-SA 3.0、源码路径和 NGPL 标识。
-- [ ] 断网打开无 Wiki 实体，确认 facts-only 自然可用且没有外部资料请求。
-- [ ] 在 1280×900、900×700 和窄屏检查 Tiles/ASCII、Right/Right-short/Below
-  及两种动作栏模式；确认无重叠且只有一个对话框内容滚动区域。
-- [ ] 只用键盘完成菜单选择、Tab 导航、来源链接聚焦和关闭；确认对话框外不可
-  聚焦，关闭后可立即继续移动。
-- [ ] 验收结束时确认 Console 没有 stale intent、重复输入、React、layout、
-  loader、Canvas 或 WASM 错误。
+本节是 alpha-2.4 的权威人工验收步骤。验收者不需要通过正常游戏随机取得神器、
+陷阱或特殊怪物，也不需要熟悉 NetHack 深层玩法；本地开发构建提供一个受限的
+巫师验收入口，用来确定性制造所需场景。
 
-更细的身份、内容、布局和辅助功能检查步骤见
-[alpha-2.4 计划的人工验收章节](../alpha-2.4.md#12-人工验收)。
+### 8.1 验收入口与安全边界
+
+巫师入口必须同时满足以下三个条件才会启用：
+
+1. 使用 Vite development server；
+2. 页面 hostname 精确为 `localhost`、`127.0.0.1` 或 `[::1]`；
+3. URL 只有一个 `acceptance=wizard` 参数，且值大小写完全一致。
+
+生产构建、GitHub Pages、非 loopback hostname、`localhost.example.com`、
+`acceptance=Wizard` 和重复的 `acceptance` 参数都不会启用巫师模式。入口只会
+修改当前 fresh WASM module 的内存文件系统，不会改动仓库中的 `/sysconf`，
+也不会向普通会话增加巫师命令。
+
+建议使用独立的浏览器临时配置或隐私窗口，不要选择已有存档的 `Continue`。
+在仓库根目录运行：
+
+```sh
+cd frontend
+npm run dev -- --host 127.0.0.1
+```
+
+打开：
+
+```text
+http://127.0.0.1:5173/?acceptance=wizard
+```
+
+若终端显示的实际端口不是 5173，以终端端口为准。不要使用 `npm run preview`；
+preview 是生产构建，query 按设计无效。
+
+进入首页后先完成以下准备：
+
+1. 打开 `Settings`，把 `Information level` 设为 `Detailed`。
+2. 打开 `Show turn count`。
+3. 打开 `Enable Permanent Inventory`，`Contents` 选
+   `All except gold`。
+4. `Map display` 先选 `Tiles`，`Action bar` 先选 `BlissHack`，
+   `Preferred position` 先选 `Right (Long)`。
+5. 返回首页并选择 `New Game`；角色选择 Samurai、Human、Male、Lawful。
+   巫师模式会把角色名固定为 `wizard`，这是正常行为。
+6. 游戏开始后按 `#`，在扩展命令界面输入 `wizwish`。能找到并执行该命令即
+   证明当前是 debug/wizard mode；若提示命令不可用，立即停止并检查 URL，
+   不要在普通游戏里继续验收。
+
+### 8.2 巫师命令速查
+
+浏览器中统一使用 `#` 打开扩展命令，再输入下表中的命令名并确认。不要使用
+`Ctrl+W` 等默认快捷键，因为浏览器或操作系统可能先处理这些组合键。
+
+| 目的 | 命令 | 随后的输入 | 结果与注意事项 |
+| --- | --- | --- | --- |
+| 制造任意物品、神器、陷阱或有限地形 | `wizwish` | 例如 `wand of light`、`long sword named Excalibur`、`pit`、`fountain` | 普通物品优先进入背包；超重才落地。陷阱或地形生成在角色脚下 |
+| 制造指定怪物 | `wizgenesis` | 例如 `newt`、`giant mimic`、`tame little dog` | 怪物通常生成在角色附近；可接受 `tame`、`peaceful`、`sleeping` 等前缀 |
+| 显示全图并显露陷阱 | `wizmap` | 无 | 会把当前层陷阱标记为已发现；用于隐藏/可见陷阱配对 |
+| 探测附近隐藏内容 | `wizdetect` | 无 | 显示附近秘密门、陷阱和隐藏怪物，不消耗回合 |
+| 临时查看背包真实身份 | `wizidentify` | 无 | 只用于排障；执行前不要做未鉴定物品防剧透用例 |
+| 设置临时 intrinsic | `wizintrinsic` | 在菜单中选择属性 | 可制造更多状态；本手册的幻觉用 potion，避免依赖此菜单 |
+| 传送到指定层 | `wizlevelport` | 层号或特殊目的地 | 本版本 Examine 基础验收不需要 |
+
+制造物品后，如需验证地面物品，使用普通 `d` 命令把它丢在地上。`wizwish`
+本身不会保证物品直接出现在地面。
+
+### 8.3 证据记录规则
+
+每个用例至少记录以下证据：
+
+- 用例编号、浏览器、窗口尺寸、Tiles/ASCII、背包位置和动作栏模式；
+- 打开右键菜单前的 `Turn` 数值和关闭 Examine 后的 `Turn` 数值；
+- 右键菜单、Examine 标题与关键 section 的截图；
+- 实际结果和预期结果是否一致；
+- DevTools Console 与 Network 中的异常。
+
+制造场景、移动、攻击、丢弃、饮用或使用 wand 本身可以消耗回合。无回合断言只
+比较“场景准备完毕之后、打开右键菜单之前”的数值与“关闭 Examine 之后”的
+数值，不把准备动作混入比较。
+
+任一用例出现以下情况时停止验收并保留现场：隐藏真名或神器名泄露；一次
+Examine 改变 Turn；核心菜单未先关闭；重复窗口；输入卡死；资料 family 或来源
+错误；Console 出现未处理异常、stale intent、重复输入、loader、Canvas 或
+WASM 错误。
+
+### 8.4 基础流程与无回合消耗
+
+1. 用 `#wizgenesis` 输入 `newt`。
+2. 等 Newt 出现在角色附近后，记录当前 `Turn`。
+3. 右键 Newt，确认核心原有动作保持原顺序，末尾另有分隔线和 `Examine`。
+4. 选择 `Examine`。确认右键菜单先消失，观察窗口随后出现；不得同时显示两个
+   modal。
+5. 在窗口内滚动到底，再回到顶部，依次用关闭按钮、Escape 和 backdrop
+   完成三轮打开/关闭。
+6. 每轮关闭后确认 `Turn` 与步骤 2 相同，并立即用方向键移动一次，确认游戏
+   输入已经恢复。
+7. 再打开右键菜单，选择一个真实核心动作；确认它仍沿核心原路径执行。攻击或
+   移动可以正常增加 Turn。
+8. 在 Settings 把 `Information level` 切为 `Original`，再次右键同一目标，
+   确认没有 synthetic `Examine`；随后切回 `Detailed`。
+
+### 8.5 可见身份与防剧透矩阵
+
+按下表顺序执行。把幻觉用例放在最后，因为幻觉持续时间不适合人工等待。
+
+| 编号 | 场景制造步骤 | 预期 Examine 结果 |
+| --- | --- | --- |
+| I-1 已知背包物品 | 右键 Samurai 初始 katana | 显示具体 katana 资料，不退化为通用武器类别 |
+| I-2 地面物品 | `#wizwish` 输入 `long sword`，再用 `d` 丢下新物品并右键地面物品 | 显示 long sword；地面与背包使用同一事实结构 |
+| I-3 物品堆 | 在同一格再丢一个不同物品，右键 pile glyph | 只描述当前可见的堆顶物品，不旁路显示被遮挡物品 |
+| I-4 尸体与雕像 | 分别 wish `newt corpse`、`statue of a newt`，丢到地上后右键 | 显示 Newt 物种对应的 corpse/statue 资料，不当作活怪物 |
+| I-5 未鉴定 wand | 在尚未执行 `#wizidentify` 时 wish `wand of light`，右键背包中新出现的唯一 wand | 只显示当前外观或 wand 类别；标题、事实和链接不得出现 `wand of light` 或 light 效果 |
+| I-6 已公开 wand | 用普通 `z` 选择该 wand；其 light 效果在非盲状态下使类型公开，再次右键 | 现在可以显示具体 wand of light 资料；使用 wand 的回合不属于 Examine 无回合断言 |
+| I-7 地形 | 站在普通 floor 上，wish `fountain`，移动一格后右键原位置 | 显示 fountain terrain 资料；不得显示祭坛阵营等不存在的信息 |
+| I-8 隐藏陷阱 | 站在普通 floor 上，wish `pit`，记住该格并移动离开；在执行 map 前右键原位置 | 地图仍按 floor 处理，不出现 pit Examine，不泄露隐藏陷阱 |
+| I-9 已发现陷阱 | 执行 `#wizmap`，再次右键 I-8 的位置 | pit glyph 可见，Examine 显示 pit trap 资料 |
+| I-10 普通宠物 | `#wizgenesis` 输入 `tame little dog`，右键新宠物 | 显示 little dog 物种资料；宠物标记可见但不显示驯服度等实例内部值 |
+| I-11 mimic 伪装 | `#wizgenesis` 输入 `giant mimic`，在碰撞或攻击前右键其伪装 glyph | 只描述屏幕上显示的物品或设施，不显示 Giant mimic |
+| I-12 mimic 揭露 | 向 I-11 的伪装格移动或攻击使其现形，再次右键 | 现在显示 Giant mimic 怪物资料 |
+| I-13 已公开神器 | 在非幻觉状态 wish `long sword named Excalibur`，右键背包物品 | 标题显示 Excalibur；先有基础 long sword 事实，再有 artifact overlay |
+| I-14 幻觉中的神器 | wish `potion of hallucination`，用 `q` 喝下新 potion；状态栏出现 Hallu 后 wish `battle-axe named Cleaver` 并右键新物品 | 背包可能显示 `double-headed axe`；不得出现 Cleaver 标题、token、专属字段或 artifact overlay |
+| I-15 幻觉中的怪物 | Hallu 仍有效时 `#wizgenesis` 输入 `newt`，右键其当前显示 glyph | 只描述当前幻觉 glyph，不显示真实 Newt；若随机恰好仍显示 Newt，重新制造一个目标再测 |
+
+I-8 与 I-9 是同一个 trap 的前后配对；I-11 与 I-12 是同一个 mimic 的前后
+配对。它们分别证明隐藏状态不会泄露、公开状态又能正常显示。I-13 与 I-14
+分别证明已公开神器可显示、幻觉遮蔽的神器不会显示；无需靠正常游戏取得神器。
+
+### 8.6 Newt 内容、Wiki 与来源
+
+使用非幻觉状态下的 I-1 至 I-13 会话，重新制造一个 `newt` 并执行：
+
+1. 确认所有实体共用同一个纵向 FactDocument；Newt 不得恢复双栏、侧栏或
+   Wiki Tab 特例。
+2. `Key facts` 必须是第一个 section。核对 Newt 基础等级 0、生成 HP 规则
+   2 至 4、速度 6、AC 8、MR 0、阵营 0 和 1d2 bite。
+3. 核对 attacks、generation、size、resistances、traits、corpse 与能量效果
+   section；缺少的字段应省略，不显示推测值。
+4. 核心 provenance 必须位于 core facts 末尾，显示 NetHack 5.0.0、相关源码
+   路径和 NGPL，不得把 Wiki 许可套在核心事实上。
+5. core provenance 之后应静态追加 Newt revision 205110 的四个完整原文段落：
+   Strategy 两段、History 一段、Dudley's dungeon 一段。
+6. 页面不得出现从 Wiki lead 选取的 Overview 正文，也不得出现项目自行摘要、
+   翻译、句子拼接或改写。
+7. 核对 `Newt` 页面标题、`NetHackWiki contributors`、revision 205110、
+   revision history、CC BY-SA 3.0、展示变更说明和外部链接。外部链接应在新
+   窗口打开并带安全 rel；许可链接应标记为 license。
+8. 打开 fountain、pit、long sword 等没有 Wiki 节选的实体，确认自然显示
+   facts-only，不出现空 Tab、空 article 或错误的 Newt 内容。
+
+### 8.7 离线、布局与辅助功能
+
+离线检查应关闭 Wi-Fi 或外部网络连接，但保留本机 Vite server；不要使用会连
+localhost 请求一起拦截的 DevTools 全局 `Offline` 开关。
+
+1. 清空 Network 记录，关闭外部网络后重载本地 URL，打开一个 facts-only
+   实体和 Newt。所有游戏与资料请求应来自当前 loopback origin、`blob:` 或
+   浏览器本地资源，不得请求 `nethackwiki.com`。
+2. 依次检查 1280×900、900×700、700×800、900×600 四个 viewport。
+3. 每个 viewport 至少检查一次 Newt 长内容和一个 facts-only 实体。
+4. 在 Settings 交叉切换 `Tiles`/`ASCII`、`Right (Long)`/
+   `Right (Short)`/`Below`、`BlissHack`/`Original` action bar。无需穷举
+   全部 24 个组合，但每个选项至少与一个桌面和一个窄屏 viewport 配对。
+5. 确认标题、标签、长名称、六次 attack、四段 Wiki 原文和来源条不重叠、不
+   截断、不产生横向页面滚动。
+6. 对话框只允许 `.examine-layout` 内容区滚动；facts、Wiki article、backdrop
+   和页面主体不得形成第二个竞争滚动区域。
+7. 右键菜单打开后不再使用鼠标：用 accelerator 或方向键选择 `Examine`，
+   Enter 确认；在对话框中用 Tab/Shift+Tab 遍历关闭按钮、来源和许可链接，
+   用 Escape 关闭。
+8. Tab 不得离开对话框；背景游戏应不可聚焦。关闭后焦点回到合理的地图或背包
+   触发位置，并能立即接受方向键。
+9. 若可用，使用 VoiceOver 检查 dialog 名称、heading 层级、definition list
+   和来源链接名称；不得朗读隐藏 Tab panel 或重复标题。
+
+### 8.8 Console、清理与签署
+
+完成全部场景后：
+
+1. 检查 Console 没有未处理 Promise rejection、React warning、stale intent、
+   重复输入、layout、loader、Canvas、存储或 WASM 错误。
+2. 检查 Network 没有运行时 NetHackWiki 请求、重复 chunk 风暴或失败后循环
+   重试。
+3. 关闭验收标签页。若使用了普通浏览器配置，在首页
+   `Settings` 的 data management 中执行 `Clear local data`，清除名为
+   `wizard` 的测试存档、测试 profile、Ranking 和诊断记录；使用临时配置或
+   隐私窗口时直接删除该配置或关闭所有相关窗口。
+4. 在下表填写结果；任何一项失败都不签署 alpha-2.4 人工验收。
+
+| 验收组 | 结果 | 证据或备注 |
+| --- | --- | --- |
+| 本地巫师入口与生产 fail-closed | [ ] 通过 / [ ] 失败 | |
+| Detailed/Original 与核心动作 | [ ] 通过 / [ ] 失败 | |
+| 无回合、菜单 handoff 与输入恢复 | [ ] 通过 / [ ] 失败 | |
+| 物品、terrain、trap、mimic 与神器身份 | [ ] 通过 / [ ] 失败 | |
+| 幻觉与未鉴定状态无泄露 | [ ] 通过 / [ ] 失败 | |
+| Newt facts、四段 Wiki 与双许可来源 | [ ] 通过 / [ ] 失败 | |
+| 离线、四 viewport、显示与布局模式 | [ ] 通过 / [ ] 失败 | |
+| 键盘、焦点、VoiceOver 与 Console | [ ] 通过 / [ ] 失败 | |
+
+验收者：__________　日期：__________　结论：__________
 
 ## 9. 当前结论
 

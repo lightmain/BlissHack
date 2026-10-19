@@ -1174,52 +1174,18 @@ docs: complete alpha-2.4 examine acceptance
 
 ## 12. 人工验收
 
-### 12.1 设置与入口
+完整且可直接执行的人工验收步骤统一维护在
+[alpha-2.4 发布验收的人工验收执行手册](in-alpha-2.4/release-acceptance.md#8-人工验收执行手册)。
+该手册包括仅限本地开发构建的巫师验收入口、命令速查、场景制造顺序、证据记录、
+身份防泄露矩阵、Newt/Wiki/许可核对、离线与 viewport 组合、键盘/焦点检查、
+Console 门禁、清理和签署表。
 
-1. Detailed 下右键地图 Newt，确认原有核心动作后有分隔线和 `Examine`。
-2. Original 下重复操作，确认菜单与 alpha-2.3 相同。
-3. 在游戏内切换 Detailed/Original，确认即时生效且 profile schema 仍为 v4。
-4. 右键不支持的临时 effect，确认不出现错误或错误资料。
-
-### 12.2 核心流程
-
-1. 选择 `Examine`，确认核心菜单先关闭，随后才打开观察窗口。
-2. 记录 moves/time，反复打开、滚动、关闭，确认不消耗回合。
-3. 分别选择原菜单中的攻击、移动、拾取和物品动作，确认行为没有改变。
-4. 在菜单打开后让 map/inventory revision 变化，确认旧 Examine 不出现。
-5. 快速重复右键、Escape、backdrop 和关闭按钮，确认无重复窗口或卡死输入。
-6. 关闭后立即用键盘移动，确认焦点与命令输入恢复。
-
-### 12.3 身份与防剧透
-
-1. 检查普通怪物、宠物、ridden/detected 怪物的 species 与显示标签。
-2. 检查地上物品、物品堆、尸体和雕像。
-3. 检查未鉴定 potion/scroll/wand，确认不显示真实效果。
-4. 在 hallucination 和 mimic/disguise 场景打开，确认只描述显示身份。
-5. 检查隐藏与已发现陷阱，确认只有已经显示的陷阱可观察。
-6. 检查普通神器、尚未公开名称的神器和已公开神器；未公开时只显示基础物品。
-
-### 12.4 内容与来源
-
-1. 核对 Newt 基础等级、2 至 4 HP 规则、1d2 bite、traits、corpse 数据和能量
-   效果的源码引用。
-2. 逐段核对 Newt revision 205110，确认 Strategy 两段、History 一段和
-   Dudley's dungeon 一段完整、顺序正确、文字未改；Overview 没有 Wiki
-   节选，只显示核心源码事实。
-3. 确认页面 title、contributors、revision、history、CC BY-SA 3.0 和修改
-   说明可见且链接正确。
-4. 确认 NetHack facts 单独显示版本、源码路径和 NGPL。
-5. 打开没有 Wiki 节选的实体，确认 facts-only 视图自然可用。
-6. 断网重载并重复上述操作，确认没有运行时外部请求。
-
-### 12.5 布局与辅助功能
-
-1. 在 1280x900、900x700 和窄屏检查长名称、六次攻击和长段落。
-2. 检查 Tiles/ASCII、背包 Right/Right-short/Below 和两种动作栏模式。
-3. 只用键盘完成菜单选择、窗口内顺序焦点遍历、来源链接聚焦和关闭。
-4. 使用屏幕阅读器检查 dialog 标题、静态 Wiki 标题层级、facts definition
-   list 和 source links。
-5. 确认对话框外内容不可聚焦，关闭后焦点回到合理触发位置。
+计划范围仍要求至少覆盖 Detailed/Original、无回合 handoff、普通怪物与宠物、
+地面/背包/堆叠物品、尸体、雕像、未鉴定 wand、hallucination、
+mimic/disguise、隐藏/已发现陷阱、未公开/已公开神器、facts-only、Newt 四段
+固定 Wiki 原文、Tiles/ASCII、三种永久背包位置、两种动作栏、四个目标 viewport
+和辅助功能。发布验收手册是步骤与结果的权威记录；本计划不再复制一份容易漂移的
+简版清单。
 
 ## 13. 风险与处理
 
