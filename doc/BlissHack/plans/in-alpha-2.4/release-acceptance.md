@@ -53,6 +53,14 @@ alpha-2.4 已完成实现、独立复审和自动门禁。人工验收仍待用�
   键盘导航和关闭后焦点恢复。
 - `nethack-runtime.json` schema v3 同时绑定 loader、WASM、core manifest、
   Wiki manifest 和 core source fingerprint。
+- 本地开发构建在精确 loopback URL 加 `acceptance=wizard` 时提供人工验收入口：
+  fresh module 的内存 `/sysconf` 只把 `WIZARDS` 改为 `*`，以
+  `nethack -D` 启动并在 main settle 后释放 argv。生产、非 loopback 和错误或
+  重复 query 均 fail closed；普通会话继续使用原零参数 main。
+- 本地巫师验收会话的 `#` 选择器可以搜索 `wizwish`、`wizgenesis`、`wizmap`
+  等 debug 命令，但 `CMD_NOT_AVAILABLE` 和 `INTERNALCMD` 仍隐藏；普通会话不
+  显示任何 `WIZMODECMD`。该会话强制使用 Original 角色创建以适配 debug 核心
+  跳过姓名请求的行为，不修改保存的 profile。
 
 ## 4. 内容与覆盖
 
@@ -96,11 +104,11 @@ source fingerprint 为
 | `npm run verify:tiles` | 2,307 tiles 与输入 checksum 通过 |
 | `npm run encyclopedia:verify` | schema v2、9,624 glyph、970 core records、1 Wiki record 通过 |
 | 阶段六 release gates | 4/4 |
-| `npm test` | 97 files，1,189/1,189 |
+| `npm test` | 98 files，1,206/1,206 |
 | `npm run lint` | 0 warnings，0 errors |
 | `VITE_BASE_PATH=/BlissHack/ npm run build` | TypeScript 与 production build 通过 |
 | `npm run test:integration:wasm` | 166/166 |
-| `npm run test:integration:browser` | Chromium 160/160 |
+| Chromium release Playwright suite（本地端口 4184） | 160/160 |
 | `npm run test:integration:compat` | Firefox + WebKit 200/200 |
 | `npm run test:performance` | 2/2；Canvas 全图 p95 5.8 ms，300 行背包提交 15.4 ms |
 | `npm run test:long` | 4/4 |
@@ -113,6 +121,11 @@ Right/Below 和共享 FactDocument 多列布局。浏览器几何断言确认 Ne
 facts-only 实体都使用全宽 facts、无横向溢出，并在全部视口只有一个内容滚动
 owner；四段 Wiki 原文同时可见且没有 tab controller。普通运行不会请求
 NetHackWiki。
+
+本地真实 Chromium 另验证：development + loopback + query 会把角色名固定为
+`wizard`，进入 Original 核心角色流程；`#` 搜索 `wizwish` 后能到达
+`For what do you wish?`。同一 query 放在 `/BlissHack/` 生产 preview 时仍进入
+普通统一角色创建，证明生产构建不会启用巫师入口。
 
 ## 7. 独立复审
 
@@ -156,6 +169,12 @@ README、frontend README 和 WASM 构建文档中补全。修正后的 follow-up
   `.examine-layout` owner；follow-up review 未发现剩余 P1/P2。
 - 最终独立复审未发现剩余高、中严重性问题；生产代码和样式中不再包含 Newt
   专属事实布局、Monster 页面布局特例、Wiki Tab 或双栏渲染分支。
+- 2026-10-19 本地巫师验收入口 reviewer 首轮发现默认 BlissHack 角色创建与
+  debug 核心跳过姓名请求会形成空姓名死锁，并指出人工手册的 Turn 基线和幻觉
+  顺序存在矛盾。实现已让验收 session 强制使用 Original、普通 session 继续
+  尊重 profile，并补充重复 query、异常 `WIZARDS` 和同步 main 异常释放测试；
+  手册已改为逐轮记录 Turn，并要求在幻觉前完成 Newt 内容核对。follow-up
+  review 未发现剩余 P1/P2。
 
 ## 8. 人工验收执行手册
 
@@ -201,9 +220,13 @@ preview 是生产构建，query 按设计无效。
    `All except gold`。
 4. `Map display` 先选 `Tiles`，`Action bar` 先选 `BlissHack`，
    `Preferred position` 先选 `Right (Long)`。
-5. 返回首页并选择 `New Game`；角色选择 Samurai、Human、Male、Lawful。
-   巫师模式会把角色名固定为 `wizard`，这是正常行为。
-6. 游戏开始后按 `#`，在扩展命令界面输入 `wizwish`。能找到并执行该命令即
+5. 返回首页并选择 `New Game`。本地巫师验收会话会强制使用 Original 角色
+   创建流程，避免 debug 核心跳过姓名请求后让统一角色界面停在空姓名状态；
+   这不会修改 profile 中保存的 `Character setup style`。
+6. 对 `Shall I pick character's race, role, gender and alignment for you?`
+   回答 `n`，再依次选择 Samurai、Human、Male、Lawful。巫师模式会把角色名
+   固定为 `wizard`，这是正常行为。
+7. 游戏开始后按 `#`，在扩展命令界面输入 `wizwish`。能找到并执行该命令即
    证明当前是 debug/wizard mode；若提示命令不可用，立即停止并检查 URL，
    不要在普通游戏里继续验收。
 
@@ -252,9 +275,10 @@ WASM 错误。
 4. 选择 `Examine`。确认右键菜单先消失，观察窗口随后出现；不得同时显示两个
    modal。
 5. 在窗口内滚动到底，再回到顶部，依次用关闭按钮、Escape 和 backdrop
-   完成三轮打开/关闭。
-6. 每轮关闭后确认 `Turn` 与步骤 2 相同，并立即用方向键移动一次，确认游戏
-   输入已经恢复。
+   完成三轮打开/关闭。每轮打开前重新记录当时的 `Turn` 基线，并在该轮关闭后
+   确认数值没有改变。
+6. 三轮全部完成后只用方向键移动一次，确认游戏输入已经恢复；这次移动可以
+   正常增加 Turn。
 7. 再打开右键菜单，选择一个真实核心动作；确认它仍沿核心原路径执行。攻击或
    移动可以正常增加 Turn。
 8. 在 Settings 把 `Information level` 切为 `Original`，再次右键同一目标，
@@ -262,7 +286,9 @@ WASM 错误。
 
 ### 8.5 可见身份与防剧透矩阵
 
-按下表顺序执行。把幻觉用例放在最后，因为幻觉持续时间不适合人工等待。
+先按下表顺序执行 I-1 至 I-13，然后暂停本节并完成 8.6 的 Newt 内容、Wiki 与
+来源检查；确认 8.6 完成后再返回执行 I-14 和 I-15。幻觉用例必须最后执行，
+因为幻觉持续时间不适合人工等待。
 
 | 编号 | 场景制造步骤 | 预期 Examine 结果 |
 | --- | --- | --- |
