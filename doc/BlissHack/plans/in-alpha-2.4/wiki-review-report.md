@@ -26,7 +26,8 @@ Wiki 资产、选择清单、alias catalog、验收 fixture 和 `NOTICE.md` 由
 | History | Dudley's dungeon | 1 |
 | **合计** |  | **4** |
 
-没有发布 Overview Tab 或 Overview 段落。选择清单、生成资产和真实浏览器测试
+没有发布 Overview section 或 Overview 段落。选择清单、生成资产和真实浏览器
+测试
 均断言 Overview 不存在；内容没有摘要、翻译、改写、截句、合并或拼接。
 
 ## 2. 审查项

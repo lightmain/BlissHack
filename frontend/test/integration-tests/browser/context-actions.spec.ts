@@ -768,7 +768,9 @@ test("Examine Newt content: renders one facts-first scroll flow without tabs in 
   await expect(dialog.getByRole("tablist")).toHaveCount(0);
   await expect(dialog.locator('[role="tab"], [role="tabpanel"]'))
     .toHaveCount(0);
-  await expect(dialog.locator(".examine-article section[hidden]"))
+  await expect(dialog.locator(
+    ".examine-article[hidden], .examine-article [hidden]",
+  ))
     .toHaveCount(0);
   await expect(dialog.locator(".examine-wiki-section h2")).toHaveText([
     "Strategy",
@@ -932,75 +934,146 @@ test("Examine browser fallback: invalid core data closes the loading request", a
 const EXAMINE_LAYOUTS = [
   {
     height: 900,
-    overflowOwners: 1,
     position: "Right" as const,
     renderer: "Tiles" as const,
     width: 1280,
   },
   {
     height: 700,
-    overflowOwners: 1,
     position: "Below" as const,
     renderer: "ASCII" as const,
     width: 900,
   },
   {
     height: 800,
-    overflowOwners: 1,
     position: "Below" as const,
     renderer: "Tiles" as const,
     width: 700,
   },
   {
     height: 600,
-    overflowOwners: 1,
     position: "Right" as const,
     renderer: "ASCII" as const,
     width: 900,
   },
 ] as const;
 
-for (const viewport of [
-  { width: 700, height: 800 },
-  { width: 900, height: 600 },
-] as const) {
+for (const variant of EXAMINE_LAYOUTS) {
   test(
-    `Examine Wiki responsive layout: ${viewport.width}x${viewport.height}`,
+    `Examine Wiki responsive layout: ${variant.width}x${variant.height} `
+      + `${variant.renderer}/${variant.position}`,
     async ({ page }) => {
-      await page.setViewportSize(viewport);
+      await page.setViewportSize({
+        width: variant.width,
+        height: variant.height,
+      });
       await installNewtAssetRoute(page);
       await startContextGame(
         page,
-        `ExamineWiki${viewport.width}x${viewport.height}-Arc-Hum-Mal-Law`,
-        { informationLevel: "Detailed" },
+        `ExamineWiki${variant.width}x${variant.height}-Arc-Hum-Mal-Law`,
+        {
+          informationLevel: "Detailed",
+          inventoryPosition: variant.position,
+          mapRenderer: variant.renderer,
+          permanentInventory: true,
+        },
       );
       const opened = await openMapContextMenu(page);
       await opened.menu.getByRole("menuitem", { name: "Examine" }).click();
       const dialog = page.getByRole("dialog", { name: "Newt" });
       await expect(dialog).toBeVisible();
+      await expect(dialog.locator(".examine-portrait")).toHaveAttribute(
+        "data-examine-renderer",
+        variant.renderer.toLowerCase(),
+      );
+      await expect(page.getByRole("region", { name: "Inventory" }))
+        .toHaveAttribute("data-position", variant.position.toLowerCase());
+      await expect(dialog.locator(".examine-source-strip")).toBeVisible();
+      await expect(dialog.locator(".examine-article")).toBeVisible();
+      await expect(dialog.locator(
+        ".examine-article[hidden], .examine-article [hidden]",
+      )).toHaveCount(0);
 
       const geometry = await dialog.evaluate((element) => {
+        const bounds = element.getBoundingClientRect();
+        const layout = element.querySelector<HTMLElement>(".examine-layout");
         const facts = element.querySelector(".examine-facts");
-        const document = element.querySelector(".examine-fact-document");
+        const factDocument = element.querySelector(".examine-fact-document");
+        const source = element.querySelector(".examine-source-strip");
+        const article = element.querySelector(".examine-article");
+        const layoutBounds = layout?.getBoundingClientRect() ?? null;
+        const factsBounds = facts?.getBoundingClientRect() ?? null;
+        const sourceBounds = source?.getBoundingClientRect() ?? null;
+        const articleBounds = article?.getBoundingClientRect() ?? null;
         const candidates = Array.from(element.querySelectorAll<Element>(
           ".examine-layout, .examine-layout *",
         )).filter((candidate) => candidate.getClientRects().length > 0);
+        const scrollOwners = candidates.filter((candidate) => {
+          const overflow = getComputedStyle(candidate).overflowY;
+          return overflow === "auto" || overflow === "scroll";
+        });
+        const initialScrollTop = layout?.scrollTop ?? 0;
+        if (layout) {
+          layout.scrollTop = Math.min(
+            64,
+            Math.max(0, layout.scrollHeight - layout.clientHeight),
+          );
+        }
+        const scrolledTop = layout?.scrollTop ?? 0;
+        if (layout) layout.scrollTop = initialScrollTop;
         return {
-          documentClient: document?.clientWidth ?? 0,
-          documentScroll: document?.scrollWidth ?? 0,
+          articleTop: articleBounds?.top ?? 0,
+          bounds: {
+            bottom: bounds.bottom,
+            left: bounds.left,
+            right: bounds.right,
+            top: bounds.top,
+          },
+          documentClient: factDocument?.clientWidth ?? 0,
+          documentOverflow:
+            document.documentElement.scrollHeight > innerHeight
+            || document.documentElement.scrollWidth > innerWidth,
+          documentScroll: factDocument?.scrollWidth ?? 0,
           factsClient: facts?.clientWidth ?? 0,
+          factsLeft: factsBounds?.left ?? 0,
           factsScroll: facts?.scrollWidth ?? 0,
-          overflowOwners: candidates.filter((candidate) => {
-            const overflow = getComputedStyle(candidate).overflowY;
-            return overflow === "auto" || overflow === "scroll";
-          }).length,
+          factsTop: factsBounds?.top ?? 0,
+          factsWidth: factsBounds?.width ?? 0,
+          layoutClient: layout?.clientWidth ?? 0,
+          layoutClientHeight: layout?.clientHeight ?? 0,
+          layoutLeft: layoutBounds?.left ?? 0,
+          layoutScroll: layout?.scrollWidth ?? 0,
+          layoutScrollHeight: layout?.scrollHeight ?? 0,
+          layoutScrollTop: scrolledTop,
+          layoutWidth: layoutBounds?.width ?? 0,
+          scrollOwners: scrollOwners.map((candidate) =>
+            candidate.classList.contains("examine-layout")
+              ? "examine-layout"
+              : candidate.className
+          ),
+          sourceTop: sourceBounds?.top ?? 0,
         };
       });
 
+      expect(geometry.bounds.left).toBeGreaterThanOrEqual(0);
+      expect(geometry.bounds.top).toBeGreaterThanOrEqual(0);
+      expect(geometry.bounds.right).toBeLessThanOrEqual(variant.width);
+      expect(geometry.bounds.bottom).toBeLessThanOrEqual(variant.height);
+      expect(geometry.documentOverflow).toBe(false);
+      expect(Math.abs(geometry.factsLeft - geometry.layoutLeft))
+        .toBeLessThanOrEqual(1);
+      expect(Math.abs(geometry.factsWidth - geometry.layoutWidth))
+        .toBeLessThanOrEqual(1);
       expect(geometry.factsScroll).toBeLessThanOrEqual(geometry.factsClient);
       expect(geometry.documentScroll)
         .toBeLessThanOrEqual(geometry.documentClient);
-      expect(geometry.overflowOwners).toBe(1);
+      expect(geometry.layoutScroll).toBeLessThanOrEqual(geometry.layoutClient);
+      expect(geometry.scrollOwners).toEqual(["examine-layout"]);
+      expect(geometry.layoutScrollHeight)
+        .toBeGreaterThan(geometry.layoutClientHeight);
+      expect(geometry.layoutScrollTop).toBeGreaterThan(0);
+      expect(geometry.factsTop).toBeLessThan(geometry.sourceTop);
+      expect(geometry.sourceTop).toBeLessThan(geometry.articleTop);
       await expect(dialog.getByRole("tablist")).toHaveCount(0);
     },
   );
@@ -1015,6 +1088,10 @@ for (const variant of EXAMINE_LAYOUTS) {
         width: variant.width,
         height: variant.height,
       });
+      await installNewtAssetRoute(page);
+      await page.route("**/encyclopedia/wiki/wiki-*.json", async (route) => {
+        await route.abort("failed");
+      });
       await startContextGame(
         page,
         `Examine${variant.width}x${variant.height}-Arc-Hum-Mal-Law`,
@@ -1025,12 +1102,9 @@ for (const variant of EXAMINE_LAYOUTS) {
           permanentInventory: true,
         },
       );
-      const item = page.getByRole("region", { name: "Inventory" }).locator(
-        ".permanent-inventory-item:not(.permanent-inventory-heading)",
-      ).first();
-      const opened = await openInventoryContextMenu(page, item);
-      await opened.getByRole("menuitem", { name: "Examine" }).click();
-      const dialog = page.getByRole("dialog");
+      const opened = await openMapContextMenu(page);
+      await opened.menu.getByRole("menuitem", { name: "Examine" }).click();
+      const dialog = page.getByRole("dialog", { name: "Newt" });
       await expect(dialog).toBeVisible();
       await expect(dialog.locator(".examine-portrait")).toHaveAttribute(
         "data-examine-renderer",
@@ -1038,24 +1112,28 @@ for (const variant of EXAMINE_LAYOUTS) {
       );
       await expect(page.getByRole("region", { name: "Inventory" }))
         .toHaveAttribute("data-position", variant.position.toLowerCase());
+      await expect(dialog.locator(".examine-source-strip")).toHaveCount(0);
+      await expect(dialog.locator(".examine-article")).toHaveCount(0);
 
       const geometry = await dialog.evaluate((element) => {
         const bounds = element.getBoundingClientRect();
         const article = element.querySelector(".examine-article");
         const facts = element.querySelector(".examine-facts");
         const factDocument = element.querySelector(".examine-fact-document");
+        const layout = element.querySelector<HTMLElement>(".examine-layout");
         const keyFacts = element.querySelector(
           ".examine-key-facts .examine-detail-list",
         );
         const candidates = Array.from(element.querySelectorAll<Element>(
           ".examine-layout, .examine-layout *",
         )).filter((candidate) => candidate.getClientRects().length > 0);
-        const overflowOwners = candidates.filter((candidate) => {
+        const scrollOwners = candidates.filter((candidate) => {
           const overflow = getComputedStyle(candidate).overflowY;
           return overflow === "auto" || overflow === "scroll";
-        }).length;
+        });
         const articleBounds = article?.getBoundingClientRect() ?? null;
         const factsBounds = facts?.getBoundingClientRect() ?? null;
+        const layoutBounds = layout?.getBoundingClientRect() ?? null;
         const overlap = articleBounds && factsBounds
           ? !(
             articleBounds.right <= factsBounds.left
@@ -1064,6 +1142,15 @@ for (const variant of EXAMINE_LAYOUTS) {
             || factsBounds.bottom <= articleBounds.top
           )
           : false;
+        const initialScrollTop = layout?.scrollTop ?? 0;
+        if (layout) {
+          layout.scrollTop = Math.min(
+            64,
+            Math.max(0, layout.scrollHeight - layout.clientHeight),
+          );
+        }
+        const scrolledTop = layout?.scrollTop ?? 0;
+        if (layout) layout.scrollTop = initialScrollTop;
         return {
           bounds: {
             bottom: bounds.bottom,
@@ -1077,12 +1164,25 @@ for (const variant of EXAMINE_LAYOUTS) {
           factDocumentClient: factDocument?.clientWidth ?? 0,
           factDocumentScroll: factDocument?.scrollWidth ?? 0,
           factsClient: facts?.clientWidth ?? 0,
+          factsLeft: factsBounds?.left ?? 0,
           factsScroll: facts?.scrollWidth ?? 0,
+          factsWidth: factsBounds?.width ?? 0,
           keyFactColumns: keyFacts
             ? getComputedStyle(keyFacts).gridTemplateColumns.split(" ").length
             : 0,
+          layoutClient: layout?.clientWidth ?? 0,
+          layoutClientHeight: layout?.clientHeight ?? 0,
+          layoutLeft: layoutBounds?.left ?? 0,
+          layoutScroll: layout?.scrollWidth ?? 0,
+          layoutScrollHeight: layout?.scrollHeight ?? 0,
+          layoutScrollTop: scrolledTop,
+          layoutWidth: layoutBounds?.width ?? 0,
           overlap,
-          overflowOwners,
+          scrollOwners: scrollOwners.map((candidate) =>
+            candidate.classList.contains("examine-layout")
+              ? "examine-layout"
+              : candidate.className
+          ),
         };
       });
 
@@ -1091,12 +1191,20 @@ for (const variant of EXAMINE_LAYOUTS) {
       expect(geometry.bounds.right).toBeLessThanOrEqual(variant.width);
       expect(geometry.bounds.bottom).toBeLessThanOrEqual(variant.height);
       expect(geometry.documentOverflow).toBe(false);
+      expect(Math.abs(geometry.factsLeft - geometry.layoutLeft))
+        .toBeLessThanOrEqual(1);
+      expect(Math.abs(geometry.factsWidth - geometry.layoutWidth))
+        .toBeLessThanOrEqual(1);
       expect(geometry.factsScroll).toBeLessThanOrEqual(geometry.factsClient);
       expect(geometry.factDocumentScroll)
         .toBeLessThanOrEqual(geometry.factDocumentClient);
+      expect(geometry.layoutScroll).toBeLessThanOrEqual(geometry.layoutClient);
       expect(geometry.keyFactColumns).toBeGreaterThan(1);
       expect(geometry.overlap).toBe(false);
-      expect(geometry.overflowOwners).toBe(variant.overflowOwners);
+      expect(geometry.scrollOwners).toEqual(["examine-layout"]);
+      expect(geometry.layoutScrollHeight)
+        .toBeGreaterThan(geometry.layoutClientHeight);
+      expect(geometry.layoutScrollTop).toBeGreaterThan(0);
     },
   );
 }

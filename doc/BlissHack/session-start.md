@@ -80,7 +80,7 @@
   Wiki 节选。核心与 Wiki 资料保持目录、类型、来源和许可分离。
 - `Examine` 是前端合成的判别联合菜单行，不会伪造核心 item index。控制器先
   向核心菜单提交一次 `null`，等待 resolver 消费、新 command boundary 和
-  intent 回到 idle 后才发布本地窗口请求；打开、切 Tab 和关闭均不消耗回合。
+  intent 回到 idle 后才发布本地窗口请求；打开、滚动和关闭均不消耗回合。
 - `frontend/src/session/session-manager.ts` 是稳定 façade；
   `session-lifecycle.ts` 管理唯一活动 WASM session、module、callback 和清理，
   `home-operations.ts` 管理 Home 数据操作，两者共享一个显式 context。
