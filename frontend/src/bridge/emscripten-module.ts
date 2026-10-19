@@ -40,6 +40,7 @@ export interface EmscriptenModule {
   ENV?: Record<string, string>;
   FS: EmscriptenFileSystem;
   IDBFS?: unknown;
+  readonly blisshackWizardAcceptance?: boolean;
   readonly blisshackRuntimeIdentity?: RuntimeAssetIdentity;
 }
 
