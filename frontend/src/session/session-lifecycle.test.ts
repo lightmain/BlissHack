@@ -29,6 +29,7 @@ import type {
   StorageService,
 } from "../storage/storage-service";
 import { createIsolatedGameLock } from "./session-manager.test-fixtures";
+import { isLocalWizardAcceptanceEnabled } from "./wizard-acceptance";
 
 interface ModuleHarness {
   module: EmscriptenModule;
@@ -254,6 +255,10 @@ function createHarness(
     dispatch,
     gameLock: createIsolatedGameLock(),
     moduleFactory: factory,
+    wizardAcceptance: isLocalWizardAcceptanceEnabled(
+      import.meta.env.DEV,
+      globalThis.location,
+    ),
     ...overrides,
   });
   return { manager, callbackHost, dispatch, factory };

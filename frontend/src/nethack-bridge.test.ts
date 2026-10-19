@@ -203,6 +203,14 @@ function createMockModule(): MockModuleHarness {
         if (value === undefined) throw new Error(`ENOENT: ${path}`);
         return value;
       }),
+      writeFile: vi.fn((path: string, value: string | Uint8Array) => {
+        files.set(
+          path,
+          typeof value === "string"
+            ? new TextEncoder().encode(value)
+            : value.slice(),
+        );
+      }),
       syncfs: vi.fn((_populate: boolean, callback: (error: unknown) => void) => {
         callback(null);
       }),

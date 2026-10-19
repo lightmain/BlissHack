@@ -101,6 +101,7 @@ function fakeModule(): EmscriptenModule {
       mkdir: vi.fn(),
       mount: vi.fn(),
       readFile: vi.fn(),
+      writeFile: vi.fn(),
       syncfs: vi.fn(),
     },
   };

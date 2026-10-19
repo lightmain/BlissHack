@@ -40,6 +40,7 @@ function createModule(): EmscriptenModule {
       mkdir: vi.fn(),
       mount: vi.fn(),
       readFile: vi.fn(() => new Uint8Array()),
+      writeFile: vi.fn(),
       syncfs: vi.fn((_populate, callback) => callback(null)),
     },
   };

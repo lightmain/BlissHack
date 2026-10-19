@@ -47,6 +47,7 @@ import type {
   SessionStartRequest,
 } from "./session-types";
 import { createHomeOperations } from "./home-operations";
+import { startWizardAcceptanceMain } from "./wizard-acceptance";
 
 let generatedModuleId = 0;
 let generatedSessionId = 0;
@@ -382,13 +383,15 @@ export function createSessionManager(
         [callbackName],
       );
 
-      const mainResult = owner.module.ccall(
-        "main",
-        "number",
-        [],
-        [],
-        { async: true },
-      );
+      const mainResult = context.options.wizardAcceptance
+        ? startWizardAcceptanceMain(owner.module)
+        : owner.module.ccall(
+          "main",
+          "number",
+          [],
+          [],
+          { async: true },
+        );
       recordDiagnostic({
         level: "info",
         area: "wasm",
