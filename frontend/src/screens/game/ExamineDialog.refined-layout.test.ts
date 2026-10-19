@@ -441,7 +441,7 @@ describe("refined Examine Wiki page links", () => {
   it("retains the existing Wiki attribution and license source strip", () => {
     const html = renderDialog(NEWT_ENTITY);
     const start = html.indexOf('<div class="examine-source-strip">');
-    const end = html.indexOf('<div class="examine-layout"', start);
+    const end = html.indexOf('<article class="examine-article"', start);
     const strip = html.slice(start, end);
 
     expect(start, "missing Wiki source strip").toBeGreaterThan(-1);
@@ -790,14 +790,45 @@ describe("appearance and optional Wiki presentation boundaries", () => {
       wiki: null,
     });
     const withWiki = renderDialog(NEWT_ENTITY);
+    const factsIndex = withWiki.indexOf('<aside aria-label="Newt facts"');
+    const provenanceIndex = withWiki.indexOf(
+      'data-examine-section="provenance"',
+    );
+    const sourceIndex = withWiki.indexOf('<div class="examine-source-strip">');
+    const articleIndex = withWiki.indexOf('<article class="examine-article"');
 
     expect(openingTag(factsOnly, "examine-layout"))
       .toBe(openingTag(withWiki, "examine-layout"));
     expect(openingTag(withWiki, "examine-layout"))
       .not.toContain("data-facts-only");
     expect(factsMarkup(factsOnly)).toBe(factsMarkup(withWiki));
-    expect(withWiki.indexOf("examine-facts"))
-      .toBeLessThan(withWiki.indexOf("examine-article"));
+    expect(factsIndex, "missing Newt facts").toBeGreaterThan(-1);
+    expect(provenanceIndex, "missing Newt provenance").toBeGreaterThan(-1);
+    expect(sourceIndex, "missing Newt Wiki source strip").toBeGreaterThan(-1);
+    expect(articleIndex, "missing Newt Wiki article").toBeGreaterThan(-1);
+    expect(factsIndex).toBeLessThan(provenanceIndex);
+    expect(provenanceIndex).toBeLessThan(sourceIndex);
+    expect(sourceIndex).toBeLessThan(articleIndex);
+    expect(withWiki).not.toContain('role="tablist"');
+    expect(withWiki).not.toContain('role="tab"');
+    expect(withWiki).not.toContain('role="tabpanel"');
+    expect(withWiki).not.toContain(" hidden=");
+    expect(withWiki).toContain(">Strategy</h2>");
+    expect(withWiki).toContain(">History</h2>");
+    expect(withWiki).toContain(">Dudley&#x27;s dungeon</h2>");
+    expect(NEWT_WIKI.sections.flatMap((section) => section.paragraphs))
+      .toHaveLength(4);
+    let previousParagraph = -1;
+    for (const paragraph of NEWT_WIKI.sections.flatMap((section) =>
+      section.paragraphs
+    )) {
+      const index = withWiki.indexOf(paragraph.replaceAll("&", "&amp;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#x27;"));
+      expect(index, `missing approved Newt paragraph ${paragraph}`)
+        .toBeGreaterThan(previousParagraph);
+      previousParagraph = index;
+    }
   });
 
   it("does not special-case Newt in production presentation code", () => {

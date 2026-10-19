@@ -30,26 +30,41 @@ function mediaBlock(marker: RegExp): string {
 }
 
 describe("stage-five Examine responsive scroll ownership", () => {
-  it("bounds the desktop dialog and gives each visible column one local owner", () => {
-    const dialog = cssFor(CSS, ".examine-dialog");
-    const layout = cssFor(CSS, ".examine-layout");
-    const article = cssFor(CSS, ".examine-article");
-    const panel = cssFor(CSS, ".examine-tab-panel");
-    const facts = cssFor(CSS, ".examine-facts");
+  it("uses the full-width layout as the sole desktop scroll owner", () => {
+    const responsiveStart = CSS.search(
+      /@media\s*\(\s*max-height\s*:\s*\d+px\s*\)/,
+    );
+    expect(responsiveStart, "missing Examine responsive CSS")
+      .toBeGreaterThan(-1);
+    const desktop = CSS.slice(
+      CSS.indexOf(".examine-backdrop"),
+      responsiveStart,
+    );
+    const dialog = cssFor(desktop, ".examine-dialog");
+    const layout = cssFor(desktop, ".examine-layout");
+    const article = cssFor(desktop, ".examine-article");
+    const facts = cssFor(desktop, ".examine-facts");
 
     expect(dialog).toMatch(/\bwidth\s*:\s*min\(/);
     expect(dialog).toMatch(/\bheight\s*:\s*min\(/);
     expect(dialog).toMatch(/\boverflow\s*:\s*hidden\s*;/);
-    expect(layout).toMatch(
-      /\bgrid-template-columns\s*:\s*minmax\(0,\s*1fr\)\s+\d+px\s*;/,
-    );
     expect(layout).toMatch(/\bmin-height\s*:\s*0\s*;/);
-    expect(article).not.toMatch(/\boverflow(?:-[xy])?\s*:\s*auto\s*;/);
-    expect(panel).toMatch(/\boverflow-y\s*:\s*auto\s*;/);
-    expect(facts).toMatch(/\boverflow-y\s*:\s*auto\s*;/);
+    expect(layout).toMatch(/\boverflow-y\s*:\s*auto\s*;/);
+    expect(desktop).not.toMatch(
+      /\bgrid-template-columns\s*:\s*minmax\(0,\s*1fr\)\s+330px\s*;/,
+    );
+    expect(article).not.toMatch(
+      /\boverflow-y\s*:\s*(?:auto|scroll)\s*;/,
+    );
+    expect(facts).not.toMatch(
+      /\boverflow-y\s*:\s*(?:auto|scroll)\s*;/,
+    );
+    expect(desktop.match(/\boverflow-y\s*:\s*auto\s*;/g) ?? [])
+      .toHaveLength(1);
+    expect(desktop).not.toMatch(/\.examine-tabs?\b|\.examine-tab-panel\b/);
   });
 
-  it("uses only the layout as the narrow viewport scroll owner", () => {
+  it("keeps only the layout scrollable in narrow viewports", () => {
     const narrow = mediaBlock(
       /@media\s*\(\s*max-width\s*:\s*(?:[3-7]\d{2}|820)px\s*\)/,
     );
@@ -58,15 +73,16 @@ describe("stage-five Examine responsive scroll ownership", () => {
       .toMatch(/\bmin-height\s*:\s*0\s*;/);
     expect(cssFor(narrow, ".examine-layout"))
       .toMatch(/\boverflow-y\s*:\s*auto\s*;/);
-    expect(cssFor(narrow, ".examine-tab-panel"))
-      .toMatch(/\boverflow\s*:\s*visible\s*;/);
     expect(cssFor(narrow, ".examine-facts"))
-      .toMatch(/\boverflow\s*:\s*visible\s*;/);
+      .not.toMatch(/\boverflow-y\s*:\s*(?:auto|scroll)\s*;/);
+    expect(cssFor(narrow, ".examine-article"))
+      .not.toMatch(/\boverflow-y\s*:\s*(?:auto|scroll)\s*;/);
     expect(narrow.match(/\boverflow-y\s*:\s*auto\s*;/g) ?? [])
       .toHaveLength(1);
+    expect(narrow).not.toMatch(/\.examine-tabs?\b|\.examine-tab-panel\b/);
   });
 
-  it("removes minimum-height traps and nested scrolling in short viewports", () => {
+  it("keeps only the layout scrollable in short viewports", () => {
     const short = mediaBlock(
       /@media\s*\(\s*max-height\s*:\s*\d+px\s*\)/,
     );
@@ -77,11 +93,12 @@ describe("stage-five Examine responsive scroll ownership", () => {
       .toMatch(/\bheight\s*:\s*calc\(100(?:dvh|vh)\s*-/);
     expect(cssFor(short, ".examine-layout"))
       .toMatch(/\boverflow-y\s*:\s*auto\s*;/);
-    expect(cssFor(short, ".examine-tab-panel"))
-      .toMatch(/\boverflow\s*:\s*visible\s*;/);
     expect(cssFor(short, ".examine-facts"))
-      .toMatch(/\boverflow\s*:\s*visible\s*;/);
+      .not.toMatch(/\boverflow-y\s*:\s*(?:auto|scroll)\s*;/);
+    expect(cssFor(short, ".examine-article"))
+      .not.toMatch(/\boverflow-y\s*:\s*(?:auto|scroll)\s*;/);
     expect(short.match(/\boverflow-y\s*:\s*auto\s*;/g) ?? [])
       .toHaveLength(1);
+    expect(short).not.toMatch(/\.examine-tabs?\b|\.examine-tab-panel\b/);
   });
 });

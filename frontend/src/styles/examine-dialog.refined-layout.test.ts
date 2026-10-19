@@ -43,17 +43,23 @@ describe("refined Examine typography and fact hierarchy", () => {
   it("keeps one stable main layout whether optional Wiki content exists", () => {
     const layout = cssFor(CSS, ".examine-layout");
 
-    expect(layout).toMatch(
+    expect([
+      /\bdisplay\s*:\s*block\s*;/,
+      /\bgrid-template-columns\s*:\s*minmax\(0,\s*1fr\)\s*;/,
+    ].some((pattern) => pattern.test(layout))).toBe(true);
+    expect(CSS).not.toMatch(
       /\bgrid-template-columns\s*:\s*minmax\(0,\s*1fr\)\s+330px\s*;/,
     );
     expect(CSS).not.toContain("data-facts-only");
     expect(CSS).not.toContain("data-entity-kind");
     expect(CSS).not.toMatch(/\bnewt\b/i);
+    expect(CSS).not.toContain(".examine-tabs");
+    expect(CSS).not.toContain(".examine-tab");
+    expect(CSS).not.toContain(".examine-tab-panel");
   });
 
   it("uses one responsive fact document for every family", () => {
     const facts = cssFor(CSS, ".examine-facts");
-    const factsOnly = cssFor(CSS, ".examine-facts:only-child");
     const document = cssFor(CSS, ".examine-fact-document");
     const section = cssFor(CSS, ".examine-fact-section");
     const keyFacts = cssFor(
@@ -65,13 +71,14 @@ describe("refined Examine typography and fact hierarchy", () => {
     expect(facts).toMatch(/\bwidth\s*:\s*100%\s*;/);
     expect(facts).toMatch(/\bmax-width\s*:\s*none\s*;/);
     expect(facts).toMatch(/\bmin-width\s*:\s*0\s*;/);
-    expect(factsOnly).toMatch(/\bgrid-column\s*:\s*1\s*\/\s*-1\s*;/);
+    expect(facts).not.toMatch(/\boverflow-y\s*:\s*(?:auto|scroll)\s*;/);
     expect(document).toMatch(/\bmin-width\s*:\s*0\s*;/);
     expect(section).toMatch(/\bborder-bottom\s*:\s*1px\s+solid\b/);
     expect(keyFacts).toMatch(
       /\bgrid-template-columns\s*:\s*repeat\(\s*auto-fit\s*,\s*minmax\([^;]+\)\s*\)\s*;/,
     );
     expect(keyValue).toMatch(/\bfont-weight\s*:\s*(?:[7-9]00|bold)\s*;/);
+    expect(CSS).not.toMatch(/:(?:not\(\s*)?only-child\b/);
     expect(CSS).not.toMatch(
       /\[data-examine-template\s*=\s*["']monster["']\]/,
     );
@@ -88,13 +95,12 @@ describe("refined Examine narrow-screen scroll ownership", () => {
 
     expect(cssFor(narrow, ".examine-layout"))
       .toMatch(/\boverflow-y\s*:\s*auto\s*;/);
-    expect(cssFor(narrow, ".examine-tab-panel"))
-      .toMatch(/\boverflow\s*:\s*visible\s*;/);
-    expect(cssFor(narrow, ".examine-facts"))
-      .toMatch(/\boverflow\s*:\s*visible\s*;/);
     expect(narrow.match(/\boverflow-y\s*:\s*auto\s*;/g) ?? [])
       .toHaveLength(1);
     expect(narrow).not.toContain("data-examine-template");
+    expect(narrow).not.toContain(".examine-tabs");
+    expect(narrow).not.toContain(".examine-tab");
+    expect(narrow).not.toContain(".examine-tab-panel");
     expect(narrow).not.toContain("examine-facts-primary");
     expect(narrow).not.toContain("examine-facts-secondary");
   });

@@ -9,7 +9,6 @@ import {
   ExamineDialog,
   isExamineBackdropClick,
   resolveExamineFocusTrap,
-  resolveExamineTabKey,
 } from "./ExamineDialog";
 import { ExamineFacts } from "./ExamineFacts";
 import { ExamineSourceStrip } from "./ExamineSourceStrip";
@@ -30,6 +29,10 @@ const GAME_SCREEN_SOURCE = readFileSync(
 );
 const DIALOG_SOURCE = readFileSync(
   new URL("./ExamineDialog.tsx", import.meta.url),
+  "utf8",
+);
+const WIKI_ARTICLE_SOURCE = readFileSync(
+  new URL("./ExamineWikiArticle.tsx", import.meta.url),
   "utf8",
 );
 
@@ -65,10 +68,10 @@ describe("stage-five Examine presentation", () => {
     const facts = layerIndex(html, "examine-facts");
     const provenance = layerIndex(html, "examine-provenance");
 
-    expect(header).toBeLessThan(source);
-    expect(source).toBeLessThan(facts);
+    expect(header).toBeLessThan(facts);
     expect(facts).toBeLessThan(provenance);
-    expect(provenance).toBeLessThan(article);
+    expect(provenance).toBeLessThan(source);
+    expect(source).toBeLessThan(article);
     expect(html).toContain('data-content-license="CC-BY-SA-3.0"');
     expect(html).toContain('data-content-license="NGPL"');
     expect(html).toContain("NetHack 5.0.0");
@@ -91,20 +94,25 @@ describe("stage-five Examine presentation", () => {
       .toEqual(["strategy", "history", "history"]);
     expect(NEWT_WIKI.sections.flatMap((section) => section.paragraphs))
       .toEqual(NEWT_ACCEPTANCE.paragraphs);
+    expect(NEWT_ACCEPTANCE.paragraphs).toHaveLength(4);
     for (const paragraph of NEWT_ACCEPTANCE.paragraphs) {
       expect(html).toContain(paragraph.replaceAll("&", "&amp;")
         .replaceAll('"', "&quot;")
         .replaceAll("'", "&#x27;"));
     }
-    expect(html.match(/role="tab"/g) ?? []).toHaveLength(2);
-    expect(html).toContain(">Strategy</button>");
-    expect(html).toContain(">History</button>");
+    expect(html).not.toContain('role="tablist"');
+    expect(html).not.toContain('role="tab"');
+    expect(html).not.toContain('role="tabpanel"');
+    expect(html).not.toContain(" hidden=");
+    expect(html).toContain(">Strategy</h2>");
+    expect(html).toContain(">History</h2>");
+    expect(html).toContain(">Dudley&#x27;s dungeon</h2>");
     expect(html).toContain("Dudley&#x27;s dungeon");
     expect(html).not.toMatch(/data-examine-tab="overview"/i);
     expect(html).not.toMatch(/Verbatim Wiki excerpt[^]*Overview/i);
   });
 
-  it("shows loading, Wiki-missing facts-only, partial tabs, and core failure", () => {
+  it("shows loading, Wiki-missing facts-only, partial Wiki text, and core failure", () => {
     const loading = renderDialog({ status: "loading" });
     const factsOnly = renderDialog({
       status: "ready",
@@ -127,8 +135,12 @@ describe("stage-five Examine presentation", () => {
     expect(factsOnly).toContain("examine-facts");
     expect(factsOnly).not.toContain('role="tablist"');
     expect(factsOnly).not.toContain("CC BY-SA");
-    expect(strategyOnly).toContain(">Strategy</button>");
-    expect(strategyOnly).not.toContain(">History</button>");
+    expect(strategyOnly).toContain(">Strategy</h2>");
+    expect(strategyOnly).toContain("Verbatim Wiki excerpt");
+    expect(strategyOnly).not.toContain(">History</h2>");
+    expect(strategyOnly).not.toContain('role="tablist"');
+    expect(strategyOnly).not.toContain('role="tab"');
+    expect(strategyOnly).not.toContain('role="tabpanel"');
     expect(renderDialog({ status: "core-failure" })).toBe("");
   });
 
@@ -216,29 +228,29 @@ describe("stage-five lossless facts", () => {
 });
 
 describe("stage-five dialog accessibility and event isolation", () => {
-  it("exposes modal, tab, panel, close, and browser-keyboard boundaries", () => {
+  it("exposes modal, close, link, and browser-keyboard boundaries without tabs", () => {
     const html = renderDialog({ status: "ready", entity: NEWT_ENTITY });
 
     expect(html).toMatch(/role="dialog"[^>]*aria-modal="true"/);
     expect(html).toMatch(/role="dialog"[^>]*aria-labelledby="[^"]+"/);
     expect(html).toMatch(/role="dialog"[^>]*data-browser-keyboard="true"/);
-    expect(html).toContain('role="tablist"');
-    expect(html).toMatch(/role="tab"[^>]*aria-controls="[^"]+"/);
-    expect(html).toMatch(/role="tabpanel"[^>]*aria-labelledby="[^"]+"/);
+    expect(html).not.toContain('role="tablist"');
+    expect(html).not.toContain('role="tab"');
+    expect(html).not.toContain('role="tabpanel"');
     expect(html).toContain('aria-label="Close examine window"');
+    expect(html).toContain('aria-label="Open Newt on NetHackWiki"');
   });
 
-  it("supports Arrow, Home, End, and wrapping focus-trap navigation", () => {
-    expect(resolveExamineTabKey("ArrowRight", 0, 3)).toBe(1);
-    expect(resolveExamineTabKey("ArrowLeft", 0, 3)).toBe(2);
-    expect(resolveExamineTabKey("Home", 2, 3)).toBe(0);
-    expect(resolveExamineTabKey("End", 0, 3)).toBe(2);
-    expect(resolveExamineTabKey("PageDown", 1, 3)).toBeNull();
+  it("keeps wrapping focus-trap navigation without any tab-controller contract", () => {
     expect(resolveExamineFocusTrap("Tab", false, 3, 4)).toBe(0);
     expect(resolveExamineFocusTrap("Tab", true, 0, 4)).toBe(3);
     expect(resolveExamineFocusTrap("Tab", false, 1, 4)).toBe(2);
     expect(resolveExamineFocusTrap("Tab", true, 2, 4)).toBe(1);
     expect(resolveExamineFocusTrap("Enter", false, 1, 4)).toBeNull();
+    expect(`${DIALOG_SOURCE}\n${WIKI_ARTICLE_SOURCE}`)
+      .not.toContain("resolveExamineTabKey");
+    expect(WIKI_ARTICLE_SOURCE)
+      .not.toMatch(/\bArrow(?:Left|Right)\b|Home|End|role="tab/);
   });
 
   it("closes only for the backdrop itself and isolates Escape and link clicks", () => {
@@ -264,10 +276,7 @@ describe("stage-five dialog accessibility and event isolation", () => {
 
   it("renders Wiki paragraphs as text without an HTML injection path", () => {
     expect(DIALOG_SOURCE).not.toContain("dangerouslySetInnerHTML");
-    expect(readFileSync(
-      new URL("./ExamineWikiArticle.tsx", import.meta.url),
-      "utf8",
-    )).not.toContain("dangerouslySetInnerHTML");
+    expect(WIKI_ARTICLE_SOURCE).not.toContain("dangerouslySetInnerHTML");
   });
 });
 
