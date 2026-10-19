@@ -692,7 +692,7 @@ test("Examine map handoff: opens the supported player target after the core menu
   expect(await turn.textContent()).toBe(turnBefore);
 });
 
-test("Examine Newt content: validates revision 205110 tabs in a real browser", async ({
+test("Examine Newt content: renders one facts-first scroll flow without tabs in a real browser", async ({
   page,
 }) => {
   await installNewtAssetRoute(page);
@@ -706,49 +706,81 @@ test("Examine Newt content: validates revision 205110 tabs in a real browser", a
   await opened.menu.getByRole("menuitem", { name: "Examine" }).click();
   const dialog = page.getByRole("dialog", { name: "Newt" });
   await expect(dialog).toBeVisible();
-  const factsGeometry = await dialog.locator(".examine-facts").evaluate(
-    (element) => {
-      const document = element.querySelector(".examine-fact-document");
-      const keyFacts = element.querySelector(
-        ".examine-key-facts .examine-detail-list",
-      );
-      return {
-        client: element.clientWidth,
-        documentClient: document?.clientWidth ?? 0,
-        documentScroll: document?.scrollWidth ?? 0,
-        keyFactColumns: keyFacts
-          ? getComputedStyle(keyFacts).gridTemplateColumns.split(" ").length
-          : 0,
-        scroll: element.scrollWidth,
-      };
-    },
-  );
-  expect(Math.abs(factsGeometry.client - 330)).toBeLessThanOrEqual(1);
-  expect(factsGeometry.scroll).toBeLessThanOrEqual(factsGeometry.client);
-  expect(factsGeometry.documentScroll)
-    .toBeLessThanOrEqual(factsGeometry.documentClient);
-  expect(factsGeometry.keyFactColumns).toBe(1);
+  const geometry = await dialog.evaluate((element) => {
+    const layout = element.querySelector(".examine-layout");
+    const facts = element.querySelector(".examine-facts");
+    const source = element.querySelector(".examine-source-strip");
+    const article = element.querySelector(".examine-article");
+    const document = element.querySelector(".examine-fact-document");
+    const keyFacts = element.querySelector(
+      ".examine-key-facts .examine-detail-list",
+    );
+    const layoutBounds = layout?.getBoundingClientRect() ?? null;
+    const factsBounds = facts?.getBoundingClientRect() ?? null;
+    const sourceBounds = source?.getBoundingClientRect() ?? null;
+    const articleBounds = article?.getBoundingClientRect() ?? null;
+    const scrollOwners = Array.from(element.querySelectorAll<Element>(
+      ".examine-layout, .examine-layout *",
+    )).filter((candidate) => candidate.getClientRects().length > 0)
+      .filter((candidate) => {
+        const overflow = getComputedStyle(candidate).overflowY;
+        return overflow === "auto" || overflow === "scroll";
+      });
+    return {
+      articleTop: articleBounds?.top ?? 0,
+      documentClient: document?.clientWidth ?? 0,
+      documentScroll: document?.scrollWidth ?? 0,
+      factsClient: facts?.clientWidth ?? 0,
+      factsLeft: factsBounds?.left ?? 0,
+      factsScroll: facts?.scrollWidth ?? 0,
+      factsTop: factsBounds?.top ?? 0,
+      factsWidth: factsBounds?.width ?? 0,
+      keyFactColumns: keyFacts
+        ? getComputedStyle(keyFacts).gridTemplateColumns.split(" ").length
+        : 0,
+      layoutClient: layout?.clientWidth ?? 0,
+      layoutLeft: layoutBounds?.left ?? 0,
+      layoutScroll: layout?.scrollWidth ?? 0,
+      layoutWidth: layoutBounds?.width ?? 0,
+      scrollOwners: scrollOwners.map((candidate) =>
+        candidate.classList.contains("examine-layout")
+          ? "examine-layout"
+          : candidate.className
+      ),
+      sourceTop: sourceBounds?.top ?? 0,
+    };
+  });
+  expect(Math.abs(geometry.factsLeft - geometry.layoutLeft))
+    .toBeLessThanOrEqual(1);
+  expect(Math.abs(geometry.factsWidth - geometry.layoutWidth))
+    .toBeLessThanOrEqual(1);
+  expect(geometry.factsScroll).toBeLessThanOrEqual(geometry.factsClient);
+  expect(geometry.documentScroll).toBeLessThanOrEqual(geometry.documentClient);
+  expect(geometry.layoutScroll).toBeLessThanOrEqual(geometry.layoutClient);
+  expect(geometry.keyFactColumns).toBeGreaterThan(1);
+  expect(geometry.scrollOwners).toEqual(["examine-layout"]);
+  expect(geometry.factsTop).toBeLessThan(geometry.sourceTop);
+  expect(geometry.sourceTop).toBeLessThan(geometry.articleTop);
   await expect(dialog.locator(".examine-article")).toHaveAttribute(
     "data-source-revision",
     String(NEWT_ACCEPTANCE.revision),
   );
-  await expect(dialog.getByRole("tab", { name: "Overview" })).toHaveCount(0);
-
-  const strategy = dialog.getByRole("tab", { name: "Strategy" });
-  const history = dialog.getByRole("tab", { name: "History" });
-  await expect(dialog.locator(
-    '[role="tabpanel"]:not([hidden]) .examine-wiki-excerpt p',
-  )).toHaveText(NEWT_ACCEPTANCE.paragraphs.slice(0, 2));
-  await strategy.focus();
-  await page.keyboard.press("ArrowRight");
-  await expect(history).toBeFocused();
-  await expect(dialog.locator(
-    '[role="tabpanel"]:not([hidden]) .examine-wiki-excerpt p',
-  )).toHaveText(NEWT_ACCEPTANCE.paragraphs.slice(2));
-  await page.keyboard.press("Home");
-  await expect(strategy).toBeFocused();
-  await page.keyboard.press("End");
-  await expect(history).toBeFocused();
+  await expect(dialog.getByRole("tablist")).toHaveCount(0);
+  await expect(dialog.locator('[role="tab"], [role="tabpanel"]'))
+    .toHaveCount(0);
+  await expect(dialog.locator(".examine-article section[hidden]"))
+    .toHaveCount(0);
+  await expect(dialog.locator(".examine-wiki-section h2")).toHaveText([
+    "Strategy",
+    "History",
+    "Dudley's dungeon",
+  ]);
+  await expect(dialog.locator(".examine-wiki-excerpt p"))
+    .toHaveText(NEWT_ACCEPTANCE.paragraphs);
+  await expect(dialog.locator(".examine-source-strip"))
+    .toContainText(`revision ${NEWT_ACCEPTANCE.revision}`);
+  await expect(dialog.locator(".examine-source-strip"))
+    .toContainText("CC BY-SA 3.0");
   expect(await turn.textContent()).toBe(turnBefore);
 });
 
@@ -806,6 +838,21 @@ test("Examine browser fallback: a real entity without Wiki stays facts-only", as
   );
   expect(factsGeometry.keyFactColumns).toBeGreaterThan(1);
   await expect(dialog.getByRole("tablist")).toHaveCount(0);
+  const factsOnlyScrollOwners = await dialog.evaluate((element) => {
+    return Array.from(element.querySelectorAll<Element>(
+      ".examine-layout, .examine-layout *",
+    )).filter((candidate) => candidate.getClientRects().length > 0)
+      .filter((candidate) => {
+        const overflow = getComputedStyle(candidate).overflowY;
+        return overflow === "auto" || overflow === "scroll";
+      })
+      .map((candidate) =>
+        candidate.classList.contains("examine-layout")
+          ? "examine-layout"
+          : candidate.className
+      );
+  });
+  expect(factsOnlyScrollOwners).toEqual(["examine-layout"]);
   expect(await turn.textContent()).toBe(turnBefore);
   await page.keyboard.press("Escape");
 });
@@ -933,25 +980,16 @@ for (const viewport of [
       await expect(dialog).toBeVisible();
 
       const geometry = await dialog.evaluate((element) => {
-        const layout = element.querySelector(".examine-layout");
-        const panel = element.querySelector(
-          '[role="tabpanel"]:not([hidden])',
-        );
         const facts = element.querySelector(".examine-facts");
         const document = element.querySelector(".examine-fact-document");
-        const keyFacts = element.querySelector(
-          ".examine-key-facts .examine-detail-list",
-        );
-        const candidates = [layout, panel, facts]
-          .filter((candidate): candidate is Element => candidate !== null);
+        const candidates = Array.from(element.querySelectorAll<Element>(
+          ".examine-layout, .examine-layout *",
+        )).filter((candidate) => candidate.getClientRects().length > 0);
         return {
           documentClient: document?.clientWidth ?? 0,
           documentScroll: document?.scrollWidth ?? 0,
           factsClient: facts?.clientWidth ?? 0,
           factsScroll: facts?.scrollWidth ?? 0,
-          keyFactColumns: keyFacts
-            ? getComputedStyle(keyFacts).gridTemplateColumns.split(" ").length
-            : 0,
           overflowOwners: candidates.filter((candidate) => {
             const overflow = getComputedStyle(candidate).overflowY;
             return overflow === "auto" || overflow === "scroll";
@@ -962,8 +1000,8 @@ for (const viewport of [
       expect(geometry.factsScroll).toBeLessThanOrEqual(geometry.factsClient);
       expect(geometry.documentScroll)
         .toBeLessThanOrEqual(geometry.documentClient);
-      expect(geometry.keyFactColumns).toBeGreaterThan(1);
       expect(geometry.overflowOwners).toBe(1);
+      await expect(dialog.getByRole("tablist")).toHaveCount(0);
     },
   );
 }
@@ -1003,18 +1041,15 @@ for (const variant of EXAMINE_LAYOUTS) {
 
       const geometry = await dialog.evaluate((element) => {
         const bounds = element.getBoundingClientRect();
-        const layout = element.querySelector(".examine-layout");
         const article = element.querySelector(".examine-article");
         const facts = element.querySelector(".examine-facts");
         const factDocument = element.querySelector(".examine-fact-document");
         const keyFacts = element.querySelector(
           ".examine-key-facts .examine-detail-list",
         );
-        const candidates = [
-          layout,
-          element.querySelector('[role="tabpanel"]:not([hidden])'),
-          facts,
-        ].filter((candidate): candidate is Element => candidate !== null);
+        const candidates = Array.from(element.querySelectorAll<Element>(
+          ".examine-layout, .examine-layout *",
+        )).filter((candidate) => candidate.getClientRects().length > 0);
         const overflowOwners = candidates.filter((candidate) => {
           const overflow = getComputedStyle(candidate).overflowY;
           return overflow === "auto" || overflow === "scroll";
