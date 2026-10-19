@@ -367,7 +367,9 @@ export function createSessionManager(
       context.applyCharacterSetupContext({
         moduleId: owner.moduleId,
         sessionId,
-        style: profile?.interface.characterSetupStyle ?? "original",
+        style: context.options.wizardAcceptance
+          ? "original"
+          : profile?.interface.characterSetupStyle ?? "original",
         saveIdentities,
       });
       context.options.dispatch({
