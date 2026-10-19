@@ -35,9 +35,15 @@ import {
   GameLockConflictError,
   GameLockRequestError,
 } from "./concurrency/game-lock";
+import { isLocalWizardAcceptanceEnabled } from "./session/wizard-acceptance";
 import { GameLockConflictDialog } from "./screens/GameLockConflictDialog";
 import type { BlissHackProfile } from "./settings/profile";
 import { ProfileStaleError } from "./settings/profile-store";
+
+const wizardAcceptance = isLocalWizardAcceptanceEnabled(
+  import.meta.env.DEV,
+  globalThis.location,
+);
 
 interface PendingLockRetry {
   cancel(): void;
@@ -75,6 +81,7 @@ function App({
       diagnostics,
       dispatch,
       loadProfile: reloadProfile,
+      wizardAcceptance,
     }),
     [diagnostics, dispatch, reloadProfile],
   );

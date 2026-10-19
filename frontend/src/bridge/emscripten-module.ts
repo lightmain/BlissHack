@@ -15,6 +15,7 @@ export interface EmscriptenFileSystem {
     path: string,
     options?: { encoding: "utf8" },
   ): string | Uint8Array;
+  writeFile(path: string, value: string | Uint8Array): unknown;
   syncfs(
     populate: boolean,
     callback: (error: unknown | null) => void,

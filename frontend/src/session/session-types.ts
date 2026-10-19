@@ -168,6 +168,8 @@ export interface SessionManagerOptions {
     module: EmscriptenModule,
     identity: SaveIdentity,
   ) => void;
+  /** Enable the local-only wizard startup prepared by the application gate. */
+  wizardAcceptance?: boolean;
   /** Retained for stage-one callers; storage availability now comes from initialize. */
   storageAvailable?: () => boolean;
 }
