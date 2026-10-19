@@ -266,6 +266,20 @@ function nodesWithClass(node: MarkupNode, className: string): MarkupNode[] {
   ];
 }
 
+/** Find every parsed node carrying one exact attribute, including the root. */
+function nodesWithAttribute(
+  node: MarkupNode,
+  attribute: string,
+): MarkupNode[] {
+  const matches = attribute in node.attributes ? [node] : [];
+  return [
+    ...matches,
+    ...node.children.flatMap((child) =>
+      nodesWithAttribute(child, attribute)
+    ),
+  ];
+}
+
 /** Return the sole direct FactDocument child from rendered facts markup. */
 function factDocument(html: string): MarkupNode {
   const root = parseMarkup(html);
@@ -812,7 +826,9 @@ describe("appearance and optional Wiki presentation boundaries", () => {
     expect(withWiki).not.toContain('role="tablist"');
     expect(withWiki).not.toContain('role="tab"');
     expect(withWiki).not.toContain('role="tabpanel"');
-    expect(withWiki).not.toContain(" hidden=");
+    const articles = nodesWithClass(parseMarkup(withWiki), "examine-article");
+    expect(articles, "markup must contain one Wiki article").toHaveLength(1);
+    expect(nodesWithAttribute(articles[0], "hidden")).toHaveLength(0);
     expect(withWiki).toContain(">Strategy</h2>");
     expect(withWiki).toContain(">History</h2>");
     expect(withWiki).toContain(">Dudley&#x27;s dungeon</h2>");

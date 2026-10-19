@@ -15,12 +15,7 @@ import { loadTileAtlas } from "../../map/tile-assets";
 import type { MapRenderer } from "../../settings/profile";
 import { ExamineFacts, objectClassLabel } from "./ExamineFacts";
 import { ExamineSourceStrip } from "./ExamineSourceStrip";
-import {
-  ExamineWikiArticle,
-  resolveExamineTabKey,
-} from "./ExamineWikiArticle";
-
-export { resolveExamineTabKey };
+import { ExamineWikiArticle } from "./ExamineWikiArticle";
 
 export type ExamineDialogState =
   | { status: "loading" }
@@ -195,19 +190,21 @@ export function ExamineDialog({
             </div>
           )
           : (
-            <>
-              {wiki && <ExamineSourceStrip record={wiki} />}
-              <div className="examine-layout">
-                {entity && (
-                  <ExamineFacts
-                    artifactBaseObject={entity.artifactBaseObject}
-                    core={entity.core}
-                    nethackVersion={nethackVersion}
-                  />
-                )}
-                {wiki && <ExamineWikiArticle record={wiki} />}
-              </div>
-            </>
+            <div className="examine-layout">
+              {entity && (
+                <ExamineFacts
+                  artifactBaseObject={entity.artifactBaseObject}
+                  core={entity.core}
+                  nethackVersion={nethackVersion}
+                />
+              )}
+              {wiki && (
+                <>
+                  <ExamineSourceStrip record={wiki} />
+                  <ExamineWikiArticle record={wiki} />
+                </>
+              )}
+            </div>
           )}
       </section>
     </div>

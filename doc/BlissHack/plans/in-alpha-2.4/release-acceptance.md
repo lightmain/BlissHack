@@ -11,7 +11,7 @@ alpha-2.4 已完成实现、独立复审和自动门禁。人工验收仍待用�
 
 ## 2. 测试环境
 
-- 最终自动复验日期：2026-10-15。
+- 最终自动复验日期：2026-10-19。
 - 机器：Apple M4 Pro，arm64。
 - 系统：macOS 26.5.1。
 - 固定工具链：Node.js 24.19.0、npm 11.17.0、Emscripten 6.0.9、
@@ -47,8 +47,10 @@ alpha-2.4 已完成实现、独立复审和自动门禁。人工验收仍待用�
   普通物品 token；公开 glyph binding 继续把静态未知类型保持为通用类别。
 - 运行时严格校验并按需加载 core/Wiki manifest、glyph binding 和 entity
   chunk；并发请求合并，失败与 stale 请求 fail closed。
-- 响应式观察窗口包含事实、Wiki Tab、分离的来源与许可、焦点限制、键盘导航和
-  关闭后焦点恢复；窄屏使用单一内容滚动区域。
+- 响应式观察窗口对所有实体使用相同的全宽 facts 主界面；经过审核的 Wiki 原文
+  在 core provenance 后按来源顺序静态追加，不再创建 Tab、侧栏或隐藏 panel。
+  Wiki 与核心来源许可继续分离，所有视口使用单一内容滚动区域，并保留焦点限制、
+  键盘导航和关闭后焦点恢复。
 - `nethack-runtime.json` schema v3 同时绑定 loader、WASM、core manifest、
   Wiki manifest 和 core source fingerprint。
 
@@ -64,8 +66,8 @@ alpha-2.4 已完成实现、独立复审和自动门禁。人工验收仍待用�
   预算。
 - Wiki 只发布 `Newt` revision 205110 的 1 条记录、4 个完整原文段落：
   Strategy 2 段、History 1 段、Dudley's dungeon 1 段。
-- 两段不安全的 Overview 内容未发布；运行时没有 Overview Tab，也没有摘要、
-  翻译、改写、截句、合并或拼接。
+- 两段不安全的 Overview 内容未发布；静态文章没有 Overview section，也没有
+  摘要、翻译、改写、截句、合并或拼接。
 - 969 个无 Wiki 记录的实体按设计保持 core facts-only。
 
 ## 5. 运行时产物
@@ -98,17 +100,18 @@ source fingerprint 为
 | `npm run lint` | 0 warnings，0 errors |
 | `VITE_BASE_PATH=/BlissHack/ npm run build` | TypeScript 与 production build 通过 |
 | `npm run test:integration:wasm` | 166/166 |
-| `npm run test:integration:browser` | Chromium 158/158 |
-| `npm run test:integration:compat` | Firefox + WebKit 196/196 |
-| `npm run test:performance` | 2/2；Canvas 全图 p95 5.5 ms，300 行背包提交 15.0 ms |
+| `npm run test:integration:browser` | Chromium 160/160 |
+| `npm run test:integration:compat` | Firefox + WebKit 200/200 |
+| `npm run test:performance` | 2/2；Canvas 全图 p95 5.8 ms，300 行背包提交 15.4 ms |
 | `npm run test:long` | 4/4 |
 | `git diff --check` | 通过 |
 
 真实浏览器覆盖 Newt revision 205110 的 4 段原文与无 Overview、facts-only
 降级、损坏资料拒绝、慢加载关闭、核心菜单 handoff、无回合消耗、键盘与焦点
 恢复，以及 1280×900、900×700、700×800、900×600 下的 Tiles/ASCII、
-Right/Below 和共享 FactDocument 多列布局。浏览器几何断言确认事实文档无横向
-溢出，窄屏 Wiki 观察窗口只有一个内容滚动 owner。普通运行不会请求
+Right/Below 和共享 FactDocument 多列布局。浏览器几何断言确认 Newt 与
+facts-only 实体都使用全宽 facts、无横向溢出，并在全部视口只有一个内容滚动
+owner；四段 Wiki 原文同时可见且没有 tab controller。普通运行不会请求
 NetHackWiki。
 
 ## 7. 独立复审
@@ -146,15 +149,20 @@ README、frontend README 和 WASM 构建文档中补全。修正后的 follow-up
   React 静态 markup，逐项验证唯一 facts aside、直接 FactDocument section、
   稳定 section ID、首段 `Key facts` 和末段 provenance。最终复审要求 artifact
   完整 Dialog 用例复用同一骨架断言，该用例已补齐。
+- 2026-10-19 统一 Wiki 展示 reviewer 确认生产实现没有许可、来源、DOM 顺序或
+  布局回归；首轮指出并发 cache 测试依赖异步完成顺序、浏览器矩阵覆盖不足、
+  文档仍保留 Tab 交互措辞，以及 `hidden` 断言没有覆盖完整 article 子树。
+  修正后四个目标视口分别验证 Wiki 和 facts-only，并实际滚动唯一
+  `.examine-layout` owner；follow-up review 未发现剩余 P1/P2。
 - 最终独立复审未发现剩余高、中严重性问题；生产代码和样式中不再包含 Newt
-  专属事实布局、Monster 页面布局特例或渲染分支。
+  专属事实布局、Monster 页面布局特例、Wiki Tab 或双栏渲染分支。
 
 ## 8. 人工验收待办
 
 - [ ] Detailed 下分别检查地图 Newt、地形、陷阱、地面物品和永久背包物品的
   `Examine`，并确认武士初始 katana 显示具体资料；Original 下确认没有
   synthetic 行。
-- [ ] 记录 moves/time，反复打开、切 Tab、关闭，确认菜单先关闭、窗口后打开，
+- [ ] 记录 moves/time，反复打开、滚动、关闭，确认菜单先关闭、窗口后打开，
   全程不消耗回合；原有攻击、移动、拾取和物品动作保持原路径。
 - [ ] 检查未鉴定 wand 等物品、hallucination、mimic/disguise、隐藏/可见陷阱
   以及未公开和已公开神器，确认没有隐藏身份泄露。

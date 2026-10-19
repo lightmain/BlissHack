@@ -3,6 +3,7 @@
 import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { SaxesParser } from "saxes";
 import { describe, expect, it, vi } from "vitest";
 import type { LoadedEncyclopediaEntity } from "../../encyclopedia/encyclopedia-loader";
 import {
@@ -22,6 +23,11 @@ import {
   NEWT_WIKI,
   WEAPON_CORE,
 } from "./ExamineDialog.test-fixtures";
+
+interface MarkupNode {
+  attributes: Record<string, string>;
+  children: MarkupNode[];
+}
 
 const GAME_SCREEN_SOURCE = readFileSync(
   new URL("../GameScreen.tsx", import.meta.url),
@@ -57,6 +63,52 @@ function layerIndex(html: string, className: string): number {
   const index = html.indexOf(`class="${className}`);
   expect(index, `missing ${className}`).toBeGreaterThan(-1);
   return index;
+}
+
+/** Parse the sole Wiki article subtree from rendered dialog markup. */
+function parseWikiArticle(html: string): MarkupNode {
+  const start = html.indexOf('<article class="examine-article"');
+  const end = html.indexOf("</article>", start);
+  expect(start, "missing Wiki article").toBeGreaterThan(-1);
+  expect(end, "missing Wiki article end").toBeGreaterThan(start);
+  const roots: MarkupNode[] = [];
+  const stack: MarkupNode[] = [];
+  const parser = new SaxesParser({ fragment: true });
+  parser.on("opentag", (tag) => {
+    const node: MarkupNode = {
+      attributes: Object.fromEntries(
+        Object.entries(tag.attributes).map(([key, value]) => [
+          key,
+          String(value),
+        ]),
+      ),
+      children: [],
+    };
+    const parent = stack.at(-1);
+    if (parent) parent.children.push(node);
+    else roots.push(node);
+    stack.push(node);
+  });
+  parser.on("closetag", () => {
+    stack.pop();
+  });
+  parser.write(html.slice(start, end + "</article>".length)).close();
+  expect(roots, "Wiki article markup must have one root").toHaveLength(1);
+  return roots[0];
+}
+
+/** Find every parsed node carrying one exact attribute, including the root. */
+function nodesWithAttribute(
+  node: MarkupNode,
+  attribute: string,
+): MarkupNode[] {
+  const matches = attribute in node.attributes ? [node] : [];
+  return [
+    ...matches,
+    ...node.children.flatMap((child) =>
+      nodesWithAttribute(child, attribute)
+    ),
+  ];
 }
 
 describe("stage-five Examine presentation", () => {
@@ -103,7 +155,8 @@ describe("stage-five Examine presentation", () => {
     expect(html).not.toContain('role="tablist"');
     expect(html).not.toContain('role="tab"');
     expect(html).not.toContain('role="tabpanel"');
-    expect(html).not.toContain(" hidden=");
+    expect(nodesWithAttribute(parseWikiArticle(html), "hidden"))
+      .toHaveLength(0);
     expect(html).toContain(">Strategy</h2>");
     expect(html).toContain(">History</h2>");
     expect(html).toContain(">Dudley&#x27;s dungeon</h2>");

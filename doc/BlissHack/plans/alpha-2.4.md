@@ -192,13 +192,14 @@ alpha-2.4 支持玩家当前可见且具有稳定资料身份的实体：
 
 ### 4.5 观察窗口
 
-观察窗口遵循已确认 Newt 原型：
+观察窗口对所有实体使用同一份主界面：
 
 - 大型但非全屏，保留可见 backdrop 和游戏空间边界。
 - 顶部显示当前可见 glyph、实体名称、简短类别和来源于核心数据的特征标签。
-- 左侧为 `Overview`、`Strategy`、`History` Tab；只显示该实体实际收录的
-  Wiki 节选。
-- 右侧事实列在切换 Tab 时保持可见，展示结构化核心数据。
+- 主内容先以全宽 FactDocument 展示结构化核心数据；Wiki 是否存在不得改变
+  facts 的宽度、section、顺序或视觉层级。
+- 有经过审核的 Wiki 节选时，在核心 provenance 之后按来源顺序静态追加全部
+  Wiki section；不创建 Tab、隐藏 panel、侧栏或第二个滚动区域。
 - Wiki 来源条固定显示页面标题、`NetHackWiki contributors`、revision、
   revision history、CC BY-SA 3.0 链接和允许的展示变更说明。
 - 核心事实区单独显示 NetHack 版本、具体源码路径和 `dat/license`。
@@ -207,15 +208,15 @@ alpha-2.4 支持玩家当前可见且具有稳定资料身份的实体：
 - 没有 Wiki 节选时显示事实视图，不生成空 Tab，不用项目自行撰写的摘要填充。
 - 没有某类核心字段时直接省略对应区块，不显示推测值。
 - 关闭方式包括右上角关闭按钮、Escape 和 backdrop 点击。
-- 打开时初始焦点进入对话框；Tab 支持方向键、Home/End；Tab 键被限制在窗口
-  内；关闭后恢复到发起右键的地图或背包目标。
+- 打开时初始焦点进入对话框；Tab 键被限制在窗口内；关闭后恢复到发起右键的
+  地图或背包目标。
 - 对话框打开时游戏内容和其他游戏控件为 `inert`，全局 NetHack 键盘路由不
   接收窗口按键。
-- 桌面保持正文与事实双列。窄屏改为单列、一个明确的纵向 scroll owner，不
-  允许正文列、事实列和 backdrop 出现相互竞争的嵌套滚动。
+- 桌面与窄屏都使用同一纵向内容流和一个明确的 scroll owner，不允许 Wiki、
+  facts 和 backdrop 出现相互竞争的嵌套滚动。
 - 所有外部链接使用新窗口并带 `noopener noreferrer`；许可链接带
   `rel="license"`。
-- 打开、切 Tab、滚动、点击来源和关闭均不调用核心，不消耗回合。
+- 打开、滚动、点击来源和关闭均不调用核心，不消耗回合。
 
 ### 4.6 显示字段
 
@@ -508,8 +509,8 @@ Examine header
   但不能拥有 `primary`/`secondary` DOM 包装或专属整页双栏 CSS。
 - 所有 section 使用同一个结构和视觉层级；关键指标、普通定义行、标签集合与
   有序列表可以使用不同的共享低层原语。
-- facts 内容宽度决定关键指标网格的列数。桌面 facts-only、330 px facts
-  sidebar 和窄屏使用同一规则，不允许通过 family 选择器切换布局。
+- facts 内容宽度决定关键指标网格的列数。桌面、窄屏以及有无 Wiki 时使用同一
+  规则，不允许通过 family 或 Wiki 存在性切换布局。
 - `data-examine-template` 只保留为稳定测试与诊断标记，不得参与 CSS 页面布局。
 - optional Wiki article 仍是核心 document 的同级补充；有无 Wiki 不得改变
   FactDocument 的 section、顺序或 markup。
@@ -580,10 +581,13 @@ interface WikiExcerptRecord {
 
 规则：
 
+- `sections[].tab` 仅保留为导入选择和审查报告使用的内容分组元数据，不对应
+  运行时 UI Tab；界面按 `sections` 来源顺序静态显示全部选中 section。
 - `paragraphs` 只保存纯文本完整段落，不保存可注入 React 的 HTML。
 - 每个段落与原 revision 中一个完整段落一一对应；不能截句、合并或把列表项
   改写成段落。
-- 可以不选择某段，也可以整页没有 Wiki 记录；不能为了填满 Tab 自动生成内容。
+- 可以不选择某段，也可以整页没有 Wiki 记录；不能为了填满导入分组自动生成
+  内容。
 - 页面 title 到 entity ID 的匹配来自 checked-in alias catalog，必须精确匹配。
 - redirect 必须解析到固定最终 title，并在 manifest 中保留原 title 与目标；
   不做模糊搜索、编辑距离或搜索结果第一名自动命中。
@@ -782,8 +786,8 @@ type ActionCompletion =
   与对话框抢焦点；对话框关闭后才按序列化 origin 恢复地图或对应背包项。
 - 如果原背包项已消失，恢复到背包容器；如果地图已卸载，恢复到 game shell；
   不能持有失效 DOM ref。
-- 窗口根节点使用 `data-browser-keyboard`，Escape、Tab 和 Tab-list 导航必须
-  阻止事件到达 `GameScreen` 的全局键盘 handler。
+- 窗口根节点使用 `data-browser-keyboard`，Escape 和 Tab 焦点遍历必须阻止
+  事件到达 `GameScreen` 的全局键盘 handler。
 - 点击来源链接不会关闭窗口，也不会向 NetHack 发送按键。
 
 ## 9. 非目标
@@ -843,8 +847,8 @@ type ActionCompletion =
 11. artifact UI 先使用基础 object 的 object-class 模板，再叠加神器专属字段。
 12. terrain 和 trap 使用独立核心事实模板，不从 Wiki 页面分类决定布局。
 13. Wiki taxonomy、节选存在与否或加载失败不得改变核心模板、字段和 DOM 事实树。
-14. 对话框在 DOM 中先放核心 facts，再放可选 Wiki article，同时保持桌面视觉
-    双列和窄屏单一 scroll owner。
+14. 对话框在 DOM 中先放核心 facts，再放 Wiki source strip 和可选静态
+    article；所有视口使用同一个全宽纵向内容流和单一 scroll owner。
 15. 模板根节点使用稳定的 `data-examine-template`，移除
     `data-entity-kind` 和 `data-facts-only` 布局分支。
 16. 删除 Newt 专属渲染与样式特例；Newt 只作为普通 monster fixture 验证。
@@ -877,8 +881,8 @@ schema v2、核心资产或可见身份边界：
 11. Core provenance 使用共享 section 并始终位于 document 末尾。
 12. 删除所有 `[data-examine-template="monster"]` 页面布局 CSS；
     `data-examine-template` 只作测试和诊断。
-13. 保持桌面 Wiki/facts 分栏、facts-only 全宽和窄屏单一 scroll owner，补充
-    330 px sidebar、桌面 facts-only 与窄屏无横向溢出的几何断言。
+13. 删除桌面 Wiki/facts 分栏、330 px facts sidebar 和 Wiki Tab；有无 Wiki
+    都保持 facts 全宽，并在所有视口使用单一 scroll owner。
 14. 先由测试 subagent 提交预期失败测试；实现后由不同 reviewer 审查，修正
     findings，运行完整门禁并更新 release acceptance。
 
@@ -1059,8 +1063,8 @@ feat: add the synthetic examine context action
 
 测试 subagent 先定义：
 
-- 已确认原型的 header、source strip、Tab、article、facts 和 provenance 层级。
-- 有 Wiki、无 Wiki、部分 Tab、facts 字段缺失和加载失败状态。
+- 统一的 header、facts、provenance、source strip 和静态 article 层级。
+- 有 Wiki、无 Wiki、部分 Wiki section、facts 字段缺失和加载失败状态。
 - `data-examine-template` 的 monster、17 类 object、appearance、terrain、trap
   和 artifact overlay 分派。
 - artifact 基础 object 字段与 overlay 的无损呈现。
@@ -1072,8 +1076,7 @@ feat: add the synthetic examine context action
 - 关键指标网格只根据 facts 容器宽度响应，不读取 family 或 template 标记。
 - 有无 Wiki 时核心 facts DOM 完全一致且位于 article 之前。
 - 不存在 `data-facts-only`、`data-entity-kind` 或 Newt 专属分支。
-- role/dialog、aria-modal、tablist/tabpanel、键盘导航、focus trap 和 focus
-  restore。
+- role/dialog、aria-modal、无 Wiki tab controller、focus trap 和 focus restore。
 - Escape、backdrop、关闭按钮和外部链接事件隔离。
 - 1280x900、900x700、窄屏和短 viewport 的尺寸、单一 scroll owner 与无重叠。
 - Tiles/ASCII、Right/Right-short/Below、Original/BlissHack action bar 组合。
@@ -1083,12 +1086,12 @@ feat: add the synthetic examine context action
 
 门禁：
 
-- 视觉层级与已确认 Newt 原型一致。
+- Newt 与 facts-only 实体使用相同的全宽 facts 视觉层级。
 - 最长实体名、最长 trait、六个 attack 和较长 Wiki 段落均不溢出或遮挡。
 - facts 列与 Wiki 来源条的许可归属清楚。
 - 六个 family 的页面骨架、section 间距、标题层级和关键事实网格一致。
 - Wiki 缺失或失败时不改变核心事实结构和模板。
-- 窄屏只有一个对话框内容滚动容器。
+- 所有视口只有一个对话框内容滚动容器。
 - 所有窗口操作均不进入 WASM。
 
 建议提交：
@@ -1142,7 +1145,7 @@ docs: complete alpha-2.4 examine acceptance
   的严格顺序。
 - stale map/inventory/session 与重复事件。
 - loader 并发、abort、cache 和 graceful fallback。
-- dialog Tab、focus、inert、关闭、来源链接和无 Wiki 状态。
+- dialog focus trap、inert、关闭、来源链接和无 Wiki 状态。
 
 ### 11.3 Bridge 与真实 WASM
 
@@ -1158,12 +1161,12 @@ docs: complete alpha-2.4 examine acceptance
 
 ### 11.4 浏览器
 
-- Chromium 截图覆盖 Newt Overview/Strategy/History、facts-only、长内容、
-  Right/Below 和桌面/窄屏。
+- Chromium 截图覆盖 Newt 全宽 facts 与静态 Wiki sections、facts-only、
+  长内容、Right/Below 和桌面/窄屏。
 - Firefox/WebKit 覆盖相同的可见性、尺寸范围、单 scroll owner 和 pointer
   行为，不要求与 Chromium 逐像素一致。
 - 键盘只用流程覆盖菜单 `e` 或 fallback accelerator、Enter、Escape、
-  Arrow/Home/End、Tab/Shift+Tab 和关闭后继续移动。
+  Tab/Shift+Tab 和关闭后继续移动。
 - 右键 click/drag 5 px 阈值保持；拖动不能打开菜单或 Examine。
 - 低速 chunk fixture 验证 loading 期间无重复请求、无核心阻塞和无布局跳出
   viewport。
@@ -1181,7 +1184,7 @@ docs: complete alpha-2.4 examine acceptance
 ### 12.2 核心流程
 
 1. 选择 `Examine`，确认核心菜单先关闭，随后才打开观察窗口。
-2. 记录 moves/time，反复打开、切 Tab、关闭，确认不消耗回合。
+2. 记录 moves/time，反复打开、滚动、关闭，确认不消耗回合。
 3. 分别选择原菜单中的攻击、移动、拾取和物品动作，确认行为没有改变。
 4. 在菜单打开后让 map/inventory revision 变化，确认旧 Examine 不出现。
 5. 快速重复右键、Escape、backdrop 和关闭按钮，确认无重复窗口或卡死输入。
@@ -1213,9 +1216,9 @@ docs: complete alpha-2.4 examine acceptance
 
 1. 在 1280x900、900x700 和窄屏检查长名称、六次攻击和长段落。
 2. 检查 Tiles/ASCII、背包 Right/Right-short/Below 和两种动作栏模式。
-3. 只用键盘完成菜单选择、三组 Tab 导航、来源链接聚焦和关闭。
-4. 使用屏幕阅读器检查 dialog 标题、Tab 选择状态、facts definition list 和
-   source links。
+3. 只用键盘完成菜单选择、窗口内顺序焦点遍历、来源链接聚焦和关闭。
+4. 使用屏幕阅读器检查 dialog 标题、静态 Wiki 标题层级、facts definition
+   list 和 source links。
 5. 确认对话框外内容不可聚焦，关闭后焦点回到合理触发位置。
 
 ## 13. 风险与处理

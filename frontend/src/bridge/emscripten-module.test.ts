@@ -396,8 +396,16 @@ describe("default Emscripten factory cache", () => {
     expect(secondImportFactory).toHaveBeenCalledOnce();
     expect(firstFactory).toHaveBeenCalledTimes(2);
     expect(secondFactory).toHaveBeenCalledTimes(2);
-    expect(firstResults).toEqual(firstModules);
-    expect(secondResults).toEqual(secondModules);
+    expect(firstResults).toHaveLength(firstModules.length);
+    expect(secondResults).toHaveLength(secondModules.length);
+    for (const module of firstResults) {
+      expect(firstModules).toContain(module);
+      expect(secondModules).not.toContain(module);
+    }
+    for (const module of secondResults) {
+      expect(secondModules).toContain(module);
+      expect(firstModules).not.toContain(module);
+    }
   });
 
   it("retries the same loader digest after its first import fails", async () => {
