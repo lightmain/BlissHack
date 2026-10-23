@@ -78,6 +78,7 @@ const OBJECT_RECORDS = [
 );
 const MONSTER_RECORDS = [
   "monster-001.json",
+  "monster-002.json",
   "monster-004.json",
 ].flatMap((file) =>
   (JSON.parse(readFileSync(
@@ -612,6 +613,42 @@ describe("refined Examine fact hierarchy", () => {
         gender: "male",
       } satisfies GlyphBinding,
       title: "Statue of an Uruk-hai",
+    },
+    {
+      label: "G_UNIQ Wizard of Yendor statue",
+      entityId: "monster:PM_WIZARD_OF_YENDOR",
+      binding: {
+        kind: "statue",
+        objectId: "object:STATUE",
+        monsterId: "monster:PM_WIZARD_OF_YENDOR",
+        pileTop: false,
+        gender: "male",
+      } satisfies GlyphBinding,
+      title: "Statue of the Wizard of Yendor",
+    },
+    {
+      label: "M2_PNAME Croesus statue",
+      entityId: "monster:PM_CROESUS",
+      binding: {
+        kind: "statue",
+        objectId: "object:STATUE",
+        monsterId: "monster:PM_CROESUS",
+        pileTop: false,
+        gender: "male",
+      } satisfies GlyphBinding,
+      title: "Statue of Croesus",
+    },
+    {
+      label: "G_UNIQ high priest exception statue",
+      entityId: "monster:PM_HIGH_CLERIC",
+      binding: {
+        kind: "statue",
+        objectId: "object:STATUE",
+        monsterId: "monster:PM_HIGH_CLERIC",
+        pileTop: false,
+        gender: "male",
+      } satisfies GlyphBinding,
+      title: "Statue of a high priest",
     },
   ])("uses core naming semantics for a $label", ({
     binding,
