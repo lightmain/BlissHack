@@ -5,6 +5,7 @@ import {
   type GlyphInfo,
   type MenuItem,
 } from "../game-state";
+import type { GlyphBinding } from "../encyclopedia/core-schema";
 import {
   createGameActionController,
   type ActionIntentCancellationReason,
@@ -679,6 +680,7 @@ type InformationLevel = "original" | "detailed";
 interface MapExamineTarget {
   surface: "map";
   entityId: string;
+  binding: GlyphBinding;
   moduleId: string;
   sessionId: string;
   mapRevision: number;
@@ -691,6 +693,7 @@ interface MapExamineTarget {
 interface InventoryExamineTarget {
   surface: "inventory";
   entityId: string;
+  binding: GlyphBinding;
   moduleId: string;
   sessionId: string;
   inventoryRevision: number;
@@ -831,6 +834,12 @@ function mapExamineTarget(
   return {
     surface: "map",
     entityId: "monster:PM_NEWT",
+    binding: {
+      kind: "monster",
+      monsterId: "monster:PM_NEWT",
+      presentation: "monster",
+      gender: "male",
+    },
     moduleId: "module-1",
     sessionId: "session-1",
     mapRevision: MAP_REVISION,
@@ -849,6 +858,11 @@ function inventoryExamineTarget(
   return {
     surface: "inventory",
     entityId: "object:LONG_SWORD",
+    binding: {
+      kind: "object",
+      objectId: "object:LONG_SWORD",
+      pileTop: false,
+    },
     moduleId: "module-1",
     sessionId: "session-1",
     inventoryRevision: INVENTORY_REVISION,
@@ -1330,6 +1344,10 @@ describe("stage-four Examine safe handoff", () => {
     expect(chooseContextRow(controller, row)).toBe(true);
     captured.entityId = "monster:PM_ORC";
     captured.glyph.glyph = 999;
+    if (captured.binding.kind !== "monster") {
+      throw new Error("Expected a monster binding");
+    }
+    captured.binding.gender = "female";
     controller.observe(examineObservation({
       examineTarget: liveTarget,
       input: null,
@@ -1344,6 +1362,9 @@ describe("stage-four Examine safe handoff", () => {
       kind: "open-examine",
       target: liveTarget,
     });
+    const completion = onActionCompletion.mock.calls[0]?.[0];
+    expect(completion?.target.binding).toEqual(liveTarget.binding);
+    expect(completion?.target.binding).not.toBe(liveTarget.binding);
   });
 
   it("treats backdrop and Escape as ordinary cancellation without a payload", () => {
@@ -1385,6 +1406,19 @@ describe("stage-four Examine safe handoff", () => {
       intent: mapContextIntent(),
       initial: mapExamineTarget(),
       changed: mapExamineTarget({ glyph: glyphInfo(302) }),
+    },
+    {
+      label: "validated binding",
+      intent: mapContextIntent(),
+      initial: mapExamineTarget(),
+      changed: mapExamineTarget({
+        binding: {
+          kind: "monster",
+          monsterId: "monster:PM_NEWT",
+          presentation: "monster",
+          gender: "female",
+        },
+      }),
     },
     {
       label: "inventory revision",

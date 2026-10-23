@@ -76,6 +76,15 @@ const OBJECT_RECORDS = [
     "utf8",
   )) as { records: CoreEntityRecord[] }).records
 );
+const MONSTER_RECORDS = [
+  "monster-001.json",
+  "monster-004.json",
+].flatMap((file) =>
+  (JSON.parse(readFileSync(
+    new URL(`../../../public/encyclopedia/core/${file}`, import.meta.url),
+    "utf8",
+  )) as { records: CoreEntityRecord[] }).records
+);
 const APPEARANCE_CORE = {
   schemaVersion: 2,
   id: "appearance:POTION_CLASS:GENERIC",
@@ -117,6 +126,13 @@ const TRAP_CORE = {
 function objectRecord(id: string): CoreEntityRecord {
   const record = OBJECT_RECORDS.find((candidate) => candidate.id === id);
   if (!record) throw new Error(`Missing object fixture ${id}`);
+  return structuredClone(record);
+}
+
+/** Return one checked-in monster record by its stable source ID. */
+function monsterRecord(id: string): CoreEntityRecord {
+  const record = MONSTER_RECORDS.find((candidate) => candidate.id === id);
+  if (!record) throw new Error(`Missing monster fixture ${id}`);
   return structuredClone(record);
 }
 
@@ -547,6 +563,72 @@ describe("refined Examine fact hierarchy", () => {
     expect(header).toMatch(new RegExp(
       `<p>[^<]*${category}[^<]*</p>`,
     ));
+  });
+
+  it.each([
+    {
+      label: "female amorous demon",
+      entityId: "monster:PM_AMOROUS_DEMON",
+      binding: {
+        kind: "monster",
+        monsterId: "monster:PM_AMOROUS_DEMON",
+        presentation: "monster",
+        gender: "female",
+      } satisfies GlyphBinding,
+      title: "Succubus",
+    },
+    {
+      label: "male amorous demon statue",
+      entityId: "monster:PM_AMOROUS_DEMON",
+      binding: {
+        kind: "statue",
+        objectId: "object:STATUE",
+        monsterId: "monster:PM_AMOROUS_DEMON",
+        pileTop: false,
+        gender: "male",
+      } satisfies GlyphBinding,
+      title: "Statue of an incubus",
+    },
+    {
+      label: "female amorous demon statue",
+      entityId: "monster:PM_AMOROUS_DEMON",
+      binding: {
+        kind: "statue",
+        objectId: "object:STATUE",
+        monsterId: "monster:PM_AMOROUS_DEMON",
+        pileTop: false,
+        gender: "female",
+      } satisfies GlyphBinding,
+      title: "Statue of a succubus",
+    },
+    {
+      label: "Uruk-hai statue",
+      entityId: "monster:PM_URUK_HAI",
+      binding: {
+        kind: "statue",
+        objectId: "object:STATUE",
+        monsterId: "monster:PM_URUK_HAI",
+        pileTop: false,
+        gender: "male",
+      } satisfies GlyphBinding,
+      title: "Statue of an Uruk-hai",
+    },
+  ])("uses core naming semantics for a $label", ({
+    binding,
+    entityId,
+    title,
+  }) => {
+    const core = monsterRecord(entityId);
+    const target = {
+      ...targetWithBinding(binding),
+      entityId,
+    };
+    const header = headerMarkup(renderDialog(
+      catalogEntity(core, null),
+      target,
+    ));
+
+    expect(header).toMatch(new RegExp(`<h1[^>]*>${title}</h1>`));
   });
 
   it("selects an objectClass template instead of a family-wide object page", () => {
