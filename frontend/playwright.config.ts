@@ -7,7 +7,7 @@ export default defineConfig({
   testDir: "./test/integration-tests/browser",
   outputDir: "./test-results/playwright",
   snapshotPathTemplate:
-    "{snapshotDir}/{testFileDir}/{testFileName}-snapshots/{arg}{ext}",
+    "{snapshotDir}/{testFileDir}/{testFileName}-snapshots/{platform}/{arg}{ext}",
   fullyParallel: false,
   workers: 1,
   forbidOnly: Boolean(process.env.CI),
