@@ -50,11 +50,22 @@ export async function startNewGameFromHome(
     name: "Who are you?",
     exact: true,
   });
-  await expect(unifiedNameInput.or(originalNameInput)).toBeVisible();
   const selectionPrompt = page.getByText(
     /Shall I pick (?:character's|your .+'s)/,
   );
+  const confirmation = page.getByRole("dialog", {
+    name: "Is this ok? [ynq]",
+  });
   const introduction = page.locator(".nh-text-dialog");
+  await expect(
+    unifiedNameInput.or(originalNameInput).or(selectionPrompt).or(confirmation),
+  ).toBeVisible();
+  if (await selectionPrompt.isVisible()) {
+    await page.keyboard.press("y");
+    await expect(
+      unifiedNameInput.or(originalNameInput).or(confirmation),
+    ).toBeVisible();
+  }
   if (await unifiedNameInput.isVisible()) {
     const specified = name.match(
       /^(.*)-(Arc|Bar)-Hum-(Mal|Fem)-(Law|Neu|Cha)$/,
@@ -84,20 +95,18 @@ export async function startNewGameFromHome(
     } else {
       await page.getByRole("button", { name: "Auto & Start" }).click();
     }
-  } else {
-    await expect(selectionPrompt).toHaveCount(0);
+  } else if (await originalNameInput.isVisible()) {
     await originalNameInput.fill(name);
     await originalNameInput.press("Enter");
 
-    const confirmation = page.getByRole("dialog", {
-      name: "Is this ok? [ynq]",
-    });
     await expect(selectionPrompt.or(confirmation).or(introduction)).toBeVisible();
     if (await selectionPrompt.isVisible()) {
       await page.keyboard.press("y");
       await expect(confirmation).toBeVisible();
     }
     if (await confirmation.isVisible()) await page.keyboard.press("y");
+  } else if (await confirmation.isVisible()) {
+    await page.keyboard.press("y");
   }
 
   await expect(introduction).toBeVisible();
