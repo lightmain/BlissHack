@@ -3299,6 +3299,9 @@ async function run() {
   ) >>> 0;
   await sendKeyAndWait(32);
   const refreshedArtifactItems = latestPermanentInventoryItems();
+  const refreshedVisibleEntityTokens = refreshedArtifactItems.map(
+    (event) => event.visibleEntityToken,
+  );
   assert(
     runtimeSettingsResults.length > refreshResultsBefore
       && runtimeSettingsResults.at(-1)?.success === 1
@@ -3306,21 +3309,17 @@ async function run() {
       && permanentInventoryUpdates.filter(
         (event) => event.kind === "commit",
       ).length > refreshCommitsBefore
-      && !refreshedArtifactItems.some(
-      (event) => event.visibleEntityToken === "artifact:ART_CLEAVER",
+      && !refreshedVisibleEntityTokens.includes("artifact:ART_CLEAVER")
+      && !refreshedVisibleEntityTokens.includes("artifact:ART_EXCALIBUR")
+      && !refreshedVisibleEntityTokens.includes("object:KATANA")
+      && !refreshedVisibleEntityTokens.some(
+        (token) => /^(?:object|artifact):/.test(token),
       )
-      && refreshedArtifactItems.some(
-        (event) => event.visibleEntityToken === "object:KATANA",
-      )
-      && refreshedArtifactItems.every(
-        (event) =>
-          event.visibleEntityToken === ""
-          || /^(?:object:[A-Z0-9_]+|artifact:ART_EXCALIBUR)$/.test(
-            event.visibleEntityToken,
-          ),
+      && refreshedVisibleEntityTokens.every(
+        (token) => token === "",
       ),
-    "later inventory refreshes do not leak an undisclosed or stale artifact"
-      + " token",
+    "hallucinated inventory refreshes withhold Cleaver, Excalibur, katana,"
+      + " and all ordinary or artifact identity tokens",
   );
 
   // --- Summary ---
