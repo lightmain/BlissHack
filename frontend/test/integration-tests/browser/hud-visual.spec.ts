@@ -259,6 +259,63 @@ async function freezeInventoryPresentation(page: Page): Promise<void> {
 }
 
 /**
+ * Replace only random numeric status text with stable representative values.
+ * @param page - Playwright page after authoritative status stabilization.
+ */
+async function freezeRandomStatusPresentation(page: Page): Promise<void> {
+  const values = [
+    ["hitpoints", "HP:", "", "13"],
+    ["hitpoints-max", "(", ")", "13"],
+    ["power", "Pw:", "", "2"],
+    ["power-max", "(", ")", "2"],
+    ["strength", "St:", "", "10"],
+    ["dexterity", "Dx:", "", "10"],
+    ["constitution", "Co:", "", "10"],
+    ["intelligence", "In:", "", "10"],
+    ["wisdom", "Wi:", "", "10"],
+    ["charisma", "Ch:", "", "10"],
+  ] as const;
+  await page.getByRole("region", { name: "Character status" })
+    .evaluate((status, stableValues) => {
+      for (const [id, prefix, suffix, stableValue] of stableValues) {
+        const field = [...status.querySelectorAll<HTMLElement>(
+          "[data-status-field]",
+        )].find((candidate) => candidate.dataset.statusField === id);
+        if (!field) throw new Error(`Expected status field ${id}`);
+        const valueContainer = field.querySelector<HTMLElement>(
+          ".nh-status-resource-value, .nh-status-value",
+        ) ?? field;
+        const textNodes = [...valueContainer.childNodes].filter(
+          (node) => node.nodeType === Node.TEXT_NODE,
+        );
+        if (textNodes.length !== 1) {
+          throw new Error(`Expected one plain-text value for ${id}`);
+        }
+        const textNode = textNodes[0];
+        const text = textNode.nodeValue ?? "";
+        if (!text.startsWith(prefix) || !text.endsWith(suffix)) {
+          throw new Error(`Unexpected status format for ${id}: ${text}`);
+        }
+        const valueEnd = suffix.length > 0
+          ? text.length - suffix.length
+          : text.length;
+        const numericValue = text.slice(prefix.length, valueEnd);
+        const validNumericValue = id === "strength"
+          ? /^\d+(?:\/(?:\d{2}|\*\*))?$/.test(numericValue)
+          : /^\d+$/.test(numericValue);
+        if (!validNumericValue) {
+          throw new Error(`Unexpected status value for ${id}: ${text}`);
+        }
+        const preservedPrefix = text.slice(0, prefix.length);
+        const preservedSuffix = suffix.length > 0
+          ? text.slice(-suffix.length)
+          : "";
+        textNode.nodeValue = `${preservedPrefix}${stableValue}${preservedSuffix}`;
+      }
+    }, values);
+}
+
+/**
  * Read all viewport and HUD rectangles in one browser layout sample.
  * @param page - Playwright page with a visible game HUD.
  * @returns geometry and computed overflow ownership for layout assertions.
@@ -777,6 +834,7 @@ for (const { renderer, position } of HUD_VARIANTS) {
     );
     const readyRevision = await expectReadyHud(page, renderer, position);
     await expectRendererContent(page, renderer);
+    await freezeRandomStatusPresentation(page);
     await freezeInventoryPresentation(page);
     const intrinsicMapHeight = await page.locator(
       ".nh-map-interaction",
@@ -810,7 +868,6 @@ for (const { renderer, position } of HUD_VARIANTS) {
                 page.locator(".nh-messages > *"),
                 page.locator(".permanent-inventory-header strong"),
                 page.locator(".permanent-inventory-header span"),
-                page.getByRole("region", { name: "Character status" }),
               ],
               maskColor: "#202428",
             },
@@ -859,6 +916,7 @@ for (const { renderer, position } of HUD_VARIANTS) {
       "blisshack",
     );
     await expectRendererContent(page, renderer);
+    await freezeRandomStatusPresentation(page);
     await freezeInventoryPresentation(page);
     const intrinsicMapHeight = await page.locator(
       ".nh-map-interaction",
@@ -890,7 +948,6 @@ for (const { renderer, position } of HUD_VARIANTS) {
                     page.locator(".nh-messages > *"),
                     page.locator(".permanent-inventory-header strong"),
                     page.locator(".permanent-inventory-header span"),
-                    page.getByRole("region", { name: "Character status" }),
                   ],
                   maskColor: "#202428",
                 },
