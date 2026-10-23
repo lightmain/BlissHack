@@ -78,6 +78,30 @@ function cFunctionBlock(source, name) {
 }
 
 /**
+ * Return the balanced if-condition which contains one required source token.
+ * @param {string} source - source region containing the target branch.
+ * @param {string} token - exact expression fragment inside the condition.
+ * @returns {string} complete condition without its surrounding parentheses.
+ */
+function cConditionContaining(source, token) {
+  const tokenIndex = source.indexOf(token);
+  expect(tokenIndex, `missing condition token ${token}`)
+    .toBeGreaterThanOrEqual(0);
+  const prefix = source.slice(0, tokenIndex);
+  const candidates = [...prefix.matchAll(/\bif\s*\(/g)];
+  expect(candidates, `missing if-condition for ${token}`).not.toHaveLength(0);
+  const start = candidates.at(-1).index;
+  const open = source.indexOf("(", start);
+  let depth = 0;
+  for (let index = open; index < source.length; index += 1) {
+    if (source[index] === "(") depth += 1;
+    if (source[index] === ")") depth -= 1;
+    if (depth === 0) return source.slice(open + 1, index);
+  }
+  throw new Error(`Unterminated if-condition for ${token}`);
+}
+
+/**
  * Return the source slice containing one monster table entry.
  * @param {string} source - complete monsters.h source.
  * @param {string} name - exact neutral monster name.
@@ -271,6 +295,37 @@ describe("alpha-2.4 stage-zero source baselines", () => {
 
     const tokenSource = `${inventSource}\n${winshimSource}`;
     expect(tokenSource).toMatch(/"artifact:(?:ART_|%s)"/);
+  });
+
+  it("withholds ordinary object and artifact tokens during hallucination", async () => {
+    const inventSource = await readFile(
+      join(repositoryRoot, "src/invent.c"),
+      "utf8",
+    );
+    const displayPickinv = cFunctionBlock(inventSource, "display_pickinv");
+    const rowStart = displayPickinv.indexOf("/* normal inventory item */");
+    const rowEnd = displayPickinv.indexOf(
+      "maybereleaseobuf(formattedobj)",
+      rowStart,
+    );
+    expect(rowStart).toBeGreaterThanOrEqual(0);
+    expect(rowEnd).toBeGreaterThan(rowStart);
+    const normalInventoryRow = displayPickinv.slice(rowStart, rowEnd);
+    const publicationConditions = {
+      artifact: cConditionContaining(
+        normalInventoryRow,
+        "otmp->oartifact > ART_NONARTIFACT",
+      ),
+      object: cConditionContaining(
+        normalInventoryRow,
+        "objects[otmp->otyp].oc_name_known",
+      ),
+    };
+
+    expect(publicationConditions).toEqual({
+      artifact: expect.stringMatching(/!\s*Hallucination\b/),
+      object: expect.stringMatching(/!\s*Hallucination\b/),
+    });
   });
 
   it("value-copies and fail-closed clears the shim menu identity token", async () => {

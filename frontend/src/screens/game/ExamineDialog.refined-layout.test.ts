@@ -5,7 +5,10 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { SaxesParser } from "saxes";
 import { describe, expect, it, vi } from "vitest";
-import type { CoreEntityRecord } from "../../encyclopedia/core-schema";
+import type {
+  CoreEntityRecord,
+  GlyphBinding,
+} from "../../encyclopedia/core-schema";
 import type { LoadedEncyclopediaEntity } from "../../encyclopedia/encyclopedia-loader";
 import type { ExamineTarget } from "../../encyclopedia/examine-target";
 import { resolveWikiPage } from "../../encyclopedia/wiki-page";
@@ -142,6 +145,23 @@ function headingMarkup(html: string): string {
   expect(start, "missing Examine heading").toBeGreaterThan(-1);
   expect(end, "missing Examine close control").toBeGreaterThan(start);
   return html.slice(start, end);
+}
+
+/** Return the complete header containing title and presentation category. */
+function headerMarkup(html: string): string {
+  const start = html.indexOf('<header class="examine-header">');
+  const end = html.indexOf("</header>", start);
+  expect(start, "missing Examine header").toBeGreaterThan(-1);
+  expect(end, "missing Examine header end").toBeGreaterThan(start);
+  return html.slice(start, end + "</header>".length);
+}
+
+/** Attach the validated display binding expected on a resolved target. */
+function targetWithBinding(binding: GlyphBinding): ExamineTarget {
+  return {
+    ...NEWT_TARGET,
+    binding,
+  } as unknown as ExamineTarget;
 }
 
 /** Create a facts-only catalog entity with one explicit Wiki page decision. */
@@ -476,6 +496,59 @@ describe("refined Examine Wiki page links", () => {
 });
 
 describe("refined Examine fact hierarchy", () => {
+  it.each([
+    {
+      label: "ordinary monster",
+      binding: {
+        kind: "monster",
+        monsterId: "monster:PM_NEWT",
+        presentation: "monster",
+        gender: "male",
+      } satisfies GlyphBinding,
+      title: "Newt",
+      category: "Monster",
+    },
+    {
+      label: "newt corpse",
+      binding: {
+        kind: "corpse",
+        objectId: "object:CORPSE",
+        monsterId: "monster:PM_NEWT",
+        pileTop: false,
+      } satisfies GlyphBinding,
+      title: "Newt corpse",
+      category: "Corpse",
+    },
+    {
+      label: "statue of a newt",
+      binding: {
+        kind: "statue",
+        objectId: "object:STATUE",
+        monsterId: "monster:PM_NEWT",
+        pileTop: false,
+        gender: "male",
+      } satisfies GlyphBinding,
+      title: "Statue of a newt",
+      category: "Statue",
+    },
+  ])("renders $label presentation without losing its binding", ({
+    binding,
+    category,
+    title,
+  }) => {
+    const header = headerMarkup(renderDialog(
+      NEWT_ENTITY,
+      targetWithBinding(binding),
+    ));
+
+    expect(header).toMatch(new RegExp(
+      `<h1[^>]*>${title}</h1>`,
+    ));
+    expect(header).toMatch(new RegExp(
+      `<p>[^<]*${category}[^<]*</p>`,
+    ));
+  });
+
   it("selects an objectClass template instead of a family-wide object page", () => {
     const html = renderDialog(
       { core: WEAPON_CORE, wiki: null },

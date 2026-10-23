@@ -1258,6 +1258,65 @@ describe("stage-four Examine safe handoff", () => {
     expect(onActionCompletion).toHaveBeenCalledOnce();
   });
 
+  it("keeps volatile inventory Examine through itemactions rerolls", () => {
+    const target = {
+      ...inventoryExamineTarget(),
+      volatileDisplayIdentity: true,
+    };
+    const intent = {
+      ...inventoryContextIntent(),
+      examineCapture: target,
+    };
+    const {
+      controller,
+      onActionCompletion,
+      onCancel,
+    } = createExamineHarness();
+    expect(controller.request(intent)).toBe(true);
+    controller.observe(examineObservation({
+      examineTarget: target,
+      input: commandInput(),
+    }));
+    controller.observe(examineObservation({
+      examineTarget: target,
+      input: contextActionMenu([
+        {
+          ...item(intent.identifier, "a"),
+          accelerator: intent.accelerator,
+        },
+      ], {
+        windowId: CONTEXT_WINDOW_ID - 1,
+        menuGeneration: CONTEXT_MENU_GENERATION - 1,
+      }),
+    }));
+    controller.observe(examineObservation({
+      examineTarget: target,
+      inventoryRevision: INVENTORY_REVISION + 1,
+      input: contextActionMenu(),
+    }));
+
+    expect(onCancel).not.toHaveBeenCalled();
+    expect(controller.getState().status).toBe("presenting-context-menu");
+    expect(chooseContextRow(controller, examineRow(controller))).toBe(true);
+    controller.observe(examineObservation({
+      examineTarget: target,
+      inventoryRevision: INVENTORY_REVISION + 2,
+      input: null,
+    }));
+    controller.observe(examineObservation({
+      boundaryGeneration: ACCEPTED_BOUNDARY + 1,
+      examineTarget: target,
+      inventoryRevision: INVENTORY_REVISION + 3,
+      input: commandInput(),
+    }));
+
+    expect(onActionCompletion).toHaveBeenCalledOnce();
+    expect(onActionCompletion).toHaveBeenCalledWith({
+      kind: "open-examine",
+      target,
+    });
+  });
+
   it("publishes a value copy rather than retaining the selected row target", () => {
     const captured = mapExamineTarget();
     const liveTarget = mapExamineTarget();
