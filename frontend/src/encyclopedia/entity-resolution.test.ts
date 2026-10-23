@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { GlyphInfo, MapCell, MenuItem } from "../game-state";
-import type { GlyphBindingResult } from "./core-schema";
+import type { GlyphBinding, GlyphBindingResult } from "./core-schema";
 import type { EncyclopediaLoader } from "./encyclopedia-loader";
 import {
   captureInventoryExamineTarget,
@@ -26,6 +26,35 @@ const MODULE_ID = "module-1";
 const SESSION_ID = "session-1";
 const MAP_REVISION = 17;
 const INVENTORY_REVISION = 23;
+
+interface MapTargetFixture {
+  moduleId: string;
+  sessionId: string;
+  mapRevision: number;
+  mapX: number;
+  mapY: number;
+  cell: MapCell;
+  volatileDisplayIdentity: boolean;
+}
+
+interface InventoryTargetFixture {
+  moduleId: string;
+  sessionId: string;
+  inventoryRevision: number;
+  item: MenuItem;
+  visibleEntityToken: string | null;
+  volatileDisplayIdentity: boolean;
+}
+
+interface VolatileDisplayCapture {
+  volatileDisplayIdentity: boolean;
+}
+
+/** Read the future volatility marker without requiring its production type. */
+function volatileDisplayIdentityOf(capture: unknown): unknown {
+  return (capture as Partial<VolatileDisplayCapture> | null)
+    ?.volatileDisplayIdentity;
+}
 
 /**
  * Create one complete displayed glyph value.
@@ -153,7 +182,9 @@ function inventoryCapture(token: string | null): InventoryExamineCapture {
  * @param overrides Fields to replace.
  * @returns Current map target state.
  */
-function currentMapState(overrides: Record<string, unknown> = {}) {
+function currentMapState(
+  overrides: Partial<MapTargetFixture> = {},
+): MapTargetFixture {
   return {
     moduleId: MODULE_ID,
     sessionId: SESSION_ID,
@@ -164,6 +195,7 @@ function currentMapState(overrides: Record<string, unknown> = {}) {
       foreground: glyphInfo(41, { glyphFlags: 2 }),
       background: glyphInfo(91),
     } satisfies MapCell,
+    volatileDisplayIdentity: false,
     ...overrides,
   };
 }
@@ -173,13 +205,16 @@ function currentMapState(overrides: Record<string, unknown> = {}) {
  * @param overrides Fields to replace.
  * @returns Current inventory target state.
  */
-function currentInventoryState(overrides: Record<string, unknown> = {}) {
+function currentInventoryState(
+  overrides: Partial<InventoryTargetFixture> = {},
+): InventoryTargetFixture {
   return {
     moduleId: MODULE_ID,
     sessionId: SESSION_ID,
     inventoryRevision: INVENTORY_REVISION,
     item: inventoryItem(41),
     visibleEntityToken: "artifact:ART_EXCALIBUR",
+    volatileDisplayIdentity: false,
     ...overrides,
   };
 }
@@ -574,6 +609,57 @@ describe("asynchronous examine target resolution", () => {
       visibleEntityToken: "artifact:ART_EXCALIBUR",
     });
   });
+
+  it.each([
+    {
+      label: "ordinary monster",
+      binding: {
+        kind: "monster",
+        monsterId: "monster:PM_NEWT",
+        presentation: "monster",
+        gender: "male",
+      } satisfies GlyphBinding,
+    },
+    {
+      label: "newt corpse",
+      binding: {
+        kind: "corpse",
+        objectId: "object:CORPSE",
+        monsterId: "monster:PM_NEWT",
+        pileTop: false,
+      } satisfies GlyphBinding,
+    },
+    {
+      label: "statue of a newt",
+      binding: {
+        kind: "statue",
+        objectId: "object:STATUE",
+        monsterId: "monster:PM_NEWT",
+        pileTop: true,
+        gender: "male",
+      } satisfies GlyphBinding,
+    },
+  ])("preserves the validated binding for a $label target", async ({
+    binding,
+  }) => {
+    const capture = captureMapExamineTarget(currentMapState({
+      cell: {
+        foreground: glyphInfo(30),
+        background: null,
+      },
+    }));
+    const loader = examineLoader({
+      glyph: 30,
+      status: "supported",
+      binding,
+    }, null);
+
+    await expect(resolveExamineCapture(loader, capture!)).resolves
+      .toMatchObject({
+        entityId: "monster:PM_NEWT",
+        binding,
+      });
+  });
 });
 
 describe("examine target capture", () => {
@@ -687,4 +773,123 @@ describe("examine target capture", () => {
       currentInventoryState(),
     )).toBe(true);
   });
+
+  it("marks stable and hallucinated display identities explicitly", () => {
+    const stableMap = captureMapExamineTarget(currentMapState());
+    const volatileMap = captureMapExamineTarget(currentMapState({
+      volatileDisplayIdentity: true,
+    }));
+    const stableInventory = captureInventoryExamineTarget(
+      currentInventoryState(),
+    );
+    const volatileInventory = captureInventoryExamineTarget(
+      currentInventoryState({ volatileDisplayIdentity: true }),
+    );
+
+    expect(volatileDisplayIdentityOf(stableMap)).toBe(false);
+    expect(volatileDisplayIdentityOf(volatileMap)).toBe(true);
+    expect(volatileDisplayIdentityOf(stableInventory)).toBe(false);
+    expect(volatileDisplayIdentityOf(volatileInventory)).toBe(true);
+  });
+
+  it("keeps a hallucinated map capture current across display rerolls", () => {
+    const capture = captureMapExamineTarget(currentMapState({
+      volatileDisplayIdentity: true,
+    }))!;
+
+    expect(isMapExamineTargetCurrent(
+      capture,
+      currentMapState({
+        mapRevision: MAP_REVISION + 3,
+        cell: {
+          foreground: glyphInfo(73, {
+            glyphFlags: 0x40,
+            symbolIndex: 19,
+            tileIndex: 812,
+          }),
+          background: glyphInfo(91),
+        },
+        volatileDisplayIdentity: true,
+      }),
+    )).toBe(true);
+  });
+
+  it.each([
+    ["module", { moduleId: "module-2" }],
+    ["session", { sessionId: "session-2" }],
+    ["map x coordinate", { mapX: 13 }],
+    ["map y coordinate", { mapY: 9 }],
+  ] satisfies Array<[string, Partial<MapTargetFixture>]>)(
+    "rejects a hallucinated map capture after the %s changes",
+    (_label, overrides) => {
+      const capture = captureMapExamineTarget(currentMapState({
+        volatileDisplayIdentity: true,
+      }))!;
+
+      expect(isMapExamineTargetCurrent(
+        capture,
+        currentMapState({
+          ...overrides,
+          mapRevision: MAP_REVISION + 1,
+          cell: {
+            foreground: glyphInfo(73),
+            background: null,
+          },
+          volatileDisplayIdentity: true,
+        }),
+      )).toBe(false);
+    },
+  );
+
+  it("keeps a hallucinated inventory capture current across row rerolls", () => {
+    const capture = captureInventoryExamineTarget(currentInventoryState({
+      volatileDisplayIdentity: true,
+    }))!;
+
+    expect(isInventoryExamineTargetCurrent(
+      capture,
+      currentInventoryState({
+        inventoryRevision: INVENTORY_REVISION + 2,
+        item: inventoryItem(84),
+        visibleEntityToken: null,
+        volatileDisplayIdentity: true,
+      }),
+    )).toBe(true);
+  });
+
+  it.each([
+    ["module", { moduleId: "module-2" }],
+    ["session", { sessionId: "session-2" }],
+    [
+      "identifier",
+      { item: { ...inventoryItem(84), identifier: 42 } },
+    ],
+    [
+      "accelerator",
+      {
+        item: {
+          ...inventoryItem(84),
+          accelerator: "b".charCodeAt(0),
+        },
+      },
+    ],
+  ] satisfies Array<[string, Partial<InventoryTargetFixture>]>)(
+    "rejects a hallucinated inventory capture after the %s changes",
+    (_label, overrides: Partial<InventoryTargetFixture>) => {
+      const capture = captureInventoryExamineTarget(currentInventoryState({
+        volatileDisplayIdentity: true,
+      }))!;
+
+      expect(isInventoryExamineTargetCurrent(
+        capture,
+        currentInventoryState({
+          ...overrides,
+          inventoryRevision: INVENTORY_REVISION + 1,
+          item: overrides.item ?? inventoryItem(84),
+          visibleEntityToken: null,
+          volatileDisplayIdentity: true,
+        }),
+      )).toBe(false);
+    },
+  );
 });
