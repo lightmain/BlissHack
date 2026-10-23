@@ -298,6 +298,8 @@ interface GlyphBinding {
 - normal/pet/ridden/detected 的不同 glyph 都可以映射到同一个怪物 species，
   但 UI 可保留对应展示标签。
 - corpse/statue 由 glyph 中的 species 与对象种类组合解析，不能丢失物种。
+  解析后的 target 同时保留已验证 binding；标题与类别分别显示为 corpse 或
+  statue，不能只留下 species ID 后退化为活体 Monster。
 - pile-top glyph 与普通对象使用相同实体资料，但保留“物品堆顶部”展示语义。
 - 地牢主题墙 glyph 映射回同一个 `S_*` 语义，同时允许保留主题 variant。
 - `generic_obj_to_glyph()` 只编码 object class，因此 generic/unidentified
@@ -318,6 +320,7 @@ interface MapExamineCapture {
   glyph: GlyphInfo;
   mapX: number;
   mapY: number;
+  volatileDisplayIdentity: boolean;
 }
 ```
 
@@ -325,6 +328,10 @@ interface MapExamineCapture {
   `foreground ?? background` 的值复制。
 - 在菜单呈现、选择 Examine 和打开对话框前均验证 session 与 map revision。
 - 打开前再次读取该坐标；glyph 身份不相同则以 `target-stale` 取消。
+- `BL_MASK_HALLU` 有效时，核心会在菜单重绘过程中重新随机同一格的显示 glyph。
+  该 capture 标记为 volatile，只要 session、坐标、foreground/background 来源
+  和 Hallu 状态仍一致，就继续描述右键瞬间复制的公开 glyph；Hallu 结束或目标
+  换格仍取消。非幻觉目标继续严格比较 revision 与完整 glyph。
 - 目标更新时不自动把即将打开的对话框改成新实体。
 - 对话框打开后资料是一次不可变快照；后续地图变化不将其悄悄替换。session
   结束、fatal 或离开 GameScreen 时关闭。
@@ -340,6 +347,7 @@ interface InventoryExamineCapture {
   accelerator: number;
   glyph: GlyphInfo;
   visibleEntityToken: string | null;
+  volatileDisplayIdentity: boolean;
 }
 ```
 
@@ -354,6 +362,11 @@ interface InventoryExamineCapture {
 - 普通对象 token 要求同一行已经执行 `doname()`，并且 `dknown` 与
   `objects[otyp].oc_name_known` 都为真。只有核心用于显示对象名称的同一判断
   已经公开神器名称时，才允许 token 为 `artifact:*`；未公开时必须为 null。
+- Hallu 有效时，C producer 和前端 capture 都强制把
+  `visibleEntityToken` 置空。永久背包重绘造成 glyph 与 revision 变化时，只要
+  session、identifier、accelerator 和 Hallu 状态仍一致，就保留右键瞬间的
+  随机显示 glyph，并在真实 itemactions 菜单后追加 `Examine`；Hallu 结束或
+  目标物品改变仍按 stale target 取消。
 - 前端只在 token 存在于当前构建目录并与最终 glyph 的精确对象对照一致时升级
   身份；公开 generic glyph binding 仍只表达类别。
 - metadata 在每个 menu row 后立即清理，并在取消、窗口销毁、session reset

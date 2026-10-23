@@ -8,6 +8,7 @@ import {
   type MouseEvent,
 } from "react";
 import { ExternalLink, X } from "lucide-react";
+import type { GlyphBinding } from "../../encyclopedia/core-schema";
 import type { LoadedEncyclopediaEntity } from "../../encyclopedia/encyclopedia-loader";
 import type { ExamineTarget } from "../../encyclopedia/examine-target";
 import { resolveWikiPage } from "../../encyclopedia/wiki-page";
@@ -64,7 +65,7 @@ export function ExamineDialog({
   const wikiPage = entity
     ? resolveWikiPage(entity)
     : null;
-  const title = core ? entityTitle(core) : "Loading";
+  const title = core ? entityTitle(core, target.binding) : "Loading";
 
   /**
    * Contain browser keys and close without entering the NetHack key router.
@@ -162,7 +163,7 @@ export function ExamineDialog({
             {entity
               ? (
                 <>
-                  <p>{entityCategory(entity)}</p>
+                  <p>{entityCategory(entity, target.binding)}</p>
                   <HeaderBadges core={entity.core} />
                 </>
               )
@@ -368,12 +369,17 @@ function ExamineGlyph({
  * @param entity - validated entity and optional artifact base object.
  * @returns display category without inferred gameplay state.
  */
-function entityCategory(entity: LoadedEncyclopediaEntity): string {
+function entityCategory(
+  entity: LoadedEncyclopediaEntity,
+  binding?: GlyphBinding,
+): string {
   const { core } = entity;
   if (core.family === "monster") {
     const monsterClass = typeof core.facts.monsterClass === "string"
       ? ` \u00b7 ${core.facts.monsterClass}`
       : "";
+    if (binding?.kind === "corpse") return `Corpse${monsterClass}`;
+    if (binding?.kind === "statue") return `Statue${monsterClass}`;
     return `Monster${monsterClass}`;
   }
   if (core.family === "object") {
@@ -397,10 +403,49 @@ function entityCategory(entity: LoadedEncyclopediaEntity): string {
  * @param core - validated core entity.
  * @returns source-backed entity name or spoiler-safe object category.
  */
-function entityTitle(core: LoadedEncyclopediaEntity["core"]): string {
-  return core.family === "appearance"
-    ? objectClassLabel(core.facts.objectClass)
-    : displayName(core.names.primary);
+function entityTitle(
+  core: LoadedEncyclopediaEntity["core"],
+  binding?: GlyphBinding,
+): string {
+  if (core.family === "appearance") {
+    return objectClassLabel(core.facts.objectClass);
+  }
+  if (core.family === "monster") {
+    if (binding?.kind === "corpse") {
+      return `${displayName(core.names.primary)} corpse`;
+    }
+    if (binding?.kind === "statue") {
+      return `Statue of ${monsterReferenceName(core)}`;
+    }
+  }
+  return displayName(core.names.primary);
+}
+
+/**
+ * Format a species reference without adding an article to unique proper names.
+ * @param core Validated monster record represented by a corpse or statue.
+ * @returns Source name with the minimum required English article.
+ */
+function monsterReferenceName(
+  core: LoadedEncyclopediaEntity["core"],
+): string {
+  const generation = core.facts.generation;
+  const generationFlags = generation !== null
+      && typeof generation === "object"
+      && !Array.isArray(generation)
+    ? (generation as Record<string, unknown>).flags
+    : null;
+  const flags = core.facts.flags;
+  const m2 = flags !== null
+      && typeof flags === "object"
+      && !Array.isArray(flags)
+    ? (flags as Record<string, unknown>).m2
+    : null;
+  const properName = arrayStrings(generationFlags).includes("G_UNIQ")
+    || arrayStrings(m2).includes("M2_PNAME");
+  const name = core.names.primary;
+  if (properName) return name;
+  return `${/^[aeiou]/i.test(name) ? "an" : "a"} ${name}`;
 }
 
 /**

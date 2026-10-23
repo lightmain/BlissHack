@@ -33,6 +33,7 @@ interface MapTargetState {
   mapX: number;
   mapY: number;
   cell: MapCell;
+  volatileDisplayIdentity?: boolean;
 }
 
 interface InventoryTargetState {
@@ -41,6 +42,7 @@ interface InventoryTargetState {
   inventoryRevision: number;
   item: MenuItem;
   visibleEntityToken: string | null;
+  volatileDisplayIdentity?: boolean;
 }
 
 /**
@@ -145,6 +147,7 @@ export function captureMapExamineTarget(
       ? "map-foreground"
       : "map-background",
     glyph: { ...glyph },
+    volatileDisplayIdentity: state.volatileDisplayIdentity === true,
   };
 }
 
@@ -162,13 +165,21 @@ export function isMapExamineTargetCurrent(
   const source = state.cell.foreground
     ? "map-foreground"
     : "map-background";
+  const targetVolatile = target.volatileDisplayIdentity === true;
+  const volatileDisplayIdentity = state.volatileDisplayIdentity === true;
   return target.moduleId === state.moduleId
     && target.sessionId === state.sessionId
-    && target.mapRevision === state.mapRevision
     && target.mapX === state.mapX
     && target.mapY === state.mapY
     && target.source === source
-    && glyphsEqual(target.glyph, glyph);
+    && targetVolatile === volatileDisplayIdentity
+    && (
+      volatileDisplayIdentity
+      || (
+        target.mapRevision === state.mapRevision
+        && glyphsEqual(target.glyph, glyph)
+      )
+    );
 }
 
 /**
@@ -189,7 +200,10 @@ export function captureInventoryExamineTarget(
     accelerator: state.item.accelerator,
     source: "inventory",
     glyph: { ...state.item.glyph },
-    visibleEntityToken: state.visibleEntityToken,
+    visibleEntityToken: state.volatileDisplayIdentity
+      ? null
+      : state.visibleEntityToken,
+    volatileDisplayIdentity: state.volatileDisplayIdentity === true,
   };
 }
 
@@ -203,11 +217,19 @@ export function isInventoryExamineTargetCurrent(
   target: InventoryExamineCapture,
   state: InventoryTargetState,
 ): boolean {
+  const targetVolatile = target.volatileDisplayIdentity === true;
+  const volatileDisplayIdentity = state.volatileDisplayIdentity === true;
   return target.moduleId === state.moduleId
     && target.sessionId === state.sessionId
-    && target.inventoryRevision === state.inventoryRevision
     && target.identifier === state.item.identifier
     && target.accelerator === state.item.accelerator
-    && target.visibleEntityToken === state.visibleEntityToken
-    && glyphsEqual(target.glyph, state.item.glyph);
+    && targetVolatile === volatileDisplayIdentity
+    && (
+      volatileDisplayIdentity
+      || (
+        target.inventoryRevision === state.inventoryRevision
+        && target.visibleEntityToken === state.visibleEntityToken
+        && glyphsEqual(target.glyph, state.item.glyph)
+      )
+    );
 }

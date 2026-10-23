@@ -197,6 +197,10 @@ export function createGameActionController(
       "inventoryRevision" in intent
       && observation.inventoryRevision !== intent.inventoryRevision
       && !(intent.kind === "drop-item" && state.targetSelected)
+      && !(
+        intent.kind === "inventory-context"
+        && intent.examineCapture?.volatileDisplayIdentity === true
+      )
     ) {
       finishCancellation("inventory-revision-changed");
       return false;

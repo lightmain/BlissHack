@@ -13,6 +13,8 @@ import {
   finishMapInspectMessageCapture,
   getSnapshot,
   getWindow,
+  BL_CONDITION,
+  BL_MASK_HALLU,
   INPUT_STATE_GETDIR,
   subscribe,
   type GameSnapshot,
@@ -1057,6 +1059,7 @@ export function GameScreen({
         mapX: origin.mapX,
         mapY: origin.mapY,
         cell,
+        volatileDisplayIdentity: hasVolatileDisplayIdentity(current),
       })
       : null;
     if (!actionController.request({
@@ -1125,6 +1128,7 @@ export function GameScreen({
         inventoryRevision: inventory.revision,
         item: target,
         visibleEntityToken: target.visibleEntityToken,
+        volatileDisplayIdentity: hasVolatileDisplayIdentity(current),
       }),
       origin: request.origin,
     })) {
@@ -1623,6 +1627,7 @@ function currentExamineTarget(
         mapX: target.mapX,
         mapY: target.mapY,
         cell,
+        volatileDisplayIdentity: hasVolatileDisplayIdentity(snapshot),
       })
       ? target
       : null;
@@ -1644,11 +1649,23 @@ function currentExamineTarget(
         inventoryRevision: inventory.revision,
         item,
         visibleEntityToken: item.visibleEntityToken,
+        volatileDisplayIdentity: hasVolatileDisplayIdentity(snapshot),
       })
       ? target
       : null;
   }
   return null;
+}
+
+/**
+ * Detect display identities which NetHack deliberately rerolls while visible.
+ * @param snapshot Current committed status and presentation state.
+ * @returns true while hallucination makes map and inventory glyphs volatile.
+ */
+function hasVolatileDisplayIdentity(snapshot: GameSnapshot): boolean {
+  const conditionMask =
+    snapshot.status[BL_CONDITION]?.conditionMask ?? 0;
+  return (conditionMask & BL_MASK_HALLU) !== 0;
 }
 
 /**
