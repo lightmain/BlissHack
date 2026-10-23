@@ -37,12 +37,12 @@ export type ExamineCapture = MapExamineCapture | InventoryExamineCapture;
 
 export interface MapExamineTarget extends MapExamineCapture {
   entityId: string;
-  binding?: GlyphBinding;
+  binding: GlyphBinding;
 }
 
 export interface InventoryExamineTarget extends InventoryExamineCapture {
   entityId: string;
-  binding?: GlyphBinding;
+  binding: GlyphBinding;
 }
 
 export type ExamineTarget = MapExamineTarget | InventoryExamineTarget;
@@ -128,12 +128,12 @@ export function cloneExamineTarget(target: ExamineTarget): ExamineTarget {
     ? {
       ...target,
       glyph: { ...target.glyph },
-      binding: target.binding ? { ...target.binding } : undefined,
+      binding: { ...target.binding },
     }
     : {
       ...target,
       glyph: { ...target.glyph },
-      binding: target.binding ? { ...target.binding } : undefined,
+      binding: { ...target.binding },
     };
 }
 
@@ -156,6 +156,7 @@ export function examineTargetsEqual(
     || left.source !== right.source
     || left.volatileDisplayIdentity !== right.volatileDisplayIdentity
     || !glyphsEqual(left.glyph, right.glyph)
+    || !glyphBindingsEqual(left.binding, right.binding)
   ) {
     return false;
   }
@@ -171,6 +172,52 @@ export function examineTargetsEqual(
       && left.visibleEntityToken === right.visibleEntityToken;
   }
   return false;
+}
+
+/**
+ * Compare every field of two validated discriminated glyph bindings.
+ * @param left First resolved binding.
+ * @param right Second resolved binding.
+ * @returns Whether both bindings describe the same catalog presentation.
+ */
+function glyphBindingsEqual(
+  left: GlyphBinding,
+  right: GlyphBinding,
+): boolean {
+  switch (left.kind) {
+    case "monster":
+      return right.kind === "monster"
+        && left.monsterId === right.monsterId
+        && left.presentation === right.presentation
+        && left.gender === right.gender;
+    case "corpse":
+      return right.kind === "corpse"
+        && left.objectId === right.objectId
+        && left.monsterId === right.monsterId
+        && left.pileTop === right.pileTop;
+    case "statue":
+      return right.kind === "statue"
+        && left.objectId === right.objectId
+        && left.monsterId === right.monsterId
+        && left.pileTop === right.pileTop
+        && left.gender === right.gender;
+    case "generic-object":
+      return right.kind === "generic-object"
+        && left.appearanceId === right.appearanceId
+        && left.objectClass === right.objectClass
+        && left.pileTop === right.pileTop;
+    case "object":
+      return right.kind === "object"
+        && left.objectId === right.objectId
+        && left.pileTop === right.pileTop;
+    case "terrain":
+      return right.kind === "terrain"
+        && left.terrainId === right.terrainId
+        && left.variant === right.variant;
+    case "trap":
+      return right.kind === "trap"
+        && left.trapId === right.trapId;
+  }
 }
 
 /**

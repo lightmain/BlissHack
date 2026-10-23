@@ -820,9 +820,10 @@ local_callback(shim_callback_name, "shim_add_menu",
 `doname()` / `doname_with_cgender()` 已经执行后发布身份：
 
 - 普通对象要求 `dknown` 和 `objects[otyp].oc_name_known` 同时为真，并通过
-  `DUMP_ENUMS` 发布 `object:OBJECT_ENUM`。
+  `DUMP_ENUMS` 发布 `object:OBJECT_ENUM`；`Hallucination` 生效时不发布。
 - 神器要求 `oartifact`、`has_oname()` 和 `dknown` 同时成立，并通过
-  `DUMP_ARTI_ENUM` 发布 `artifact:ART_*`；神器 token 优先于基础对象 token。
+  `DUMP_ARTI_ENUM` 发布 `artifact:ART_*`；神器 token 优先于基础对象 token，
+  但 `Hallucination` 生效时同样不发布。
 
 shim 在进入可能触发 Asyncify 的 `local_callback()` 前，把同步槽复制到当前
 `shim_add_menu()` 调用栈并立即消费；callback 返回后再次清理。callback
@@ -2150,10 +2151,11 @@ object:KATANA
 artifact:ART_EXCALIBUR
 ```
 
-普通对象 token 只在永久背包的同一行已经经过 `doname()`，并且核心的
-`dknown` 与 `objects[otyp].oc_name_known` 都为真时发布。对象符号由
-`include/objects.h` 的 `DUMP_ENUMS` 生成，不解析显示名、职业或菜单文本。
-神器继续使用原有 `oartifact + has_oname() + dknown` 条件，并优先发布
+普通对象 token 只在永久背包的同一行已经经过 `doname()`、`Hallucination`
+未生效，并且核心的 `dknown` 与 `objects[otyp].oc_name_known` 都为真时发布。
+对象符号由 `include/objects.h` 的 `DUMP_ENUMS` 生成，不解析显示名、职业或
+菜单文本。神器继续使用原有
+`oartifact + has_oname() + dknown + !Hallucination` 条件，并优先发布
 `artifact:ART_*`。
 
 shim 的同步槽、栈复制和全部清理边界保持不变，只把允许的规范形状扩展为

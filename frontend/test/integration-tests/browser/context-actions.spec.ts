@@ -806,10 +806,16 @@ test("Examine keeps captured hallucinated inventory and ground glyphs through re
   );
 
   const inventory = page.getByRole("region", { name: "Inventory" });
-  const initialItem = inventory.locator(
-    ".permanent-inventory-item:not(.permanent-inventory-heading)",
-  ).first();
+  await wizardWish(page, "bullwhip");
+  const initialItem = inventory.locator(".permanent-inventory-item", {
+    hasText: "bullwhip",
+  });
   await expect(initialItem).toContainText(/bullwhip/i);
+  const initialInspectTarget = await initialItem.getAttribute(
+    "data-inspect-target",
+  );
+  const accelerator = initialInspectTarget?.split(":").at(-1);
+  expect(accelerator).toMatch(/^\d+$/);
   const revisionBeforeHallucination = await inventoryRevision(page);
 
   await enableHallucination(page);
@@ -817,8 +823,9 @@ test("Examine keeps captured hallucinated inventory and ground glyphs through re
     .toBeGreaterThan(revisionBeforeHallucination);
 
   const hallucinatedItem = inventory.locator(
-    ".permanent-inventory-item:not(.permanent-inventory-heading)",
-  ).first();
+    `[data-inspect-target$=":${accelerator}"]`,
+  );
+  await expect(hallucinatedItem).toHaveCount(1);
   const capturedInventoryGlyph = await hallucinatedItem
     .locator(".nh-menu-glyph")
     .textContent();

@@ -11,7 +11,7 @@ alpha-2.4 已完成实现、独立复审和自动门禁。人工验收仍待用�
 
 ## 2. 测试环境
 
-- 最终自动复验日期：2026-10-19。
+- 最终自动复验日期：2026-10-23。
 - 机器：Apple M4 Pro，arm64。
 - 系统：macOS 26.5.1。
 - 固定工具链：Node.js 24.19.0、npm 11.17.0、Emscripten 6.0.9、
@@ -28,6 +28,12 @@ alpha-2.4 已完成实现、独立复审和自动门禁。人工验收仍待用�
 - 可见身份只来自核心最终 glyph 或已经公开、并与精确 glyph 对照验证的有界
   普通物品/神器 token，不读取 C 指针、对象链、隐藏陷阱、未鉴定真值或英文
   菜单文本。
+- Hallu 状态下核心与前端都清空普通对象/神器 token；地图与永久背包只放宽
+  同一目标随机重绘造成的 revision/glyph 变化，仍校验 session、坐标或
+  identifier/accelerator、来源与 Hallu 状态，并展示右键瞬间捕获的随机 glyph。
+- Examine target 始终保留已验证 glyph binding。尸体和雕像使用对应类别标题，
+  monster/statue 按 glyph 性别选择名称，雕像冠词遵循 NetHack 的
+  `type_is_pname()`、`the_unique_pm()` 与 `just_an()` 顺序。
 - 由当前 NetHack 5.0.0 源码确定性生成 970 条实体资料，并对 9,624 个 glyph
   完成 supported 或显式 unsupported 分类。
 - core schema v2 使用 `appearance`、`artifact`、`monster`、`object`、
@@ -55,8 +61,10 @@ alpha-2.4 已完成实现、独立复审和自动门禁。人工验收仍待用�
   Wiki manifest 和 core source fingerprint。
 - 本地开发构建在精确 loopback URL 加 `acceptance=wizard` 时提供人工验收入口：
   fresh module 的内存 `/sysconf` 只把 `WIZARDS` 改为 `*`，以
-  `nethack -D` 启动并在 main settle 后释放 argv。生产、非 loopback 和错误或
-  重复 query 均 fail closed；普通会话继续使用原零参数 main。
+  `nethack -D` 启动并在 main settle 后释放 argv。常规 production、非 loopback
+  和错误或重复 query 均 fail closed；普通会话继续使用原零参数 main。仅
+  Playwright 的 `VITE_E2E_FIXTURES=1` production fixture build 可在相同
+  loopback/query 门禁下启用，用于真实 WASM 自动验收。
 - 本地巫师验收会话的 `#` 选择器可以搜索 `wizwish`、`wizgenesis`、`wizmap`
   等 debug 命令，但 `CMD_NOT_AVAILABLE` 和 `INTERNALCMD` 仍隐藏；普通会话不
   显示任何 `WIZMODECMD`。该会话强制使用 Original 角色创建以适配 debug 核心
@@ -83,15 +91,17 @@ alpha-2.4 已完成实现、独立复审和自动门禁。人工验收仍待用�
 | 产物 | 字节 | SHA-256 |
 | --- | ---: | --- |
 | `nethack.js` | 96,199 | `dd9572c4775b10009a05904cc8a090d8713762425d42f4a1462fdf1f121a970f` |
-| `nethack.wasm` | 6,647,378 | `7dd34483bb310434aa55025319a663ed3c7084f3b5518cf4fd2172a9f7fc5343` |
-| `nethack-runtime.json` | 1,007 | `a7da74a962e36176df7478796ffe95fa617a8f9e570d5a3bca3bcae134bc4166` |
+| `nethack.wasm` | 6,647,395 | `23b62b2251cae08fb6e11ff5b76d63e43739b239fd0a9426b85240818901c06f` |
+| `nethack-runtime.json` | 1,007 | `aaa10b764d6cf16829b06b810b5112e8bb3b17a706029c9d51d7aebbe35ba60d` |
 
-runtime manifest 只更新 core encyclopedia 绑定：core manifest 为 7,928 B，
+runtime manifest 保持以下 core encyclopedia 绑定：core manifest 为 7,928 B，
 SHA-256 为
 `0dd2f94e886a7030aff05da9d383e833b4f67f1d6a61b8a87d5aaf01abf60fa6`，
 source fingerprint 为
 `9ae8f4fa29d54139de661e346c5c58dd44e78c4cd10d398fdd33e1865e2cc465`。
-`nethack.js` 与 `nethack.wasm` 未重新构建，字节与摘要均保持不变。
+2026-10-23 使用固定 Emscripten 6.0.9 重新构建运行时三件套，使
+`src/invent.c` 在 Hallu 状态下不发布普通对象或神器 token。loader 字节保持
+不变；WASM 与 runtime manifest 已同步更新为上表摘要。
 
 浏览器先校验 `nethack.js` 与 `nethack.wasm`，再从临时 Blob URL 导入 loader
 并注入已校验 WASM bytes。部署 CSP 必须在 `script-src` 中允许 `blob:`。
@@ -104,11 +114,11 @@ source fingerprint 为
 | `npm run verify:tiles` | 2,307 tiles 与输入 checksum 通过 |
 | `npm run encyclopedia:verify` | schema v2、9,624 glyph、970 core records、1 Wiki record 通过 |
 | 阶段六 release gates | 4/4 |
-| `npm test` | 98 files，1,228/1,228 |
+| `npm test` | 98 files，1,240/1,240 |
 | `npm run lint` | 0 warnings，0 errors |
 | `VITE_BASE_PATH=/BlissHack/ npm run build` | TypeScript 与 production build 通过 |
 | `npm run test:integration:wasm` | 166/166 |
-| Chromium release Playwright suite（本地端口 4184） | 160/160 |
+| Chromium release Playwright suite | 161/161 |
 | `npm run test:integration:compat` | Firefox + WebKit 200/200 |
 | `npm run test:performance` | 2/2；Canvas 全图 p95 5.8 ms，300 行背包提交 15.4 ms |
 | `npm run test:long` | 4/4 |
@@ -120,7 +130,9 @@ source fingerprint 为
 Right/Below 和共享 FactDocument 多列布局。浏览器几何断言确认 Newt 与
 facts-only 实体都使用全宽 facts、无横向溢出，并在全部视口只有一个内容滚动
 owner；四段 Wiki 原文同时可见且没有 tab controller。普通运行不会请求
-NetHackWiki。
+NetHackWiki。新增真实 WASM 浏览器流程还通过 `wizintrinsic` 开启 Hallu，
+确认永久背包在 itemactions 重绘后仍提供 `Examine`，地面物品右键仍响应；
+两者只展示捕获时的随机 glyph，不回退到真实 bullwhip 或 boulder 身份。
 
 本地真实 Chromium 另验证：development + loopback + query 会把角色名固定为
 `wizard`，进入 Original 核心角色流程；`#` 搜索 `wizwish` 后能到达
@@ -175,6 +187,12 @@ README、frontend README 和 WASM 构建文档中补全。修正后的 follow-up
   尊重 profile，并补充重复 query、异常 `WIZARDS` 和同步 main 异常释放测试；
   手册已改为逐轮记录 Turn，并要求在幻觉前完成 Newt 内容核对。follow-up
   review 未发现剩余 P1/P2。
+- 2026-10-23 Hallu Examine reviewer 确认 token 隔离、volatile currentness、
+  required binding、fixture 门禁和普通/巫师启动路径成立；首轮唯一 P2 指出
+  普通 `G_UNIQ` 与 `M2_PNAME` 的雕像冠词不能合并处理。实现已按核心顺序区分
+  专名、普通 unique、high priest/long worm tail 例外与 `just_an()`，并补充
+  Wizard of Yendor、Croesus 和 high priest 回归测试。P3 的 runtime manifest
+  旧描述也已修正；独立 follow-up 未发现剩余 P1、P2 或 P3。
 
 ## 8. 人工验收执行手册
 

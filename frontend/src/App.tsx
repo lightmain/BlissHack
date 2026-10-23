@@ -43,6 +43,7 @@ import { ProfileStaleError } from "./settings/profile-store";
 const wizardAcceptance = isLocalWizardAcceptanceEnabled(
   import.meta.env.DEV,
   globalThis.location,
+  import.meta.env.VITE_E2E_FIXTURES === "1",
 );
 
 interface PendingLockRetry {

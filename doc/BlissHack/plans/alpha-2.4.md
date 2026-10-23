@@ -1030,7 +1030,9 @@ feat: import attributed NetHackWiki excerpts
 门禁：
 
 - 前端没有 C 指针或自由文本身份解析。
-- map/inventory revision 变化都拒绝旧目标。
+- 非幻觉目标的 map/inventory revision 或 glyph 变化都拒绝旧目标；
+  Hallu volatile capture 只放宽随机重绘造成的 revision/glyph 变化，仍严格
+  校验 session、坐标或物品 identifier/accelerator、来源和 Hallu 状态。
 - 旧 runtime 与新资料、或新 runtime 与旧资料均不会显示错配内容。
 - Core 资料可离线 lazy-load；Wiki 失败只降级为 facts-only。
 
@@ -1052,8 +1054,9 @@ feat: resolve visible NetHack encyclopedia entities
 - resolver pending、菜单仍活跃或 boundary 未递增时绝不打开对话框。
 - 新 command boundary 后先回 idle，再发布一次 open payload。
 - backdrop/Escape 是普通取消，不发布 payload。
-- map/inventory revision、glyph、session、fatal、unmount 和模式变化会清空
-  payload。
+- 非幻觉目标的 map/inventory revision、glyph、session、fatal、unmount 和
+  模式变化会清空 payload；Hallu volatile target 仅忽略同一目标随机重绘造成的
+  revision/glyph 变化。
 - 快速重复右键、双击 Examine 或 stale React render 不会打开两次。
 
 实施 `ContextMenuRow`、语义 handlers、action states、completion payload 和
@@ -1210,7 +1213,7 @@ mimic/disguise、隐藏/已发现陷阱、未公开/已公开神器、facts-only
 | 神器 glyph 无法表达身份 | 仅增加经过证明的已公开 visible token；否则暂停该范围 |
 | synthetic row 被提交给核心 | 判别联合与独立 handler，不制造 fake itemIndex |
 | Asyncify resolver 未结束就开窗口 | 等待原 window 消失和新 boundary generation |
-| revision 变化打开旧目标 | intent 捕获并持续验证 map/inventory revision 与 glyph |
+| revision 变化打开旧目标 | 非幻觉严格验证 revision/glyph；Hallu 只放宽同一目标随机重绘，并继续验证 session、位置/物品身份、来源与 Hallu 状态 |
 | Wiki parser 改写文字 | AST 白名单、完整段落 hash、逐字符 fixture、人工 diff |
 | Wiki 页面含混合许可内容 | 高风险节点和 section fail closed，允许 facts-only |
 | Wiki 更新造成无人审查的内容变化 | refresh 只产 candidate/PR，永不自动合并 |
@@ -1257,7 +1260,9 @@ alpha-2.4 只有同时满足以下条件才算完成：
    保持原菜单。
 2. Synthetic row 与核心 row 完全分型，不可能提交 fake identifier/index。
 3. 每次打开都经过核心菜单 resolver 消费和新 command boundary，不消耗回合。
-4. map/inventory/session/glyph 过期均 fail closed。
+4. 非幻觉目标的 map/inventory/session/glyph 过期均 fail closed；Hallu
+   volatile target 只允许同一目标的随机 revision/glyph 重绘，并保留点击瞬间
+   捕获的公开显示身份。
 5. 所有目标核心实体都有由当前源码确定性生成、严格校验的数据记录。
 6. 幻觉、伪装、未鉴定、隐藏陷阱和未公开神器没有身份泄露。
 7. HP、attacks、flags、resistances 和 generation 等结构不被错误压缩。

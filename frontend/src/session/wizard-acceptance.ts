@@ -10,14 +10,16 @@ const WASM_POINTER_BYTES = 4;
  * Decide whether this browser may enable the local wizard acceptance session.
  * @param development - Vite's compile-time development flag.
  * @param location - browser location whose host and query are being checked.
+ * @param e2eFixtures - compile-time flag for the production E2E fixture build.
  * @returns true only for the exact opt-in query on an approved loopback host.
  */
 export function isLocalWizardAcceptanceEnabled(
   development: boolean,
   location: Pick<Location, "hostname" | "search"> | undefined,
+  e2eFixtures = false,
 ): boolean {
   if (
-    !development
+    (!development && !e2eFixtures)
     || !location
     || !LOOPBACK_HOSTNAMES.has(location.hostname.toLowerCase())
   ) {

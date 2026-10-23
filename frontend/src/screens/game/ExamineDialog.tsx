@@ -371,7 +371,7 @@ function ExamineGlyph({
  */
 function entityCategory(
   entity: LoadedEncyclopediaEntity,
-  binding?: GlyphBinding,
+  binding: GlyphBinding,
 ): string {
   const { core } = entity;
   if (core.family === "monster") {
@@ -401,33 +401,37 @@ function entityCategory(
 /**
  * Resolve the visible dialog title without trusting generic appearance text.
  * @param core - validated core entity.
+ * @param binding - validated presentation represented by the displayed glyph.
  * @returns source-backed entity name or spoiler-safe object category.
  */
 function entityTitle(
   core: LoadedEncyclopediaEntity["core"],
-  binding?: GlyphBinding,
+  binding: GlyphBinding,
 ): string {
   if (core.family === "appearance") {
     return objectClassLabel(core.facts.objectClass);
   }
   if (core.family === "monster") {
-    if (binding?.kind === "corpse") {
+    if (binding.kind === "corpse") {
       return `${displayName(core.names.primary)} corpse`;
     }
-    if (binding?.kind === "statue") {
-      return `Statue of ${monsterReferenceName(core)}`;
+    if (binding.kind === "statue") {
+      return `Statue of ${monsterReferenceName(core, binding)}`;
     }
+    return displayName(monsterDisplayName(core, binding));
   }
   return displayName(core.names.primary);
 }
 
 /**
- * Format a species reference without adding an article to unique proper names.
+ * Format a species reference with NetHack's personal and unique name rules.
  * @param core Validated monster record represented by a corpse or statue.
+ * @param binding Validated statue presentation represented by the glyph.
  * @returns Source name with the minimum required English article.
  */
 function monsterReferenceName(
   core: LoadedEncyclopediaEntity["core"],
+  binding: GlyphBinding,
 ): string {
   const generation = core.facts.generation;
   const generationFlags = generation !== null
@@ -441,11 +445,70 @@ function monsterReferenceName(
       && !Array.isArray(flags)
     ? (flags as Record<string, unknown>).m2
     : null;
-  const properName = arrayStrings(generationFlags).includes("G_UNIQ")
-    || arrayStrings(m2).includes("M2_PNAME");
-  const name = core.names.primary;
-  if (properName) return name;
-  return `${/^[aeiou]/i.test(name) ? "an" : "a"} ${name}`;
+  const personalName = arrayStrings(m2).includes("M2_PNAME");
+  const uniqueName = arrayStrings(generationFlags).includes("G_UNIQ")
+    && core.id !== "monster:PM_HIGH_CLERIC"
+    && core.id !== "monster:PM_LONG_WORM_TAIL";
+  const name = monsterDisplayName(core, binding);
+  if (personalName) return name;
+  if (uniqueName) return `the ${name}`;
+  return `${indefiniteArticle(name)}${name}`;
+}
+
+/**
+ * Select the source name matching the gender encoded by a displayed glyph.
+ * @param core Validated monster record.
+ * @param binding Validated monster or statue presentation.
+ * @returns Female source name when available, otherwise the primary name.
+ */
+function monsterDisplayName(
+  core: LoadedEncyclopediaEntity["core"],
+  binding: GlyphBinding,
+): string {
+  return (
+      (binding.kind === "monster" || binding.kind === "statue")
+      && binding.gender === "female"
+      && typeof core.names.female === "string"
+    )
+    ? core.names.female
+    : core.names.primary;
+}
+
+/**
+ * Reproduce NetHack's `just_an()` article selection for source names.
+ * @param value Species name which may require an indefinite article.
+ * @returns Empty, `a `, or `an ` including its trailing space.
+ */
+function indefiniteArticle(value: string): string {
+  const name = value.toLowerCase();
+  const first = name.charAt(0);
+  if (name.length === 1 || name.charAt(1) === " ") {
+    return "aefhilmnosx".includes(first) ? "an " : "a ";
+  }
+  if (
+    name.startsWith("the ")
+    || name === "molten lava"
+    || name === "iron bars"
+    || name === "ice"
+  ) {
+    return "";
+  }
+  const oneSoundsLikeW = name.startsWith("one")
+    && (name.length === 3 || "-_ ".includes(name.charAt(3)));
+  const longU = [
+    "eu",
+    "uke",
+    "ukulele",
+    "unicorn",
+    "uranium",
+    "useful",
+  ].some((prefix) => name.startsWith(prefix));
+  const startsWithVowel = "aeiou".includes(first)
+    && !oneSoundsLikeW
+    && !longU;
+  const xSoundsLikeVowel = first === "x"
+    && !"aeiou".includes(name.charAt(1));
+  return startsWithVowel || xSoundsLikeVowel ? "an " : "a ";
 }
 
 /**

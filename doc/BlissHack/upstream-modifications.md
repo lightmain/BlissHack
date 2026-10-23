@@ -352,10 +352,12 @@ M win/shim/winshim.c
   `feat: resolve visible NetHack encyclopedia entities`
 - **目的**：
   - 在永久背包已经通过 `doname()` / `doname_with_cgender()` 公开普通对象
-    名称，且 `dknown` 与 `objects[otyp].oc_name_known` 都为真时，发布由
-    `DUMP_ENUMS` 生成的 `object:OBJECT_ENUM`。
+    名称、`Hallucination` 未生效，且 `dknown` 与
+    `objects[otyp].oc_name_known` 都为真时，发布由 `DUMP_ENUMS` 生成的
+    `object:OBJECT_ENUM`。
   - 对具有 `oartifact`、`has_oname()` 和 `dknown` 的已公开神器，继续发布由
-    `DUMP_ARTI_ENUM` 生成的 `artifact:ART_*`，并优先于基础对象 token。
+    `DUMP_ARTI_ENUM` 生成的 `artifact:ART_*`，并优先于基础对象 token；
+    `Hallucination` 生效时普通对象和神器 token 都不发布。
   - 通过一个有界同步槽把 token 交给紧邻的 `shim_add_menu()`；在进入
     Asyncify callback 前复制到栈并消费，callback 返回后再次清理。
   - 在 callback 注册、command reset、菜单 start/end/select、窗口销毁和退出
