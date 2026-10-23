@@ -15,6 +15,7 @@
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { existsSync, readFileSync } from "node:fs";
+import { validateCoreAssetDirectory } from "../../scripts/encyclopedia/core-assets.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const WASM_DIR = process.env.BLISSHACK_WASM_DIR
@@ -79,13 +80,17 @@ const SAVE_SOURCE = join(
   "src",
   "save.c",
 );
-const TILE_SOURCE = join(
+const CORE_ASSET_DIRECTORY = join(
   __dirname,
   "..",
   "..",
-  "..",
-  "src",
-  "tile.c",
+  "public",
+  "encyclopedia",
+  "core",
+);
+const VISIBLE_OBJECT_BINDINGS = join(
+  CORE_ASSET_DIRECTORY,
+  "visible-object-bindings.json",
 );
 const LIBNH_MAIN_SOURCE = join(
   __dirname,
@@ -1168,6 +1173,7 @@ function startMainWithArguments(module, arguments_) {
 
 async function run() {
   console.log("=== BlissHack WASM Integration Test ===\n");
+  await validateCoreAssetDirectory(CORE_ASSET_DIRECTORY);
 
   // --- Pre-checks ---
   console.log("--- Pre-checks ---");
@@ -1180,7 +1186,10 @@ async function run() {
   assert(existsSync(DO_SOURCE), "do.c exists");
   assert(existsSync(INVENT_SOURCE), "invent.c exists");
   assert(existsSync(SAVE_SOURCE), "save.c exists");
-  assert(existsSync(TILE_SOURCE), "tile.c exists");
+  assert(
+    existsSync(VISIBLE_OBJECT_BINDINGS),
+    "visible object bindings exist",
+  );
   assert(existsSync(LIBNH_MAIN_SOURCE), "libnhmain.c exists");
   if (
     !existsSync(WASM_JS)
@@ -1192,7 +1201,7 @@ async function run() {
     || !existsSync(DO_SOURCE)
     || !existsSync(INVENT_SOURCE)
     || !existsSync(SAVE_SOURCE)
-    || !existsSync(TILE_SOURCE)
+    || !existsSync(VISIBLE_OBJECT_BINDINGS)
     || !existsSync(LIBNH_MAIN_SOURCE)
   ) {
     console.error(
@@ -1206,7 +1215,9 @@ async function run() {
   const lockSource = readFileSync(LOCK_SOURCE, "utf8");
   const inventSource = readFileSync(INVENT_SOURCE, "utf8");
   const saveSource = readFileSync(SAVE_SOURCE, "utf8");
-  const tileSource = readFileSync(TILE_SOURCE, "utf8");
+  const visibleObjectBindings = JSON.parse(
+    readFileSync(VISIBLE_OBJECT_BINDINGS, "utf8"),
+  );
   const libnhMainSource = readFileSync(LIBNH_MAIN_SOURCE, "utf8");
   const getdirBlock = cBlockAfter(
     cmdSource,
@@ -2142,11 +2153,12 @@ async function run() {
   );
   const glyphConstants = globalThis.nethackGlobal.constants.GLYPH;
   const mgConstants = globalThis.nethackGlobal.constants.MG;
-  const expensiveCameraObjectIndex = Number(
-    tileSource.match(/expensive camera \(onum=(\d+)\)/)?.[1],
-  );
-  const expensiveCameraGlyph = glyphConstants.GLYPH_OBJ_OFF
-    + expensiveCameraObjectIndex;
+  const expensiveCameraGlyph = visibleObjectBindings.bindings.find(
+    ({ objectId, glyph }) =>
+      objectId === "object:EXPENSIVE_CAMERA"
+      && glyph >= glyphConstants.GLYPH_OBJ_OFF
+      && glyph < glyphConstants.GLYPH_CMAP_OFF,
+  )?.glyph;
   const unexploredGlyphs = foregroundGlyphs.filter(
     (glyph) =>
       glyph.glyph === glyphConstants.GLYPH_UNEXPLORED
@@ -2246,8 +2258,8 @@ async function run() {
     "glyph_info keeps its WASM32 ABI size",
   );
   assert(
-    Number.isInteger(expensiveCameraObjectIndex),
-    "generated tile metadata identifies the Tourist camera object glyph",
+    Number.isInteger(expensiveCameraGlyph),
+    "visible object bindings identify the Tourist camera object glyph",
   );
   assert(
     new Set(ordinaryGlyphs.map((glyph) => glyph.glyph)).size >= 2
