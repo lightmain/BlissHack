@@ -38,6 +38,7 @@ export const BL_RESET = -2;
 export const BL_FLUSH = -1;
 export const BL_GOLD = 10;
 export const BL_CONDITION = 22;
+export const BL_MASK_HALLU = 0x00000400;
 
 /** A styled line sent through putstr or raw_print. */
 export interface TextLine {

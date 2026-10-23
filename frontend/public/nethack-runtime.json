@@ -15,8 +15,8 @@
       "sha256": "dd9572c4775b10009a05904cc8a090d8713762425d42f4a1462fdf1f121a970f"
     },
     "nethack.wasm": {
-      "bytes": 6647378,
-      "sha256": "7dd34483bb310434aa55025319a663ed3c7084f3b5518cf4fd2172a9f7fc5343"
+      "bytes": 6647395,
+      "sha256": "23b62b2251cae08fb6e11ff5b76d63e43739b239fd0a9426b85240818901c06f"
     }
   },
   "encyclopedia": {

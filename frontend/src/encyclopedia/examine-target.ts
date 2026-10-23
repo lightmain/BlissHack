@@ -16,6 +16,7 @@ export interface MapExamineCapture {
   mapY: number;
   source: "map-foreground" | "map-background";
   glyph: GlyphInfo;
+  volatileDisplayIdentity?: boolean;
 }
 
 /** Display identity captured from one committed permanent-inventory row. */
@@ -29,16 +30,19 @@ export interface InventoryExamineCapture {
   source: "inventory";
   glyph: GlyphInfo;
   visibleEntityToken: string | null;
+  volatileDisplayIdentity?: boolean;
 }
 
 export type ExamineCapture = MapExamineCapture | InventoryExamineCapture;
 
 export interface MapExamineTarget extends MapExamineCapture {
   entityId: string;
+  binding?: GlyphBinding;
 }
 
 export interface InventoryExamineTarget extends InventoryExamineCapture {
   entityId: string;
+  binding?: GlyphBinding;
 }
 
 export type ExamineTarget = MapExamineTarget | InventoryExamineTarget;
@@ -84,7 +88,11 @@ export async function resolveExamineCapture(
       }
     }
   }
-  return cloneExamineTarget({ ...capture, entityId });
+  return cloneExamineTarget({
+    ...capture,
+    entityId,
+    binding: result.binding,
+  });
 }
 
 /**
@@ -117,8 +125,16 @@ export function entityIdForBinding(binding: GlyphBinding): string {
  */
 export function cloneExamineTarget(target: ExamineTarget): ExamineTarget {
   return target.surface === "map"
-    ? { ...target, glyph: { ...target.glyph } }
-    : { ...target, glyph: { ...target.glyph } };
+    ? {
+      ...target,
+      glyph: { ...target.glyph },
+      binding: target.binding ? { ...target.binding } : undefined,
+    }
+    : {
+      ...target,
+      glyph: { ...target.glyph },
+      binding: target.binding ? { ...target.binding } : undefined,
+    };
 }
 
 /**
@@ -138,6 +154,7 @@ export function examineTargetsEqual(
     || left.moduleId !== right.moduleId
     || left.sessionId !== right.sessionId
     || left.source !== right.source
+    || left.volatileDisplayIdentity !== right.volatileDisplayIdentity
     || !glyphsEqual(left.glyph, right.glyph)
   ) {
     return false;

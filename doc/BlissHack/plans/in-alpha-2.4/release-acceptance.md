@@ -104,7 +104,7 @@ source fingerprint 为
 | `npm run verify:tiles` | 2,307 tiles 与输入 checksum 通过 |
 | `npm run encyclopedia:verify` | schema v2、9,624 glyph、970 core records、1 Wiki record 通过 |
 | 阶段六 release gates | 4/4 |
-| `npm test` | 98 files，1,206/1,206 |
+| `npm test` | 98 files，1,228/1,228 |
 | `npm run lint` | 0 warnings，0 errors |
 | `VITE_BASE_PATH=/BlissHack/ npm run build` | TypeScript 与 production build 通过 |
 | `npm run test:integration:wasm` | 166/166 |
@@ -295,7 +295,7 @@ WASM 错误。
 | I-1 已知背包物品 | 右键 Samurai 初始 katana | 显示具体 katana 资料，不退化为通用武器类别 |
 | I-2 地面物品 | `#wizwish` 输入 `long sword`，再用 `d` 丢下新物品并右键地面物品 | 显示 long sword；地面与背包使用同一事实结构 |
 | I-3 物品堆 | 在同一格再丢一个不同物品，右键 pile glyph | 只描述当前可见的堆顶物品，不旁路显示被遮挡物品 |
-| I-4 尸体与雕像 | 分别 wish `newt corpse`、`statue of a newt`，丢到地上后右键 | 显示 Newt 物种对应的 corpse/statue 资料，不当作活怪物 |
+| I-4 尸体与雕像 | 分别 wish `newt corpse`、`statue of a newt`，丢到地上后右键 | 标题分别为 `Newt corpse`、`Statue of a newt`，类别分别为 Corpse、Statue；可复用 Newt 物种事实，但不得呈现为活体 Newt |
 | I-5 未鉴定 wand | 在尚未执行 `#wizidentify` 时 wish `wand of light`，右键背包中新出现的唯一 wand | 只显示当前外观或 wand 类别；标题、事实和链接不得出现 `wand of light` 或 light 效果 |
 | I-6 已公开 wand | 用普通 `z` 选择该 wand；其 light 效果在非盲状态下使类型公开，再次右键 | 现在可以显示具体 wand of light 资料；使用 wand 的回合不属于 Examine 无回合断言 |
 | I-7 地形 | 站在普通 floor 上，wish `fountain`，移动一格后右键原位置 | 显示 fountain terrain 资料；不得显示祭坛阵营等不存在的信息 |
@@ -305,8 +305,8 @@ WASM 错误。
 | I-11 mimic 伪装 | `#wizgenesis` 输入 `giant mimic`，在碰撞或攻击前右键其伪装 glyph | 只描述屏幕上显示的物品或设施，不显示 Giant mimic |
 | I-12 mimic 揭露 | 向 I-11 的伪装格移动或攻击使其现形，再次右键 | 现在显示 Giant mimic 怪物资料 |
 | I-13 已公开神器 | 在非幻觉状态 wish `long sword named Excalibur`，右键背包物品 | 标题显示 Excalibur；先有基础 long sword 事实，再有 artifact overlay |
-| I-14 幻觉中的神器 | wish `potion of hallucination`，用 `q` 喝下新 potion；状态栏出现 Hallu 后 wish `battle-axe named Cleaver` 并右键新物品 | 背包可能显示 `double-headed axe`；不得出现 Cleaver 标题、token、专属字段或 artifact overlay |
-| I-15 幻觉中的怪物 | Hallu 仍有效时 `#wizgenesis` 输入 `newt`，右键其当前显示 glyph | 只描述当前幻觉 glyph，不显示真实 Newt；若随机恰好仍显示 Newt，重新制造一个目标再测 |
+| I-14 幻觉中的神器与背包物品 | wish `potion of hallucination`，用 `q` 喝下新 potion；状态栏出现 Hallu 后 wish `battle-axe named Cleaver` 并右键新物品 | itemactions 可以显示 `Quaff this potion` 等真实可执行动作，但菜单末尾仍必须有 `Examine`；Examine 只描述右键瞬间的随机显示 glyph，不得出现 Cleaver、真实 object/artifact token、专属字段或 artifact overlay |
+| I-15 幻觉中的地图目标 | Hallu 仍有效时 `#wizgenesis` 输入 `newt`，并分别右键其当前显示 glyph 与一个地图物品 | 两类核心菜单末尾都必须有 `Examine`；只描述右键瞬间捕获的幻觉 glyph，不显示真实 Newt 或真实物品。若随机恰好显示真实身份，重新制造目标再测 |
 
 I-8 与 I-9 是同一个 trap 的前后配对；I-11 与 I-12 是同一个 mimic 的前后
 配对。它们分别证明隐藏状态不会泄露、公开状态又能正常显示。I-13 与 I-14
