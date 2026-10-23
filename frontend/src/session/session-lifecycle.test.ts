@@ -651,6 +651,30 @@ describe("session creation and startup", () => {
 });
 
 describe("local wizard acceptance startup", () => {
+  it("enables exact loopback wizard queries only in fixture production builds", () => {
+    const fixtureAwareGate = isLocalWizardAcceptanceEnabled as unknown as (
+      development: boolean,
+      location: Pick<Location, "hostname" | "search"> | undefined,
+      e2eFixtures: boolean,
+    ) => boolean;
+    const loopback = new URL("http://127.0.0.1/?acceptance=wizard");
+
+    expect(fixtureAwareGate(false, loopback, true)).toBe(true);
+    expect(fixtureAwareGate(false, loopback, false)).toBe(false);
+    expect(fixtureAwareGate(
+      false,
+      new URL("https://example.test/?acceptance=wizard"),
+      true,
+    )).toBe(false);
+    expect(fixtureAwareGate(
+      false,
+      new URL(
+        "http://127.0.0.1/?acceptance=wizard&acceptance=wizard",
+      ),
+      true,
+    )).toBe(false);
+  });
+
   it.each([
     {
       hostname: "localhost",

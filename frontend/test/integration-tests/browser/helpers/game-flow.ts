@@ -9,9 +9,16 @@ import {
  * Open a fresh application page and verify the prepared Home screen.
  * @param page - Playwright page under test.
  * @param marker - unique query value used to distinguish the test navigation.
+ * @param options - acceptance-only query switches for this navigation.
  */
-export async function openHome(page: Page, marker: string): Promise<void> {
-  await page.goto(`?integration=${encodeURIComponent(marker)}`);
+export async function openHome(
+  page: Page,
+  marker: string,
+  options: { wizardAcceptance?: boolean } = {},
+): Promise<void> {
+  const query = new URLSearchParams({ integration: marker });
+  if (options.wizardAcceptance) query.set("acceptance", "wizard");
+  await page.goto(`?${query.toString()}`);
   await expect(page.getByRole("heading", { name: "BlissHack" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Continue" })).toBeEnabled();
   await expect(page.getByRole("button", { name: "Settings" })).toBeEnabled();

@@ -7,6 +7,7 @@ import {
 import { expect, test } from "./fixtures";
 import { captureErrors } from "./helpers/browser-errors";
 import {
+  moveToAdjacentFloor,
   openHome,
   startNewGameFromHome,
   statusField,
@@ -122,9 +123,12 @@ async function startContextGame(
     mapRenderer?: "Tiles" | "ASCII";
     permanentInventory?: boolean;
     showTime?: boolean;
+    wizardAcceptance?: boolean;
   },
 ): Promise<void> {
-  await openHome(page, name);
+  await openHome(page, name, {
+    wizardAcceptance: options.wizardAcceptance,
+  });
   await page.getByRole("button", { name: "Settings" }).click();
   await page.getByRole("group", { name: "Action bar" })
     .getByRole("radio", { name: "Original" })
@@ -171,6 +175,100 @@ async function mapCellPoint(
     x: bounds!.x + ((mapX + 0.5) / COLNO) * bounds!.width,
     y: bounds!.y + ((mapY + 0.5) / ROWNO) * bounds!.height,
   };
+}
+
+/** Read one permanent-inventory revision from its rendered snapshot. */
+async function inventoryRevision(page: Page): Promise<number> {
+  return Number(await page.getByRole("region", { name: "Inventory" })
+    .getAttribute("data-inventory-revision"));
+}
+
+/** Read one displayed ASCII glyph at an exact NetHack map coordinate. */
+async function asciiMapGlyphAt(
+  page: Page,
+  mapX: number,
+  mapY: number,
+): Promise<string> {
+  const glyph = await page.locator(
+    `.nh-map-ascii .nh-map-row[data-y="${mapY}"] .nh-map-run`,
+  ).evaluateAll((runs, targetX) => {
+    for (const run of runs) {
+      const start = Number(run.getAttribute("data-start"));
+      const text = Array.from(run.textContent ?? "");
+      if (targetX >= start && targetX < start + text.length) {
+        return text[targetX - start] ?? null;
+      }
+    }
+    return null;
+  }, mapX);
+  if (glyph === null) {
+    throw new Error(`Missing ASCII glyph at ${mapX},${mapY}`);
+  }
+  return glyph;
+}
+
+/** Run one exact extended command through the production command picker. */
+async function runExtendedCommand(page: Page, command: string): Promise<void> {
+  await page.keyboard.press("#");
+  const dialog = page.getByRole("dialog", { name: "Extended command" });
+  await expect(dialog).toBeVisible();
+  const input = dialog.getByRole("textbox", {
+    name: "Search extended commands",
+  });
+  await input.fill(command);
+  await input.press("Enter");
+}
+
+/** Enable the real core hallucination intrinsic through its PICK_ANY menu. */
+async function enableHallucination(page: Page): Promise<void> {
+  await runExtendedCommand(page, "wizintrinsic");
+  const menu = page.getByRole("dialog", { name: "Which intrinsics?" });
+  await expect(menu).toBeVisible();
+  const hallucinating = menu.locator(".nh-menu-item", {
+    hasText: "hallucinating",
+  });
+  await expect(hallucinating).toHaveCount(1);
+  await hallucinating.click();
+  await page.keyboard.press("Enter");
+  await expect(menu).toHaveCount(0);
+  await expect(page.locator(".nh-shell")).toHaveAttribute(
+    "data-command-input",
+    "ready",
+  );
+}
+
+/** Create one real object through the wizard wish getlin flow. */
+async function wizardWish(page: Page, wish: string): Promise<void> {
+  await runExtendedCommand(page, "wizwish");
+  const input = page.getByRole("textbox", {
+    name: "For what do you wish?",
+  });
+  await expect(input).toBeVisible();
+  await input.fill(wish);
+  await input.press("Enter");
+  await expect(page.locator(".nh-shell")).toHaveAttribute(
+    "data-command-input",
+    "ready",
+  );
+}
+
+/**
+ * Assert that Examine retained the captured hallucinated glyph and did not
+ * substitute the known real object identity.
+ */
+async function expectCapturedHallucination(
+  page: Page,
+  capturedGlyph: string,
+  realEntityId: string,
+): Promise<Locator> {
+  const dialog = page.locator(".examine-dialog");
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toHaveAttribute("data-examine-state", "ready");
+  await expect(dialog.locator(".examine-portrait > span"))
+    .toHaveText(capturedGlyph);
+  expect(await dialog.getAttribute("data-entity-id")).not.toBe(realEntityId);
+  await expect(dialog).not.toContainText(realEntityId);
+  return dialog;
 }
 
 /** Assert that every selectable row preserves a numeric core identifier. */
@@ -690,6 +788,92 @@ test("Examine map handoff: opens the supported player target after the core menu
   await expect(opened.menu).toHaveCount(0);
   await expect(page.getByRole("dialog")).toBeVisible();
   expect(await turn.textContent()).toBe(turnBefore);
+});
+
+test("Examine keeps captured hallucinated inventory and ground glyphs through real WASM handoffs", async ({
+  page,
+}) => {
+  const errors = captureErrors(page);
+  await startContextGame(
+    page,
+    "HalluExamine-Arc-Hum-Mal-Law",
+    {
+      informationLevel: "Detailed",
+      mapRenderer: "ASCII",
+      permanentInventory: true,
+      wizardAcceptance: true,
+    },
+  );
+
+  const inventory = page.getByRole("region", { name: "Inventory" });
+  const initialItem = inventory.locator(
+    ".permanent-inventory-item:not(.permanent-inventory-heading)",
+  ).first();
+  await expect(initialItem).toContainText(/bullwhip/i);
+  const revisionBeforeHallucination = await inventoryRevision(page);
+
+  await enableHallucination(page);
+  await expect.poll(() => inventoryRevision(page))
+    .toBeGreaterThan(revisionBeforeHallucination);
+
+  const hallucinatedItem = inventory.locator(
+    ".permanent-inventory-item:not(.permanent-inventory-heading)",
+  ).first();
+  const capturedInventoryGlyph = await hallucinatedItem
+    .locator(".nh-menu-glyph")
+    .textContent();
+  expect(Array.from(capturedInventoryGlyph ?? "")).toHaveLength(1);
+  const revisionBeforeItemActions = await inventoryRevision(page);
+  const capturedItemNode = await hallucinatedItem.elementHandle();
+  expect(capturedItemNode).not.toBeNull();
+
+  const inventoryMenu = await openInventoryContextMenu(
+    page,
+    hallucinatedItem,
+  );
+  await expect.poll(() => inventoryRevision(page))
+    .toBeGreaterThan(revisionBeforeItemActions);
+  expect(await capturedItemNode!.evaluate((element) => element.isConnected))
+    .toBe(false);
+  const inventoryExamine = inventoryMenu.getByRole("menuitem", {
+    name: "Examine",
+  });
+  await expect(inventoryExamine).toBeVisible();
+  await inventoryExamine.click();
+  const inventoryDialog = await expectCapturedHallucination(
+    page,
+    capturedInventoryGlyph!,
+    "object:BULLWHIP",
+  );
+  await inventoryDialog.getByRole("button", {
+    name: "Close examine window",
+  }).click();
+
+  const ground = await readCursorPosition(page);
+  await wizardWish(page, "boulder");
+  await moveToAdjacentFloor(page);
+  const capturedGroundGlyph = await asciiMapGlyphAt(
+    page,
+    ground.x,
+    ground.y,
+  );
+  expect(Array.from(capturedGroundGlyph)).toHaveLength(1);
+
+  const groundPoint = await mapCellPoint(page, ground.x, ground.y);
+  await page.mouse.click(groundPoint.x, groundPoint.y, { button: "right" });
+  const groundMenu = contextMenu(page);
+  await expect(groundMenu).toBeVisible();
+  const groundExamine = groundMenu.getByRole("menuitem", {
+    name: "Examine",
+  });
+  await expect(groundExamine).toBeVisible();
+  await groundExamine.click();
+  await expectCapturedHallucination(
+    page,
+    capturedGroundGlyph,
+    "object:BOULDER",
+  );
+  expect(errors).toEqual({ console: [], page: [] });
 });
 
 test("Examine Newt content: renders one facts-first scroll flow without tabs in a real browser", async ({
