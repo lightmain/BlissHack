@@ -209,6 +209,7 @@ describe("alpha-2.4 stage-zero source baselines", () => {
       "cc",
       [
         "-std=c11",
+        "-DCROSSCOMPILE",
         "-ffunction-sections",
         "-fdata-sections",
         `-I${join(repositoryRoot, "include")}`,
