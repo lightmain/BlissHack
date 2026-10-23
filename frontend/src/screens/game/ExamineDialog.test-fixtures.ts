@@ -51,6 +51,12 @@ export const NEWT_TARGET: ExamineTarget = {
   mapY: 8,
   source: "map-foreground",
   entityId: "monster:PM_NEWT",
+  binding: {
+    kind: "monster",
+    monsterId: "monster:PM_NEWT",
+    presentation: "monster",
+    gender: "male",
+  },
   glyph: {
     glyph: 401,
     ttyChar: ":".charCodeAt(0),

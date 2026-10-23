@@ -1,3 +1,6 @@
+/// <reference types="node" />
+
+import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import type { GlyphInfo, MapCell, MenuItem } from "../game-state";
 import type { GlyphBinding, GlyphBindingResult } from "./core-schema";
@@ -10,6 +13,8 @@ import {
   isMapExamineTargetCurrent,
 } from "./entity-resolution";
 import {
+  cloneExamineTarget,
+  examineTargetsEqual,
   resolveExamineCapture,
   type InventoryExamineCapture,
 } from "./examine-target";
@@ -26,6 +31,10 @@ const MODULE_ID = "module-1";
 const SESSION_ID = "session-1";
 const MAP_REVISION = 17;
 const INVENTORY_REVISION = 23;
+const EXAMINE_TARGET_SOURCE = readFileSync(
+  new URL("./examine-target.ts", import.meta.url),
+  "utf8",
+);
 
 interface MapTargetFixture {
   moduleId: string;
@@ -659,6 +668,75 @@ describe("asynchronous examine target resolution", () => {
         entityId: "monster:PM_NEWT",
         binding,
       });
+  });
+});
+
+describe("resolved examine target binding contract", () => {
+  const maleBinding = {
+    kind: "monster",
+    monsterId: "monster:PM_NEWT",
+    presentation: "monster",
+    gender: "male",
+  } satisfies GlyphBinding;
+
+  it("requires a validated binding on both resolved target variants", () => {
+    expect(EXAMINE_TARGET_SOURCE).toMatch(
+      /export interface MapExamineTarget extends MapExamineCapture \{\s*entityId: string;\s*binding: GlyphBinding;\s*\}/,
+    );
+    expect(EXAMINE_TARGET_SOURCE).toMatch(
+      /export interface InventoryExamineTarget extends InventoryExamineCapture \{\s*entityId: string;\s*binding: GlyphBinding;\s*\}/,
+    );
+  });
+
+  it("deep-copies the binding when a resolved target crosses a boundary", async () => {
+    const capture = captureMapExamineTarget(currentMapState({
+      cell: {
+        foreground: glyphInfo(30),
+        background: null,
+      },
+    }))!;
+    const resolved = await resolveExamineCapture(examineLoader({
+      glyph: 30,
+      status: "supported",
+      binding: maleBinding,
+    }, null), capture);
+
+    expect(resolved).not.toBeNull();
+    const cloned = cloneExamineTarget(resolved!);
+    expect(cloned).toEqual(resolved);
+    expect(cloned.binding).not.toBe(resolved!.binding);
+
+    if (resolved!.binding?.kind !== "monster") {
+      throw new Error("Expected a monster binding");
+    }
+    resolved!.binding.gender = "female";
+    expect(cloned.binding).toEqual(maleBinding);
+  });
+
+  it("treats the validated binding as part of resolved target equality", async () => {
+    const capture = captureMapExamineTarget(currentMapState({
+      cell: {
+        foreground: glyphInfo(30),
+        background: null,
+      },
+    }))!;
+    const male = await resolveExamineCapture(examineLoader({
+      glyph: 30,
+      status: "supported",
+      binding: maleBinding,
+    }, null), capture);
+    const female = await resolveExamineCapture(examineLoader({
+      glyph: 30,
+      status: "supported",
+      binding: {
+        ...maleBinding,
+        gender: "female",
+      },
+    }, null), capture);
+
+    expect(male).not.toBeNull();
+    expect(female).not.toBeNull();
+    expect(examineTargetsEqual(male, female)).toBe(false);
   });
 });
 
