@@ -18,7 +18,7 @@ BlissHack 对 NetHack C 代码进行了少量有针对性的修改，主要用�
 
 ## 项目状态
 
-**alpha-2.4 已完成实现、自动门禁和独立复审；人工验收仍待用户确认。**
+**alpha-2.4 已于 2026-10-27 完成实现、自动门禁、独立复审和人工验收。**
 
 alpha-2.4 在 Detailed 信息量下为受支持的地图和永久背包目标增加
 `Examine`，同时保持 Original 和核心原有动作不变。它会等待核心菜单 resolver
@@ -28,8 +28,8 @@ NetHackWiki 节选，不读取隐藏游戏身份。
 
 当前获准发布的 Wiki 内容只包含 `Newt` revision 205110 的 4 个完整原文段落；
 两段不安全的 Overview 内容未发布。具体契约见
-[alpha-2.4 Examine 观察窗口计划](doc/BlissHack/plans/alpha-2.4.md)，自动门禁
-结果见[alpha-2.4 自动验收记录](doc/BlissHack/plans/in-alpha-2.4/release-acceptance.md)。
+[alpha-2.4 Examine 观察窗口计划](doc/BlissHack/plans/alpha-2.4.md)，最终结果见
+[alpha-2.4 发布验收记录](doc/BlissHack/plans/in-alpha-2.4/release-acceptance.md)。
 部署分支与 GitHub Pages 可能落后，实际线上版本以页面显示为准。
 
 当前里程碑已经实现：
@@ -169,7 +169,7 @@ Tiles/ASCII、Right/Below 在 1280×900 和 900×700 下的 HUD 组合。
 - [alpha-2.1 发布验收](doc/BlissHack/plans/in-alpha-2.1/release-acceptance.md)
 - [alpha-2.2 发布验收](doc/BlissHack/plans/in-alpha-2.2/release-acceptance.md)
 - [alpha-2.3 发布验收](doc/BlissHack/plans/in-alpha-2.3/release-acceptance.md)
-- [alpha-2.4 自动验收](doc/BlissHack/plans/in-alpha-2.4/release-acceptance.md)
+- [alpha-2.4 发布验收](doc/BlissHack/plans/in-alpha-2.4/release-acceptance.md)
 - [prealpha-3 发布验收](doc/BlissHack/plans/in-prealpha-3/release-acceptance.md)
 - [上游修改清单](doc/BlissHack/upstream-modifications.md)
 - [存档存储与读取方案评审](doc/BlissHack/plans/in-prealpha-2/save-format-review.md)

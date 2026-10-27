@@ -1,13 +1,12 @@
 # BlissHack alpha-2.4 发布验收
 
-本文记录 alpha-2.4 Examine 观察窗口、资料资产和可见身份边界的自动验收结果，
-并保留仍需用户完成的人工验收清单。完成自动验收不代表已经发布；当前不 push、
-不部署。
+本文记录 alpha-2.4 Examine 观察窗口、资料资产和可见身份边界的自动与人工
+验收结果。人工验收步骤继续保留，作为本版本最终验收范围的权威记录。
 
 ## 1. 状态
 
-alpha-2.4 已完成实现、独立复审和自动门禁。人工验收仍待用户确认；在用户确认
-前，不得把 alpha-2.4 标记为完成。
+alpha-2.4 已完成实现、独立复审、自动门禁和人工验收。2026-10-27，用户确认
+该版本完成。
 
 ## 2. 测试环境
 
@@ -323,7 +322,7 @@ WASM 错误。
 | I-11 mimic 伪装 | `#wizgenesis` 输入 `giant mimic`，在碰撞或攻击前右键其伪装 glyph | 只描述屏幕上显示的物品或设施，不显示 Giant mimic |
 | I-12 mimic 揭露 | 向 I-11 的伪装格移动或攻击使其现形，再次右键 | 现在显示 Giant mimic 怪物资料 |
 | I-13 已公开神器 | 在非幻觉状态 wish `long sword named Excalibur`，右键背包物品 | 标题显示 Excalibur；先有基础 long sword 事实，再有 artifact overlay |
-| I-14 幻觉中的神器与背包物品 | wish `potion of hallucination`，用 `q` 喝下新 potion；状态栏出现 Hallu 后 wish `battle-axe named Cleaver` 并右键新物品 | itemactions 可以显示 `Quaff this potion` 等真实可执行动作，但菜单末尾仍必须有 `Examine`；Examine 只描述右键瞬间的随机显示 glyph，不得出现 Cleaver、真实 object/artifact token、专属字段或 artifact overlay |
+| I-14 幻觉中的神器与背包物品 | wish `potion of hallucination`，用 `q` 喝下新 potion；状态栏出现 Hallu 后 wish `battle-axe named Cleaver` 并右键新物品 | itemactions 可以显示 `Wield this item as your weapon` 等真实可执行动作，但菜单末尾仍必须有 `Examine`；Examine 只描述右键瞬间的随机显示 glyph，不得出现 Cleaver、真实 object/artifact token、专属字段或 artifact overlay |
 | I-15 幻觉中的地图目标 | Hallu 仍有效时 `#wizgenesis` 输入 `newt`，并分别右键其当前显示 glyph 与一个地图物品 | 两类核心菜单末尾都必须有 `Examine`；只描述右键瞬间捕获的幻觉 glyph，不显示真实 Newt 或真实物品。若随机恰好显示真实身份，重新制造目标再测 |
 
 I-8 与 I-9 是同一个 trap 的前后配对；I-11 与 I-12 是同一个 mimic 的前后
@@ -393,18 +392,18 @@ localhost 请求一起拦截的 DevTools 全局 `Offline` 开关。
 
 | 验收组 | 结果 | 证据或备注 |
 | --- | --- | --- |
-| 本地巫师入口与生产 fail-closed | [ ] 通过 / [ ] 失败 | |
-| Detailed/Original 与核心动作 | [ ] 通过 / [ ] 失败 | |
-| 无回合、菜单 handoff 与输入恢复 | [ ] 通过 / [ ] 失败 | |
-| 物品、terrain、trap、mimic 与神器身份 | [ ] 通过 / [ ] 失败 | |
-| 幻觉与未鉴定状态无泄露 | [ ] 通过 / [ ] 失败 | |
-| Newt facts、四段 Wiki 与双许可来源 | [ ] 通过 / [ ] 失败 | |
-| 离线、四 viewport、显示与布局模式 | [ ] 通过 / [ ] 失败 | |
-| 键盘、焦点、VoiceOver 与 Console | [ ] 通过 / [ ] 失败 | |
+| 本地巫师入口与生产 fail-closed | [x] 通过 / [ ] 失败 | 用户确认 |
+| Detailed/Original 与核心动作 | [x] 通过 / [ ] 失败 | 用户确认 |
+| 无回合、菜单 handoff 与输入恢复 | [x] 通过 / [ ] 失败 | 用户确认 |
+| 物品、terrain、trap、mimic 与神器身份 | [x] 通过 / [ ] 失败 | 用户确认 |
+| 幻觉与未鉴定状态无泄露 | [x] 通过 / [ ] 失败 | 用户确认 |
+| Newt facts、四段 Wiki 与双许可来源 | [x] 通过 / [ ] 失败 | 用户确认 |
+| 离线、四 viewport、显示与布局模式 | [x] 通过 / [ ] 失败 | 用户确认 |
+| 键盘、焦点、VoiceOver 与 Console | [x] 通过 / [ ] 失败 | 用户确认 |
 
-验收者：__________　日期：__________　结论：__________
+验收者：用户　日期：2026-10-27　结论：通过
 
 ## 9. 当前结论
 
-实现、独立复审和全部自动门禁满足 alpha-2.4 的自动完成条件。版本仍等待用户
-人工验收；是否 push 或部署 GitHub Pages 需要单独指令。
+实现、独立复审、全部自动门禁和用户人工验收均已完成。alpha-2.4 已满足完成
+定义并正式标记为完成。
