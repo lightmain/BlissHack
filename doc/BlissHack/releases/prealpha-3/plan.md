@@ -210,7 +210,7 @@ Emscripten 版本。SHA-256 是根据文件全部字节计算的固定摘要，�
 ### 5.1 强制设计评审门禁
 
 实现 Settings 之前先编写
-`doc/BlissHack/plans/in-prealpha-3/settings-and-profile.md`，并与用户确认。
+`doc/BlissHack/releases/prealpha-3/design/settings-and-profile.md`，并与用户确认。
 该文档至少回答：
 
 1. 当前 WASM 环境中 `HOME` 的值以及 NetHack 实际查找 `.nethackrc` 的路径。
@@ -405,7 +405,7 @@ perminv_mode
 不改变 raw save，也不承诺当前构建能够继续旧版本存档。
 
 用户已于 2026-09-06 确认按照
-`doc/BlissHack/plans/in-prealpha-3/backup-and-recovery.md` 分步实施。
+`doc/BlissHack/releases/prealpha-3/design/backup-and-recovery.md` 分步实施。
 
 ### 6.2 不兼容存档救援
 
@@ -609,7 +609,7 @@ blisshack.active-game-and-storage
 
 永久背包在独立 Git 分支开发。修改 C、shim 能力位或 WebAssembly 产物之前，
 先编写
-`doc/BlissHack/plans/in-prealpha-3/permanent-inventory.md`，并与用户确认。
+`doc/BlissHack/releases/prealpha-3/design/permanent-inventory.md`，并与用户确认。
 文档至少回答：
 
 1. `WC_PERM_INVENT`、`perm_invent` 和 `perminv_mode` 在 NetHack 5.0 中的
@@ -795,11 +795,11 @@ frontend/playwright 配置
 设计文档预计包括：
 
 ```text
-doc/BlissHack/plans/in-prealpha-3/settings-and-profile.md
-doc/BlissHack/plans/in-prealpha-3/backup-and-recovery.md
-doc/BlissHack/plans/in-prealpha-3/multi-page-lock.md
-doc/BlissHack/plans/in-prealpha-3/permanent-inventory.md
-doc/BlissHack/plans/in-prealpha-3/release-acceptance.md
+doc/BlissHack/releases/prealpha-3/design/settings-and-profile.md
+doc/BlissHack/releases/prealpha-3/design/backup-and-recovery.md
+doc/BlissHack/releases/prealpha-3/design/multi-page-lock.md
+doc/BlissHack/releases/prealpha-3/design/permanent-inventory.md
+doc/BlissHack/releases/prealpha-3/release-acceptance.md
 ```
 
 不因为目录整理而整体移动 `nethack-bridge.ts`、`session-manager.ts` 或

@@ -5,7 +5,7 @@
 
 阶段二只处理浏览器内的保存、枚举和继续游戏。阶段三开始时已经完成
 raw save 导入导出评审；本文件第 8 节记录结论，详细设计见
-`doc/BlissHack/plans/in-prealpha-2/raw-save-import-export.md`。
+`doc/BlissHack/releases/prealpha-2/design/raw-save-import-export.md`。
 
 ## 1. 原版 NetHack 的文件模型
 
@@ -153,7 +153,7 @@ NetHack 进程。
 5. 退出后移除 callback、pending input 和所有强引用，让运行时可被回收。
 
 完整状态定义见
-`doc/BlissHack/plans/in-prealpha-2/module-lifecycle.md`。
+`doc/BlissHack/releases/prealpha-2/design/module-lifecycle.md`。
 
 ## 6. 阶段二 Storage Service 边界
 
@@ -226,7 +226,7 @@ Continue 启动流程：
 - 不增加 sidecar index，真实 `/save` 仍是唯一事实来源。
 
 详细设计见
-`doc/BlissHack/plans/in-prealpha-2/raw-save-import-export.md`。
+`doc/BlissHack/releases/prealpha-2/design/raw-save-import-export.md`。
 
 ## 9. 阶段二确认结果
 

@@ -20,7 +20,7 @@ Emscripten 的 `shim_ctrl_nhwindow()` 仍返回 `NULL`。当前实现不依赖�
 
 详细实现和限制见：
 
-- `doc/BlissHack/plans/in-prealpha-3/permanent-inventory.md`
+- `doc/BlissHack/releases/prealpha-3/design/permanent-inventory.md`
 - `doc/BlissHack/shim-interface-reference.md`
 - `doc/BlissHack/upstream-modifications.md`
 

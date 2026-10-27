@@ -449,6 +449,6 @@ alpha-1 只有同时满足以下条件才算完成：
 | 完成验收 | `a56555129 test: cover alpha-1 tile renderer workflows` 及后续修正 |
 
 最终自动门禁结果和人工检查步骤记录在
-`doc/BlissHack/plans/in-alpha-1/release-acceptance.md`。当前完成定义中的
+`doc/BlissHack/releases/alpha-1/release-acceptance.md`。当前完成定义中的
 第 1 至 10 项已经由实现、自动测试和文档覆盖；第 11 项必须等待用户人工验收、
 合入部署分支并完成线上 smoke test。

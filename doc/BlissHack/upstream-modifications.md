@@ -129,7 +129,7 @@ M win/shim/winshim.c
 - **源码范围**：不修改 `src/options.c`、`src/invent.c` 或 raw save 格式。
 - **行为依据**：
   `doc/BlissHack/shim-interface-reference.md` 第 2.15 节和
-  `doc/BlissHack/plans/in-prealpha-3/permanent-inventory.md`。
+  `doc/BlissHack/releases/prealpha-3/design/permanent-inventory.md`。
 - **回归测试**：
   - `frontend/src/settings/runtime-settings-protocol.test.ts`
   - `frontend/src/game-state.test.ts`
@@ -152,7 +152,7 @@ M win/shim/winshim.c
 - **ABI 范围**：不改变 `glyph_info` 的 WASM32 36-byte 布局；此前保留的
   16-bit `tileidx` 字段现在包含权威索引。
 - **行为依据**：
-  `doc/BlissHack/plans/alpha-1.md` 第 6 节。
+  `doc/BlissHack/releases/alpha-1/plan.md` 第 6 节。
 - **回归测试**：
   - `frontend/scripts/build-wasm-toolchain.test.mjs`
   - `frontend/test/integration-tests/wasm-test.mjs`
@@ -306,7 +306,7 @@ M win/shim/winshim.c
     让不同姓名的角色错误共享同一个每职业限额。
 - **源码范围**：不修改 `topten.c`、record 文本格式、shim ABI 或 save 格式。
 - **行为依据**：
-  `doc/BlissHack/plans/alpha-2.2.md` 第 6.6 节。
+  `doc/BlissHack/releases/alpha-2.2/plan.md` 第 6.6 节。
 - **回归测试**：
   - `frontend/scripts/build-wasm-toolchain.test.mjs`
   - `frontend/test/integration-tests/browser/normal-exit.spec.ts`

@@ -4,7 +4,7 @@
 
 本文定义 alpha-2.2 的产品范围、兼容边界、目标架构、实施阶段和验收门禁。
 alpha-2.2 已于 2026-09-22 完成实现、自动门禁和人工验收。最终验收记录见
-`doc/BlissHack/plans/in-alpha-2.2/release-acceptance.md`。
+`doc/BlissHack/releases/alpha-2.2/release-acceptance.md`。
 
 alpha-2.2 聚焦三类信息与流程体验：
 
@@ -866,4 +866,4 @@ docs: complete alpha-2.2 acceptance
 
 alpha-2.2 已完成全部必需阶段。快速再来一局未纳入本版本，不影响完成定义。
 实现范围、验证结果和人工验收结论记录在
-`doc/BlissHack/plans/in-alpha-2.2/release-acceptance.md`。
+`doc/BlissHack/releases/alpha-2.2/release-acceptance.md`。

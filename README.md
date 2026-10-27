@@ -21,23 +21,10 @@ frontend. These changes are documented in
 
 ## Project Status
 
-**Alpha-2.4 completed implementation, automated gates, independent review,
-and manual acceptance on October 27, 2026.**
-
-Alpha-2.4 adds `Examine` to supported map and permanent-inventory context
-menus in Detailed mode while leaving Original mode and the core's existing
-actions unchanged. It waits for the core menu resolver and a new command
-boundary before opening, so inspecting facts does not consume a turn. The
-dialog presents deterministic NetHack source facts and separately attributed
-NetHackWiki excerpts without reading hidden game identities.
-
-The reviewed Wiki release currently contains only four complete, verbatim
-paragraphs from `Newt` revision 205110; the two unsafe Overview paragraphs are
-not published. See the
-[Alpha-2.4 Examine dialog plan](doc/BlissHack/plans/alpha-2.4.md) and
-[release acceptance record](doc/BlissHack/plans/in-alpha-2.4/release-acceptance.md).
-The deployment branch and GitHub Pages may lag; use the version displayed by
-the site as the authority.
+The generated [current project status](doc/BlissHack/current/status.md) derives
+the current version, acceptance state, plan, and acceptance record from the
+root `VERSION` file and release manifest. The deployment branch and GitHub
+Pages may lag; use the version displayed by the site as the authority.
 
 The current milestone provides:
 
@@ -174,34 +161,10 @@ combinations at 1280x900 and 900x700.
 
 ## Repository Guide
 
-- [prealpha-1 plan](doc/BlissHack/plans/prealpha-1.md)
-- [prealpha-2 plan](doc/BlissHack/plans/prealpha-2.md)
-- [prealpha-3 plan](doc/BlissHack/plans/prealpha-3.md)
-- [prealpha-4 refactoring plan](doc/BlissHack/plans/prealpha-4.md)
-- [alpha-1 tileset plan](doc/BlissHack/plans/alpha-1.md)
-- [alpha-1.1 map interaction and infrastructure plan](doc/BlissHack/plans/alpha-1.1.md)
-- [alpha-2.0 interactive HUD plan](doc/BlissHack/plans/alpha-2.0.md)
-- [alpha-2.1 focus and Below HUD plan](doc/BlissHack/plans/alpha-2.1.md)
-- [alpha-2.2 information and workflow plan](doc/BlissHack/plans/alpha-2.2.md)
-- [alpha-2.3 action bar plan](doc/BlissHack/plans/alpha-2.3.md)
-- [alpha-2.4 Examine dialog plan](doc/BlissHack/plans/alpha-2.4.md)
-- [alpha-1 rendering architecture](doc/BlissHack/plans/in-alpha-1/rendering-architecture.md)
-- [alpha-1 profile v2](doc/BlissHack/plans/in-alpha-1/profile-v2.md)
-- [alpha-1 release acceptance](doc/BlissHack/plans/in-alpha-1/release-acceptance.md)
-- [alpha-1.1 release acceptance](doc/BlissHack/plans/in-alpha-1.1/release-acceptance.md)
-- [alpha-2.0 release acceptance](doc/BlissHack/plans/in-alpha-2.0/release-acceptance.md)
-- [alpha-2.1 release acceptance](doc/BlissHack/plans/in-alpha-2.1/release-acceptance.md)
-- [alpha-2.2 release acceptance](doc/BlissHack/plans/in-alpha-2.2/release-acceptance.md)
-- [alpha-2.3 release acceptance](doc/BlissHack/plans/in-alpha-2.3/release-acceptance.md)
-- [alpha-2.4 release acceptance](doc/BlissHack/plans/in-alpha-2.4/release-acceptance.md)
-- [Upstream modification inventory](doc/BlissHack/upstream-modifications.md)
-- [Fatal errors and diagnostic log design](doc/BlissHack/plans/in-prealpha-2/fatal-errors-and-diagnostics.md)
-- [Browser end-to-end test design](doc/BlissHack/plans/in-prealpha-2/browser-end-to-end-tests.md)
-- [WASM build process](doc/BlissHack/build-process.md)
-- [Shim interface reference](doc/BlissHack/shim-interface-reference.md)
-- [Key input reference](doc/BlissHack/key-input-reference.md)
-- [Chinese Guidebook index](doc/BlissHack/guidebook-index-cn.md)
-- [Frontend source](frontend/src)
+- [Documentation index](doc/BlissHack/index.md)
+- [Current project status](doc/BlissHack/current/status.md)
+- [Current architecture](doc/BlissHack/current/architecture.md)
+- [Release archive](doc/BlissHack/releases/index.md)
 
 ## Known Interface Limits
 
