@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "archiveRoot": "doc/BlissHack/releases",
+  "active": [
+    "README.md",
+    "README-cn.md",
+    "AGENTS.md",
+    "AGENTS-cn.md",
+    "doc/BlissHack/index.md",
+    "doc/BlissHack/current/status.md",
+    "doc/BlissHack/current/architecture.md",
+    "doc/BlissHack/session-start.md",
+    "doc/BlissHack/build-process.md",
+    "doc/BlissHack/guidebook-index-cn.md",
+    "doc/BlissHack/key-input-reference.md",
+    "doc/BlissHack/shim-interface-reference.md",
+    "doc/BlissHack/upstream-modifications.md",
+    "doc/BlissHack/TODOs.md",
+    "doc/BlissHack/decisions/0001-documentation-knowledge-architecture.md",
+    "doc/BlissHack/releases/index.md"
+  ],
+  "generated": [
+    "doc/BlissHack/current/status.md",
+    "doc/BlissHack/releases/index.md"
+  ],
+  "entrypoints": {
+    "human": "doc/BlissHack/index.md",
+    "agent": "doc/BlissHack/session-start.md",
+    "currentStatus": "doc/BlissHack/current/status.md",
+    "currentArchitecture": "doc/BlissHack/current/architecture.md",
+    "decisions": "doc/BlissHack/decisions",
+    "history": "doc/BlissHack/releases"
+  }
+}

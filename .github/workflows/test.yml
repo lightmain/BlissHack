@@ -39,6 +39,12 @@ jobs:
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
+      - name: Check documentation
+        run: npm run docs:check
+
+      - name: Test documentation health checks
+        run: npm run test:docs
+
       - name: Run lint
         run: npm run lint
 

@@ -1,0 +1,117 @@
+{
+  "schemaVersion": 1,
+  "currentVersion": "alpha-2.4",
+  "releases": [
+    {
+      "version": "prealpha-1",
+      "status": "completed",
+      "summary": "建立浏览器前端、基础测试和部署入口。",
+      "plan": "doc/BlissHack/releases/prealpha-1/plan.md",
+      "acceptance": null,
+      "artifacts": []
+    },
+    {
+      "version": "prealpha-2",
+      "status": "completed",
+      "summary": "完成浏览器存档、生命周期、诊断和端到端测试基础。",
+      "plan": "doc/BlissHack/releases/prealpha-2/plan.md",
+      "acceptance": null,
+      "artifacts": [
+        "doc/BlissHack/releases/prealpha-2/design/browser-end-to-end-tests.md",
+        "doc/BlissHack/releases/prealpha-2/design/fatal-errors-and-diagnostics.md",
+        "doc/BlissHack/releases/prealpha-2/design/long-flow-and-transaction-protection.md",
+        "doc/BlissHack/releases/prealpha-2/design/module-lifecycle.md",
+        "doc/BlissHack/releases/prealpha-2/design/raw-save-import-export.md",
+        "doc/BlissHack/releases/prealpha-2/design/save-format-review.md"
+      ]
+    },
+    {
+      "version": "prealpha-3",
+      "status": "accepted",
+      "summary": "完成配置、备份、多页面锁、永久背包和可复现构建。",
+      "plan": "doc/BlissHack/releases/prealpha-3/plan.md",
+      "acceptance": "doc/BlissHack/releases/prealpha-3/release-acceptance.md",
+      "artifacts": [
+        "doc/BlissHack/releases/prealpha-3/design/backup-and-recovery.md",
+        "doc/BlissHack/releases/prealpha-3/design/multi-page-lock.md",
+        "doc/BlissHack/releases/prealpha-3/design/permanent-inventory.md",
+        "doc/BlissHack/releases/prealpha-3/design/settings-and-profile.md",
+        "doc/BlissHack/releases/prealpha-3/design/version-and-reproducible-build.md"
+      ]
+    },
+    {
+      "version": "prealpha-4",
+      "status": "completed",
+      "summary": "完成前端模块边界和状态所有权重构。",
+      "plan": "doc/BlissHack/releases/prealpha-4/plan.md",
+      "acceptance": null,
+      "artifacts": []
+    },
+    {
+      "version": "alpha-1",
+      "status": "accepted",
+      "summary": "引入官方 Tiles、Canvas 地图和 profile v2。",
+      "plan": "doc/BlissHack/releases/alpha-1/plan.md",
+      "acceptance": "doc/BlissHack/releases/alpha-1/release-acceptance.md",
+      "artifacts": [
+        "doc/BlissHack/releases/alpha-1/design/profile-v2.md",
+        "doc/BlissHack/releases/alpha-1/design/rendering-architecture.md"
+      ]
+    },
+    {
+      "version": "alpha-1.1",
+      "status": "accepted",
+      "summary": "完成地图交互、视角跟随和定向输入基础。",
+      "plan": "doc/BlissHack/releases/alpha-1.1/plan.md",
+      "acceptance": "doc/BlissHack/releases/alpha-1.1/release-acceptance.md",
+      "artifacts": []
+    },
+    {
+      "version": "alpha-2.0",
+      "status": "accepted",
+      "summary": "完成交互式 HUD、永久背包和地图上下文操作。",
+      "plan": "doc/BlissHack/releases/alpha-2.0/plan.md",
+      "acceptance": "doc/BlissHack/releases/alpha-2.0/release-acceptance.md",
+      "artifacts": []
+    },
+    {
+      "version": "alpha-2.1",
+      "status": "accepted",
+      "summary": "完成焦点管理和 Below HUD 布局。",
+      "plan": "doc/BlissHack/releases/alpha-2.1/plan.md",
+      "acceptance": "doc/BlissHack/releases/alpha-2.1/release-acceptance.md",
+      "artifacts": []
+    },
+    {
+      "version": "alpha-2.2",
+      "status": "accepted",
+      "summary": "完成 profile v3、统一角色选择、终局结果和本地 Ranking。",
+      "plan": "doc/BlissHack/releases/alpha-2.2/plan.md",
+      "acceptance": "doc/BlissHack/releases/alpha-2.2/release-acceptance.md",
+      "artifacts": []
+    },
+    {
+      "version": "alpha-2.3",
+      "status": "accepted",
+      "summary": "完成动作栏、次级弹窗和 Original TTY 两行状态。",
+      "plan": "doc/BlissHack/releases/alpha-2.3/plan.md",
+      "acceptance": "doc/BlissHack/releases/alpha-2.3/release-acceptance.md",
+      "artifacts": []
+    },
+    {
+      "version": "alpha-2.4",
+      "status": "accepted",
+      "releasedOn": "2026-10-27",
+      "summary": "完成 Detailed Examine 观察窗口、资料生成和发布审查。",
+      "plan": "doc/BlissHack/releases/alpha-2.4/plan.md",
+      "acceptance": "doc/BlissHack/releases/alpha-2.4/release-acceptance.md",
+      "artifacts": [
+        "doc/BlissHack/releases/alpha-2.4/evidence/catalog-coverage-report.md",
+        "doc/BlissHack/releases/alpha-2.4/evidence/agent-rules-before-knowledge-refactor.md",
+        "doc/BlissHack/releases/alpha-2.4/evidence/session-start-before-knowledge-refactor.md",
+        "doc/BlissHack/releases/alpha-2.4/evidence/source-license-baseline.md",
+        "doc/BlissHack/releases/alpha-2.4/evidence/wiki-review-report.md"
+      ]
+    }
+  ]
+}

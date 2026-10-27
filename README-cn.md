@@ -18,19 +18,9 @@ BlissHack 对 NetHack C 代码进行了少量有针对性的修改，主要用�
 
 ## 项目状态
 
-**alpha-2.4 已于 2026-10-27 完成实现、自动门禁、独立复审和人工验收。**
-
-alpha-2.4 在 Detailed 信息量下为受支持的地图和永久背包目标增加
-`Examine`，同时保持 Original 和核心原有动作不变。它会等待核心菜单 resolver
-结束并进入新的 command boundary 后才打开，因此查看资料不消耗回合。观察窗口
-展示由当前 NetHack 源码确定性生成的事实，以及单独标注来源和许可的
-NetHackWiki 节选，不读取隐藏游戏身份。
-
-当前获准发布的 Wiki 内容只包含 `Newt` revision 205110 的 4 个完整原文段落；
-两段不安全的 Overview 内容未发布。具体契约见
-[alpha-2.4 Examine 观察窗口计划](doc/BlissHack/plans/alpha-2.4.md)，最终结果见
-[alpha-2.4 发布验收记录](doc/BlissHack/plans/in-alpha-2.4/release-acceptance.md)。
-部署分支与 GitHub Pages 可能落后，实际线上版本以页面显示为准。
+[当前项目状态](doc/BlissHack/current/status.md)由根目录 `VERSION` 和发布清单
+生成，包含当前版本、验收状态及对应计划和验收记录。部署分支与 GitHub Pages
+可能落后，实际线上版本以页面显示为准。
 
 当前里程碑已经实现：
 
@@ -150,37 +140,10 @@ Tiles/ASCII、Right/Below 在 1280×900 和 900×700 下的 HUD 组合。
 
 ## 仓库文档
 
-- [prealpha-1 计划](doc/BlissHack/plans/prealpha-1.md)
-- [prealpha-2 计划](doc/BlissHack/plans/prealpha-2.md)
-- [prealpha-3 计划](doc/BlissHack/plans/prealpha-3.md)
-- [prealpha-4 代码重构计划](doc/BlissHack/plans/prealpha-4.md)
-- [alpha-1 Tileset 引入计划](doc/BlissHack/plans/alpha-1.md)
-- [alpha-1.1 地图交互与基建计划](doc/BlissHack/plans/alpha-1.1.md)
-- [alpha-2.0 交互式 HUD 计划](doc/BlissHack/plans/alpha-2.0.md)
-- [alpha-2.1 焦点与 Below HUD 计划](doc/BlissHack/plans/alpha-2.1.md)
-- [alpha-2.2 信息与流程体验计划](doc/BlissHack/plans/alpha-2.2.md)
-- [alpha-2.3 动作栏计划](doc/BlissHack/plans/alpha-2.3.md)
-- [alpha-2.4 Examine 观察窗口计划](doc/BlissHack/plans/alpha-2.4.md)
-- [alpha-1 渲染架构](doc/BlissHack/plans/in-alpha-1/rendering-architecture.md)
-- [alpha-1 profile v2](doc/BlissHack/plans/in-alpha-1/profile-v2.md)
-- [alpha-1 发布验收](doc/BlissHack/plans/in-alpha-1/release-acceptance.md)
-- [alpha-1.1 发布验收](doc/BlissHack/plans/in-alpha-1.1/release-acceptance.md)
-- [alpha-2.0 发布验收](doc/BlissHack/plans/in-alpha-2.0/release-acceptance.md)
-- [alpha-2.1 发布验收](doc/BlissHack/plans/in-alpha-2.1/release-acceptance.md)
-- [alpha-2.2 发布验收](doc/BlissHack/plans/in-alpha-2.2/release-acceptance.md)
-- [alpha-2.3 发布验收](doc/BlissHack/plans/in-alpha-2.3/release-acceptance.md)
-- [alpha-2.4 发布验收](doc/BlissHack/plans/in-alpha-2.4/release-acceptance.md)
-- [prealpha-3 发布验收](doc/BlissHack/plans/in-prealpha-3/release-acceptance.md)
-- [上游修改清单](doc/BlissHack/upstream-modifications.md)
-- [存档存储与读取方案评审](doc/BlissHack/plans/in-prealpha-2/save-format-review.md)
-- [Game Module 生命周期](doc/BlissHack/plans/in-prealpha-2/module-lifecycle.md)
-- [致命错误和诊断日志设计](doc/BlissHack/plans/in-prealpha-2/fatal-errors-and-diagnostics.md)
-- [浏览器端到端测试设计](doc/BlissHack/plans/in-prealpha-2/browser-end-to-end-tests.md)
-- [WASM 构建流程](doc/BlissHack/build-process.md)
-- [Shim 接口参考](doc/BlissHack/shim-interface-reference.md)
-- [按键输入参考](doc/BlissHack/key-input-reference.md)
-- [Guidebook 中文索引](doc/BlissHack/guidebook-index-cn.md)
-- [前端源码](frontend/src)
+- [文档索引](doc/BlissHack/index.md)
+- [当前项目状态](doc/BlissHack/current/status.md)
+- [当前架构](doc/BlissHack/current/architecture.md)
+- [发布归档](doc/BlissHack/releases/index.md)
 
 ## 已知接口限制
 

@@ -7,7 +7,7 @@
 门禁、独立复审和人工验收；根目录 `VERSION` 当前为 `alpha-2.4`。
 alpha-2.4 已于 2026-10-27 完成实现、自动门禁、独立复审和人工验收，最终结果
 记录在
-[alpha-2.4 发布验收](in-alpha-2.4/release-acceptance.md)。
+[alpha-2.4 发布验收](release-acceptance.md)。
 
 本版本经用户确认的视觉与交互原型为：
 
@@ -1197,7 +1197,7 @@ docs: complete alpha-2.4 examine acceptance
 ## 12. 人工验收
 
 完整且可直接执行的人工验收步骤统一维护在
-[alpha-2.4 发布验收的人工验收执行手册](in-alpha-2.4/release-acceptance.md#8-人工验收执行手册)。
+[alpha-2.4 发布验收的人工验收执行手册](release-acceptance.md#8-人工验收执行手册)。
 该手册包括仅限本地开发构建的巫师验收入口、命令速查、场景制造顺序、证据记录、
 身份防泄露矩阵、Newt/Wiki/许可核对、离线与 viewport 组合、键盘/焦点检查、
 Console 门禁、清理和签署表。

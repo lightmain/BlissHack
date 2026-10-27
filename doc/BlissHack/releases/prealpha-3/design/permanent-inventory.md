@@ -679,7 +679,7 @@ frontend/public/nethack.wasm
 frontend/public/nethack-runtime.json
 doc/BlissHack/shim-interface-reference.md
 doc/BlissHack/upstream-modifications.md
-doc/BlissHack/plans/prealpha-3.md
+doc/BlissHack/releases/prealpha-3/plan.md
 ```
 
 默认不修改 `src/invent.c`、`src/options.c`、`include/wintype.h` 或

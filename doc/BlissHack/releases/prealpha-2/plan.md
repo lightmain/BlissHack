@@ -454,7 +454,7 @@ reducer 处理。
 - 真实 `/save` 文件继续是唯一事实来源，不增加 sidecar index。
 
 完整格式、事务和 UI 设计见
-`doc/BlissHack/plans/in-prealpha-2/raw-save-import-export.md`。
+`doc/BlissHack/releases/prealpha-2/design/raw-save-import-export.md`。
 
 ### 5.1 保存并返回主菜单
 
@@ -641,7 +641,7 @@ syncfs(false) 失败后的内存回滚
 ## 7. 阶段五：致命错误页和本地诊断日志
 
 详细设计、事件清单、隐私限制和实现边界见
-`doc/BlissHack/plans/in-prealpha-2/fatal-errors-and-diagnostics.md`。
+`doc/BlissHack/releases/prealpha-2/design/fatal-errors-and-diagnostics.md`。
 
 ### 7.1 诊断日志
 
@@ -727,7 +727,7 @@ syncfs(false) 失败后的内存回滚
 ## 8. 阶段六：浏览器端到端测试
 
 完整测试设计和实现边界见
-`doc/BlissHack/plans/in-prealpha-2/browser-end-to-end-tests.md`。
+`doc/BlissHack/releases/prealpha-2/design/browser-end-to-end-tests.md`。
 
 ### 8.1 测试环境
 

@@ -72,8 +72,8 @@ alpha-2.4 已完成实现、独立复审、自动门禁和人工验收。2026-10
 ## 4. 内容与覆盖
 
 完整数字和 unsupported 原因见
-[核心资料覆盖报告](catalog-coverage-report.md)，Wiki 选择、revision 与许可
-结果见 [Wiki 发布审查报告](wiki-review-report.md)。
+[核心资料覆盖报告](evidence/catalog-coverage-report.md)，Wiki 选择、revision
+与许可结果见 [Wiki 发布审查报告](evidence/wiki-review-report.md)。
 
 - core records：970；supported glyph：6,444；unsupported glyph：3,180。
 - core JSON：1,883,839 B；首次 Detailed 基础索引最坏 107,699 B。普通物品

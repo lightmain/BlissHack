@@ -440,6 +440,6 @@ alpha-1.1 只有同时满足以下条件才算完成：
 | 最终覆盖与修正 | `3a73f2eee test: complete alpha-1.1 interaction coverage`、`34eeb6954 fix: preserve camera for unchanged follow targets`、`108c57f87 build: rebuild alpha-1.1 WASM runtime` |
 
 自动门禁结果和人工检查步骤记录在
-`doc/BlissHack/plans/in-alpha-1.1/release-acceptance.md`。当前完成定义中的
+`doc/BlissHack/releases/alpha-1.1/release-acceptance.md`。当前完成定义中的
 第 1 至 11 项已经完成；第 12 项已完成本地合入，等待用户 push 后执行线上
 smoke test。
