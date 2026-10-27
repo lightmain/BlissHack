@@ -14,11 +14,10 @@
    角色选择、终局结果页和本地 Ranking 也已完成人工验收。alpha-2.3 的
    profile v4、动作栏、动作次级弹窗和 Original TTY 两行状态已完成实现、
    自动门禁、独立复审和人工验收。当前 `VERSION` 为 `alpha-2.4`；Examine
-   观察窗口已完成实现、自动门禁和独立复审，人工验收仍待用户确认。不得在
-   用户确认前把 alpha-2.4 标记为完成。
+   观察窗口已于 2026-10-27 完成实现、自动门禁、独立复审和人工验收。
    alpha-2.3 最终验收记录见
    `doc/BlissHack/plans/in-alpha-2.3/release-acceptance.md`。
-   alpha-2.4 当前自动验收记录与人工清单见
+   alpha-2.4 最终发布验收记录见
    `doc/BlissHack/plans/in-alpha-2.4/release-acceptance.md`，范围与阶段门禁见
    `doc/BlissHack/plans/alpha-2.4.md`。
    GitHub Pages 可能落后，应以页面版本为准。维护当前架构时阅读

@@ -21,8 +21,8 @@ frontend. These changes are documented in
 
 ## Project Status
 
-**Alpha-2.4 implementation, automated gates, and independent review are
-complete. Manual acceptance is pending.**
+**Alpha-2.4 completed implementation, automated gates, independent review,
+and manual acceptance on October 27, 2026.**
 
 Alpha-2.4 adds `Examine` to supported map and permanent-inventory context
 menus in Detailed mode while leaving Original mode and the core's existing
@@ -35,7 +35,7 @@ The reviewed Wiki release currently contains only four complete, verbatim
 paragraphs from `Newt` revision 205110; the two unsafe Overview paragraphs are
 not published. See the
 [Alpha-2.4 Examine dialog plan](doc/BlissHack/plans/alpha-2.4.md) and
-[automated acceptance record](doc/BlissHack/plans/in-alpha-2.4/release-acceptance.md).
+[release acceptance record](doc/BlissHack/plans/in-alpha-2.4/release-acceptance.md).
 The deployment branch and GitHub Pages may lag; use the version displayed by
 the site as the authority.
 
@@ -193,7 +193,7 @@ combinations at 1280x900 and 900x700.
 - [alpha-2.1 release acceptance](doc/BlissHack/plans/in-alpha-2.1/release-acceptance.md)
 - [alpha-2.2 release acceptance](doc/BlissHack/plans/in-alpha-2.2/release-acceptance.md)
 - [alpha-2.3 release acceptance](doc/BlissHack/plans/in-alpha-2.3/release-acceptance.md)
-- [alpha-2.4 automated acceptance](doc/BlissHack/plans/in-alpha-2.4/release-acceptance.md)
+- [alpha-2.4 release acceptance](doc/BlissHack/plans/in-alpha-2.4/release-acceptance.md)
 - [Upstream modification inventory](doc/BlissHack/upstream-modifications.md)
 - [Fatal errors and diagnostic log design](doc/BlissHack/plans/in-prealpha-2/fatal-errors-and-diagnostics.md)
 - [Browser end-to-end test design](doc/BlissHack/plans/in-prealpha-2/browser-end-to-end-tests.md)
