@@ -388,6 +388,52 @@
   line-height: 1.15;
 }
 
+.examine-unidentified-icon {
+  position: relative;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 3px;
+  color: #e5ca70;
+  cursor: help;
+  outline: none;
+}
+
+.examine-unidentified-icon:focus-visible {
+  outline: 2px solid #e5ca70;
+  outline-offset: 2px;
+}
+
+.examine-unidentified-tooltip {
+  position: absolute;
+  z-index: 3;
+  bottom: calc(100% + 9px);
+  left: 50%;
+  width: max-content;
+  max-width: min(240px, calc(100vw - 32px));
+  padding: 4px 7px;
+  border: 1px solid #817547;
+  border-radius: 3px;
+  background: #24231b;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 55%);
+  color: #e8e3d2;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.35;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 2px);
+  white-space: normal;
+}
+
+.examine-unidentified-icon:hover .examine-unidentified-tooltip,
+.examine-unidentified-icon:focus .examine-unidentified-tooltip {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
 .examine-wiki-link {
   min-height: 28px;
   flex: 0 0 auto;
@@ -950,6 +996,21 @@
 
   .character-identity {
     grid-column: auto;
+  }
+
+  .examine-unidentified-tooltip {
+    position: fixed;
+    right: 16px;
+    bottom: 16px;
+    left: 16px;
+    width: auto;
+    max-width: none;
+    transform: none;
+  }
+
+  .examine-unidentified-icon:hover .examine-unidentified-tooltip,
+  .examine-unidentified-icon:focus .examine-unidentified-tooltip {
+    transform: none;
   }
 
 }
