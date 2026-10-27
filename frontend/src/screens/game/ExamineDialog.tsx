@@ -7,7 +7,7 @@ import {
   type KeyboardEvent,
   type MouseEvent,
 } from "react";
-import { ExternalLink, X } from "lucide-react";
+import { BadgeQuestionMark, ExternalLink, X } from "lucide-react";
 import type { GlyphBinding } from "../../encyclopedia/core-schema";
 import type { LoadedEncyclopediaEntity } from "../../encyclopedia/encyclopedia-loader";
 import type { ExamineTarget } from "../../encyclopedia/examine-target";
@@ -46,6 +46,7 @@ export function ExamineDialog({
 }) {
   const instanceId = useId().replaceAll(":", "");
   const titleId = `${instanceId}-examine-title`;
+  const unidentifiedTooltipId = `${instanceId}-unidentified-tooltip`;
   const dialogRef = useRef<HTMLElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const loading = state.status === "loading";
@@ -145,6 +146,25 @@ export function ExamineDialog({
           <div className="examine-heading">
             <div className="examine-title-row">
               <h1 id={titleId}>{title}</h1>
+              {core?.family === "appearance" && (
+                <span
+                  aria-describedby={unidentifiedTooltipId}
+                  aria-label="Unidentified item"
+                  className="examine-unidentified-icon"
+                  data-examine-unidentified="true"
+                  role="img"
+                  tabIndex={0}
+                >
+                  <BadgeQuestionMark aria-hidden="true" size={20} />
+                  <span
+                    className="examine-unidentified-tooltip"
+                    id={unidentifiedTooltipId}
+                    role="tooltip"
+                  >
+                    Identify this item to reveal its details.
+                  </span>
+                </span>
+              )}
               {wikiPage && (
                 <a
                   aria-label={`Open ${wikiPage.title} on NetHackWiki`}

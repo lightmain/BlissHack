@@ -950,6 +950,80 @@ describe("core-class Examine template dispatch", () => {
 });
 
 describe("appearance and optional Wiki presentation boundaries", () => {
+  it("marks a ready appearance as unidentified after its title", () => {
+    const markup = headingMarkup(renderDialog(
+      catalogEntity(APPEARANCE_CORE, {
+        title: "Potion",
+        url: "https://nethackwiki.com/wiki/Potion",
+      }),
+      { ...NEWT_TARGET, entityId: APPEARANCE_CORE.id },
+    ));
+    const heading = parseMarkup(markup);
+    const titleRows = nodesWithClass(heading, "examine-title-row");
+
+    expect(titleRows, "heading must contain one title row").toHaveLength(1);
+    const unidentifiedIcons = nodesWithClass(
+      titleRows[0],
+      "examine-unidentified-icon",
+    );
+    expect(titleRows[0].children[0]).toMatchObject({
+      name: "h1",
+      text: "Potion",
+    });
+    expect(
+      unidentifiedIcons,
+      "appearance title must contain one unidentified icon",
+    ).toHaveLength(1);
+    const unidentifiedTag = openingTag(
+      markup,
+      "examine-unidentified-icon",
+    );
+    const titleIndex = markup.indexOf(">Potion");
+    const unidentifiedIndex = markup.indexOf(unidentifiedTag);
+    const wikiIndex = markup.indexOf('class="examine-wiki-link"');
+    expect(titleIndex, "missing appearance title").toBeGreaterThan(-1);
+    expect(unidentifiedIndex).toBeGreaterThan(titleIndex);
+    expect(wikiIndex, "missing appearance Wiki link").toBeGreaterThan(
+      unidentifiedIndex,
+    );
+    const tooltipId = unidentifiedIcons[0].attributes["aria-describedby"];
+    expect(unidentifiedIcons[0].attributes).toMatchObject({
+      "aria-label": "Unidentified item",
+      "data-examine-unidentified": "true",
+      role: "img",
+      tabindex: "0",
+    });
+    expect(tooltipId).toMatch(/-unidentified-tooltip$/);
+    const tooltips = nodesWithClass(
+      unidentifiedIcons[0],
+      "examine-unidentified-tooltip",
+    );
+    expect(tooltips, "unidentified icon must own one tooltip").toHaveLength(1);
+    expect(tooltips[0]).toMatchObject({
+      attributes: {
+        id: tooltipId,
+        role: "tooltip",
+      },
+      text: "Identify this item to reveal its details.",
+    });
+  });
+
+  it.each([
+    ["ordinary object", WEAPON_CORE],
+    ["artifact", ARTIFACT_CORE],
+    ["monster", NEWT_CORE],
+    ["terrain", TERRAIN_CORE],
+    ["trap", TRAP_CORE],
+  ])("does not mark a ready %s as unidentified", (_label, core) => {
+    const heading = headingMarkup(renderDialog(
+      catalogEntity(core, null),
+      { ...NEWT_TARGET, entityId: core.id },
+    ));
+
+    expect(heading).not.toContain("examine-unidentified-icon");
+    expect(heading).not.toContain("data-examine-unidentified");
+  });
+
   it("keeps an appearance on its spoiler-safe category view", () => {
     const core = {
       schemaVersion: 2,
