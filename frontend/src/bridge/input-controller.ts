@@ -502,11 +502,17 @@ function resolvePendingKey(value: number): boolean {
   return false;
 }
 
-/** Send the native save command from a top-level command prompt. */
-export function requestSaveAndExit(): void {
-  if (pendingAction?.kind !== "key" || !pendingAction.commandInput) return;
+/**
+ * Send the native save command from a top-level command prompt.
+ * @returns whether the command was accepted at the current boundary.
+ */
+export function requestSaveAndExit(): boolean {
+  if (pendingAction?.kind !== "key" || !pendingAction.commandInput) {
+    return false;
+  }
   saveExitAutomation = "confirm";
   sendKey(SAVE_COMMAND);
+  return true;
 }
 
 /**

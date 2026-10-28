@@ -22,6 +22,7 @@ import type {
   FullBackupImportResult,
 } from "../session/session-manager";
 import { GameLockCancelledError } from "../concurrency/game-lock";
+import { saveUserFile } from "../desktop/save-user-file";
 import { DataManagementControls } from "./settings/DataManagementControls";
 import {
   BackupImportResultsDialog,
@@ -134,7 +135,7 @@ export function DataManagementSection({
     setPending(true);
     setError(null);
     try {
-      downloadText(await onExportFullBackup());
+      await downloadText(await onExportFullBackup());
     } catch (operationError) {
       if (!(operationError instanceof GameLockCancelledError)) {
         setError({
@@ -356,16 +357,12 @@ export function DataManagementSection({
 }
 
 /** Download one fully constructed backup JSON document. */
-function downloadText(exported: FullBackupExport): void {
-  const blob = new Blob([exported.text], { type: exported.mimeType });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = exported.fileName;
-  document.body.append(anchor);
-  anchor.click();
-  anchor.remove();
-  globalThis.setTimeout(() => URL.revokeObjectURL(url), 0);
+function downloadText(exported: FullBackupExport): Promise<unknown> {
+  return saveUserFile({
+    data: exported.text,
+    fileName: exported.fileName,
+    mimeType: exported.mimeType,
+  });
 }
 
 /** Restore focus after the portal cleanup removes background inertness. */

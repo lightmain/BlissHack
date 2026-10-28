@@ -401,6 +401,27 @@ M win/shim/winshim.c
   - `frontend/src/bridge/emscripten-module.test.ts`
   - `frontend/test/integration-tests/wasm-test.mjs`
 
+### 2.17 严格 CSP 下的 WASM UUID 生成
+
+- **文件**：`sys/libnh/libnhmain.c`
+- **引入提交**：alpha-2.5 桌面实现提交
+- **目的**：
+  - 用 Emscripten `EM_JS` helper 直接调用 `crypto.randomUUID()`，并通过
+    `stringToUTF8()` 把结果复制到 C 提供的固定缓冲区。
+  - 移除 `emscripten_run_script_int()` 和
+    `emscripten_run_script_string()`，避免 Emscripten runtime 为动态脚本
+    调用 `eval()`，使桌面 renderer 能保持不含 `'unsafe-eval'` 的严格 CSP。
+  - 浏览器缺少 `crypto.randomUUID()` 时保持原有空 UUID fallback，不改变
+    非 Emscripten 平台实现。
+- **ABI 范围**：不新增导出函数、shim callback 或 JavaScript 全局对象；
+  helper 只在 `get_nhuuid()` 的同步 C 调用栈内写入调用方缓冲区。
+- **行为依据**：
+  `doc/BlissHack/shim-interface-reference.md` 第 6.9 节。
+- **回归测试**：
+  - `frontend/electron/desktop-contract.test.mjs`
+  - `frontend/test/integration-tests/wasm-test.mjs`
+  - `frontend/test/integration-tests/desktop/desktop-smoke.spec.ts`
+
 ## 3. 上游合并检查
 
 每次从 `upstream/NetHack-5.0` 合并后必须：

@@ -753,8 +753,14 @@ function safeDownloadName(playerName: string): string {
       : character)
     .join("")
     .replace(/[. ]+$/g, "");
-  return safeName || "nethack-save";
+  const availableName = safeName || "nethack-save";
+  return WINDOWS_RESERVED_FILE_NAME.test(availableName)
+    ? `_${availableName}`
+    : availableName;
 }
+
+const WINDOWS_RESERVED_FILE_NAME =
+  /^(?:con|prn|aux|nul|com[1-9\u00b9\u00b2\u00b3]|lpt[1-9\u00b9\u00b2\u00b3])(?:\.|$)/iu;
 
 /** Build the metadata revision bound to one destructive save confirmation. */
 function saveListRevision(save: SaveListEntry): string {

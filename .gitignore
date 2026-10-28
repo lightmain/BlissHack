@@ -28,6 +28,8 @@ core
 !frontend/public/encyclopedia/core/
 !frontend/public/encyclopedia/core/**
 frontend/.encyclopedia-wiki-refresh/
+frontend/out/
+frontend/Singleton*
 # CVS default ignores end
 .*.swp
 

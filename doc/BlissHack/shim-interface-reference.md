@@ -2167,6 +2167,34 @@ shim 的同步槽、栈复制和全部清理边界保持不变，只把允许的
 该修改不改变 `struct window_procs`、原生 `libnethack.a` ABI、对象结构或存档
 格式，也不读取对象链或保存 C 指针。
 
+### 6.9 严格 CSP 下的 WASM UUID 生成
+
+上游 Emscripten 路径中的 `get_nhuuid()` 原本通过
+`emscripten_run_script_int()` 检查 `crypto.randomUUID()`，再通过
+`emscripten_run_script_string()` 取得 UUID。这两个 API 会让 Emscripten
+runtime 动态执行字符串脚本，需要页面 CSP 允许 `'unsafe-eval'`。
+
+BlissHack 改用一个只在 `__EMSCRIPTEN__` 构建中存在的 `EM_JS` helper：
+
+```c
+EM_JS(int, js_random_uuid, (char *buffer, int buffer_size), {
+    if (typeof crypto === "undefined"
+        || typeof crypto.randomUUID !== "function") {
+        return 0;
+    }
+    stringToUTF8(crypto.randomUUID(), buffer, buffer_size);
+    return 1;
+});
+```
+
+`get_nhuuid()` 把原有 37-byte 零初始化缓冲区交给 helper。成功时 UUID 被复制
+进该缓冲区；API 不可用时 helper 返回 0，C 侧继续使用空字符串 fallback。
+helper 不保存指针、不跨越 Asyncify 等待，也不暴露新导出或 callback。
+
+这一修改让生成的 `nethack.js` 不再包含运行时 `eval()` 调用。Electron
+renderer 因此只需为 WebAssembly 编译保留 `'wasm-unsafe-eval'`，无需放宽为
+可以执行任意字符串脚本的 `'unsafe-eval'`。
+
 ---
 
 ## 7. 附录：类型速查表

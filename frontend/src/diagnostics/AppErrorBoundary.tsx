@@ -50,7 +50,10 @@ export class AppErrorBoundary extends Component<
           </p>
           <div className="fatal-actions">
             <button
-              onClick={() => downloadDiagnosticLog(this.props.diagnostics)}
+              onClick={() => {
+                void downloadDiagnosticLog(this.props.diagnostics)
+                  .catch(() => undefined);
+              }}
               type="button"
             >
               Export Diagnostic Log

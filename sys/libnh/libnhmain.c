@@ -6,10 +6,11 @@
 /* main.c - Unix NetHack */
 
 /* Modified for BlissHack by lightmain, 2026-09-12, 2026-09-18, 2026-09-19,
- * and 2026-09-23:
+ * 2026-09-23, and 2026-10-28:
  * expose glyph_info ABI metadata, a copied versioned character catalog, and
  * a copied action-command catalog; expose read-only game-over state plus the
- * restore-only startup guard to the WebAssembly client. */
+ * restore-only startup guard to the WebAssembly client; avoid runtime eval
+ * when generating a browser UUID. */
 
 #include "hack.h"
 #include "dlb.h"
@@ -30,6 +31,14 @@ void js_constants_init();
 void js_globals_init();
 void js_character_catalog_init();
 void js_action_catalog_init();
+EM_JS(int, js_random_uuid, (char *buffer, int buffer_size), {
+    if (typeof crypto === "undefined"
+        || typeof crypto.randomUUID !== "function") {
+        return 0;
+    }
+    stringToUTF8(crypto.randomUUID(), buffer, buffer_size);
+    return 1;
+});
 #endif
 
 #if !defined(_BULL_SOURCE) && !defined(__sgi) && !defined(_M_UNIX)
@@ -816,28 +825,17 @@ get_nhuuid(void)
                              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
     char *uuid = (char *) &stmp[0];
-#ifndef NONHUUID
-#ifdef __EMSCRIPTEN__
-    int uuid_available = 0;
-#endif
-#endif
 
     if (svn.nhuuid[0])
         return;
 
 #ifndef NONHUUID
 #ifdef __EMSCRIPTEN__
-    uuid_available = emscripten_run_script_int(
-		    "typeof crypto !== 'undefined'"
-		    " && typeof crypto.randomUUID === 'function'");
-    if (uuid_available) {
-        uuid = emscripten_run_script_string("crypto.randomUUID()");
-        if (!uuid) {
-            uuid = (char *) &stmp[0];
-        }
-    }
+    if (!js_random_uuid(uuid, (int) sizeof stmp))
+        uuid = (char *) &stmp[0];
 #endif  /* __EMSCRIPTEN__ */
 #endif  /* NONHUUID */
+
     Snprintf(svn.nhuuid, sizeof svn.nhuuid, "%s", uuid);
 }
 

@@ -1,6 +1,7 @@
 /** Properties for an unrecoverable application failure. */
 interface FatalScreenProps {
   errorId: string;
+  exportError?: string | null;
   hasFailedSession: boolean;
   onExportDiagnostics: () => void;
   onReload: () => void;
@@ -14,6 +15,7 @@ interface FatalScreenProps {
  */
 export function FatalScreen({
   errorId,
+  exportError = null,
   hasFailedSession,
   onExportDiagnostics,
   onReload,
@@ -28,6 +30,7 @@ export function FatalScreen({
           The current operation stopped to avoid using an invalid game state.
         </p>
         <p>Error ID: <code>{errorId}</code></p>
+        {exportError && <p role="alert">{exportError}</p>}
         <div className="fatal-actions">
           <button onClick={onExportDiagnostics} type="button">
             Export Diagnostic Log

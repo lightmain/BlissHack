@@ -7,6 +7,7 @@ export default defineConfig({
     include: [
       "src/**/*.test.ts",
       "scripts/**/*.test.mjs",
+      "electron/**/*.test.mjs",
     ],
   },
 });

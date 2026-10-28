@@ -94,6 +94,18 @@ const adaSave: ReadySave = {
   status: "ready",
   identity: adaIdentity,
 };
+const WINDOWS_RESERVED_FILE_NAMES = [
+  "CON",
+  "PRN",
+  "AUX",
+  "NUL",
+  ...Array.from({ length: 9 }, (_, index) => `COM${index + 1}`),
+  ...Array.from({ length: 9 }, (_, index) => `LPT${index + 1}`),
+  ..."¹²³".split("").map((suffix) => `COM${suffix}`),
+  ..."¹²³".split("").map((suffix) => `LPT${suffix}`),
+];
+const WINDOWS_RESERVED_DOWNLOAD_NAME =
+  /^(?:con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?:\.|$)/i;
 
 /** Create the minimum idle module needed by Home storage tests. */
 function createModule(): EmscriptenModule {
@@ -248,6 +260,38 @@ describe("Home raw save operations", () => {
       "/save/0Unknown",
     )).rejects.toThrow(/listed/i);
     expect(storage.exportSave).toHaveBeenCalledOnce();
+  });
+
+  it("makes every Windows device name safe in exported save filenames", async () => {
+    const unsafeFileNames: string[] = [];
+
+    for (const playerName of WINDOWS_RESERVED_FILE_NAMES) {
+      const listedSave: ReadySave = {
+        ...adaSave,
+        path: `/save/0${playerName}`,
+        identity: { ...adaIdentity, playerName },
+      };
+      const storage = {
+        initialize: vi.fn(async () => true),
+        listSaves: vi.fn(async () => [listedSave]),
+        importSave: vi.fn(),
+        exportSave: vi.fn(async () => Uint8Array.of(0x68)),
+        readSave: vi.fn(),
+        restoreOriginalSave: vi.fn(),
+        deleteSave: vi.fn(),
+        flush: vi.fn(async () => undefined),
+      };
+      const { manager } = createManager(storage);
+      await manager.initialize();
+
+      const exported = await manager.exportSave("module-1", listedSave.path);
+      expect(exported.fileName).toMatch(/\.nhsave$/);
+      if (WINDOWS_RESERVED_DOWNLOAD_NAME.test(exported.fileName)) {
+        unsafeFileNames.push(exported.fileName);
+      }
+    }
+
+    expect(unsafeFileNames).toEqual([]);
   });
 
   it("exports unavailable save bytes with a stable hash fallback name", async () => {

@@ -284,7 +284,7 @@ export function SettingsScreen({
     setError(null);
     setProfilePending(true);
     try {
-      downloadProfile(await onExportProfile(), PRODUCT_VERSION);
+      await downloadProfile(await onExportProfile(), PRODUCT_VERSION);
     } catch (error) {
       if (!(error instanceof GameLockCancelledError)) {
         setError({

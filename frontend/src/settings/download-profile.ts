@@ -1,19 +1,17 @@
 import { serializeProfileExport, type BlissHackProfile } from "./profile";
+import {
+  saveUserFile,
+  type SaveUserFileResult,
+} from "../desktop/save-user-file";
 
 /** Download one validated profile as a portable .bhprofile document. */
 export function downloadProfile(
   profile: BlissHackProfile,
   productVersion: string,
-): void {
-  const blob = new Blob([serializeProfileExport(profile, productVersion)], {
-    type: "application/json;charset=utf-8",
+): Promise<SaveUserFileResult> {
+  return saveUserFile({
+    data: serializeProfileExport(profile, productVersion),
+    fileName: "blisshack-profile.bhprofile",
+    mimeType: "application/json;charset=utf-8",
   });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = "blisshack-profile.bhprofile";
-  document.body.append(anchor);
-  anchor.click();
-  anchor.remove();
-  globalThis.setTimeout(() => URL.revokeObjectURL(url), 0);
 }

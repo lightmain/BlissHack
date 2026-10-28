@@ -1,8 +1,10 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useReducer,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -39,6 +41,19 @@ import { isLocalWizardAcceptanceEnabled } from "./session/wizard-acceptance";
 import { GameLockConflictDialog } from "./screens/GameLockConflictDialog";
 import type { BlissHackProfile } from "./settings/profile";
 import { ProfileStaleError } from "./settings/profile-store";
+import {
+  getSnapshot,
+  subscribe as subscribeGameState,
+} from "./game-state";
+import { requestSaveAndExit } from "./nethack-bridge";
+import {
+  createDesktopCloseCoordinator,
+  type DesktopCloseChoice,
+  type DesktopClosePrompt,
+} from "./desktop/desktop-close";
+import { getDesktopApi } from "./desktop/desktop-api";
+import { saveUserFile } from "./desktop/save-user-file";
+import { DesktopCloseDialog } from "./screens/DesktopCloseDialog";
 
 const wizardAcceptance = isLocalWizardAcceptanceEnabled(
   import.meta.env.DEV,
@@ -77,6 +92,22 @@ function App({
   const [homeOperationError, setHomeOperationError] = useState<string | null>(
     null,
   );
+  const [diagnosticExportError, setDiagnosticExportError] =
+    useState<string | null>(null);
+  const desktopApi = useMemo(() => getDesktopApi(), []);
+  const desktopCloseCoordinator = useMemo(
+    () => desktopApi
+      ? createDesktopCloseCoordinator({
+        requestSaveAndExit,
+        respondToClose: (requestId, decision) =>
+          desktopApi.respondToClose(requestId, decision),
+      })
+      : null,
+    [desktopApi],
+  );
+  const [desktopClosePrompt, setDesktopClosePrompt] =
+    useState<DesktopClosePrompt | null>(null);
+  const stateRef = useRef(state);
   const sessionManager = useMemo(
     () => createSessionManager({
       diagnostics,
@@ -86,6 +117,51 @@ function App({
     }),
     [diagnostics, dispatch, reloadProfile],
   );
+
+  useEffect(() => {
+    if (!desktopCloseCoordinator) return undefined;
+    return desktopCloseCoordinator.subscribe(() => {
+      setDesktopClosePrompt(desktopCloseCoordinator.getPrompt());
+    });
+  }, [desktopCloseCoordinator]);
+
+  useLayoutEffect(() => {
+    stateRef.current = state;
+  }, [state]);
+
+  useEffect(() => {
+    if (!desktopApi || !desktopCloseCoordinator) return undefined;
+    return desktopApi.onCloseRequested((request) => {
+      const currentState = stateRef.current;
+      desktopCloseCoordinator.observe({
+        appState: currentState,
+        gameSnapshot: currentState.phase === "session"
+          ? getSnapshot()
+          : null,
+      });
+      desktopCloseCoordinator.handleRequest(request);
+    });
+  }, [desktopApi, desktopCloseCoordinator]);
+
+  useEffect(() => {
+    desktopCloseCoordinator?.observe({
+      appState: state,
+      gameSnapshot: state.phase === "session" ? getSnapshot() : null,
+    });
+  }, [desktopCloseCoordinator, state]);
+
+  useEffect(() => {
+    if (!desktopCloseCoordinator) return undefined;
+    return subscribeGameState(() => {
+      const currentState = stateRef.current;
+      desktopCloseCoordinator.observe({
+        appState: currentState,
+        gameSnapshot: currentState.phase === "session"
+          ? getSnapshot()
+          : null,
+      });
+    });
+  }, [desktopCloseCoordinator]);
 
   /**
    * Keep a conflicted operation pending until the player retries or cancels it.
@@ -266,7 +342,7 @@ function App({
     }
     const exported = await runWithLockRetry(() =>
       sessionManager.exportSave(state.moduleId, save.path));
-    downloadRawSave(exported);
+    await downloadRawSave(exported);
   }
 
   /** Export profile and every formal save through the prepared module. */
@@ -367,6 +443,14 @@ function App({
     });
   }, [diagnostics, diagnosticModuleId]);
 
+  /** Export diagnostics without leaking a rejected native Save operation. */
+  const exportDiagnostics = useCallback(() => {
+    setDiagnosticExportError(null);
+    void downloadDiagnosticLog(diagnostics).catch(() => {
+      setDiagnosticExportError("The diagnostic log could not be exported.");
+    });
+  }, [diagnostics]);
+
   /** Add the application-level conflict dialog above the current screen. */
   function withLockDialog(screen: ReactNode): ReactNode {
     return (
@@ -378,6 +462,17 @@ function App({
             onRetry={lockRetry.retry}
             pending={lockRetry.pending}
             requestFailed={lockRetry.kind === "request-failed"}
+          />
+        )}
+        {desktopClosePrompt && (
+          <DesktopCloseDialog
+            onChoose={(choice: DesktopCloseChoice) => {
+              desktopCloseCoordinator?.choose(
+                desktopClosePrompt.requestId,
+                choice,
+              );
+            }}
+            prompt={desktopClosePrompt}
           />
         )}
       </>
@@ -401,13 +496,13 @@ function App({
     return withLockDialog(
       <HomeScreen
         gameLockSupported={sessionManager.isGameLockSupported()}
-        operationError={homeOperationError}
+        operationError={homeOperationError ?? diagnosticExportError}
         moduleId={state.moduleId}
         onContinue={openSavePicker}
         onContinueSave={continueGame}
         onDeleteSave={deleteSave}
         onDismissSavePicker={closeSavePicker}
-        onExportDiagnostics={() => downloadDiagnosticLog(diagnostics)}
+        onExportDiagnostics={exportDiagnostics}
         onExportSave={exportSave}
         onImportSave={importSave}
         onNewGame={startNewGame}
@@ -444,9 +539,10 @@ function App({
   if (state.phase === "fatal") {
     return withLockDialog(
       <FatalScreen
+        exportError={diagnosticExportError}
         errorId={state.errorId}
         hasFailedSession={state.sessionId !== null}
-        onExportDiagnostics={() => downloadDiagnosticLog(diagnostics)}
+        onExportDiagnostics={exportDiagnostics}
         onReload={() => globalThis.location.reload()}
         onReturnHome={() => {
           void sessionManager.recoverHome().catch(() => undefined);
@@ -511,18 +607,12 @@ function downloadRawSave(exported: {
   bytes: Uint8Array;
   fileName: string;
   mimeType: string;
-}): void {
-  const blob = new Blob([Uint8Array.from(exported.bytes).buffer], {
-    type: exported.mimeType,
+}): Promise<unknown> {
+  return saveUserFile({
+    data: exported.bytes,
+    fileName: exported.fileName,
+    mimeType: exported.mimeType,
   });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = exported.fileName;
-  document.body.append(anchor);
-  anchor.click();
-  anchor.remove();
-  globalThis.setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 export default App;

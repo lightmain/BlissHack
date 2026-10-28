@@ -25,6 +25,7 @@ import {
   type ActionPresentation,
 } from "../../action-bar/action-catalog-metadata";
 import type { SessionActionCatalog } from "../../game-actions/action-catalog";
+import { saveUserFile } from "../../desktop/save-user-file";
 
 const SECTION_LABELS = {
   common: "Common",
@@ -236,18 +237,17 @@ export function AllActionsPanel({
    * Download the committed layout as a deterministic schema-v1 document.
    * @returns nothing.
    */
-  function exportLayout(): void {
-    const blob = new Blob([serializeActionBarLayoutExport(layout)], {
-      type: "application/json;charset=utf-8",
-    });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = "blisshack-action-bar.bhactions";
-    document.body.append(anchor);
-    anchor.click();
-    anchor.remove();
-    globalThis.setTimeout(() => URL.revokeObjectURL(url), 0);
+  async function exportLayout(): Promise<void> {
+    setImportError(null);
+    try {
+      await saveUserFile({
+        data: serializeActionBarLayoutExport(layout),
+        fileName: "blisshack-action-bar.bhactions",
+        mimeType: "application/json;charset=utf-8",
+      });
+    } catch {
+      setImportError("The action bar layout could not be exported.");
+    }
   }
 
   /**
@@ -302,7 +302,7 @@ export function AllActionsPanel({
           <button
             aria-label="Export action bar layout"
             disabled={importPending}
-            onClick={exportLayout}
+            onClick={() => void exportLayout()}
             title="Export layout"
             type="button"
           >
