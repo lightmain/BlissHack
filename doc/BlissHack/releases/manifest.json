@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "currentVersion": "alpha-2.4",
+  "currentVersion": "alpha-2.5",
   "releases": [
     {
       "version": "prealpha-1",
@@ -112,6 +112,14 @@
         "doc/BlissHack/releases/alpha-2.4/evidence/source-license-baseline.md",
         "doc/BlissHack/releases/alpha-2.4/evidence/wiki-review-report.md"
       ]
+    },
+    {
+      "version": "alpha-2.5",
+      "status": "in-progress",
+      "summary": "提供 Windows 与 macOS Electron 桌面发行版、本地打包和安全退出存档流程。",
+      "plan": "doc/BlissHack/releases/alpha-2.5/plan.md",
+      "acceptance": null,
+      "artifacts": []
     }
   ]
 }

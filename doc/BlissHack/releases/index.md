@@ -15,6 +15,7 @@
 | alpha-2.1 | accepted | 完成焦点管理和 Below HUD 布局。 | [计划](./alpha-2.1/plan.md) · [验收](./alpha-2.1/release-acceptance.md) |
 | alpha-2.2 | accepted | 完成 profile v3、统一角色选择、终局结果和本地 Ranking。 | [计划](./alpha-2.2/plan.md) · [验收](./alpha-2.2/release-acceptance.md) |
 | alpha-2.3 | accepted | 完成动作栏、次级弹窗和 Original TTY 两行状态。 | [计划](./alpha-2.3/plan.md) · [验收](./alpha-2.3/release-acceptance.md) |
-| alpha-2.4（当前） | accepted | 完成 Detailed Examine 观察窗口、资料生成和发布审查。 | [计划](./alpha-2.4/plan.md) · [验收](./alpha-2.4/release-acceptance.md) |
+| alpha-2.4 | accepted | 完成 Detailed Examine 观察窗口、资料生成和发布审查。 | [计划](./alpha-2.4/plan.md) · [验收](./alpha-2.4/release-acceptance.md) |
+| alpha-2.5（当前） | in-progress | 提供 Windows 与 macOS Electron 桌面发行版、本地打包和安全退出存档流程。 | [计划](./alpha-2.5/plan.md) |
 
 阶段设计和发布证据位于各版本目录。调查历史时从对应版本计划开始。
