@@ -12,7 +12,9 @@ import "./App.css";
 import {
   appReducer,
   initialAppState,
+  type AppAction,
 } from "./app/app-state";
+import { dispatchWithScreenMotion } from "./app/ui-motion";
 import { installBrowserErrorListeners } from "./diagnostics/browser-errors";
 import {
   getBrowserDiagnosticLog,
@@ -77,7 +79,10 @@ function App({
 }: {
   diagnostics?: DiagnosticLog;
 }) {
-  const [state, dispatch] = useReducer(appReducer, initialAppState);
+  const [state, baseDispatch] = useReducer(appReducer, initialAppState);
+  const dispatch = useCallback((action: AppAction) => {
+    dispatchWithScreenMotion(baseDispatch, action);
+  }, [baseDispatch]);
   const {
     loadStatus,
     profile,

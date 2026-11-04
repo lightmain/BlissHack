@@ -45,7 +45,21 @@ describe("HomeScreen", () => {
     expect(html).toMatch(/unofficial|非官方/i);
     expect(html).toMatch(/<footer[\s\S]*BlissHack[\s\S]*copyright/i);
     expect(html).toMatch(/<a[^>]+href=[^>]+>[^<]*licen[cs]e[^<]*<\/a>/i);
-    expect(html.match(/alpha-2\.5/g)).toHaveLength(2);
+    expect(html.match(/alpha-2\.6/g)).toHaveLength(2);
+  });
+
+  it("renders the decorative dungeon as hidden ASCII", () => {
+    const html = renderToStaticMarkup(createElement(HomeScreen, {
+      onNewGame: vi.fn(),
+    }));
+    const dungeon = html.match(
+      /<pre\b(?=[^>]*\bclass="home-dungeon")(?=[^>]*\baria-hidden="true")[^>]*>([\s\S]*?)<\/pre>/i,
+    );
+
+    expect(dungeon, "missing the home-dungeon ASCII scene").toBeDefined();
+    expect(dungeon?.[1]).toContain("@");
+    expect(dungeon?.[1]).toContain("&gt;");
+    expect(dungeon?.[1]).toMatch(/[.#|+-]/);
   });
 
   it("does not start a session while rendering the home screen", () => {

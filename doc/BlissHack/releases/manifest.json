@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "currentVersion": "alpha-2.5",
+  "currentVersion": "alpha-2.6",
   "releases": [
     {
       "version": "prealpha-1",
@@ -122,6 +122,14 @@
       "artifacts": [
         "doc/BlissHack/releases/alpha-2.5/manual-test.md"
       ]
+    },
+    {
+      "version": "alpha-2.6",
+      "status": "in-progress",
+      "summary": "以克制的终端动效统一主页、角色创建、游戏界面和窗口切换。",
+      "plan": "doc/BlissHack/releases/alpha-2.6/plan.md",
+      "acceptance": null,
+      "artifacts": []
     }
   ]
 }

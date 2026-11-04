@@ -335,7 +335,7 @@ function configureApplicationMenu() {
 function configureAboutPanel() {
   app.setAboutPanelOptions({
     applicationName: "BlissHack",
-    applicationVersion: "alpha-2.5",
+    applicationVersion: "alpha-2.6",
     copyright: "NetHack copyright 1985-2026",
     credits: "Unofficial NetHack 5.0 port. See bundled notices for licensing.",
     website: "https://github.com/lightmain/BlissHack",

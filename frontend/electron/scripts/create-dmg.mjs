@@ -22,7 +22,7 @@ const staging = join(frontendRoot, "out", `.dmg-staging-${architecture}`);
 const outputDirectory = join(frontendRoot, "out", "make");
 const output = join(
   outputDirectory,
-  `BlissHack-alpha-2.5-darwin-${architecture}.dmg`,
+  `BlissHack-alpha-2.6-darwin-${architecture}.dmg`,
 );
 const electronLicenseRoot = join(
   frontendRoot,
@@ -52,7 +52,7 @@ await symlink("/Applications", join(staging, "Applications"));
 await execFileAsync("hdiutil", [
   "create",
   "-volname",
-  "BlissHack alpha-2.5",
+  "BlissHack alpha-2.6",
   "-srcfolder",
   staging,
   "-ov",

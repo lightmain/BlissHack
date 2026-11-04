@@ -53,7 +53,7 @@ describe("desktop packaging contract", () => {
 
     expect(packageJson).toMatchObject({
       main: "electron/main.mjs",
-      version: "0.2.5-alpha.0",
+      version: "0.2.6-alpha.0",
     });
     expect(forgeConfig.packagerConfig).toMatchObject({
       appBundleId: "org.blisshack.desktop",
@@ -439,7 +439,7 @@ describe("desktop packaging contract", () => {
         );
         expect(packagedJson).toMatchObject({
           main: "electron/main.mjs",
-          version: "0.2.5-alpha.0",
+          version: "0.2.6-alpha.0",
         });
         const packagedIcon = extractFile(
           asarPath,
@@ -475,7 +475,7 @@ describe("desktop packaging contract", () => {
       );
       const dmgPath = join(
         makeRoot,
-        `BlissHack-alpha-2.5-darwin-${arch}.dmg`,
+        `BlissHack-alpha-2.6-darwin-${arch}.dmg`,
       );
       const { stdout } = await execFileAsync(
         "unzip",

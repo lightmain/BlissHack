@@ -5,6 +5,7 @@
   color: #d8d8d2;
   font-size: 14px;
   letter-spacing: 0;
+  animation: ui-page-enter 150ms cubic-bezier(0.2, 0, 0, 1) both;
 }
 
 .settings-screen-game {
@@ -590,6 +591,7 @@
   display: grid;
   place-items: center;
   background: rgb(0 0 0 / 78%);
+  animation: ui-dialog-backdrop-enter 140ms ease-out both;
 }
 
 .settings-modal {
@@ -601,6 +603,7 @@
   border-radius: 4px;
   background: #111416;
   box-shadow: 0 18px 50px rgb(0 0 0 / 60%);
+  animation: ui-dialog-enter 140ms ease-out both;
 }
 
 .settings-modal h2 {

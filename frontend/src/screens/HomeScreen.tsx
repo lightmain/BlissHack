@@ -151,11 +151,15 @@ export function HomeScreen({
         </nav>
 
         <div className="home-identity">
-          <div aria-hidden="true" className="home-mark">
-            <span>@</span>
-            <span>·</span>
-            <span>&gt;</span>
-          </div>
+          <pre aria-hidden="true" className="home-dungeon">
+            <span>|----<b>+</b>----|</span>
+            <span>|....#....|</span>
+            <span>|.<b className="home-dungeon-player">@</b>..#..<b
+              className="home-dungeon-exit"
+            >&gt;</b>.|</span>
+            <span>|....#....|</span>
+            <span>|----<b>+</b>----|</span>
+          </pre>
           <h1 id="home-title">BlissHack</h1>
           <p>An unofficial NetHack 5.0 port</p>
         </div>

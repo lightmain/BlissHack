@@ -1,7 +1,7 @@
 {
   "name": "blisshack",
   "private": true,
-  "version": "0.2.5-alpha.0",
+  "version": "0.2.6-alpha.0",
   "productName": "BlissHack",
   "description": "An unofficial NetHack 5.0 port with a modern desktop interface.",
   "author": "The BlissHack contributors",

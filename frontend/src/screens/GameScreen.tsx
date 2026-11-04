@@ -1235,84 +1235,96 @@ export function GameScreen({
           {snapshot.error}
         </section>
       ) : showCharacterSetup ? (
-        <CharacterSetupScreen
-          inputRequest={snapshot.inputRequest}
-          mapRenderer={settings.mapRenderer}
-          moduleId={moduleId}
-          sessionId={sessionId}
-        />
+        <div
+          className="game-stage"
+          data-game-stage="character"
+          key="character"
+        >
+          <CharacterSetupScreen
+            inputRequest={snapshot.inputRequest}
+            mapRenderer={settings.mapRenderer}
+            moduleId={moduleId}
+            sessionId={sessionId}
+          />
+        </div>
       ) : (
-        <GameTerminal
-          activeActionName={
-            actionState.intent?.kind === "catalog-action"
-            && (
-              actionState.status === "presenting-item-menu"
-              || actionState.status === "targeting-direction"
-              || actionState.status === "targeting-position"
-            )
-              ? actionState.intent.actionName
-              : null
-          }
-          allActionsOpen={allActionsOpen}
-          actionBarLayout={settings.actionBarLayout}
-          actionBarStyle={settings.actionBarStyle}
-          actionBlocked={
-            readOnly
-            || !snapshot.commandInput
-            || snapshot.modal !== null
-            || pauseView !== null
-            || visibleExamineViewTarget !== null
-            || actionState.intent !== null
-            || inventoryDragState.status !== "idle"
-          }
-          actionCatalog={actionCatalog}
-          clipCenter={snapshot.clipCenter}
-          commandInput={snapshot.commandInput}
-          cursor={snapshot.cursor}
-          directionTargeting={directionTargeting}
-          followPlayer={settings.followPlayer}
-          historyLines={settings.messageHistoryLines}
-          informationLevel={settings.informationLevel}
-          inert={
-            readOnly
-            || snapshot.modal !== null
-            || pauseView !== null
-            || visibleExamineViewTarget !== null
-          }
-          inputRequest={secondaryInputRequest ? null : snapshot.inputRequest}
-          inventoryDragController={inventoryDragController}
-          inventoryDragState={inventoryDragState}
-          layoutKey={[
-            settings.terminalFontSize,
-            settings.messageHistoryLines,
-            settings.mapRenderer,
-            settings.actionBarStyle,
-            settings.actionBarLayout.rows,
-          ].join(":")}
-          map={snapshot.map}
-          mapRenderer={settings.mapRenderer}
-          messages={snapshot.messages}
-          onContextClick={handleContextClick}
-          onContextItem={handleInventoryContext}
-          onDragChange={handleMapDragChange}
-          onHoverLeave={handleInspectLeave}
-          onHoverTarget={handleMapHover}
-          onInspect={handleLocalInspect}
-          onInspectLeave={handleInspectLeave}
-          onInventoryCollapsedChange={setInventoryCollapsed}
-          onMapRendererFallback={onMapRendererFallback}
-          onActionRequest={onActionRequest}
-          onActionBarLayoutChange={setActionBarLayout}
-          onAllActionsOpenChange={setAllActionsOpen}
-          onPrimaryClick={handlePrimaryClick}
-          permanentInventory={snapshot.permanentInventory}
-          permanentInventoryCollapsed={settings.permanentInventoryCollapsed}
-          permanentInventoryEnabled={gameProfile.nethack.permInvent}
-          permanentInventoryPosition={settings.permanentInventoryPosition}
-          sessionId={sessionId}
-          status={snapshot.status}
-          statusMetadata={snapshot.statusMetadata}
-        />
+        <div
+          className="game-stage"
+          data-game-stage="terminal"
+          key="terminal"
+        >
+          <GameTerminal
+            activeActionName={
+              actionState.intent?.kind === "catalog-action"
+              && (
+                actionState.status === "presenting-item-menu"
+                || actionState.status === "targeting-direction"
+                || actionState.status === "targeting-position"
+              )
+                ? actionState.intent.actionName
+                : null
+            }
+            allActionsOpen={allActionsOpen}
+            actionBarLayout={settings.actionBarLayout}
+            actionBarStyle={settings.actionBarStyle}
+            actionBlocked={
+              readOnly
+              || !snapshot.commandInput
+              || snapshot.modal !== null
+              || pauseView !== null
+              || visibleExamineViewTarget !== null
+              || actionState.intent !== null
+              || inventoryDragState.status !== "idle"
+            }
+            actionCatalog={actionCatalog}
+            clipCenter={snapshot.clipCenter}
+            commandInput={snapshot.commandInput}
+            cursor={snapshot.cursor}
+            directionTargeting={directionTargeting}
+            followPlayer={settings.followPlayer}
+            historyLines={settings.messageHistoryLines}
+            informationLevel={settings.informationLevel}
+            inert={
+              readOnly
+              || snapshot.modal !== null
+              || pauseView !== null
+              || visibleExamineViewTarget !== null
+            }
+            inputRequest={secondaryInputRequest ? null : snapshot.inputRequest}
+            inventoryDragController={inventoryDragController}
+            inventoryDragState={inventoryDragState}
+            layoutKey={[
+              settings.terminalFontSize,
+              settings.messageHistoryLines,
+              settings.mapRenderer,
+              settings.actionBarStyle,
+              settings.actionBarLayout.rows,
+            ].join(":")}
+            map={snapshot.map}
+            mapRenderer={settings.mapRenderer}
+            messages={snapshot.messages}
+            onContextClick={handleContextClick}
+            onContextItem={handleInventoryContext}
+            onDragChange={handleMapDragChange}
+            onHoverLeave={handleInspectLeave}
+            onHoverTarget={handleMapHover}
+            onInspect={handleLocalInspect}
+            onInspectLeave={handleInspectLeave}
+            onInventoryCollapsedChange={setInventoryCollapsed}
+            onMapRendererFallback={onMapRendererFallback}
+            onActionRequest={onActionRequest}
+            onActionBarLayoutChange={setActionBarLayout}
+            onAllActionsOpenChange={setAllActionsOpen}
+            onPrimaryClick={handlePrimaryClick}
+            permanentInventory={snapshot.permanentInventory}
+            permanentInventoryCollapsed={settings.permanentInventoryCollapsed}
+            permanentInventoryEnabled={gameProfile.nethack.permInvent}
+            permanentInventoryPosition={settings.permanentInventoryPosition}
+            sessionId={sessionId}
+            status={snapshot.status}
+            statusMetadata={snapshot.statusMetadata}
+          />
+        </div>
       )}
 
       <OverlayRoot>
