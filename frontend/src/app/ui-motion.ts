@@ -5,7 +5,24 @@ import type { AppAction } from "./app-state";
 /** Navigation direction used only by the screen presentation layer. */
 export type ScreenMotionDirection = "forward" | "reverse";
 
+/** Non-fatal failure raised while preparing a screen transition. */
+export interface ScreenMotionFailure {
+  phase: "ready";
+  error: unknown;
+}
+
+/** Optional integration hooks for screen transition diagnostics. */
+export interface ScreenMotionOptions {
+  onFailure?: (failure: ScreenMotionFailure) => void;
+}
+
+interface PendingScreenUpdate {
+  actions: AppAction[];
+  dispatch: Dispatch<AppAction>;
+}
+
 let activeScreenMotion = 0;
+let pendingScreenUpdate: PendingScreenUpdate | null = null;
 
 /**
  * Map lifecycle actions to a visual navigation direction without owning state.
@@ -18,7 +35,6 @@ export function screenMotionDirection(
   switch (action.type) {
     case "SETTINGS_OPENED":
     case "SESSION_CREATED":
-    case "SESSION_RUNNING":
       return "forward";
     case "SETTINGS_CLOSED":
     case "SESSION_CLEANUP_COMPLETED":
@@ -39,8 +55,13 @@ export function screenMotionDirection(
 export function dispatchWithScreenMotion(
   dispatch: Dispatch<AppAction>,
   action: AppAction,
+  options: ScreenMotionOptions = {},
 ): void {
   const direction = screenMotionDirection(action);
+  if (pendingScreenUpdate?.dispatch === dispatch) {
+    pendingScreenUpdate.actions.push(action);
+    return;
+  }
   if (
     direction === null
     || typeof document === "undefined"
@@ -57,16 +78,37 @@ export function dispatchWithScreenMotion(
 
   const root = document.documentElement;
   const motionToken = ++activeScreenMotion;
+  const screenUpdate: PendingScreenUpdate = {
+    actions: [],
+    dispatch,
+  };
   let committed = false;
+  pendingScreenUpdate = screenUpdate;
   root.dataset.uiMotionCapable = "true";
   root.dataset.uiMotion = direction;
 
   try {
     const transition = document.startViewTransition(() => {
-      flushSync(() => dispatch(action));
-      committed = true;
+      const queuedActions = screenUpdate.actions.splice(0);
+      if (pendingScreenUpdate === screenUpdate) {
+        pendingScreenUpdate = null;
+      }
+      flushSync(() => {
+        dispatch(action);
+        committed = true;
+        for (const queuedAction of queuedActions) {
+          dispatch(queuedAction);
+        }
+      });
     });
-    void transition.ready.catch(() => undefined);
+    void transition.ready.catch((error: unknown) => {
+      if (isAbortError(error)) return;
+      try {
+        options.onFailure?.({ phase: "ready", error });
+      } catch {
+        // Presentation diagnostics must never interrupt the application.
+      }
+    });
     void transition.finished.finally(() => {
       if (activeScreenMotion === motionToken) {
         delete root.dataset.uiMotion;
@@ -76,6 +118,27 @@ export function dispatchWithScreenMotion(
     if (activeScreenMotion === motionToken) {
       delete root.dataset.uiMotion;
     }
-    if (!committed) dispatch(action);
+    const queuedActions = screenUpdate.actions.splice(0);
+    if (pendingScreenUpdate === screenUpdate) {
+      pendingScreenUpdate = null;
+    }
+    if (!committed) {
+      dispatch(action);
+      for (const queuedAction of queuedActions) {
+        dispatch(queuedAction);
+      }
+    }
   }
+}
+
+/**
+ * Return whether a transition failure is the browser's expected abort signal.
+ * @param error - rejected View Transition reason.
+ * @returns true for AbortError values, including cross-realm DOM exceptions.
+ */
+function isAbortError(error: unknown): boolean {
+  return typeof error === "object"
+    && error !== null
+    && "name" in error
+    && error.name === "AbortError";
 }

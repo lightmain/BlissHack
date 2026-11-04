@@ -148,6 +148,36 @@ describe("dispatchWithScreenMotion", () => {
     });
   });
 
+  it("consumes a non-abort ready failure when reporting throws", async () => {
+    const error = new Error("transition preparation failed");
+    const reportingError = new Error("failure reporting failed");
+    const ready = Promise.reject<void>(error);
+    const readyCatch = vi.spyOn(ready, "catch");
+    const startViewTransition = vi.fn((update: () => void) => {
+      update();
+      return {
+        finished: Promise.resolve(),
+        ready,
+      };
+    });
+    installDocument(startViewTransition);
+    vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: false })));
+    const dispatch = vi.fn();
+    const onFailure = vi.fn(() => {
+      throw reportingError;
+    });
+
+    dispatchWithScreenMotion(dispatch, action, { onFailure });
+    await Promise.resolve();
+
+    expect(readyCatch).toHaveBeenCalledOnce();
+    expect(onFailure).toHaveBeenCalledOnce();
+    expect(onFailure).toHaveBeenCalledWith({
+      phase: "ready",
+      error,
+    });
+  });
+
   it("uses one transition for session creation and the running update", async () => {
     const transition = deferred();
     const startViewTransition = vi.fn((update: () => void) => {
@@ -184,5 +214,40 @@ describe("dispatchWithScreenMotion", () => {
     await Promise.resolve();
 
     expect(root.dataset.uiMotion).toBeUndefined();
+  });
+
+  it("preserves session event order while the transition update is pending", () => {
+    let updateCallback: (() => void) | undefined;
+    const startViewTransition = vi.fn((update: () => void) => {
+      updateCallback = update;
+      return {
+        finished: Promise.resolve(),
+        ready: Promise.resolve(),
+      };
+    });
+    installDocument(startViewTransition);
+    vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: false })));
+    const dispatch = vi.fn();
+    const created = {
+      type: "SESSION_CREATED",
+      moduleId: "module-1",
+      sessionId: "session-1",
+    } satisfies AppAction;
+    const running = {
+      type: "SESSION_RUNNING",
+      sessionId: "session-1",
+    } satisfies AppAction;
+
+    dispatchWithScreenMotion(dispatch, created);
+    dispatchWithScreenMotion(dispatch, running);
+
+    expect(startViewTransition).toHaveBeenCalledOnce();
+    expect(dispatch).toHaveBeenCalledTimes(0);
+
+    updateCallback?.();
+
+    expect(dispatch).toHaveBeenNthCalledWith(1, created);
+    expect(dispatch).toHaveBeenNthCalledWith(2, running);
+    expect(startViewTransition).toHaveBeenCalledOnce();
   });
 });

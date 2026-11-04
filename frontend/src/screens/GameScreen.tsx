@@ -215,6 +215,9 @@ export function GameScreen({
         && snapshot.modal === null
       )
     );
+  const [initialGameStage] = useState<"character" | "terminal">(
+    () => showCharacterSetup ? "character" : "terminal",
+  );
   const gameProfile = useMemo(
     () => profileWithRuntimeSettings(profile, snapshot.runtimeSettings),
     [profile, snapshot.runtimeSettings],
@@ -1238,6 +1241,9 @@ export function GameScreen({
         <div
           className="game-stage"
           data-game-stage="character"
+          data-game-stage-initial={
+            initialGameStage === "character" ? "true" : undefined
+          }
           key="character"
         >
           <CharacterSetupScreen
@@ -1251,6 +1257,9 @@ export function GameScreen({
         <div
           className="game-stage"
           data-game-stage="terminal"
+          data-game-stage-initial={
+            initialGameStage === "terminal" ? "true" : undefined
+          }
           key="terminal"
         >
           <GameTerminal

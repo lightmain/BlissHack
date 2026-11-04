@@ -14,7 +14,10 @@ import {
   initialAppState,
   type AppAction,
 } from "./app/app-state";
-import { dispatchWithScreenMotion } from "./app/ui-motion";
+import {
+  dispatchWithScreenMotion,
+  type ScreenMotionFailure,
+} from "./app/ui-motion";
 import { installBrowserErrorListeners } from "./diagnostics/browser-errors";
 import {
   getBrowserDiagnosticLog,
@@ -80,9 +83,29 @@ function App({
   diagnostics?: DiagnosticLog;
 }) {
   const [state, baseDispatch] = useReducer(appReducer, initialAppState);
+  /** Record an unexpected presentation failure without escalating app state. */
+  const reportScreenMotionFailure = useCallback(({
+    phase,
+    error,
+  }: ScreenMotionFailure) => {
+    const errorName = typeof error === "object"
+        && error !== null
+        && "name" in error
+        && typeof error.name === "string"
+      ? error.name
+      : "Error";
+    diagnostics.record({
+      level: "warning",
+      area: "browser",
+      event: `ui.view_transition_${phase}_failed`,
+      detail: { errorName },
+    });
+  }, [diagnostics]);
   const dispatch = useCallback((action: AppAction) => {
-    dispatchWithScreenMotion(baseDispatch, action);
-  }, [baseDispatch]);
+    dispatchWithScreenMotion(baseDispatch, action, {
+      onFailure: reportScreenMotionFailure,
+    });
+  }, [baseDispatch, reportScreenMotionFailure]);
   const {
     loadStatus,
     profile,

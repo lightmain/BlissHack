@@ -38,6 +38,12 @@ function atRuleBody(prelude: RegExp): string {
   return "";
 }
 
+/** Convert one CSS time token to milliseconds. */
+function durationMs(value: string, unit: string): number {
+  const duration = Number(value);
+  return unit.toLowerCase() === "s" ? duration * 1000 : duration;
+}
+
 describe("UI motion CSS contract", () => {
   it("disables nonessential motion when reduced motion is requested", () => {
     const reducedMotion = atRuleBody(
@@ -112,5 +118,57 @@ describe("UI motion CSS contract", () => {
         /\banimation(?:-name)?\s*:[^;]*dialog/i,
       );
     }
+  });
+
+  it("briefly transitions both inventory-driven HUD grid dimensions", () => {
+    const layout = cssFor('.nh-hud-layout[data-has-inventory="true"]');
+    const transitions = [...layout.matchAll(/\btransition\s*:\s*([^;]+);/gi)]
+      .map((match) => match[1])
+      .join(", ");
+
+    for (
+      const property of ["grid-template-columns", "grid-template-rows"]
+    ) {
+      const transition = new RegExp(
+        `\\b${property}\\s+(\\d+(?:\\.\\d+)?)(m?s)\\b`,
+        "i",
+      ).exec(transitions);
+
+      if (!transition) {
+        throw new Error(`missing ${property} transition on inventory HUD`);
+      }
+      const milliseconds = durationMs(transition[1], transition[2]);
+      expect(
+        milliseconds,
+        `${property} transition duration`,
+      ).toBeGreaterThanOrEqual(120);
+      expect(
+        milliseconds,
+        `${property} transition duration`,
+      ).toBeLessThanOrEqual(180);
+    }
+  });
+
+  it("gives expanded permanent inventory items a short entrance", () => {
+    const items = cssFor(
+      '.permanent-inventory-items[data-collapse-motion="enter"]',
+    );
+    const animation = /\banimation\s*:\s*([^;]+);/i.exec(items)?.[1] ?? "";
+    const animationName =
+      /\b[\w-]*inventory[\w-]*enter[\w-]*\b/i.exec(animation)?.[0] ?? "";
+    const duration = /(\d+(?:\.\d+)?)(m?s)\b/i.exec(animation);
+
+    if (!animationName) {
+      throw new Error("missing permanent inventory entrance animation");
+    }
+    expect(css).toMatch(
+      new RegExp(`@keyframes\\s+${animationName}\\b`, "i"),
+    );
+    if (!duration) {
+      throw new Error("missing permanent inventory animation duration");
+    }
+    const milliseconds = durationMs(duration[1], duration[2]);
+    expect(milliseconds).toBeGreaterThanOrEqual(80);
+    expect(milliseconds).toBeLessThanOrEqual(180);
   });
 });

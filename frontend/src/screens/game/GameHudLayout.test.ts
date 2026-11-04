@@ -279,6 +279,13 @@ describe("GameHudLayout contract", () => {
     expect(cssFor(
       '.nh-hud-layout-below[data-has-inventory="false"]',
     )).toMatch(/\bgrid-template-columns\s*:\s*minmax\(0,\s*1fr\)\s*;/);
+    for (const position of ["right", "right-short"]) {
+      expect(cssFor(
+        `.nh-hud-layout-${position}[data-action-bar-style="blisshack"][data-has-inventory="true"][data-inventory-collapsed="true"]`,
+      )).toMatch(
+        /\bgrid-template-rows\s*:\s*auto\s+minmax\(12rem,\s*1fr\)\s+42px\s+auto\s*;/,
+      );
+    }
   });
 
   it("suppresses the browser outline on the programmatic map focus target", () => {

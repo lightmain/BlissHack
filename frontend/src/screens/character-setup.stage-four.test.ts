@@ -135,6 +135,7 @@ describe("stage-four unified character setup component", () => {
 
     const html = renderSetup("tiles");
 
+    expect(html).toContain('data-game-stage-initial="true"');
     expect(html).toContain('data-character-setup="true"');
     expect(html).toContain('data-character-focus="name"');
     expect(html).toMatch(/<input[^>]*autofocus=""/);

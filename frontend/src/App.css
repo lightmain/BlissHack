@@ -89,7 +89,7 @@ html[data-ui-motion-capable="true"] :is(
   animation: none;
 }
 
-html[data-ui-motion] .game-stage {
+html[data-ui-motion-capable="true"] .game-stage[data-game-stage-initial="true"] {
   animation: none;
 }
 

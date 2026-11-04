@@ -1,11 +1,12 @@
 import {
   useEffect,
   useRef,
+  useState,
   type FocusEvent,
   type MouseEvent,
   type PointerEvent,
 } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft } from "lucide-react";
 import type { InteractionOrigin } from "../game-actions/interaction-origin";
 import type { MenuItem, PermanentInventoryState } from "../game-state";
 import type { LocalInspectRequest } from "../interactions/InspectTooltip";
@@ -81,6 +82,9 @@ export function PermanentInventoryPanel({
 }: PermanentInventoryPanelProps) {
   const mouseFocusRef = useRef(false);
   const previousRevisionRef = useRef(inventory.revision);
+  const [collapseMotion, setCollapseMotion] = useState<
+    "collapse" | "expand" | null
+  >(null);
   const itemCount = inventory.items.filter(
     (item) => item.identifier !== null,
   ).length;
@@ -154,19 +158,23 @@ export function PermanentInventoryPanel({
           aria-label={toggleLabel}
           onClick={(event) => {
             event.currentTarget.blur();
+            setCollapseMotion(collapsed ? "expand" : "collapse");
             onCollapsedChange(!collapsed);
           }}
           tabIndex={-1}
           title={toggleLabel}
           type="button"
         >
-          {collapsed
-            ? <ChevronRight aria-hidden="true" size={17} />
-            : <ChevronLeft aria-hidden="true" size={17} />}
+          <ChevronLeft aria-hidden="true" size={17} />
         </button>
       </header>
       {!collapsed && (
-        <div className="nh-menu-items permanent-inventory-items">
+        <div
+          className="nh-menu-items permanent-inventory-items"
+          data-collapse-motion={
+            collapseMotion === "expand" ? "enter" : undefined
+          }
+        >
           {inventory.items.map((item, index) => {
             const glyph = item.glyph?.ttyChar
               ? String.fromCodePoint(item.glyph.ttyChar)

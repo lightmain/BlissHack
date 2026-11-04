@@ -59,6 +59,7 @@ describe("GameScreen interface settings", () => {
       profile,
     }));
 
+    expect(html).toContain('data-game-stage-initial="true"');
     expect(html).toContain("nh-map-fallback");
     expect(html).toContain("nh-map-ascii");
   });
