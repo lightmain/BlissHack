@@ -37,7 +37,7 @@ const basicFlowNames = [
   "uses the global scrollbar palette across browser engines",
   "navigates result tabs by mouse and keyboard without moving Confirm",
   "confirms once with Enter from every endgame dialog focus target",
-  "scrolls overflowing result tabs with a real vertical wheel",
+  "keeps result tabs within the 320px viewport without horizontal overflow",
   "keeps long sections independently scrollable without page overflow",
   "keeps Ranking in a focusable horizontal scroller at 320px",
   "fits the result shell at the supported minimum width",

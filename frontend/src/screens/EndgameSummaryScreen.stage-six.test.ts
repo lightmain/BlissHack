@@ -1,22 +1,34 @@
+/// <reference types="node" />
+
+import { readFileSync } from "node:fs";
 import { createElement, type ComponentType } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import type { EndgameSummary } from "../nethack-bridge";
 
+const ENDGAME_SUMMARY_CSS = readFileSync(
+  new URL("../styles/endgame-summary.css", import.meta.url),
+  "utf8",
+);
+const EXPECTED_SECTION_TABS = [
+  { title: "Summary", iconClass: "lucide-book-open-text" },
+  { title: "Identified Possessions", iconClass: "lucide-backpack" },
+  { title: "Dungeon Overview", iconClass: "lucide-map" },
+  { title: "Final Attributes", iconClass: "lucide-list" },
+  { title: "Vanquished Creatures", iconClass: "lucide-skull" },
+  { title: "Extinct Species", iconClass: "lucide-list-x" },
+  { title: "Conduct and Achievements", iconClass: "lucide-list-checks" },
+  { title: "Ranking", iconClass: "lucide-trending-up" },
+] as const;
+const DISCLOSURE_VARIANT_TABS = [
+  { title: "Genocided Species", iconClass: "lucide-list-x" },
+  { title: "Genocided and Extinct Species", iconClass: "lucide-list-x" },
+  { title: "Unknown disclosure", iconClass: "lucide-circle-question-mark" },
+] as const;
+
 interface EndgameSummaryScreenProps {
   summary: EndgameSummary;
   onConfirm(): void;
-}
-
-const DOM_DELTA_PIXEL = 0;
-const DOM_DELTA_LINE = 1;
-const DOM_DELTA_PAGE = 2;
-
-interface EndgameTabWheelModule {
-  getEndgameTabWheelDelta?: (
-    event: Readonly<Pick<WheelEvent, "deltaMode" | "deltaX" | "deltaY">>,
-    pageSize: number,
-  ) => number | null;
 }
 
 interface EndgameSummaryScreenModule {
@@ -50,20 +62,6 @@ async function requireScreen(): Promise<
   expect(module.EndgameSummaryScreen).toBeTypeOf("function");
   return module.EndgameSummaryScreen as ComponentType<
     EndgameSummaryScreenProps
-  >;
-}
-
-/** Require the pure wheel normalization contract used by the tablist listener. */
-async function requireWheelDelta(): Promise<
-  NonNullable<EndgameTabWheelModule["getEndgameTabWheelDelta"]>
-> {
-  const modulePath = "./endgame-tab-wheel";
-  const module = await import(
-    /* @vite-ignore */ modulePath
-  ) as EndgameTabWheelModule;
-  expect(module.getEndgameTabWheelDelta).toBeTypeOf("function");
-  return module.getEndgameTabWheelDelta as NonNullable<
-    EndgameTabWheelModule["getEndgameTabWheelDelta"]
   >;
 }
 
@@ -154,7 +152,62 @@ function endgameSummaryFixture(): EndgameSummary {
           })),
         }],
       },
+      {
+        kind: "disclosure",
+        title: "Final Attributes",
+        blocks: [{
+          kind: "text",
+          sourceWindowId: 53,
+          lines: [{ text: "Final Attributes:", attribute: 1 }],
+        }],
+      },
+      {
+        kind: "disclosure",
+        title: "Vanquished Creatures",
+        blocks: [{
+          kind: "text",
+          sourceWindowId: 49,
+          lines: [{ text: "a goblin", attribute: 0 }],
+        }],
+      },
+      {
+        kind: "disclosure",
+        title: "Extinct Species",
+        blocks: [{
+          kind: "text",
+          sourceWindowId: 50,
+          lines: [{ text: "goblins are extinct", attribute: 0 }],
+        }],
+      },
+      {
+        kind: "disclosure",
+        title: "Conduct and Achievements",
+        blocks: [{
+          kind: "text",
+          sourceWindowId: 51,
+          lines: [{ text: "You were foodless.", attribute: 0 }],
+        }],
+      },
     ],
+  };
+}
+
+/** Build the alternate disclosure-title cases without the full result data. */
+function disclosureVariantFixture(): EndgameSummary {
+  return {
+    owner: {
+      moduleId: "module-variants",
+      sessionId: "session-variants",
+    },
+    sections: DISCLOSURE_VARIANT_TABS.map(({ title }, index) => ({
+      kind: "disclosure",
+      title,
+      blocks: [{
+        kind: "text",
+        sourceWindowId: 60 + index,
+        lines: [{ text: `${title} content`, attribute: 0 }],
+      }],
+    })),
   };
 }
 
@@ -163,59 +216,53 @@ function attributeCount(html: string, attribute: string): number {
   return html.match(new RegExp(attribute, "g"))?.length ?? 0;
 }
 
+/** Return every endgame tab's opening tag and rendered body. */
+function endgameTabs(html: string): Array<{
+  body: string;
+  openingTag: string;
+}> {
+  return [...html.matchAll(
+    /(<button(?=[^>]*\brole="tab")[^>]*>)([\s\S]*?)<\/button>/g,
+  )].map((match) => ({
+    openingTag: match[1],
+    body: match[2],
+  }));
+}
+
+/** Return every endgame panel's opening tag and rendered body. */
+function endgamePanels(html: string): Array<{
+  body: string;
+  openingTag: string;
+}> {
+  return [...html.matchAll(
+    /(<div(?=[^>]*\brole="tabpanel")[^>]*>)([\s\S]*?)<\/div>/g,
+  )].map((match) => ({
+    openingTag: match[1],
+    body: match[2],
+  }));
+}
+
+/** Read one serialized attribute from an opening tag. */
+function attributeValue(openingTag: string, attribute: string): string | null {
+  return new RegExp(`\\b${attribute}="([^"]*)"`).exec(openingTag)?.[1] ?? null;
+}
+
+/** Reduce one markup fragment to its visible text. */
+function visibleText(markup: string): string {
+  return markup.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+/** Return declarations attached to one exact CSS selector. */
+function cssFor(selector: string): string {
+  return [...ENDGAME_SUMMARY_CSS.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+    .filter((match) =>
+      match[1].split(",").some((candidate) => candidate.trim() === selector)
+    )
+    .map((match) => match[2])
+    .join("\n");
+}
+
 describe("alpha-2.2 EndgameSummaryScreen contract", () => {
-  it("[defect-probing] maps only vertical-dominant wheel input to horizontal pixels", async () => {
-    const getWheelDelta = await requireWheelDelta();
-
-    expect(getWheelDelta({
-      deltaMode: DOM_DELTA_PIXEL,
-      deltaX: 0,
-      deltaY: 48,
-    }, 320)).toBe(48);
-    expect(getWheelDelta({
-      deltaMode: DOM_DELTA_PIXEL,
-      deltaX: 0,
-      deltaY: -48,
-    }, 320)).toBe(-48);
-    expect(getWheelDelta({
-      deltaMode: DOM_DELTA_PIXEL,
-      deltaX: 49,
-      deltaY: 48,
-    }, 320)).toBeNull();
-    expect(getWheelDelta({
-      deltaMode: DOM_DELTA_PIXEL,
-      deltaX: -49,
-      deltaY: -48,
-    }, 320)).toBeNull();
-  });
-
-  it("normalizes line and page wheel modes without changing direction", async () => {
-    const getWheelDelta = await requireWheelDelta();
-    const downLine = getWheelDelta({
-      deltaMode: DOM_DELTA_LINE,
-      deltaX: 0,
-      deltaY: 3,
-    }, 320);
-    const upLine = getWheelDelta({
-      deltaMode: DOM_DELTA_LINE,
-      deltaX: 0,
-      deltaY: -2,
-    }, 320);
-
-    expect(downLine).toBeGreaterThan(3);
-    expect(upLine).toBeLessThan(-2);
-    expect(getWheelDelta({
-      deltaMode: DOM_DELTA_PAGE,
-      deltaX: 0,
-      deltaY: 1,
-    }, 320)).toBe(320);
-    expect(getWheelDelta({
-      deltaMode: DOM_DELTA_PAGE,
-      deltaX: 0,
-      deltaY: -1,
-    }, 320)).toBe(-320);
-  });
-
   it("[defect-probing] renders Summary first, Ranking last, and no empty disclosure", async () => {
     const Screen = await requireScreen();
     const html = renderToStaticMarkup(createElement(Screen, {
@@ -223,10 +270,10 @@ describe("alpha-2.2 EndgameSummaryScreen contract", () => {
       onConfirm: vi.fn(),
     }));
 
-    const summaryIndex = html.indexOf(">Summary<");
-    const possessionsIndex = html.indexOf(">Identified Possessions<");
-    const overviewIndex = html.indexOf(">Dungeon Overview<");
-    const rankingIndex = html.indexOf(">Ranking<");
+    const summaryIndex = html.indexOf("Ada the Wizard...");
+    const possessionsIndex = html.indexOf("a - a blessed +1 long sword");
+    const overviewIndex = html.indexOf("Dungeon overview line 1");
+    const rankingIndex = html.indexOf("No  Points     Name");
 
     expect(summaryIndex).toBeGreaterThan(-1);
     expect(possessionsIndex).toBeGreaterThan(summaryIndex);
@@ -266,13 +313,119 @@ describe("alpha-2.2 EndgameSummaryScreen contract", () => {
     expect(html).toContain('role="tablist"');
     expect(html).toContain('aria-orientation="horizontal"');
     expect(html).toContain('data-browser-tab-navigation="true"');
-    expect(attributeCount(html, 'role="tab"')).toBe(4);
-    expect(attributeCount(html, 'role="tabpanel"')).toBe(4);
+    expect(attributeCount(html, 'role="tab"')).toBe(8);
+    expect(attributeCount(html, 'role="tabpanel"')).toBe(8);
     expect(attributeCount(html, 'aria-selected="true"')).toBe(1);
     expect(attributeCount(html, 'tabindex="0"')).toBe(2);
-    expect(attributeCount(html, 'data-end-summary-scroll="true"')).toBe(4);
-    expect(html).toMatch(/role="tab"[^>]+aria-controls="[^"]+"/);
-    expect(html).toMatch(/role="tabpanel"[^>]+aria-labelledby="[^"]+"/);
+    expect(attributeCount(html, 'data-end-summary-scroll="true"')).toBe(8);
+
+    const tabs = endgameTabs(html);
+    const panels = endgamePanels(html);
+    expect(tabs).toHaveLength(EXPECTED_SECTION_TABS.length);
+    expect(panels).toHaveLength(EXPECTED_SECTION_TABS.length);
+    tabs.forEach((tab, index) => {
+      const title = EXPECTED_SECTION_TABS[index].title;
+      const tabId = attributeValue(tab.openingTag, "id");
+      const panelId = attributeValue(tab.openingTag, "aria-controls");
+      const matchingPanels = panels.filter((panel) =>
+        attributeValue(panel.openingTag, "id") === panelId
+      );
+
+      expect.soft(tabId, `${title} tab id`).not.toBeNull();
+      expect.soft(panelId, `${title} controlled panel id`).not.toBeNull();
+      expect.soft(matchingPanels, `${title} controlled panel`).toHaveLength(1);
+      expect.soft(
+        attributeValue(matchingPanels[0]?.openingTag ?? "", "aria-labelledby"),
+        `${title} panel label`,
+      ).toBe(tabId);
+    });
+  });
+
+  it("renders every result tab as one labeled lucide icon without visible long text", async () => {
+    const Screen = await requireScreen();
+    const html = renderToStaticMarkup(createElement(Screen, {
+      summary: endgameSummaryFixture(),
+      onConfirm: vi.fn(),
+    }));
+    const tabs = endgameTabs(html);
+
+    expect(tabs).toHaveLength(EXPECTED_SECTION_TABS.length);
+    tabs.forEach((tab, index) => {
+      const { iconClass, title } = EXPECTED_SECTION_TABS[index];
+
+      expect.soft(tab.openingTag, `${title} accessible label`)
+        .toContain(`aria-label="${title}"`);
+      expect.soft(tab.openingTag, `${title} native title`)
+        .toContain(`title="${title}"`);
+      expect.soft(tab.body, `${title} icon`).toMatch(
+        /^<svg(?=[^>]*\bclass="[^"]*\blucide\b[^"]*")[^>]*>[\s\S]*<\/svg>$/,
+      );
+      expect.soft(tab.body, `${title} concrete icon`).toMatch(
+        new RegExp(`class="[^"]*\\b${iconClass}\\b[^"]*"`),
+      );
+      expect.soft(visibleText(tab.body), `${title} visible tab text`).toBe("");
+    });
+  });
+
+  it("maps disclosure title variants and unknown titles to explicit icons", async () => {
+    const Screen = await requireScreen();
+    const html = renderToStaticMarkup(createElement(Screen, {
+      summary: disclosureVariantFixture(),
+      onConfirm: vi.fn(),
+    }));
+    const tabs = endgameTabs(html);
+
+    expect(tabs).toHaveLength(DISCLOSURE_VARIANT_TABS.length);
+    tabs.forEach((tab, index) => {
+      const { iconClass, title } = DISCLOSURE_VARIANT_TABS[index];
+
+      expect.soft(tab.openingTag, `${title} accessible label`)
+        .toContain(`aria-label="${title}"`);
+      expect.soft(tab.body, `${title} concrete icon`).toMatch(
+        new RegExp(`class="[^"]*\\b${iconClass}\\b[^"]*"`),
+      );
+    });
+  });
+
+  it("shows the selected section title in a separate bar below the tablist", async () => {
+    const Screen = await requireScreen();
+    const html = renderToStaticMarkup(createElement(Screen, {
+      summary: endgameSummaryFixture(),
+      onConfirm: vi.fn(),
+    }));
+    const tablist = html.match(
+      /<div(?=[^>]*\brole="tablist")[^>]*>[\s\S]*?<\/div>/,
+    );
+    const contentIndex = html.indexOf('<section class="end-summary-content">');
+
+    expect.soft(tablist).not.toBeNull();
+    expect.soft(contentIndex).toBeGreaterThan(
+      (tablist?.index ?? 0) + (tablist?.[0].length ?? 0),
+    );
+    const betweenTablistAndContent = html.slice(
+      (tablist?.index ?? 0) + (tablist?.[0].length ?? 0),
+      contentIndex,
+    );
+    const selectedTitle = betweenTablistAndContent.match(
+      /<([a-z][\w-]*)(?=[^>]*\bclass="[^"]*\bend-summary-section-title\b[^"]*")[^>]*>([\s\S]*?)<\/\1>/,
+    );
+
+    expect.soft(selectedTitle).not.toBeNull();
+    expect.soft(visibleText(selectedTitle?.[2] ?? "")).toBe("Summary");
+  });
+
+  it("keeps the icon tab strip non-scrolling and shrinkable on narrow screens", () => {
+    const tablist = cssFor(".end-summary-tabs");
+    const tab = cssFor(".end-summary-tab");
+    const flex = /\bflex\s*:\s*([^;]+);/.exec(tab)?.[1].trim();
+    const flexParts = flex?.split(/\s+/) ?? [];
+
+    expect.soft(tablist).not.toMatch(
+      /\boverflow-x\s*:\s*(?:auto|scroll)\s*;/,
+    );
+    expect.soft(tab).toMatch(/\bmin-width\s*:\s*0\s*;/);
+    expect.soft(flexParts).toHaveLength(3);
+    expect.soft(Number(flexParts[1])).toBeGreaterThan(0);
   });
 
   it("preserves core text attributes and menu colors", async () => {

@@ -240,6 +240,13 @@ test("navigates result tabs by mouse and keyboard without moving Confirm", async
 }) => {
   const tabs = page.getByRole("tab");
   const confirm = page.getByRole("button", { name: "Confirm" });
+  await page.locator(".end-summary-screen").evaluate(async (element) => {
+    await Promise.all(
+      element.getAnimations({ subtree: true }).map((animation) =>
+        animation.finished
+      ),
+    );
+  });
   const initialConfirmBox = await confirm.boundingBox();
   expect(initialConfirmBox).not.toBeNull();
   await expect(tabs.nth(0)).toBeFocused();
@@ -322,86 +329,70 @@ test("confirms once with Enter from every endgame dialog focus target", async ({
   }
 });
 
-test("[defect-probing] scrolls overflowing result tabs with a real vertical wheel", async ({
+test("[defect-probing] keeps result tabs within the 320px viewport without horizontal overflow", async ({
   page,
 }) => {
-  const tablist = page.getByRole("tablist", { name: "Endgame results" });
-  const unoverflowedWheel = await tablist.evaluate((element) => {
-    const event = new WheelEvent("wheel", {
-      bubbles: true,
-      cancelable: true,
-      deltaMode: WheelEvent.DOM_DELTA_PIXEL,
-      deltaY: 80,
-    });
-    return {
-      clientWidth: element.clientWidth,
-      defaultAllowed: element.dispatchEvent(event),
-      defaultPrevented: event.defaultPrevented,
-      scrollLeft: element.scrollLeft,
-      scrollWidth: element.scrollWidth,
-    };
-  });
-  expect(unoverflowedWheel.scrollWidth)
-    .toBeLessThanOrEqual(unoverflowedWheel.clientWidth);
-  expect(unoverflowedWheel.defaultAllowed).toBe(true);
-  expect(unoverflowedWheel.defaultPrevented).toBe(false);
-  expect(unoverflowedWheel.scrollLeft).toBe(0);
-
   await page.setViewportSize({ width: 320, height: 700 });
-  const overflow = await tablist.evaluate((element) => ({
-    clientWidth: element.clientWidth,
-    scrollWidth: element.scrollWidth,
-  }));
-  expect(overflow.scrollWidth).toBeGreaterThan(overflow.clientWidth);
-
-  const tablistBox = await tablist.boundingBox();
-  expect(tablistBox).not.toBeNull();
-  await page.mouse.move(
-    (tablistBox?.x ?? 0) + (tablistBox?.width ?? 0) / 2,
-    (tablistBox?.y ?? 0) + (tablistBox?.height ?? 0) / 2,
-  );
-
-  const horizontalWheel = await tablist.evaluate((element) => {
-    element.scrollLeft = 80;
-    const event = new WheelEvent("wheel", {
-      bubbles: true,
-      cancelable: true,
-      deltaMode: WheelEvent.DOM_DELTA_PIXEL,
-      deltaX: 80,
-      deltaY: 10,
+  const tablist = page.getByRole("tablist", { name: "Endgame results" });
+  await expect(tablist.getByRole("tab")).toHaveCount(8);
+  const layout = await tablist.evaluate((element) => {
+    const tablistBox = element.getBoundingClientRect();
+    const tabs = Array.from(
+      element.querySelectorAll<HTMLElement>("[role='tab']"),
+    ).map((tab) => {
+      const box = tab.getBoundingClientRect();
+      return {
+        left: box.left,
+        right: box.right,
+      };
     });
     return {
-      defaultAllowed: element.dispatchEvent(event),
-      defaultPrevented: event.defaultPrevented,
-      scrollLeft: element.scrollLeft,
+      document: {
+        clientWidth: document.documentElement.clientWidth,
+        scrollWidth: document.documentElement.scrollWidth,
+      },
+      tablist: {
+        clientWidth: element.clientWidth,
+        left: tablistBox.left,
+        right: tablistBox.right,
+        scrollWidth: element.scrollWidth,
+      },
+      tabs,
     };
   });
-  expect(horizontalWheel).toEqual({
-    defaultAllowed: true,
-    defaultPrevented: false,
-    scrollLeft: 80,
-  });
-
-  await tablist.evaluate((element) => {
-    element.scrollLeft = 0;
-  });
-  await page.mouse.wheel(0, 120);
-  await expect.poll(() =>
-    tablist.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
-  const afterWheelRight = await tablist.evaluate(
-    (element) => element.scrollLeft,
+  for (const tab of layout.tabs) {
+    expect(tab.left).toBeGreaterThanOrEqual(layout.tablist.left);
+    expect(tab.right).toBeLessThanOrEqual(layout.tablist.right);
+  }
+  expect(layout.tablist.scrollWidth).toBeLessThanOrEqual(
+    layout.tablist.clientWidth,
   );
-
-  await page.mouse.wheel(0, -60);
-  await expect.poll(() =>
-    tablist.evaluate((element) => element.scrollLeft))
-    .toBeLessThan(afterWheelRight);
+  expect(layout.document.scrollWidth).toBe(layout.document.clientWidth);
 
   const conductTab = page.getByRole("tab", {
     name: "Conduct and Achievements",
   });
   await conductTab.click();
   await expect(conductTab).toHaveAttribute("aria-selected", "true");
+  const sectionTitle = page.locator(
+    ".end-summary-tabs + .end-summary-section-title",
+  );
+  await expect(sectionTitle).toBeVisible();
+  await expect(sectionTitle).toHaveText(
+    "Conduct and Achievements",
+  );
+  const titleOverflow = await sectionTitle.evaluate((element) => ({
+    clientHeight: element.clientHeight,
+    clientWidth: element.clientWidth,
+    scrollHeight: element.scrollHeight,
+    scrollWidth: element.scrollWidth,
+  }));
+  expect(titleOverflow.scrollWidth).toBeLessThanOrEqual(
+    titleOverflow.clientWidth,
+  );
+  expect(titleOverflow.scrollHeight).toBeLessThanOrEqual(
+    titleOverflow.clientHeight,
+  );
   await conductTab.press("ArrowRight");
   await expect(page.getByRole("tab", { name: "Ranking" })).toBeFocused();
 });

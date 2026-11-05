@@ -6,6 +6,18 @@ import {
   useState,
   type KeyboardEvent,
 } from "react";
+import {
+  Backpack,
+  BookOpenText,
+  CircleHelp,
+  List,
+  ListChecks,
+  ListX,
+  Map,
+  Skull,
+  TrendingUp,
+  type LucideIcon,
+} from "lucide-react";
 import type {
   EndgameContentBlock,
   EndgameSection,
@@ -17,7 +29,6 @@ import {
   parseEndgameRanking,
   type EndgameRankingTable,
 } from "./endgame-ranking";
-import { getEndgameTabWheelDelta } from "./endgame-tab-wheel";
 import { InterfaceShortcutLabel } from "./InterfaceShortcutLabel";
 import { matchesInterfaceShortcut } from "./interface-shortcut";
 import "../styles/endgame-summary.css";
@@ -43,7 +54,6 @@ export function EndgameSummaryScreen({
   );
   const [selectedIndex, setSelectedIndex] = useState(0);
   const dialogRef = useRef<HTMLElement>(null);
-  const tabsRef = useRef<HTMLDivElement>(null);
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   useEffect(() => {
@@ -89,28 +99,6 @@ export function EndgameSummaryScreen({
     dialog.addEventListener("keydown", confirmWithEnter);
     return () => dialog.removeEventListener("keydown", confirmWithEnter);
   }, [onConfirm]);
-
-  useEffect(() => {
-    const tabs = tabsRef.current;
-    if (!tabs) return undefined;
-    const tablist = tabs;
-
-    /** Map vertical wheel motion only while the tablist can consume it. */
-    function scrollTabs(event: WheelEvent): void {
-      if (tablist.scrollWidth <= tablist.clientWidth) return;
-      const delta = getEndgameTabWheelDelta(event, tablist.clientWidth);
-      if (delta === null || delta === 0) return;
-
-      const maximum = tablist.scrollWidth - tablist.clientWidth;
-      const next = Math.min(maximum, Math.max(0, tablist.scrollLeft + delta));
-      if (next === tablist.scrollLeft) return;
-      event.preventDefault();
-      tablist.scrollLeft = next;
-    }
-
-    tablist.addEventListener("wheel", scrollTabs, { passive: false });
-    return () => tablist.removeEventListener("wheel", scrollTabs);
-  }, []);
 
   /**
    * Select and focus one tab after keyboard navigation.
@@ -162,15 +150,16 @@ export function EndgameSummaryScreen({
           aria-orientation="horizontal"
           className="end-summary-tabs"
           data-browser-tab-navigation="true"
-          ref={tabsRef}
           role="tablist"
         >
           {sections.map((section, index) => {
             const tabId = `${instanceId}-end-tab-${index}`;
             const panelId = `${instanceId}-end-panel-${index}`;
+            const Icon = iconForEndgameSection(section);
             return (
               <button
                 role="tab"
+                aria-label={section.title}
                 aria-controls={panelId}
                 aria-selected={selectedIndex === index}
                 className="end-summary-tab"
@@ -182,13 +171,17 @@ export function EndgameSummaryScreen({
                   tabRefs.current[index] = node;
                 }}
                 tabIndex={selectedIndex === index ? 0 : -1}
+                title={section.title}
                 type="button"
               >
-                {section.title}
+                <Icon aria-hidden="true" size={20} strokeWidth={1.75} />
               </button>
             );
           })}
         </div>
+        <h2 className="end-summary-section-title">
+          {sections[selectedIndex]?.title}
+        </h2>
         <section className="end-summary-content">
           {sections.map((section, index) => {
             const tabId = `${instanceId}-end-tab-${index}`;
@@ -236,6 +229,35 @@ export function EndgameSummaryScreen({
       </main>
     </div>
   );
+}
+
+/**
+ * Choose the compact icon that represents one endgame result section.
+ * @param section - captured result section shown by the tab.
+ * @returns the matching Lucide icon component.
+ */
+function iconForEndgameSection(section: EndgameSection): LucideIcon {
+  if (section.kind === "summary") return BookOpenText;
+  if (section.kind === "ranking") return TrendingUp;
+  switch (section.title) {
+    case "Identified Possessions":
+      return Backpack;
+    case "Final Attributes":
+      return List;
+    case "Vanquished Creatures":
+      return Skull;
+    case "Genocided Species":
+    case "Extinct Species":
+    case "Genocided and Extinct Species":
+      return ListX;
+    case "Conduct":
+    case "Conduct and Achievements":
+      return ListChecks;
+    case "Dungeon Overview":
+      return Map;
+    default:
+      return CircleHelp;
+  }
 }
 
 /** Sort valid sections into the fixed Summary/disclosure/Ranking order. */

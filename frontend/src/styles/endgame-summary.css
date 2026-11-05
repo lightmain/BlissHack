@@ -26,7 +26,7 @@
 
 .end-summary-screen {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
   width: min(1000px, 100%);
   height: min(760px, 100%);
   min-height: 0;
@@ -55,25 +55,36 @@
 
 .end-summary-tabs {
   display: flex;
+  justify-content: center;
   gap: 4px;
   min-width: 0;
   padding: 8px 20px 0;
-  overflow-x: auto;
-  overflow-y: hidden;
+  overflow: hidden;
   border-bottom: 1px solid #30363a;
   background: #0d1011;
 }
 
 .end-summary-tab {
-  flex: 0 0 auto;
+  display: grid;
+  flex: 1 1 40px;
+  place-items: center;
+  min-width: 0;
+  max-width: 64px;
   min-height: 40px;
-  padding: 8px 12px;
+  padding: 8px clamp(2px, 1.5vw, 8px);
   border: 0;
   border-bottom: 3px solid transparent;
   color: #aeb6ba;
   background: transparent;
   cursor: pointer;
   letter-spacing: 0;
+}
+
+.end-summary-tab svg {
+  width: 100%;
+  max-width: 20px;
+  height: auto;
+  aspect-ratio: 1;
 }
 
 .end-summary-tab:hover {
@@ -89,6 +100,19 @@
 .end-summary-tab:focus-visible {
   outline: 2px solid #7ddc8c;
   outline-offset: -2px;
+}
+
+.end-summary-section-title {
+  min-width: 0;
+  margin: 0;
+  padding: 10px 20px;
+  overflow-wrap: anywhere;
+  border-bottom: 1px solid #30363a;
+  color: #fff;
+  background: #15191b;
+  font-size: 0.95rem;
+  font-weight: 650;
+  letter-spacing: 0;
 }
 
 .end-summary-content {
@@ -261,7 +285,16 @@
 
   .end-summary-tab {
     min-height: 36px;
-    padding: 6px 10px;
+    padding-block: 6px;
+  }
+
+  .end-summary-tabs {
+    padding-inline: 12px;
+  }
+
+  .end-summary-section-title {
+    padding: 8px 16px;
+    font-size: 0.9rem;
   }
 
   .end-summary-panel {

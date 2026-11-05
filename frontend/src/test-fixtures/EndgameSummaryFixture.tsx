@@ -55,10 +55,37 @@ const summary: EndgameSummary = {
     },
     {
       kind: "disclosure",
-      title: "Conduct and Achievements",
+      title: "Final Attributes",
+      blocks: [{
+        kind: "text",
+        sourceWindowId: 7,
+        lines: [{ text: "Final Attributes:", attribute: 1 }],
+      }],
+    },
+    {
+      kind: "disclosure",
+      title: "Vanquished Creatures",
       blocks: [{
         kind: "text",
         sourceWindowId: 4,
+        lines: [{ text: "a goblin", attribute: 0 }],
+      }],
+    },
+    {
+      kind: "disclosure",
+      title: "Extinct Species",
+      blocks: [{
+        kind: "text",
+        sourceWindowId: 5,
+        lines: [{ text: "goblins are extinct", attribute: 0 }],
+      }],
+    },
+    {
+      kind: "disclosure",
+      title: "Conduct and Achievements",
+      blocks: [{
+        kind: "text",
+        sourceWindowId: 6,
         lines: [{
           text: "You followed a deliberately long fixture conduct.",
           attribute: 0,

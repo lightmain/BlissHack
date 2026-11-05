@@ -34,6 +34,7 @@ import type {
   ContextMenuRow,
 } from "../../game-actions/game-action-controller";
 import type { ActionBarStyle } from "../../settings/profile";
+import { InterfaceShortcutLabel } from "../InterfaceShortcutLabel";
 import { colorClass, textAttributeClass } from "../../text-styling";
 import { filterExtendedCommands } from "./extended-command-search";
 import { SecondaryDialog } from "./SecondaryDialog";
@@ -576,6 +577,15 @@ function MenuOverlay({
      */
     function handleMenuKey(event: KeyboardEvent): void {
       const encoded = keyboardEventToNetHackKey(event, { numberPad: false });
+      if (
+        event.target instanceof Element
+        && event.target.closest(".nh-menu-confirm")
+        && (event.key === "Enter" || event.key === " ")
+      ) {
+        event.preventDefault();
+        submitCurrentSelection();
+        return;
+      }
       if (event.key === "Escape") {
         event.preventDefault();
         submitMenuSelection(null);
@@ -605,12 +615,7 @@ function MenuOverlay({
         if (how === PICK_ONE && focusIndex >= 0) {
           submitMenuSelection([{ itemIndex: focusIndex, count: parsedCount(count) }]);
         } else {
-          submitMenuSelection(
-            Array.from(selected, ([itemIndex, itemCount]) => ({
-              itemIndex,
-              count: itemCount,
-            })),
-          );
+          submitCurrentSelection();
         }
         return;
       }
@@ -664,6 +669,16 @@ function MenuOverlay({
     });
     setCount("");
     setFocusIndex(itemIndex);
+  }
+
+  /** Submit the complete PICK_ANY selection through the core menu bridge. */
+  function submitCurrentSelection(): void {
+    submitMenuSelection(
+      Array.from(selected, ([itemIndex, itemCount]) => ({
+        itemIndex,
+        count: itemCount,
+      })),
+    );
   }
 
   /**
@@ -850,7 +865,24 @@ function MenuOverlay({
             ),
           )}
         </div>
-        {count && <output className="nh-count">{count}</output>}
+        {how === PICK_ANY
+          ? (
+            <footer className="nh-menu-footer">
+              {count && <output className="nh-count">{count}</output>}
+              <button
+                aria-keyshortcuts="Enter"
+                className="nh-menu-confirm"
+                data-menu-confirm="true"
+                onClick={submitCurrentSelection}
+                type="button"
+              >
+                <InterfaceShortcutLabel shortcut="Enter">
+                  Confirm
+                </InterfaceShortcutLabel>
+              </button>
+            </footer>
+          )
+          : count && <output className="nh-count">{count}</output>}
     </section>
   );
 

@@ -5,7 +5,7 @@
   color: #d8d8d2;
   font-size: 14px;
   letter-spacing: 0;
-  animation: ui-page-enter 150ms cubic-bezier(0.2, 0, 0, 1) both;
+  animation: ui-page-settings-enter 150ms cubic-bezier(0.2, 0, 0, 1) both;
 }
 
 .settings-screen-game {

@@ -3,18 +3,23 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
+const appCss = readFileSync(new URL("../App.css", import.meta.url), "utf8");
+const settingsCss = readFileSync(
+  new URL("./settings.css", import.meta.url),
+  "utf8",
+);
 const css = [
-  "../App.css",
   "../index.css",
   "./home.css",
-  "./settings.css",
   "./game.css",
   "./endgame-summary.css",
-].map((path) => readFileSync(new URL(path, import.meta.url), "utf8")).join("\n");
+].map((path) => readFileSync(new URL(path, import.meta.url), "utf8"))
+  .concat(appCss, settingsCss)
+  .join("\n");
 
 /** Return all declarations attached to one exact CSS selector. */
-function cssFor(selector: string): string {
-  return [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+function cssFor(selector: string, source = css): string {
+  return [...source.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
     .filter((match) =>
       match[1].split(",").some((candidate) => candidate.trim() === selector)
     )
@@ -23,17 +28,17 @@ function cssFor(selector: string): string {
 }
 
 /** Return the balanced body of the first at-rule matching a prelude. */
-function atRuleBody(prelude: RegExp): string {
-  const match = prelude.exec(css);
+function atRuleBody(prelude: RegExp, source = css): string {
+  const match = prelude.exec(source);
   expect(match, `missing ${prelude.source} at-rule`).toBeDefined();
-  const openingBrace = css.indexOf("{", match?.index ?? 0);
+  const openingBrace = source.indexOf("{", match?.index ?? 0);
   let depth = 0;
 
-  for (let index = openingBrace; index < css.length; index += 1) {
-    if (css[index] === "{") depth += 1;
-    if (css[index] !== "}") continue;
+  for (let index = openingBrace; index < source.length; index += 1) {
+    if (source[index] === "{") depth += 1;
+    if (source[index] !== "}") continue;
     depth -= 1;
-    if (depth === 0) return css.slice(openingBrace + 1, index);
+    if (depth === 0) return source.slice(openingBrace + 1, index);
   }
   return "";
 }
@@ -74,6 +79,29 @@ describe("UI motion CSS contract", () => {
         /\banimation(?:-name)?\s*:[^;]*page/i,
       );
     }
+  });
+
+  it("keeps the fixed settings footer anchored after page entrance", () => {
+    const screen = cssFor(".settings-screen", settingsCss);
+    const footer = cssFor(".settings-actions", settingsCss);
+    const animation = /\banimation\s*:\s*([^;]+);/i.exec(screen)?.[1] ?? "";
+    const animationName = [...appCss.matchAll(/@keyframes\s+([\w-]+)/g)]
+      .map((match) => match[1])
+      .find((name) => animation.split(/\s+/).includes(name));
+
+    expect(screen).toMatch(/\boverflow-y\s*:\s*auto\s*;/);
+    expect(animationName, "missing Settings entrance keyframes").toBeDefined();
+    expect(footer).toMatch(/\bposition\s*:\s*fixed\s*;/);
+    expect(footer).toMatch(/\bbottom\s*:\s*0\s*;/);
+    const settingsEntrance = atRuleBody(
+      new RegExp(`@keyframes\\s+${animationName}\\b`),
+      appCss,
+    );
+
+    expect(settingsEntrance).toMatch(/\bopacity\s*:/);
+    expect.soft(animationName).not.toBe("ui-page-enter");
+    // A transform makes the scrolling screen the fixed footer's containing block.
+    expect.soft(settingsEntrance).not.toMatch(/\btransform\s*:/);
   });
 
   it("keeps later game stages on the local stage animation", () => {

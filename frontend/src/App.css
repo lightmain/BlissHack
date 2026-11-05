@@ -24,6 +24,12 @@
   }
 }
 
+@keyframes ui-page-settings-enter {
+  from {
+    opacity: 0;
+  }
+}
+
 @keyframes ui-page-exit-reverse {
   to {
     opacity: 0;

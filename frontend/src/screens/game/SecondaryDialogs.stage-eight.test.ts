@@ -11,6 +11,7 @@ import {
   addMenuItem,
   beginMenu,
   createWindow,
+  endMenu,
   INPUT_STATE_GETDIR,
   INPUT_STATE_OTHER,
   MENU_BEHAVE_STANDARD,
@@ -66,11 +67,12 @@ function menuItem(identifier: number, accelerator: string): MenuItem {
 }
 
 /** Create one ordinary core menu with no action-getobj provenance. */
-function ordinaryMenu(how: number): GameModal {
+function ordinaryMenu(how: number, prompt = ""): GameModal {
   const windowId = createWindow(NHW_MENU);
   beginMenu(windowId, MENU_BEHAVE_STANDARD);
   addMenuItem(windowId, menuItem(701, "a"));
   addMenuItem(windowId, menuItem(702, "b"));
+  endMenu(windowId, prompt);
   return { kind: "menu", how, windowId };
 }
 
@@ -247,6 +249,57 @@ describe("stage-eight shared secondary dialog presentation", () => {
       );
       expect(classTokens(largeMenu)).not.toContain("nh-secondary-dialog");
     }
+  });
+
+  it("gives only a large PICK_ANY menu an Enter confirmation footer after its scrollable items", () => {
+    const pickAny = renderModal(
+      ordinaryMenu(PICK_ANY, "Take out what?"),
+      "blisshack",
+    );
+    const confirmButtons = pickAny.match(
+      /<button(?=[^>]*\bdata-menu-confirm(?:="[^"]*")?)(?=[^>]*\baria-keyshortcuts="Enter")[^>]*>[\s\S]*?<\/button>/g,
+    ) ?? [];
+
+    expect(confirmButtons).toHaveLength(1);
+    expect(confirmButtons[0]).toContain('class="interface-shortcut-label"');
+    expect(confirmButtons[0]).toContain(
+      '<kbd aria-hidden="true" class="interface-shortcut-key">Enter</kbd>',
+    );
+    expect(confirmButtons[0]).toContain("<span>Confirm</span>");
+    expect(pickAny.indexOf('class="nh-menu-items"')).toBeLessThan(
+      pickAny.indexOf("data-menu-confirm"),
+    );
+
+    const pickOne = renderModal(
+      ordinaryMenu(PICK_ONE, "Take out what?"),
+      "original",
+    );
+    const pickNone = renderModal(
+      ordinaryMenu(PICK_NONE, "Take out what?"),
+      "blisshack",
+    );
+    expect(pickOne).not.toContain("data-menu-confirm");
+    expect(pickNone).not.toContain("data-menu-confirm");
+  });
+
+  it("keeps large menu header, scrolling list, and fixed green confirmation footer in separate rows", () => {
+    const menuCss = cssFor(GAME_CSS_SOURCE, ".nh-menu");
+    const itemsCss = cssFor(GAME_CSS_SOURCE, ".nh-menu > .nh-menu-items");
+    const footerCss = cssFor(GAME_CSS_SOURCE, ".nh-menu-footer");
+    const confirmCss = cssFor(GAME_CSS_SOURCE, ".nh-menu-confirm");
+
+    expect(menuCss).toMatch(/\bdisplay\s*:\s*grid\s*;/);
+    expect(menuCss).toMatch(
+      /\bgrid-template-rows\s*:\s*max-content\s+minmax\(0,\s*1fr\)\s+max-content\s*;/,
+    );
+    expect(menuCss).toMatch(/\boverflow\s*:\s*hidden\s*;/);
+    expect(itemsCss).toMatch(/\bmin-height\s*:\s*0\s*;/);
+    expect(itemsCss).toMatch(/\boverflow-y\s*:\s*auto\s*;/);
+    expect(footerCss).toMatch(/\bposition\s*:\s*sticky\s*;/);
+    expect(footerCss).toMatch(/\bbottom\s*:\s*0\s*;/);
+    expect(confirmCss).toMatch(/\bborder\s*:\s*1px\s+solid\s+#5d9b72\s*;/i);
+    expect(confirmCss).toMatch(/\bbackground\s*:\s*#1b5331\s*;/i);
+    expect(confirmCss).toMatch(/\bcolor\s*:\s*#f5fff7\s*;/i);
   });
 
   it("[defect-probing] defines the shared secondary styles only in index.css with the green accent", () => {

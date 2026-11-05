@@ -2522,6 +2522,27 @@
   animation: ui-dialog-enter 140ms ease-out both;
 }
 
+.nh-menu {
+  display: grid;
+  grid-template-rows: max-content minmax(0, 1fr) max-content;
+  overflow: hidden;
+}
+
+.nh-menu > header {
+  grid-row: 1;
+}
+
+.nh-menu > .nh-menu-items {
+  min-height: 0;
+  grid-row: 2;
+  overflow-y: auto;
+}
+
+.nh-menu > .nh-count,
+.nh-menu-footer {
+  grid-row: 3;
+}
+
 .nh-dialog > header,
 .nh-context-menu > header {
   position: sticky;
@@ -2641,6 +2662,51 @@
   background: #15191b;
   color: #ffcf5c;
   text-align: right;
+}
+
+.nh-menu-footer {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 9px 10px;
+  border-top: 1px solid #30363a;
+  background: #15191b;
+}
+
+.nh-menu-footer .nh-count {
+  position: static;
+  margin-right: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.nh-menu-confirm {
+  min-width: 112px;
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 13px;
+  border: 1px solid #5d9b72;
+  border-radius: 3px;
+  background: #1b5331;
+  color: #f5fff7;
+  font: inherit;
+  font-weight: 650;
+  letter-spacing: 0;
+  cursor: pointer;
+}
+
+.nh-menu-confirm:hover,
+.nh-menu-confirm:focus-visible {
+  border-color: #7ab7c9;
+  outline: none;
+  background: #20613a;
+  color: #fff;
 }
 
 .nh-extcmd {
