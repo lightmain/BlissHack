@@ -130,8 +130,16 @@ export function createSessionManager(
     return prepareModule(context.createModuleId());
   }
 
-  /** Create and populate one named module generation. */
-  function prepareModule(moduleId: string): Promise<HomePreparation> {
+  /**
+   * Create and populate one named module generation.
+   * @param moduleId - stable identity for the new module.
+   * @param publishHomeReady - whether preparation reveals Home immediately.
+   * @returns the completed Home preparation.
+   */
+  function prepareModule(
+    moduleId: string,
+    publishHomeReady = true,
+  ): Promise<HomePreparation> {
     const record: ModuleRecord = {
       moduleId,
       module: null,
@@ -216,11 +224,13 @@ export function createSessionManager(
             storageAvailable,
           },
         });
-        context.options.dispatch({
-          type: "HOME_READY",
-          moduleId,
-          storageAvailable,
-        });
+        if (publishHomeReady) {
+          context.options.dispatch({
+            type: "HOME_READY",
+            moduleId,
+            storageAvailable,
+          });
+        }
         return preparation;
       })
       .catch((error: unknown) => {
@@ -638,7 +648,7 @@ export function createSessionManager(
         const nextModuleId = context.createModuleId();
         if (session.endgameSummary) {
           try {
-            await prepareModule(nextModuleId);
+            await prepareModule(nextModuleId, false);
           } catch (error) {
             context.options.dispatch({
               type: "APP_FATAL_ERROR",

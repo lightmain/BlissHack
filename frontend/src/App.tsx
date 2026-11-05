@@ -26,6 +26,7 @@ import {
 import { downloadDiagnosticLog } from "./diagnostics/download-diagnostics";
 import { FatalScreen } from "./screens/FatalScreen";
 import { HomeScreen } from "./screens/HomeScreen";
+import { HomeDungeon } from "./screens/HomeDungeon";
 import { GameScreen } from "./screens/GameScreen";
 import { EndgameSummaryScreen } from "./screens/EndgameSummaryScreen";
 import { SettingsScreen } from "./screens/SettingsScreen";
@@ -122,6 +123,7 @@ function App({
   );
   const [diagnosticExportError, setDiagnosticExportError] =
     useState<string | null>(null);
+  const stateRef = useRef(state);
   const desktopApi = useMemo(() => getDesktopApi(), []);
   const desktopCloseCoordinator = useMemo(
     () => desktopApi
@@ -135,7 +137,6 @@ function App({
   );
   const [desktopClosePrompt, setDesktopClosePrompt] =
     useState<DesktopClosePrompt | null>(null);
-  const stateRef = useRef(state);
   const sessionManager = useMemo(
     () => createSessionManager({
       diagnostics,
@@ -510,7 +511,7 @@ function App({
   if (state.phase === "booting") {
     return withLockDialog(
       <main className="app-loading" aria-label="BlissHack loading">
-        <span className="app-loading-mark" aria-hidden="true">@</span>
+        <HomeDungeon animated />
         <span>Preparing BlissHack</span>
       </main>,
     );

@@ -13,16 +13,31 @@ export interface ScreenMotionFailure {
 
 /** Optional integration hooks for screen transition diagnostics. */
 export interface ScreenMotionOptions {
+  now?: () => number;
   onFailure?: (failure: ScreenMotionFailure) => void;
 }
 
 interface PendingScreenUpdate {
   actions: AppAction[];
-  dispatch: Dispatch<AppAction>;
 }
 
+interface HomeLoadingMotion {
+  allowSharedTransition: boolean;
+  moduleId: string;
+  startedAt: number;
+}
+
+const HOME_SHARED_TRANSITION_DELAY_MS = 500;
 let activeScreenMotion = 0;
-let pendingScreenUpdate: PendingScreenUpdate | null = null;
+const directHomeLoads = new WeakSet<Dispatch<AppAction>>();
+const homeLoadingMotion = new WeakMap<
+  Dispatch<AppAction>,
+  HomeLoadingMotion
+>();
+const pendingScreenUpdates = new WeakMap<
+  Dispatch<AppAction>,
+  PendingScreenUpdate
+>();
 
 /**
  * Map lifecycle actions to a visual navigation direction without owning state.
@@ -33,14 +48,10 @@ export function screenMotionDirection(
   action: AppAction,
 ): ScreenMotionDirection | null {
   switch (action.type) {
+    case "HOME_READY":
     case "SETTINGS_OPENED":
     case "SESSION_CREATED":
       return "forward";
-    case "SETTINGS_CLOSED":
-    case "SESSION_CLEANUP_COMPLETED":
-    case "END_SUMMARY_CONFIRMED":
-    case "RETURN_HOME":
-      return "reverse";
     default:
       return null;
   }
@@ -57,8 +68,12 @@ export function dispatchWithScreenMotion(
   action: AppAction,
   options: ScreenMotionOptions = {},
 ): void {
-  const direction = screenMotionDirection(action);
-  if (pendingScreenUpdate?.dispatch === dispatch) {
+  trackHomeLoadingMotion(dispatch, action, options.now ?? defaultNow);
+  const direction = action.type === "HOME_READY"
+    ? homeReadyMotionDirection(dispatch, action, options.now ?? defaultNow)
+    : screenMotionDirection(action);
+  const pendingScreenUpdate = pendingScreenUpdates.get(dispatch);
+  if (pendingScreenUpdate) {
     pendingScreenUpdate.actions.push(action);
     return;
   }
@@ -80,18 +95,22 @@ export function dispatchWithScreenMotion(
   const motionToken = ++activeScreenMotion;
   const screenUpdate: PendingScreenUpdate = {
     actions: [],
-    dispatch,
   };
   let committed = false;
-  pendingScreenUpdate = screenUpdate;
+  pendingScreenUpdates.set(dispatch, screenUpdate);
   root.dataset.uiMotionCapable = "true";
   root.dataset.uiMotion = direction;
+  if (action.type === "HOME_READY") {
+    root.dataset.uiMotionShared = "home-dungeon";
+  } else {
+    delete root.dataset.uiMotionShared;
+  }
 
   try {
     const transition = document.startViewTransition(() => {
       const queuedActions = screenUpdate.actions.splice(0);
-      if (pendingScreenUpdate === screenUpdate) {
-        pendingScreenUpdate = null;
+      if (pendingScreenUpdates.get(dispatch) === screenUpdate) {
+        pendingScreenUpdates.delete(dispatch);
       }
       flushSync(() => {
         dispatch(action);
@@ -112,15 +131,17 @@ export function dispatchWithScreenMotion(
     void transition.finished.finally(() => {
       if (activeScreenMotion === motionToken) {
         delete root.dataset.uiMotion;
+        delete root.dataset.uiMotionShared;
       }
     }).catch(() => undefined);
   } catch {
     if (activeScreenMotion === motionToken) {
       delete root.dataset.uiMotion;
+      delete root.dataset.uiMotionShared;
     }
     const queuedActions = screenUpdate.actions.splice(0);
-    if (pendingScreenUpdate === screenUpdate) {
-      pendingScreenUpdate = null;
+    if (pendingScreenUpdates.get(dispatch) === screenUpdate) {
+      pendingScreenUpdates.delete(dispatch);
     }
     if (!committed) {
       dispatch(action);
@@ -129,6 +150,55 @@ export function dispatchWithScreenMotion(
       }
     }
   }
+}
+
+/** Record whether one module load began from startup or another screen. */
+function trackHomeLoadingMotion(
+  dispatch: Dispatch<AppAction>,
+  action: AppAction,
+  now: () => number,
+): void {
+  switch (action.type) {
+    case "LOCAL_DATA_CLEARED":
+    case "RETURN_HOME":
+    case "SESSION_CLEANUP_COMPLETED":
+      directHomeLoads.add(dispatch);
+      homeLoadingMotion.delete(dispatch);
+      return;
+    case "SETTINGS_CLOSED":
+    case "END_SUMMARY_CONFIRMED":
+      homeLoadingMotion.delete(dispatch);
+      return;
+    case "MODULE_LOADING":
+      homeLoadingMotion.set(dispatch, {
+        allowSharedTransition: !directHomeLoads.delete(dispatch),
+        moduleId: action.moduleId,
+        startedAt: now(),
+      });
+      return;
+    default:
+      return;
+  }
+}
+
+/** Return startup motion only after the matching loading screen stayed visible. */
+function homeReadyMotionDirection(
+  dispatch: Dispatch<AppAction>,
+  action: Extract<AppAction, { type: "HOME_READY" }>,
+  now: () => number,
+): ScreenMotionDirection | null {
+  const loading = homeLoadingMotion.get(dispatch);
+  homeLoadingMotion.delete(dispatch);
+  return loading?.allowSharedTransition
+      && loading.moduleId === action.moduleId
+      && now() - loading.startedAt >= HOME_SHARED_TRANSITION_DELAY_MS
+    ? "forward"
+    : null;
+}
+
+/** Read a monotonic presentation timestamp when the browser provides one. */
+function defaultNow(): number {
+  return globalThis.performance?.now() ?? Date.now();
 }
 
 /**

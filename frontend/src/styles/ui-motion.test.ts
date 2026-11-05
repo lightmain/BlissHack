@@ -8,13 +8,13 @@ const settingsCss = readFileSync(
   new URL("./settings.css", import.meta.url),
   "utf8",
 );
+const homeCss = readFileSync(new URL("./home.css", import.meta.url), "utf8");
 const css = [
   "../index.css",
-  "./home.css",
   "./game.css",
   "./endgame-summary.css",
 ].map((path) => readFileSync(new URL(path, import.meta.url), "utf8"))
-  .concat(appCss, settingsCss)
+  .concat(appCss, homeCss, settingsCss)
   .join("\n");
 
 /** Return all declarations attached to one exact CSS selector. */
@@ -49,6 +49,15 @@ function durationMs(value: string, unit: string): number {
   return unit.toLowerCase() === "s" ? duration * 1000 : duration;
 }
 
+/** Count how often each coordinate occurs in an animation path. */
+function coordinateCounts(values: string[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const value of values) {
+    counts.set(value, (counts.get(value) ?? 0) + 1);
+  }
+  return counts;
+}
+
 describe("UI motion CSS contract", () => {
   it("disables nonessential motion when reduced motion is requested", () => {
     const reducedMotion = atRuleBody(
@@ -63,13 +72,12 @@ describe("UI motion CSS contract", () => {
     );
   });
 
-  it("gives each page phase a restrained entrance", () => {
+  it("gives animated page phases a restrained entrance", () => {
     expect(css).toMatch(/@keyframes\s+[\w-]*page[\w-]*/i);
 
     for (
       const selector of [
         ".app-loading",
-        ".home-screen",
         ".settings-screen",
         ".session-loading",
         ".fatal-screen",
@@ -79,6 +87,85 @@ describe("UI motion CSS contract", () => {
         /\banimation(?:-name)?\s*:[^;]*page/i,
       );
     }
+  });
+
+  it("keeps Home free of a local page-enter animation", () => {
+    expect(cssFor(".home-screen", homeCss)).not.toMatch(
+      /\banimation(?:-name)?\s*:[^;]*page/i,
+    );
+  });
+
+  it("moves the loading player around eight discrete 3x3 perimeter cells", () => {
+    const player = cssFor(
+      ".app-loading .home-dungeon-player",
+      homeCss,
+    );
+    const animation = /\banimation\s*:\s*([^;]+);/i.exec(player)?.[1] ?? "";
+    const animationName = [...homeCss.matchAll(/@keyframes\s+([\w-]+)/g)]
+      .map((match) => match[1])
+      .find((name) => animation.split(/\s+/).includes(name));
+
+    expect(animation).toMatch(/\binfinite\b/i);
+    expect(animation).toMatch(
+      /(?:\bstep-end\b|\bsteps\(\s*1\s*,\s*(?:end|jump-end)\s*\))/i,
+    );
+    expect(
+      animationName,
+      "missing loading-player keyframes",
+    ).toBeDefined();
+    if (!animationName) return;
+
+    const keyframes = atRuleBody(
+      new RegExp(`@keyframes\\s+${animationName}\\b`),
+      homeCss,
+    );
+    const positions = [...keyframes.matchAll(
+      /\btransform\s*:\s*translate\(\s*([^,\s)]+)\s*(?:,\s*|\s+)([^)\s]+)\s*\)/gi,
+    )].map((match) => [match[1], match[2]] as const);
+    const uniquePositions = [...new Map(
+      positions.map((position) => [position.join("\u0000"), position]),
+    ).values()];
+
+    expect(uniquePositions).toHaveLength(8);
+    const xCounts = coordinateCounts(uniquePositions.map(([x]) => x));
+    const yCounts = coordinateCounts(uniquePositions.map(([, y]) => y));
+    expect(xCounts).toHaveLength(3);
+    expect(yCounts).toHaveLength(3);
+    const middleX = [...xCounts].find(([, count]) => count === 2)?.[0];
+    const middleY = [...yCounts].find(([, count]) => count === 2)?.[0];
+    expect(middleX, "missing middle column in 3x3 path").toBeDefined();
+    expect(middleY, "missing middle row in 3x3 path").toBeDefined();
+    expect(uniquePositions).not.toContainEqual([middleX, middleY]);
+  });
+
+  it("does not loop the loading player under reduced motion", () => {
+    const reducedMotion = atRuleBody(
+      /@media\s*\(\s*prefers-reduced-motion\s*:\s*reduce\s*\)/,
+    );
+    const player = cssFor(
+      ".app-loading .home-dungeon-player",
+      reducedMotion,
+    );
+    const universal = cssFor("*", reducedMotion);
+
+    expect(`${player}\n${universal}`).toMatch(
+      /\banimation(?:-iteration-count)?\s*:\s*(?:none|1)\b/i,
+    );
+  });
+
+  it("shares the room only during the loading-to-Home transition", () => {
+    const room = cssFor(
+      'html[data-ui-motion-shared="home-dungeon"] .home-dungeon',
+      homeCss,
+    );
+    const transitionName =
+      /\bview-transition-name\s*:\s*([\w-]+)\s*;/i.exec(room)?.[1];
+
+    expect(transitionName).toBeDefined();
+    expect(transitionName).not.toBe("none");
+    expect(cssFor(".home-dungeon", homeCss)).not.toMatch(
+      /\bview-transition-name\s*:/i,
+    );
   });
 
   it("keeps the fixed settings footer anchored after page entrance", () => {

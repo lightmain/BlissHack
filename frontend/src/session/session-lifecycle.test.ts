@@ -1167,9 +1167,11 @@ describe("session cleanup", () => {
       }));
     });
     const actionTypes = dispatch.mock.calls.map(([action]) => action.type);
-    expect(actionTypes.indexOf("HOME_READY")).toBeLessThan(
-      actionTypes.indexOf("SESSION_COMPLETED"),
-    );
+    expect(actionTypes).not.toContain("HOME_READY");
+    expect(manager.getHomePreparation()).toMatchObject({
+      moduleId: "module-2",
+      storageAvailable: true,
+    });
     expect(callbackHost[session.callbackName]).toBeUndefined();
     expect(manager.getActiveSession()).toBeNull();
   });

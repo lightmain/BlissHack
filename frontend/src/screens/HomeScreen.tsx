@@ -5,6 +5,7 @@ import type {
   SaveListEntry,
 } from "../storage/storage-service";
 import { PRODUCT_VERSION } from "../version";
+import { HomeDungeon } from "./HomeDungeon";
 import { InterfaceShortcutLabel } from "./InterfaceShortcutLabel";
 import { matchesInterfaceShortcut } from "./interface-shortcut";
 import { SavePickerPopover } from "./SavePickerPopover";
@@ -151,15 +152,7 @@ export function HomeScreen({
         </nav>
 
         <div className="home-identity">
-          <pre aria-hidden="true" className="home-dungeon">
-            <span>|----<b>+</b>----|</span>
-            <span>|....#....|</span>
-            <span>|.<b className="home-dungeon-player">@</b>..#..<b
-              className="home-dungeon-exit"
-            >&gt;</b>.|</span>
-            <span>|....#....|</span>
-            <span>|----<b>+</b>----|</span>
-          </pre>
+          <HomeDungeon />
           <h1 id="home-title">BlissHack</h1>
           <p>An unofficial NetHack 5.0 port</p>
         </div>
