@@ -69,6 +69,16 @@
 
 不得根据 README 猜测 workflow 分支、路径或触发条件。
 
+### Electron 桌面发行包
+
+- [Electron 构建流程](desktop-build-process.md)
+- `frontend/package.json`
+- `frontend/forge.config.mjs`
+- `frontend/electron/`
+
+先清理 `frontend/out/`，再从同一提交生成 macOS arm64 DMG、macOS arm64 ZIP
+和 Windows x64 ZIP。不得把旧版本残留产物混入当前 Release。
+
 ### 存档、IDBFS 或历史契约
 
 先读当前 storage 实现和测试。需要调查设计来源时，再从

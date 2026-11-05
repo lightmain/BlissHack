@@ -11,6 +11,7 @@
 | 当前系统边界和模块所有权 | [当前架构](current/architecture.md) |
 | Agent 启动和任务路由 | [Session 启动清单](session-start.md) |
 | WASM 构建和运行时三件套 | [WASM 构建流程](build-process.md) |
+| Electron 的三个桌面发行包 | [Electron 构建流程](desktop-build-process.md) |
 | shim ABI、回调和已知限制 | [Shim 接口参考](shim-interface-reference.md) |
 | BlissHack 对上游源码的修改 | [上游修改清单](upstream-modifications.md) |
 | 浏览器按键编码 | [按键输入参考](key-input-reference.md) |
