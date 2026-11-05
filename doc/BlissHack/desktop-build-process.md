@@ -94,11 +94,18 @@ node --version
 node -p "process.arch"
 cd frontend
 npm ci
+npm run desktop:prepare
 ```
 
 预期 Node.js 主版本为 `24`，构建机架构为 `arm64`。不要用本机其他 Node.js
 版本生成发布包。`npm ci` 必须使用已提交的 `package-lock.json`，不要在发布
 构建时临时升级 Electron 或 Forge。
+
+Electron 45 的 npm 包不会在 `npm ci` 时自动解压平台运行时。
+`desktop:prepare` 调用 Electron 官方 installer，按 lockfile 中的版本填充
+`node_modules/electron/dist/`，并验证发行包需要的 `LICENSE` 和
+`LICENSES.chromium.html`。Forge 的 `prePackage` hook 和 DMG 脚本也会自动
+执行同一准备步骤；这里显式运行是为了在耗时打包前尽早暴露下载或许可证错误。
 
 ## 5. 发布前验证
 

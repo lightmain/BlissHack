@@ -8,6 +8,10 @@ import {
 import { arch } from "node:process";
 import { promisify } from "node:util";
 import { join, resolve } from "node:path";
+import {
+  getElectronLicensePaths,
+  prepareElectronRuntime,
+} from "./prepare-electron-runtime.mjs";
 
 const execFileAsync = promisify(execFile);
 const frontendRoot = resolve(import.meta.dirname, "../..");
@@ -24,13 +28,10 @@ const output = join(
   outputDirectory,
   `BlissHack-alpha-2.6-darwin-${architecture}.dmg`,
 );
-const electronLicenseRoot = join(
-  frontendRoot,
-  "node_modules",
-  "electron",
-  "dist",
-);
+const [electronLicensePath, chromiumLicensesPath] =
+  getElectronLicensePaths();
 
+await prepareElectronRuntime();
 await rm(staging, { force: true, recursive: true });
 await mkdir(staging, { recursive: true });
 await mkdir(outputDirectory, { recursive: true });
@@ -40,11 +41,11 @@ await execFileAsync("/usr/bin/ditto", [
 ]);
 await Promise.all([
   copyFile(
-    join(electronLicenseRoot, "LICENSE"),
+    electronLicensePath,
     join(staging, "LICENSE"),
   ),
   copyFile(
-    join(electronLicenseRoot, "LICENSES.chromium.html"),
+    chromiumLicensesPath,
     join(staging, "LICENSES.chromium.html"),
   ),
 ]);

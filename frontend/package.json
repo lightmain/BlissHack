@@ -11,6 +11,7 @@
   "scripts": {
     "dev": "vite",
     "desktop:build": "npm run build -- --base /",
+    "desktop:prepare": "node electron/scripts/prepare-electron-runtime.mjs",
     "desktop:start": "npm run desktop:build && electron .",
     "desktop:package": "npm run desktop:build && electron-forge package",
     "desktop:package:mac": "npm run desktop:build && electron-forge package --platform=darwin",

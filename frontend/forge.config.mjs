@@ -3,18 +3,22 @@ import { FuseV1Options, FuseVersion } from "@electron/fuses";
 import { execFile } from "node:child_process";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
+import {
+  getElectronLicensePaths,
+  prepareElectronRuntime,
+} from "./electron/scripts/prepare-electron-runtime.mjs";
 
 const root = import.meta.dirname;
 const iconBase = resolve(root, "electron/assets/icon");
 const execFileAsync = promisify(execFile);
-const electronLicensePath = resolve(root, "node_modules/electron/dist/LICENSE");
-const chromiumLicensesPath = resolve(
-  root,
-  "node_modules/electron/dist/LICENSES.chromium.html",
-);
+const [electronLicensePath, chromiumLicensesPath] =
+  getElectronLicensePaths();
 
 export default {
   hooks: {
+    async prePackage() {
+      await prepareElectronRuntime();
+    },
     async postMake(_config, makeResults) {
       for (const result of makeResults) {
         if (result.platform !== "darwin") continue;

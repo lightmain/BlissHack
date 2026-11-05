@@ -5,6 +5,7 @@ import {
   readdir,
   rm,
   stat,
+  writeFile,
 } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { tmpdir } from "node:os";
@@ -17,6 +18,10 @@ import { PNG } from "pngjs";
 import { SaxesParser } from "saxes";
 import { afterEach, describe, expect, it } from "vitest";
 import forgeConfig from "../forge.config.mjs";
+import {
+  getElectronLicensePaths,
+  prepareElectronRuntime,
+} from "./scripts/prepare-electron-runtime.mjs";
 
 const frontendRoot = resolve(import.meta.dirname, "..");
 const repositoryRoot = resolve(frontendRoot, "..");
@@ -60,6 +65,7 @@ describe("desktop packaging contract", () => {
       asar: true,
       osxSign: { identity: "-" },
     });
+    expect(forgeConfig.hooks?.prePackage).toBeTypeOf("function");
     expect(forgeConfig.hooks?.postPackage).toBeTypeOf("function");
 
     const fusePlugin = forgeConfig.plugins.find(
@@ -331,17 +337,25 @@ describe("desktop packaging contract", () => {
   });
 
   it("builds DMGs with macOS tools instead of a third-party maker", async () => {
-    const script = await readFile(
-      join(frontendRoot, "electron", "scripts", "create-dmg.mjs"),
-      "utf8",
-    );
+    const scriptsRoot = join(frontendRoot, "electron", "scripts");
+    const [script, runtimePreparationScript] = await Promise.all([
+      readFile(join(scriptsRoot, "create-dmg.mjs"), "utf8"),
+      readFile(join(scriptsRoot, "prepare-electron-runtime.mjs"), "utf8"),
+    ]);
     const imports = [...script.matchAll(/from\s+["']([^"']+)["']/g)]
       .map((match) => match[1]);
+    const runtimePreparationImports = [
+      ...runtimePreparationScript.matchAll(/from\s+["']([^"']+)["']/g),
+    ].map((match) => match[1]);
 
     expect(imports.length).toBeGreaterThan(0);
-    expect(imports.every((specifier) => specifier.startsWith("node:"))).toBe(
-      true,
-    );
+    expect(imports.filter((specifier) => !specifier.startsWith("node:")))
+      .toEqual(["./prepare-electron-runtime.mjs"]);
+    expect(
+      runtimePreparationImports.every((specifier) =>
+        specifier.startsWith("node:")
+      ),
+    ).toBe(true);
     expect(script).toContain('execFileAsync("hdiutil"');
     expect(script).not.toMatch(
       /@electron-forge\/maker-dmg|electron-installer-dmg|appdmg/,
@@ -351,8 +365,42 @@ describe("desktop packaging contract", () => {
   it("provides a separately runnable strict package verification entry", async () => {
     const packageJson = JSON.parse(await readFile(packageJsonPath, "utf8"));
 
+    expect(packageJson.scripts?.["desktop:prepare"]).toBe(
+      "node electron/scripts/prepare-electron-runtime.mjs",
+    );
     expect(packageJson.scripts?.["desktop:verify-package"]).toBe(
       "vitest run electron/packaging-contract.test.mjs",
+    );
+  });
+
+  it("prepares Electron runtime licenses before packaging", async () => {
+    const electronRoot = await mkdtemp(
+      join(tmpdir(), "blisshack-electron-runtime-"),
+    );
+    temporaryDirectories.push(electronRoot);
+    await writeFile(
+      join(electronRoot, "install.js"),
+      [
+        "const { mkdirSync, writeFileSync } = require('node:fs');",
+        "const { join } = require('node:path');",
+        "const dist = join(__dirname, 'dist');",
+        "mkdirSync(dist);",
+        "writeFileSync(join(dist, 'LICENSE'), 'electron license');",
+        "writeFileSync(",
+        "  join(dist, 'LICENSES.chromium.html'),",
+        "  'chromium licenses',",
+        ");",
+      ].join("\n"),
+    );
+
+    const licensePaths = await prepareElectronRuntime(electronRoot);
+
+    expect(licensePaths).toEqual(getElectronLicensePaths(electronRoot));
+    await expect(readFile(licensePaths[0], "utf8")).resolves.toBe(
+      "electron license",
+    );
+    await expect(readFile(licensePaths[1], "utf8")).resolves.toBe(
+      "chromium licenses",
     );
   });
 
